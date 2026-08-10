@@ -20,3 +20,18 @@ export type { Column, DataTableProps } from "./components/DataTable";
 
 export { FilterBar } from "./components/FilterBar";
 export type { FilterBarProps, FilterScope } from "./components/FilterBar";
+
+export { QuotaBar, QuotaBarGroup } from "./components/QuotaBar";
+export type { QuotaBarProps } from "./components/QuotaBar";
+
+export { BreakdownList } from "./components/BreakdownList";
+export type { BreakdownItem, BreakdownListProps } from "./components/BreakdownList";
+
+export { ActionRail, ActionRailItem } from "./components/ActionRail";
+export type { ActionRailItemProps, ActionRailProps } from "./components/ActionRail";
+
+export { Sidebar } from "./components/Sidebar";
+export type { NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
+
+export { Avatar, TopBar } from "./components/TopBar";
+export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";

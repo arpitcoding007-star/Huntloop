@@ -507,6 +507,10 @@ export default function KitchenSink() {
           packages/ui/src/tokens.css
         </span>{" "}
         · color and chrome from Supabase, dashboard IA from Kima BD OS
+        <br />
+        <a href="/acme/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
+          View the assembled Command Center →
+        </a>
       </footer>
     </main>
   );
