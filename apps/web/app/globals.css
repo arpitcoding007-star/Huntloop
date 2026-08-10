@@ -1,0 +1,17 @@
+@import "tailwindcss";
+@import "@huntloop/ui/tokens.css";
+@import "@huntloop/ui/theme.css";
+
+/* Tailwind must scan the design-system package for class names. */
+@source "../../../packages/ui/src";
+
+::selection {
+  background: color-mix(in srgb, var(--hl-brand) 30%, transparent);
+  color: var(--hl-text);
+}
+
+/* Scrollbars, tuned to the Supabase chrome. */
+* {
+  scrollbar-color: var(--hl-border-strong) transparent;
+  scrollbar-width: thin;
+}

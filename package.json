@@ -1,0 +1,18 @@
+{
+  "name": "huntloop",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @huntloop/web",
+    "build": "npm run build --workspace @huntloop/web",
+    "start": "npm run start --workspace @huntloop/web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

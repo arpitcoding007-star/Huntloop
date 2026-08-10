@@ -1,0 +1,59 @@
+/* Maps the raw Huntloop tokens onto Tailwind v4 utility names.
+   Import AFTER tokens.css and AFTER `@import "tailwindcss"`. */
+
+@theme inline {
+  /* Surfaces */
+  --color-canvas: var(--hl-canvas);
+  --color-panel: var(--hl-panel);
+  --color-surface: var(--hl-surface);
+  --color-surface-hover: var(--hl-surface-hover);
+  --color-surface-active: var(--hl-surface-active);
+
+  /* Borders */
+  --color-line-subtle: var(--hl-border-subtle);
+  --color-line: var(--hl-border-default);
+  --color-line-strong: var(--hl-border-strong);
+
+  /* Text */
+  --color-fg: var(--hl-text);
+  --color-fg-secondary: var(--hl-text-secondary);
+  --color-fg-muted: var(--hl-text-muted);
+  --color-fg-inverse: var(--hl-text-inverse);
+
+  /* Brand green */
+  --color-brand: var(--hl-brand);
+  --color-brand-hover: var(--hl-brand-hover);
+  --color-brand-active: var(--hl-brand-active);
+  --color-brand-surface: var(--hl-brand-surface);
+  --color-brand-border: var(--hl-brand-border);
+  --color-brand-text: var(--hl-brand-text);
+
+  /* AI violet */
+  --color-ai: var(--hl-ai);
+  --color-ai-surface: var(--hl-ai-surface);
+  --color-ai-border: var(--hl-ai-border);
+  --color-ai-text: var(--hl-ai-text);
+
+  /* Status */
+  --color-success: var(--hl-success);
+  --color-success-surface: var(--hl-success-surface);
+  --color-success-border: var(--hl-success-border);
+  --color-warning: var(--hl-warning);
+  --color-warning-surface: var(--hl-warning-surface);
+  --color-warning-border: var(--hl-warning-border);
+  --color-danger: var(--hl-danger);
+  --color-danger-surface: var(--hl-danger-surface);
+  --color-danger-border: var(--hl-danger-border);
+  --color-info: var(--hl-info);
+  --color-info-surface: var(--hl-info-surface);
+  --color-info-border: var(--hl-info-border);
+
+  /* Radius */
+  --radius-sm: var(--hl-radius-sm);
+  --radius-md: var(--hl-radius-md);
+  --radius-lg: var(--hl-radius-lg);
+
+  /* Fonts */
+  --font-sans: var(--hl-font-sans);
+  --font-mono: var(--hl-font-mono);
+}

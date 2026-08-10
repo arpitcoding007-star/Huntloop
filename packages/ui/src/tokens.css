@@ -1,0 +1,174 @@
+/* ============================================================================
+   Huntloop design tokens
+   Canonical source — see IMPLEMENTATION_PLAN.md §1.
+
+   Color system and chrome derived from Supabase (near-black layered surfaces,
+   a single saturated green accent, hairline borders, no shadows).
+   Dashboard semantics derived from Kima BD OS (stat grid, quota bars).
+
+   Semantic split that earns its place:
+     green  = system state + primary action
+     violet = "an AI produced this"
+   ========================================================================= */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --hl-canvas: #171717;
+  --hl-panel: #1c1c1c;
+  --hl-surface: #1f1f1f;
+  --hl-surface-hover: #242424;
+  --hl-surface-active: #2a2a2a;
+  --hl-overlay: rgba(10, 10, 10, 0.8);
+
+  /* ── Borders — depth is expressed with 1px lines, never shadows ───────── */
+  --hl-border-subtle: #262626;
+  --hl-border-default: #343434;
+  --hl-border-strong: #4a4a4a;
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --hl-text: #ededed;
+  --hl-text-secondary: #a1a1a1;
+  --hl-text-muted: #6f6f6f;
+  --hl-text-inverse: #0f0f0f;
+
+  /* ── Brand green (Supabase #3ECF8E) ───────────────────────────────────── */
+  --hl-brand: #3ecf8e;
+  --hl-brand-hover: #4ae0a0;
+  --hl-brand-active: #34b87c;
+  --hl-brand-surface: #0e2a1e;
+  --hl-brand-border: #1f5a3f;
+  --hl-brand-text: #6ee7b0;
+
+  /* ── AI violet (Kima) ─────────────────────────────────────────────────── */
+  --hl-ai: #8b5cf6;
+  --hl-ai-surface: #1e1633;
+  --hl-ai-border: #3f2d6b;
+  --hl-ai-text: #b79dfb;
+
+  /* ── Status ───────────────────────────────────────────────────────────── */
+  --hl-success: #3ecf8e;
+  --hl-success-surface: #0e2a1e;
+  --hl-success-border: #1f5a3f;
+
+  --hl-warning: #f5a623;
+  --hl-warning-surface: #2b1f08;
+  --hl-warning-border: #6b4a12;
+
+  --hl-danger: #e5484d;
+  --hl-danger-surface: #2b1113;
+  --hl-danger-border: #6b2226;
+
+  --hl-info: #3b9eff;
+  --hl-info-surface: #0d1f33;
+  --hl-info-border: #1e4a75;
+
+  /* ── Score ramp ───────────────────────────────────────────────────────── */
+  --hl-score-poor: #e5484d;       /*  0–39 */
+  --hl-score-fair: #f5a623;       /* 40–69 */
+  --hl-score-good: #3ecf8e;       /* 70–89 */
+  --hl-score-excellent: #22d3a6;  /* 90+   */
+
+  /* ── Chart ramp ───────────────────────────────────────────────────────── */
+  --hl-chart-1: #3ecf8e;
+  --hl-chart-2: #8b5cf6;
+  --hl-chart-3: #3b9eff;
+  --hl-chart-4: #f5a623;
+  --hl-chart-5: #e5484d;
+  --hl-chart-6: #64748b;
+
+  /* ── Focus ───────────────────────────────────────────────────────────── */
+  --hl-focus: #3ecf8e;
+  --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --hl-font-sans: "Inter var", "Inter", system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --hl-font-mono: "JetBrains Mono", "Source Code Pro", ui-monospace,
+    "Cascadia Mono", "Consolas", monospace;
+
+  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 */
+  --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
+  --hl-text-h2: 1rem;           /* 16 / 24 / 600 */
+  --hl-text-body: 0.875rem;     /* 14 / 20 / 400 — the workhorse */
+  --hl-text-body-sm: 0.8125rem; /* 13 / 18 / 400 */
+  --hl-text-caption: 0.75rem;   /* 12 / 16 / 400 */
+  --hl-text-label: 0.6875rem;   /* 11 / 16 / 500 uppercase — the signature */
+  --hl-text-metric: 2rem;       /* 32 / 36 / 600 tabular */
+  --hl-text-metric-sm: 1.25rem; /* 20 / 24 / 600 tabular */
+
+  /* ── Spacing (4px base) ──────────────────────────────────────────────── */
+  --hl-space-1: 0.25rem;
+  --hl-space-2: 0.5rem;
+  --hl-space-3: 0.75rem;
+  --hl-space-4: 1rem;
+  --hl-space-5: 1.25rem;
+  --hl-space-6: 1.5rem;
+  --hl-space-8: 2rem;
+  --hl-space-10: 2.5rem;
+  --hl-space-12: 3rem;
+  --hl-space-16: 4rem;
+
+  /* ── Radius ──────────────────────────────────────────────────────────── */
+  --hl-radius-sm: 4px;
+  --hl-radius-md: 6px;   /* buttons, inputs, cards — the default */
+  --hl-radius-lg: 8px;   /* modals, drawers */
+  --hl-radius-full: 9999px;
+
+  /* ── Density ─────────────────────────────────────────────────────────── */
+  --hl-row-height: 44px;
+  --hl-nav-height: 32px;
+  --hl-control-height: 32px;
+  --hl-control-height-sm: 28px;
+  --hl-control-height-lg: 40px;
+
+  /* ── Motion ──────────────────────────────────────────────────────────── */
+  --hl-duration-fast: 120ms;
+  --hl-duration-base: 180ms;
+  --hl-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Elevation — the ONLY shadows in the system ──────────────────────── */
+  --hl-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hl-duration-fast: 0ms;
+    --hl-duration-base: 0ms;
+  }
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--hl-canvas);
+  color: var(--hl-text);
+  font-family: var(--hl-font-sans);
+  font-size: var(--hl-text-body);
+  line-height: 1.43;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Anything that updates in place must not jitter. */
+.hl-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Supabase signature label. */
+.hl-label {
+  font-size: var(--hl-text-label);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hl-text-muted);
+}
+
+/* Focus ring — every interactive element, no exceptions. */
+.hl-focusable:focus-visible {
+  outline: none;
+  box-shadow: var(--hl-focus-ring);
+}
