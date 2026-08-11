@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch cancels the first — no value in finishing a
+# run for a commit nobody will look at any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile
+      # and fails if package.json and the lock have drifted, which is a real
+      # failure worth surfacing rather than silently resolving.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Runs the migrations against a real Postgres (PGlite, in-process) and
+      # asserts the tenant boundary. No service or container needed — this is
+      # the whole reason the isolation suite runs on PGlite rather than a
+      # hosted project: an isolation test that only runs when someone
+      # remembers to point it at staging is an isolation test that stops
+      # running.
+      - name: Test — schema, constraints, tenant isolation
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          # The build must not require real credentials. If this step starts
+          # failing without them, something has begun reading the database at
+          # build time, which would also break preview deploys.
+          NEXT_PUBLIC_SUPABASE_URL: ""
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""

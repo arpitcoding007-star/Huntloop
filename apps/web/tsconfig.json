@@ -9,6 +9,11 @@
     "esModuleInterop": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // Needed because tsc follows imports into @huntloop/ai, whose relative
+    // imports carry the `.ts` extension so its suite can run under Node's type
+    // stripping. Legal here only because `noEmit` is set, which it is — nothing
+    // in this app emits through tsc, Next does the building.
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",

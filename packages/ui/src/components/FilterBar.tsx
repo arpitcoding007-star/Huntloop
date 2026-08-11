@@ -92,6 +92,9 @@ export function FilterBar({
             type="search"
             value={value}
             placeholder={placeholder}
+            // A placeholder is not an accessible name — it disappears on
+            // input and axe flags the field as unlabelled without this.
+            aria-label={placeholder}
             onChange={(e) => onChange(e.target.value)}
             className={cn(
               "hl-focusable h-8 w-full rounded-md border border-line bg-surface pr-3 pl-8",

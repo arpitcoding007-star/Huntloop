@@ -12,8 +12,47 @@ export type { CardProps } from "./components/Card";
 export { StatCard, StatGrid } from "./components/StatCard";
 export type { StatCardProps, StatTone } from "./components/StatCard";
 
-export { ScorePill } from "./components/ScorePill";
-export type { ScoreFactor, ScorePillProps } from "./components/ScorePill";
+export { SCORE_DIMENSIONS, ScorePill } from "./components/ScorePill";
+export type {
+  ScoreDimension,
+  ScoreDimensionLabel,
+  ScoreFactor,
+  ScorePillProps,
+} from "./components/ScorePill";
+
+/* ── Intelligence primitives (master context §7, §15, §52, §81) ─────────── */
+
+export { PriorityBadge } from "./components/PriorityBadge";
+export type { Priority, PriorityBadgeProps } from "./components/PriorityBadge";
+
+export { ClaimBadge } from "./components/ClaimBadge";
+export type { ClaimBadgeProps, ClaimKind, Confidence } from "./components/ClaimBadge";
+
+export { EvidenceList } from "./components/EvidenceList";
+export type { EvidenceItem, EvidenceListProps } from "./components/EvidenceList";
+
+export { Freshness, elapsedLabel, freshnessBand } from "./components/Freshness";
+export type { FreshnessBand, FreshnessProps } from "./components/Freshness";
+
+export { HoverPanel } from "./components/HoverPanel";
+export type { HoverPanelProps } from "./components/HoverPanel";
+
+/* ── Every UI state (spec Part 25) ──────────────────────────────────────── */
+
+export {
+  EmptyState,
+  ErrorState,
+  LoadingSkeleton,
+  PermissionDenied,
+  RateLimited,
+} from "./components/States";
+export type {
+  EmptyStateProps,
+  ErrorStateProps,
+  LoadingSkeletonProps,
+  PermissionDeniedProps,
+  RateLimitedProps,
+} from "./components/States";
 
 export { DataTable } from "./components/DataTable";
 export type { Column, DataTableProps } from "./components/DataTable";

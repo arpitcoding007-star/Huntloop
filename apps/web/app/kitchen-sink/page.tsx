@@ -7,14 +7,20 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ClaimBadge,
   Column,
   DataTable,
+  EvidenceList,
   FilterBar,
+  Freshness,
+  PriorityBadge,
   ScorePill,
   SectionLabel,
   StatCard,
   StatGrid,
   StatusDot,
+  type Priority,
+  type ScoreDimension,
 } from "@huntloop/ui";
 import {
   CalendarCheck,
@@ -35,35 +41,65 @@ import {
 
 /* ── Fixtures ──────────────────────────────────────────────────────────── */
 
-type Lead = {
+/* This page is a client component, so any relative time it renders has to be
+   computed from a fixed instant — `new Date()` would produce one string on
+   the server and a different one in the browser, and React would report a
+   hydration mismatch. */
+const DEMO_NOW = new Date("2026-08-11T09:00:00Z");
+
+/** Sort order for the priority column — HOT is highest. */
+const PRIORITY_RANK: Record<Priority, number> = {
+  ignore: 0,
+  watch: 1,
+  warm: 2,
+  hot: 3,
+};
+
+/* The fixtures below deliberately do NOT use ScorePill's `factors` prop. A
+   signed "+18" on screen is a claim about the model's arithmetic, and master
+   context §51 records the weighting as NOT DEFINED — a gallery is exactly
+   where an invented one would get copied into the real table. Dimensions say
+   what was assessed without asserting how it was combined. */
+type Opportunity = {
   id: string;
   company: string;
   domain: string;
   person: string;
   title: string;
+  priority: Priority;
+  priorityReason: string;
   score: number;
   scoreWhy: string;
-  factors: { label: string; impact: number }[];
+  confidence: "high" | "medium" | "low";
+  dimensions: ScoreDimension[];
   status: "new" | "qualified" | "contacted" | "replied" | "rejected";
   signal: string;
   aiScored: boolean;
 };
 
-const LEADS: Lead[] = [
+const OPPORTUNITIES: Opportunity[] = [
   {
     id: "ld_01",
     company: "Alphio AI",
     domain: "alphio.ai",
     person: "Marta Kovacs",
     title: "VP Revenue Operations",
+    priority: "hot",
+    priorityReason:
+      "Strong fit, a problem stated in the founder's own words, and a funding trigger three days old.",
     score: 91,
     scoreWhy:
-      "Series A eight weeks ago, hiring 3 SDRs, and running a competitor's sequencing tool that we displace in 70% of head-to-heads.",
-    factors: [
-      { label: "Funding within 90d", impact: 22 },
-      { label: "Hiring SDRs", impact: 18 },
-      { label: "Competitor tech detected", impact: 15 },
-      { label: "Headcount below ICP floor", impact: -6 },
+      "Series A three days ago, hiring 3 SDRs, and running a competitor's sequencing tool that we displace in 70% of head-to-heads.",
+    confidence: "high",
+    dimensions: [
+      { label: "ICP fit", value: 94 },
+      { label: "Problem severity", value: 88 },
+      { label: "Evidence strength", value: 82 },
+      { label: "Trigger strength", value: 90 },
+      { label: "Trigger freshness", value: 96 },
+      { label: "Buying likelihood", value: "unknown" },
+      { label: "Product relevance", value: 92 },
+      { label: "Decision-maker accessibility", value: 71 },
     ],
     status: "qualified",
     signal: "Raised $12M Series A",
@@ -75,13 +111,22 @@ const LEADS: Lead[] = [
     domain: "northwind.co",
     person: "Devan Rao",
     title: "Head of Growth",
+    priority: "warm",
+    priorityReason:
+      "Good fit and a clear hiring signal, but nothing yet showing the problem is urgent for them.",
     score: 78,
     scoreWhy:
-      "Strong firmographic fit and an active outbound team, but no trigger event in the last 90 days.",
-    factors: [
-      { label: "Industry match", impact: 20 },
-      { label: "Employee count in band", impact: 14 },
-      { label: "No recent trigger", impact: -12 },
+      "Strong firmographic fit and an active outbound team, but the only trigger is a job post from ten days ago.",
+    confidence: "medium",
+    dimensions: [
+      { label: "ICP fit", value: 85 },
+      { label: "Problem severity", value: 58 },
+      { label: "Evidence strength", value: 61 },
+      { label: "Trigger strength", value: 54 },
+      { label: "Trigger freshness", value: 74 },
+      { label: "Buying likelihood", value: "unknown" },
+      { label: "Product relevance", value: 80 },
+      { label: "Decision-maker accessibility", value: 66 },
     ],
     status: "contacted",
     signal: "Job post: Sales Development",
@@ -93,13 +138,22 @@ const LEADS: Lead[] = [
     domain: "cormorant.health",
     person: "Priya Nandakumar",
     title: "Director of Partnerships",
+    priority: "warm",
+    priorityReason:
+      "They replied and asked for pricing — intent is evidenced, even though the fit is only fair.",
     score: 64,
     scoreWhy:
-      "Right title and region, but healthcare procurement cycles historically convert at 0.4× our baseline.",
-    factors: [
-      { label: "Title match", impact: 16 },
-      { label: "Region match", impact: 8 },
-      { label: "Vertical converts below baseline", impact: -14 },
+      "Right title and region, and an inbound pricing question. Healthcare procurement cycles are long, and no budget signal is on file.",
+    confidence: "medium",
+    dimensions: [
+      { label: "ICP fit", value: 62 },
+      { label: "Problem severity", value: 55 },
+      { label: "Evidence strength", value: 70 },
+      { label: "Trigger strength", value: 68 },
+      { label: "Trigger freshness", value: 88 },
+      { label: "Buying likelihood", value: 60 },
+      { label: "Product relevance", value: 58 },
+      { label: "Decision-maker accessibility", value: "unknown" },
     ],
     status: "replied",
     signal: "Replied — asked for pricing",
@@ -111,13 +165,22 @@ const LEADS: Lead[] = [
     domain: "svpchain.io",
     person: "Tom Aldridge",
     title: "Founder",
+    priority: "watch",
+    priorityReason:
+      "Plausible fit on tech stack alone. A website rebuild is not evidence of a problem we solve.",
     score: 52,
     scoreWhy:
-      "Founder-led company under 10 employees — below the ICP headcount floor, and no budget signal detected.",
-    factors: [
-      { label: "Tech stack overlap", impact: 12 },
-      { label: "Below headcount floor", impact: -18 },
-      { label: "No budget signal", impact: -8 },
+      "Founder-led company under 10 employees — below the ICP headcount floor, and the only signal is a website rebuild.",
+    confidence: "low",
+    dimensions: [
+      { label: "ICP fit", value: 41 },
+      { label: "Problem severity", value: "unknown" },
+      { label: "Evidence strength", value: 28 },
+      { label: "Trigger strength", value: 22 },
+      { label: "Trigger freshness", value: 80 },
+      { label: "Buying likelihood", value: "unknown" },
+      { label: "Product relevance", value: 55 },
+      { label: "Decision-maker accessibility", value: 90 },
     ],
     status: "new",
     signal: "Website rebuild detected",
@@ -129,13 +192,22 @@ const LEADS: Lead[] = [
     domain: "harbourfront.fund",
     person: "Elise Duforet",
     title: "Operating Partner",
+    priority: "ignore",
+    priorityReason:
+      "Outside every active ICP. Matched on region only, which is not a reason to contact anyone.",
     score: 34,
     scoreWhy:
-      "Matched on region only. Firmographics fall outside every active ICP; surfaced by a broad saved search.",
-    factors: [
-      { label: "Region match", impact: 8 },
-      { label: "Industry outside ICP", impact: -20 },
-      { label: "No role fit", impact: -10 },
+      "Matched on region only. Firmographics fall outside every active ICP; surfaced by a broad source, not by a signal.",
+    confidence: "high",
+    dimensions: [
+      { label: "ICP fit", value: 12 },
+      { label: "Problem severity", value: "unknown" },
+      { label: "Evidence strength", value: 18 },
+      { label: "Trigger strength", value: 0 },
+      { label: "Trigger freshness", value: 0 },
+      { label: "Buying likelihood", value: "unknown" },
+      { label: "Product relevance", value: 15 },
+      { label: "Decision-maker accessibility", value: "unknown" },
     ],
     status: "rejected",
     signal: "—",
@@ -144,7 +216,7 @@ const LEADS: Lead[] = [
 ];
 
 const STATUS_META: Record<
-  Lead["status"],
+  Opportunity["status"],
   { label: string; variant: "neutral" | "brand" | "info" | "success" | "danger" }
 > = {
   new: { label: "New", variant: "info" },
@@ -160,30 +232,37 @@ export default function KitchenSink() {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("company");
   const [selected, setSelected] = useState<string[]>([]);
+  /* Default sort is priority, then score — not score alone. §78 requires a
+     strong trigger to be unable to make a poor-fit company HOT, so the
+     verdict is what the list is ordered by and the score is detail within it. */
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
-    key: "score",
+    key: "priority",
     direction: "desc",
   });
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = q
-      ? LEADS.filter((l) =>
+      ? OPPORTUNITIES.filter((l) =>
           (scope === "company" ? l.company : scope === "person" ? l.person : l.domain)
             .toLowerCase()
             .includes(q),
         )
-      : LEADS;
+      : OPPORTUNITIES;
 
     return [...filtered].sort((a, b) => {
       const dir = sort.direction === "asc" ? 1 : -1;
+      if (sort.key === "priority") {
+        const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+        return (rank !== 0 ? rank : a.score - b.score) * dir;
+      }
       if (sort.key === "score") return (a.score - b.score) * dir;
       if (sort.key === "company") return a.company.localeCompare(b.company) * dir;
       return 0;
     });
   }, [query, scope, sort]);
 
-  const columns: Column<Lead>[] = [
+  const columns: Column<Opportunity>[] = [
     {
       key: "company",
       header: "Company",
@@ -215,6 +294,13 @@ export default function KitchenSink() {
       render: (l) => <span className="text-fg-secondary">{l.signal}</span>,
     },
     {
+      key: "priority",
+      header: "Priority",
+      width: "96px",
+      sortable: true,
+      render: (l) => <PriorityBadge priority={l.priority} reason={l.priorityReason} />,
+    },
+    {
       key: "score",
       header: "Score",
       width: "88px",
@@ -224,7 +310,8 @@ export default function KitchenSink() {
         <ScorePill
           score={l.score}
           explanation={l.scoreWhy}
-          factors={l.factors}
+          confidence={l.confidence}
+          dimensions={l.dimensions}
         />
       ),
     },
@@ -255,8 +342,8 @@ export default function KitchenSink() {
             </Badge>
           </div>
           <p className="mt-1 text-[13px] text-fg-muted">
-            Monday, August 10, 2026 · 3 campaigns running · autonomy L2 —
-            AI recommends, you approve
+            Tuesday, August 11, 2026 · 14 sources monitored · autonomy L2 —
+            Huntloop recommends, you approve
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -277,14 +364,14 @@ export default function KitchenSink() {
           className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning transition-colors duration-[120ms] hover:border-warning"
         >
           <Zap className="size-3.5" strokeWidth={1.75} />
-          61 leads awaiting review →
+          9 new triggers in the last 24h →
         </a>
         <a
           href="#"
           className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
         >
           <Sparkles className="size-3.5" strokeWidth={1.75} />
-          88 leads scored 70+ →
+          12 opportunities awaiting review →
         </a>
         <a
           href="#"
@@ -324,7 +411,7 @@ export default function KitchenSink() {
           />
           <StatCard label="Rejected" value={2} icon={XCircle} tone="danger" href="#" />
           <StatCard
-            label="Total leads"
+            label="Total companies"
             value={180}
             icon={Users}
             hint="of 1,000 on the Growth plan"
@@ -332,14 +419,14 @@ export default function KitchenSink() {
         </StatGrid>
       </section>
 
-      {/* ── Lead table ────────────────────────────────────────────────── */}
+      {/* ── Opportunity table ─────────────────────────────────────────── */}
       <section className="mt-10">
-        <SectionLabel>Recent leads</SectionLabel>
+        <SectionLabel>Recent opportunities</SectionLabel>
         <div className="mt-3">
           <FilterBar
             value={query}
             onChange={setQuery}
-            placeholder="Search leads…"
+            placeholder="Search opportunities…"
             scopes={[
               { value: "company", label: "Company" },
               { value: "person", label: "Contact name" },
@@ -369,7 +456,7 @@ export default function KitchenSink() {
               <>
                 <Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />
                 <Button variant="primary" icon={Plus}>
-                  Add lead
+                  Analyze a URL
                 </Button>
               </>
             }
@@ -387,7 +474,7 @@ export default function KitchenSink() {
           onSortChange={setSort}
           empty={
             <span className="text-[13px] text-fg-muted">
-              No leads match “{query}”. Try a different search field.
+              No opportunities match “{query}”. Try a different search field.
             </span>
           }
         />
@@ -395,6 +482,108 @@ export default function KitchenSink() {
           Hover or focus a score to see why the model assigned it. Scores never
           appear without an explanation.
         </p>
+      </section>
+
+      {/* ── Intelligence primitives ────────────────────────────────────
+          The four components that carry the master context's non-negotiable
+          rules: the §15 verdict, the §7 fact/inference/unknown split, §52
+          provenance, and §81 freshness. Everything else in this gallery is
+          chrome; these are the product. */}
+      <section className="mt-12">
+        <SectionLabel>Intelligence primitives</SectionLabel>
+        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+          <Card flush>
+            <CardHeader
+              title="Priority"
+              description="HOT / WARM / WATCH / IGNORE — hover for the reason behind the verdict."
+            />
+            <CardBody className="flex flex-wrap items-center gap-3">
+              <PriorityBadge
+                priority="hot"
+                size="md"
+                reason="Strong ICP fit, evidenced pain, and a trigger 3 days old."
+              />
+              <PriorityBadge
+                priority="warm"
+                size="md"
+                reason="Good fit and real pain, but the trigger is six weeks old."
+              />
+              <PriorityBadge
+                priority="watch"
+                size="md"
+                reason="Plausible fit; the evidence on file does not support contacting yet."
+              />
+              <PriorityBadge
+                priority="ignore"
+                size="md"
+                reason="Wrong segment — sells to consumers, not institutions."
+              />
+            </CardBody>
+          </Card>
+
+          <Card flush>
+            <CardHeader
+              title="Claim kind"
+              description="An inference is never allowed to render as a fact."
+            />
+            <CardBody className="flex flex-wrap items-center gap-3">
+              <ClaimBadge kind="fact" confidence="high" size="md" />
+              <ClaimBadge kind="inference" confidence="medium" size="md" />
+              <ClaimBadge kind="unknown" size="md" />
+            </CardBody>
+          </Card>
+
+          <Card flush>
+            <CardHeader
+              title="Freshness"
+              description="Presentation of signal age. Not the scoring decay curve — that is undefined."
+            />
+            <CardBody className="flex flex-col gap-2">
+              <Freshness date="2026-08-10" now={DEMO_NOW} label="Triggered" />
+              <Freshness date="2026-07-28" now={DEMO_NOW} label="Triggered" />
+              <Freshness date="2026-06-20" now={DEMO_NOW} label="Triggered" />
+              <Freshness date="2026-01-15" now={DEMO_NOW} label="Triggered" />
+            </CardBody>
+          </Card>
+
+          <Card flush>
+            <CardHeader
+              title="Evidence"
+              description="Source, excerpt, event date, observed date, confidence — §52 in full."
+            />
+            <CardBody>
+              <EvidenceList
+                now={DEMO_NOW}
+                items={[
+                  {
+                    claim: "Alphio AI closed a $12M Series A on 8 Aug.",
+                    kind: "fact",
+                    confidence: "high",
+                    source: "TechCrunch",
+                    sourceUrl: "https://techcrunch.com/",
+                    eventDate: "2026-08-08",
+                    observedAt: "2026-08-09",
+                    excerpt:
+                      "Alphio AI has raised $12 million to scale its autonomous trading agents to institutional desks.",
+                  },
+                  {
+                    claim:
+                      "Their agents will need controlled financial permissions before institutions onboard.",
+                    kind: "inference",
+                    confidence: "medium",
+                    source: "Derived from the launch post",
+                    eventDate: "2026-08-08",
+                    observedAt: "2026-08-09",
+                  },
+                  {
+                    claim: "Which wallet architecture they use today.",
+                    kind: "unknown",
+                  },
+                ]}
+              />
+            </CardBody>
+          </Card>
+        </div>
       </section>
 
       {/* ── Component gallery ─────────────────────────────────────────── */}
@@ -446,18 +635,26 @@ export default function KitchenSink() {
         <Card flush>
           <CardHeader
             title="Score pills"
-            description="Band colors: poor / fair / good / excellent."
+            description="Eight named dimensions (master context §51), never one opaque number."
           />
           <CardBody className="flex flex-wrap items-center gap-4">
             {[34, 52, 64, 78, 91].map((s) => (
               <ScorePill
                 key={s}
                 score={s}
-                explanation="Demo score — hover shows the factor breakdown that produced it."
-                factors={[
-                  { label: "Firmographic fit", impact: 18 },
-                  { label: "Trigger event", impact: 12 },
-                  { label: "Missing budget signal", impact: -9 },
+                explanation="Demo score — hover or focus for the dimension breakdown behind it."
+                confidence={s >= 78 ? "high" : s >= 52 ? "medium" : "low"}
+                dimensions={[
+                  { label: "ICP fit", value: Math.min(100, s + 6) },
+                  { label: "Problem severity", value: s },
+                  { label: "Evidence strength", value: Math.max(0, s - 12) },
+                  { label: "Trigger strength", value: s },
+                  { label: "Trigger freshness", value: Math.max(0, s - 4) },
+                  // Deliberately unmeasured — an unknown dimension reads as
+                  // UNKNOWN, never as a zero (§78).
+                  { label: "Buying likelihood", value: "unknown" },
+                  { label: "Product relevance", value: Math.min(100, s + 3) },
+                  { label: "Decision-maker accessibility", value: "unknown" },
                 ]}
               />
             ))}
@@ -486,10 +683,10 @@ export default function KitchenSink() {
               empty={
                 <div className="space-y-2">
                   <div className="text-[13px] text-fg-secondary">
-                    No leads discovered yet
+                    No opportunities discovered yet
                   </div>
                   <div className="text-[12px] text-fg-muted">
-                    Define an ICP to start discovery.
+                    Define an ICP and pick your sources to start hunting.
                   </div>
                   <Button size="sm" variant="primary" className="mt-1">
                     Create ICP

@@ -2,7 +2,21 @@ import type { ComponentType, ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "../utils/cn";
 
-export type StatTone = "neutral" | "brand" | "ai" | "success" | "warning" | "danger" | "info";
+export type StatTone =
+  | "neutral"
+  | "brand"
+  | "ai"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  /* The §15 verdict scale. Separate names from the status tones even though
+     they resolve to the same hues — a HOT count is not an error, and a card
+     reading `tone="danger"` would teach the next reader that it is. */
+  | "hot"
+  | "warm"
+  | "watch"
+  | "ignore";
 
 export interface StatCardProps {
   label: string;
@@ -26,6 +40,10 @@ const ICON_TONE: Record<StatTone, string> = {
   warning: "bg-warning-surface text-warning",
   danger: "bg-danger-surface text-danger",
   info: "bg-info-surface text-info",
+  hot: "bg-hot-surface text-hot",
+  warm: "bg-warm-surface text-warm",
+  watch: "bg-watch-surface text-watch",
+  ignore: "bg-ignore-surface text-ignore",
 };
 
 /**

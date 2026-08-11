@@ -7,8 +7,15 @@
    Dashboard semantics derived from Kima BD OS (stat grid, quota bars).
 
    Semantic split that earns its place:
-     green  = system state + primary action
-     violet = "an AI produced this"
+     green  = system state + primary action + source-verified FACT
+     violet = "a model produced this" — which includes every INFERENCE
+     gray   = UNKNOWN / no evidence on file
+
+   The epistemic clause is not a second meaning bolted on: master context §7
+   forbids silently promoting an inference to a fact, and the colour a claim
+   is painted in is the fastest place that promotion could happen unnoticed.
+   A fact is something observed at a source (system state); an inference is
+   something a model concluded (violet, already). See ClaimBadge.
    ========================================================================= */
 
 :root {
@@ -26,9 +33,16 @@
   --hl-border-strong: #4a4a4a;
 
   /* ── Text ─────────────────────────────────────────────────────────────── */
+  /* Muted was #6f6f6f, which the plan recorded as ~4.6:1 on canvas. Measured,
+     it is 3.57:1 on canvas and 3.28:1 on surface — a WCAG AA failure on every
+     uppercase label, stat-card label, timestamp and helper string in the app.
+     #949494 is the darkest gray clearing 4.5:1 against ALL five surfaces:
+     canvas 5.91 · panel 5.61 · surface 5.43 · surface-hover 5.12 ·
+     surface-active 4.73. Secondary moves up in step so the two levels stay
+     visually distinct rather than collapsing into one. */
   --hl-text: #ededed;
-  --hl-text-secondary: #a1a1a1;
-  --hl-text-muted: #6f6f6f;
+  --hl-text-secondary: #b4b4b4;
+  --hl-text-muted: #949494;
   --hl-text-inverse: #0f0f0f;
 
   /* ── Brand green (Supabase #3ECF8E) ───────────────────────────────────── */
@@ -54,7 +68,11 @@
   --hl-warning-surface: #2b1f08;
   --hl-warning-border: #6b4a12;
 
-  --hl-danger: #e5484d;
+  /* #e5484d measures 4.35:1 on --hl-surface — under AA for the 11–13px text
+     it carries in Badge, StatCard and ScorePill. Lightened to clear 4.5:1 on
+     every surface; the deeper red is kept for charts, where the 3:1 graphics
+     threshold applies. */
+  --hl-danger: #ff6369;
   --hl-danger-surface: #2b1113;
   --hl-danger-border: #6b2226;
 
@@ -63,10 +81,35 @@
   --hl-info-border: #1e4a75;
 
   /* ── Score ramp ───────────────────────────────────────────────────────── */
-  --hl-score-poor: #e5484d;       /*  0–39 */
+  --hl-score-poor: #ff6369;       /*  0–39 — text-safe red, see --hl-danger */
   --hl-score-fair: #f5a623;       /* 40–69 */
   --hl-score-good: #3ecf8e;       /* 70–89 */
   --hl-score-excellent: #22d3a6;  /* 90+   */
+
+  /* ── Opportunity priority (master context §15) ────────────────────────
+     HOT / WARM / WATCH / IGNORE is a *ranked verdict*, not a system status,
+     so it gets its own named scale rather than borrowing the status colors
+     by accident. Every value here is an alias of a hue already measured
+     against all five surfaces above — a new hex would need re-measuring and
+     buys nothing. Conventional heat order (red → amber → blue → gray) is
+     what users already read, and the badge always carries the word too, so
+     the a11y floor ("never color alone") holds regardless of the overlap
+     with --hl-danger. */
+  --hl-priority-hot: var(--hl-danger);
+  --hl-priority-hot-surface: var(--hl-danger-surface);
+  --hl-priority-hot-border: var(--hl-danger-border);
+
+  --hl-priority-warm: var(--hl-warning);
+  --hl-priority-warm-surface: var(--hl-warning-surface);
+  --hl-priority-warm-border: var(--hl-warning-border);
+
+  --hl-priority-watch: var(--hl-info);
+  --hl-priority-watch-surface: var(--hl-info-surface);
+  --hl-priority-watch-border: var(--hl-info-border);
+
+  --hl-priority-ignore: var(--hl-text-muted);
+  --hl-priority-ignore-surface: var(--hl-surface-active);
+  --hl-priority-ignore-border: var(--hl-border-default);
 
   /* ── Chart ramp ───────────────────────────────────────────────────────── */
   --hl-chart-1: #3ecf8e;

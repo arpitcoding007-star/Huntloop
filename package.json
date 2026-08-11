@@ -10,9 +10,17 @@
     "dev": "npm run dev --workspace @huntloop/web",
     "build": "npm run build --workspace @huntloop/web",
     "start": "npm run start --workspace @huntloop/web",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint .",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "typescript-eslint": "^8.67.0"
   }
 }

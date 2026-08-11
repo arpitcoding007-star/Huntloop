@@ -18,8 +18,11 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "bg-surface text-fg border border-line hover:bg-surface-hover hover:border-line-strong",
   ghost:
     "bg-transparent text-fg-secondary border border-transparent hover:bg-surface-hover hover:text-fg",
+  // Hover fills with --hl-danger, so the label flips to the inverse ink:
+  // near-white on that red is 2.5:1, while #0f0f0f on it is 6.6:1. Mirrors
+  // how `primary` treats its brand-green fill.
   danger:
-    "bg-danger-surface text-danger border border-danger-border hover:bg-danger hover:text-fg",
+    "bg-danger-surface text-danger border border-danger-border hover:bg-danger hover:text-fg-inverse",
 };
 
 const SIZES: Record<ButtonSize, string> = {

@@ -8,6 +8,7 @@
   --color-surface: var(--hl-surface);
   --color-surface-hover: var(--hl-surface-hover);
   --color-surface-active: var(--hl-surface-active);
+  --color-overlay: var(--hl-overlay);
 
   /* Borders */
   --color-line-subtle: var(--hl-border-subtle);
@@ -47,6 +48,20 @@
   --color-info: var(--hl-info);
   --color-info-surface: var(--hl-info-surface);
   --color-info-border: var(--hl-info-border);
+
+  /* Opportunity priority */
+  --color-hot: var(--hl-priority-hot);
+  --color-hot-surface: var(--hl-priority-hot-surface);
+  --color-hot-border: var(--hl-priority-hot-border);
+  --color-warm: var(--hl-priority-warm);
+  --color-warm-surface: var(--hl-priority-warm-surface);
+  --color-warm-border: var(--hl-priority-warm-border);
+  --color-watch: var(--hl-priority-watch);
+  --color-watch-surface: var(--hl-priority-watch-surface);
+  --color-watch-border: var(--hl-priority-watch-border);
+  --color-ignore: var(--hl-priority-ignore);
+  --color-ignore-surface: var(--hl-priority-ignore-surface);
+  --color-ignore-border: var(--hl-priority-ignore-border);
 
   /* Radius */
   --radius-sm: var(--hl-radius-sm);

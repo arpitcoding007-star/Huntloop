@@ -1,11 +1,30 @@
 # Huntloop
 
-AI-powered closed-loop outbound growth engine.
+AI-native sales intelligence. Most tools help salespeople *find* prospects; Huntloop
+exists to explain **why a prospect is worth contacting right now**.
 
-> **Discover → Qualify → Enrich → Personalize → Reach out → Track → Learn → Improve → repeat**
+> **SIGNAL → CONTEXT → INTENT → OPPORTUNITY**
 
-- Product spec: [Project_Creation.md](Project_Creation.md)
-- Build plan, architecture decisions, and design system: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
+The unit of the product is a **qualified opportunity with evidence**, not a lead. Three
+rules follow from that and are load-bearing everywhere in this repo:
+
+1. **Fact ≠ inference ≠ unknown.** Every claim carries which one it is. An inference is
+   never silently promoted to a fact, and "we don't know" is a valid answer.
+2. **Scores are explainable.** Eight named dimensions, each shown, with no invented
+   weights presented as the model's arithmetic. An unmeasured dimension reads UNKNOWN,
+   never zero.
+3. **Why now.** A strong opportunity has a recent trigger, and old evidence stops
+   counting as current.
+
+### Documents, in precedence order
+
+1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20—%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
+2. [Project_Creation.md](Project_Creation.md) — execution spec: phases, cost model, UI states, API shape. Authoritative where it does not contradict the above.
+3. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — build plan, architecture decisions, design system. See §0.0 for the precedence rule and §0.0.1 for the reconciliation between (1) and (2).
+
+The code always outranks all three on the question of what exists. A requirement
+described in a document is not evidence that it is implemented — see plan §11 for what
+is actually built today (short version: the design system and a fixture-backed dashboard).
 
 ## Stack
 
@@ -22,14 +41,25 @@ AI-powered closed-loop outbound growth engine.
 ```
 apps/web            Next.js app — marketing + product + admin
 packages/ui         Design system: tokens + components
+packages/db         Migrations, RLS policies, Supabase clients
 ```
 
 The design system's color and chrome derive from Supabase; the dashboard
 information architecture derives from Kima BD OS. Tokens are canonical in
 `packages/ui/src/tokens.css` — see IMPLEMENTATION_PLAN.md §1.
 
-Semantic rule: **green = system state and primary action, violet = an AI
-produced this.**
+Semantic rule:
+
+- **green** — system state, primary action, and a **source-verified fact**
+- **violet** — a model produced this, which includes every **inference**
+- **gray** — **unknown**: nothing on file
+
+The epistemic half of that rule is not decoration. Colour is the fastest place an
+inference could quietly become a fact, so the palette carries the distinction too.
+
+Priority (`HOT` / `WARM` / `WATCH` / `IGNORE`) is a fifth, ranked scale that aliases
+existing hues. It always ships with the word and a dot shape as well as the colour —
+nothing in this UI is communicated by colour alone.
 
 ## Local development
 
@@ -45,9 +75,37 @@ npm run dev
 - Design system gallery: http://localhost:3100/kitchen-sink
 
 ```bash
-npm run typecheck   # both workspaces
+npm run typecheck   # all workspaces
 npm run build       # production build
 ```
+
+```bash
+npm test
+```
+
+`npm test` runs the migrations against a real Postgres — PGlite, in-process, so
+no server or Docker is needed — and asserts the rules the schema is supposed to
+enforce: a fact cannot exist without a source, an unmeasured score dimension
+stays NULL rather than becoming 0, a scoped memory cannot be subject-less, and
+**org A cannot read or write org B**. That last one runs as a non-superuser role
+so RLS genuinely applies; run it before every merge.
+
+It also fails the build if anything under `apps/` imports the service-role
+client, which bypasses RLS and is the one thing that can turn the tenant
+boundary back into a matter of discipline.
+
+## Connecting Supabase
+
+The app runs on demo data until Supabase is connected and migrated. Follow
+[SETUP.md](SETUP.md) — it covers the steps that need a human: choosing a
+project, copying keys, running the migrations, and creating your first login.
+
+## Status
+
+The design system, the database schema, and four screens exist. **No page reads
+the database yet** — every screen renders fixtures, and there is no auth. See
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for exactly what is and is
+not built.
 
 ## Deploying to Vercel
 

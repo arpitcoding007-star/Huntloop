@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huntloop/ai": "*",
     "@huntloop/ui": "*",
     "lucide-react": "^0.469.0",
     "next": "^15.1.0",

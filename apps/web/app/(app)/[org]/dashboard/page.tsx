@@ -6,35 +6,162 @@ import {
   Button,
   Card,
   CardHeader,
+  ClaimBadge,
+  EvidenceList,
+  Freshness,
+  PriorityBadge,
   QuotaBar,
   QuotaBarGroup,
   ScorePill,
   SectionLabel,
   StatCard,
   StatGrid,
-  StatusDot,
+  type EvidenceItem,
+  type Priority,
 } from "@huntloop/ui";
 import {
+  Binoculars,
   CalendarCheck,
-  CheckCircle2,
   Download,
-  Inbox,
+  Eye,
+  Flame,
   MessageSquare,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Sparkles,
   Target,
-  Users,
-  XCircle,
+  Thermometer,
   Zap,
 } from "lucide-react";
 
 /**
- * The real Command Center — plan §2's ASCII layout assembled from the
- * design-system primitives, replacing the /kitchen-sink gallery view for
- * this one screen. Fixtures only; wiring to Supabase is Phase 0/1.
+ * The Command Center — plan §2's layout, re-cut against the master context.
+ *
+ * What changed and why: the previous version led with pipeline stages (New /
+ * Qualified / Approved / Contacted), which is a campaign tool's dashboard.
+ * Master context §46 asks the opportunity dashboard to answer four questions
+ * on sight — how urgent (§15 HOT/WARM/WATCH/IGNORE), how strong (§16 score),
+ * why now (§13 trigger), and what to do next — so priority leads, why-now
+ * gets its own section with the evidence attached, and activity counts drop
+ * below both. §88's rule applies here more than anywhere: this screen is the
+ * one connected loop, not a wall of unrelated metrics.
+ *
+ * Fixtures only. Wiring to Supabase is Phase 0/1.
  */
+
+/* Fixed reference instant so the relative ages below don't drift with the
+   clock. Real data will pass the request time down from the server. */
+const NOW = new Date("2026-08-11T09:00:00Z");
+
+const WHY_NOW: {
+  company: string;
+  domain: string;
+  priority: Priority;
+  priorityReason: string;
+  score: number;
+  explanation: string;
+  eventDate: string;
+  trigger: string;
+  action: string;
+  evidence: EvidenceItem[];
+}[] = [
+  {
+    company: "Alphio AI",
+    domain: "alphio.ai",
+    priority: "hot",
+    priorityReason:
+      "Strong ICP fit, a stated problem in the founder's own words, and a funding trigger 3 days old.",
+    score: 91,
+    explanation:
+      "Series A closed this week, and the launch post names custody permissions as an open problem — the exact gap the product closes.",
+    eventDate: "2026-08-08",
+    trigger: "Raised $12M Series A",
+    action: "Reach out to the CTO about custody permissions",
+    evidence: [
+      {
+        claim: "Alphio AI closed a $12M Series A led by Northgate Ventures.",
+        kind: "fact",
+        confidence: "high",
+        source: "TechCrunch",
+        sourceUrl: "https://techcrunch.com/",
+        eventDate: "2026-08-08",
+        observedAt: "2026-08-09",
+        excerpt:
+          "Alphio AI has raised $12 million to scale its autonomous trading agents to institutional desks.",
+      },
+      {
+        claim:
+          "Their agents will need controlled financial permissions before institutional desks will onboard.",
+        kind: "inference",
+        confidence: "medium",
+        source: "Derived from the launch post and the funding announcement",
+        eventDate: "2026-08-08",
+        observedAt: "2026-08-09",
+      },
+      {
+        claim: "Which wallet architecture they use today — MPC, multisig, or other.",
+        kind: "unknown",
+      },
+    ],
+  },
+  {
+    company: "Northwind Logistics",
+    domain: "northwind.co",
+    priority: "warm",
+    priorityReason:
+      "Good ICP fit and a clear hiring signal, but no evidence yet that the problem is urgent for them.",
+    score: 74,
+    explanation:
+      "Hiring two integration engineers with a job spec that describes the manual process this replaces. No budget or timeline evidence.",
+    eventDate: "2026-08-01",
+    trigger: "Hiring 2 integration engineers",
+    action: "Research current approach before contacting",
+    evidence: [
+      {
+        claim: "Northwind posted two integration-engineer roles on 1 Aug.",
+        kind: "fact",
+        confidence: "high",
+        source: "Careers page",
+        sourceUrl: "https://example.com/",
+        eventDate: "2026-08-01",
+        observedAt: "2026-08-02",
+        excerpt:
+          "You will own the partner-integration pipeline, currently maintained by hand across 40+ carriers.",
+      },
+      {
+        claim: "Whether a purchase decision is funded this quarter.",
+        kind: "unknown",
+      },
+    ],
+  },
+  {
+    company: "Cormorant Health",
+    domain: "cormorant.health",
+    priority: "watch",
+    priorityReason:
+      "Plausible fit, but the only trigger on file is four months old and nothing has changed since.",
+    score: 48,
+    explanation:
+      "Regulatory approval in April is the sole signal. No hiring, no launches, no public statement of the problem since.",
+    eventDate: "2026-04-14",
+    trigger: "Received regulatory approval",
+    action: "Keep monitoring — no reason to contact today",
+    evidence: [
+      {
+        claim: "Cormorant received regulatory clearance for its remote-monitoring device.",
+        kind: "fact",
+        confidence: "high",
+        source: "Company press release",
+        sourceUrl: "https://example.com/",
+        eventDate: "2026-04-14",
+        observedAt: "2026-04-15",
+      },
+    ],
+  },
+];
+
 export default async function DashboardPage({
   params,
 }: {
@@ -43,7 +170,7 @@ export default async function DashboardPage({
   const { org } = await params;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 2xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
       {/* ── Main column ─────────────────────────────────────────────── */}
       <div className="min-w-0">
         <header className="flex flex-wrap items-start justify-between gap-4">
@@ -57,8 +184,8 @@ export default async function DashboardPage({
               </Badge>
             </div>
             <p className="mt-1 text-[13px] text-fg-muted">
-              {org} · 3 campaigns running · autonomy L2 — AI recommends, you
-              approve
+              {org} · 14 sources monitored · last scan 20 minutes ago · autonomy
+              L2 — Huntloop recommends, you approve
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -67,7 +194,7 @@ export default async function DashboardPage({
               Export
             </Button>
             <Button icon={Plus} variant="primary">
-              New campaign
+              New hunt
             </Button>
           </div>
         </header>
@@ -78,48 +205,165 @@ export default async function DashboardPage({
             className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning transition-colors duration-[120ms] hover:border-warning"
           >
             <Zap className="size-3.5" strokeWidth={1.75} />
-            61 leads awaiting review →
+            9 new triggers in the last 24h →
           </a>
           <a
             href="#"
             className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
           >
             <Sparkles className="size-3.5" strokeWidth={1.75} />
-            88 leads scored 70+ →
+            12 opportunities awaiting your review →
+          </a>
+          <a
+            href="#"
+            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+          >
+            <Search className="size-3.5" strokeWidth={1.75} />
+            Analyze a company URL →
           </a>
         </div>
 
+        {/* §15 — the headline classification, above everything else. */}
         <section className="mt-8">
-          <SectionLabel>Pipeline overview</SectionLabel>
+          <SectionLabel>Priority</SectionLabel>
           <StatGrid className="mt-3">
-            <StatCard label="New today" value={0} icon={Inbox} href="#" />
             <StatCard
-              label="Qualified"
-              value={54}
-              icon={Target}
-              tone="brand"
+              label="Hot"
+              value={12}
+              icon={Flame}
+              tone="hot"
               href="#"
+              hint="Strong fit · strong pain · fresh trigger"
               aiGenerated
             />
-            <StatCard label="Approved" value={5} icon={CheckCircle2} tone="success" href="#" />
+            <StatCard
+              label="Warm"
+              value={34}
+              icon={Thermometer}
+              tone="warm"
+              href="#"
+              hint="Good fit · weaker trigger"
+              aiGenerated
+            />
+            <StatCard
+              label="Watch"
+              value={88}
+              icon={Eye}
+              tone="watch"
+              href="#"
+              hint="Possible fit · evidence too thin"
+              aiGenerated
+            />
+            <StatCard
+              label="Ignore"
+              value={46}
+              icon={Binoculars}
+              tone="ignore"
+              href="#"
+              hint="Poor fit — kept, not deleted"
+              aiGenerated
+            />
+          </StatGrid>
+        </section>
+
+        {/* §13 + §52 — the differentiator, and the reason the score is
+            trustworthy. Evidence sits inline rather than behind a click:
+            a why-now claim with the source one page away is a claim most
+            users will never check. */}
+        <section className="mt-10">
+          <SectionLabel>Why now</SectionLabel>
+          <div className="mt-3 flex flex-col gap-3">
+            {WHY_NOW.map((o) => (
+              <Card key={o.domain} flush>
+                <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-fg">{o.company}</h3>
+                      <PriorityBadge priority={o.priority} reason={o.priorityReason} />
+                      <span className="font-mono text-[12px] text-fg-muted">
+                        {o.domain}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="text-[13px] text-fg-secondary">{o.trigger}</span>
+                      <Freshness date={o.eventDate} now={NOW} />
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <ScorePill
+                      score={o.score}
+                      explanation={o.explanation}
+                      confidence={o.priority === "watch" ? "low" : "medium"}
+                      dimensions={[
+                        { label: "ICP fit", value: o.priority === "hot" ? 94 : 71 },
+                        { label: "Problem severity", value: o.priority === "hot" ? 88 : 55 },
+                        { label: "Evidence strength", value: o.evidence.length > 2 ? 82 : 44 },
+                        { label: "Trigger strength", value: o.priority === "hot" ? 90 : 60 },
+                        {
+                          label: "Trigger freshness",
+                          value: o.priority === "watch" ? 12 : 86,
+                        },
+                        { label: "Buying likelihood", value: "unknown" },
+                        { label: "Product relevance", value: o.priority === "hot" ? 92 : 68 },
+                        { label: "Decision-maker accessibility", value: "unknown" },
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                <div className="px-5 pt-3 pb-4">
+                  <details className="group">
+                    <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary">
+                      <span className="text-[11px] tracking-[0.06em] uppercase">
+                        Evidence ({o.evidence.length})
+                      </span>
+                      <span aria-hidden className="group-open:hidden">
+                        ▸
+                      </span>
+                      <span aria-hidden className="hidden group-open:inline">
+                        ▾
+                      </span>
+                    </summary>
+                    <EvidenceList items={o.evidence} now={NOW} className="mt-3" />
+                  </details>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line-subtle pt-3">
+                    <span className="text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+                      Recommended
+                    </span>
+                    <span className="text-[13px] text-fg-secondary">{o.action}</span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+
+        {/* Activity, demoted below the verdict it produces. */}
+        <section className="mt-10">
+          <SectionLabel>Loop this week</SectionLabel>
+          <StatGrid className="mt-3">
+            <StatCard label="Discovered" value={180} icon={Search} href="#" />
+            <StatCard label="Researched" value={134} icon={Target} tone="ai" href="#" aiGenerated />
             <StatCard label="Contacted" value={90} icon={Send} href="#" />
+            <StatCard
+              label="Replied"
+              value={5}
+              icon={MessageSquare}
+              tone="info"
+              href="#"
+              hint="2 positive · 3 neutral"
+            />
           </StatGrid>
 
           <SectionLabel className="mt-8">Outcomes</SectionLabel>
-          <StatGrid className="mt-3">
-            <StatCard label="Replied" value={5} icon={MessageSquare} tone="info" href="#" />
+          <StatGrid className="mt-3" columns={3}>
+            <StatCard label="Meetings" value={2} icon={CalendarCheck} tone="success" href="#" />
+            <StatCard label="Opportunities" value={1} icon={Flame} tone="brand" href="#" />
             <StatCard
-              label="Meetings"
-              value={2}
-              icon={CalendarCheck}
-              tone="success"
-              href="#"
-            />
-            <StatCard label="Rejected" value={2} icon={XCircle} tone="danger" href="#" />
-            <StatCard
-              label="Total leads"
+              label="Total companies"
               value={180}
-              icon={Users}
+              icon={Target}
               hint="of 1,000 on the Growth plan"
             />
           </StatGrid>
@@ -135,76 +379,61 @@ export default async function DashboardPage({
           </Card>
         </section>
 
-        <section className="mt-10 grid gap-4 lg:grid-cols-[1fr_320px]">
+        <section className="mt-10 grid gap-4 lg:grid-cols-2">
           <Card flush>
-            <CardHeader title="Recent leads" description="Sorted by score." />
-            <ul className="divide-y divide-line-subtle">
-              {[
-                {
-                  company: "Alphio AI",
-                  signal: "Raised $12M Series A",
-                  score: 91,
-                  status: "Qualified" as const,
-                  variant: "brand" as const,
-                },
-                {
-                  company: "Northwind Logistics",
-                  signal: "Job post: Sales Development",
-                  score: 78,
-                  status: "Contacted" as const,
-                  variant: "neutral" as const,
-                },
-                {
-                  company: "Cormorant Health",
-                  signal: "Replied — asked for pricing",
-                  score: 64,
-                  status: "Replied" as const,
-                  variant: "success" as const,
-                },
-              ].map((lead) => (
-                <li
-                  key={lead.company}
-                  className="flex items-center justify-between gap-3 px-5 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-fg">
-                      {lead.company}
-                    </div>
-                    <div className="truncate text-[12px] text-fg-muted">{lead.signal}</div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <StatusDot variant={lead.variant} label={lead.status} />
-                    <ScorePill
-                      score={lead.score}
-                      explanation="Demo score for the Command Center preview."
-                      size="sm"
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Card flush>
-            <CardHeader title="By ICP" />
+            <CardHeader
+              title="Signals by type"
+              description="What the sources actually produced this week."
+            />
             <div className="p-5">
               <BreakdownList
                 items={[
-                  { label: "SaaS", value: 67 },
-                  { label: "Fintech", value: 43 },
-                  { label: "Healthcare", value: 28 },
-                  { label: "Logistics", value: 19 },
+                  { label: "Funding", value: 31 },
+                  { label: "Hiring", value: 24 },
+                  { label: "Product launch", value: 18 },
+                  { label: "Technology adoption", value: 12 },
+                  { label: "Leadership change", value: 7 },
+                ]}
+              />
+            </div>
+          </Card>
+
+          <Card flush>
+            <CardHeader
+              title="Source performance"
+              description="Opportunities produced, not articles scraped."
+            />
+            <div className="p-5">
+              <BreakdownList
+                items={[
+                  { label: "The Block", value: 22 },
+                  { label: "Company blogs", value: 17 },
+                  { label: "GitHub", value: 11 },
+                  { label: "Job boards", value: 9 },
+                  { label: "Hacker News", value: 4 },
                 ]}
               />
             </div>
           </Card>
         </section>
+
+        {/* §7 — the rule the whole product rests on, stated where the numbers
+            above are read rather than buried in a docs page. */}
+        <p className="mt-8 flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
+          <ClaimBadge kind="fact" />
+          observed at a source ·
+          <ClaimBadge kind="inference" />
+          concluded by a model ·
+          <ClaimBadge kind="unknown" />
+          not established. Huntloop never promotes the second into the first.
+        </p>
       </div>
 
       {/* ── Action rail ───────────────────────────────────────────────
-          Only sits beside content at ≥1536px (Tailwind 2xl) — the grid
-          above stacks to a single column below that, so the rail never
-          overlays main content, per plan §1.4 #9 / §2. */}
+          Sits beside content at ≥1440px — the exact threshold plan §1.4 #9
+          names. Below it the grid collapses to one column and the rail
+          stacks under the main content; it is never absolutely positioned,
+          so it cannot overlay anything at any width. */}
       <ActionRail moreCount={5}>
         <ActionRailItem
           title="12 replies unread"
@@ -221,12 +450,22 @@ export default async function DashboardPage({
           primaryLabel="Approve"
           secondaryLabel="Skip"
         />
+        {/* §58: a source that fails does not fail the hunt — it is marked
+            unavailable, retried, and surfaced as something a human can see. */}
         <ActionRailItem
-          title="sales@acme.co at 100% capacity"
-          source="Mailbox"
+          title="Crunchbase source unavailable"
+          source="Sources"
           sourceVariant="warning"
-          meta="Resets at midnight"
+          meta="Failing since 06:10 · retrying"
           primaryLabel="View"
+        />
+        <ActionRailItem
+          title="7 opportunities on evidence older than 90 days"
+          source="Freshness"
+          sourceVariant="neutral"
+          meta="Re-research to re-score"
+          primaryLabel="Re-research"
+          secondaryLabel="Dismiss"
         />
       </ActionRail>
     </div>

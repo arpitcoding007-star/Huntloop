@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronDown, HelpCircle, Search } from "lucide-react";
+import { ChevronDown, HelpCircle, Menu, Search } from "lucide-react";
 import { cn } from "../utils/cn";
 import { Badge, type BadgeVariant } from "./Badge";
 
@@ -23,6 +23,12 @@ export interface TopBarProps {
   avatar?: ReactNode;
   /** Extra controls before the avatar, e.g. a "Connect" button. */
   actions?: ReactNode;
+  /**
+   * Opens the off-canvas nav. The hamburger renders below `lg` only — at
+   * that width the Sidebar is a drawer, so this is the sole way to reach
+   * navigation and must not be omitted by the app shell.
+   */
+  onMenuClick?: () => void;
   className?: string;
 }
 
@@ -40,6 +46,7 @@ export function TopBar({
   helpHref,
   avatar,
   actions,
+  onMenuClick,
   className,
 }: TopBarProps) {
   return (
@@ -50,15 +57,34 @@ export function TopBar({
       )}
     >
       <div className="flex min-w-0 items-center gap-1">
+        {onMenuClick && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            aria-label="Open navigation"
+            className="hl-focusable -ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg lg:hidden"
+          >
+            <Menu className="size-4" strokeWidth={1.75} />
+          </button>
+        )}
+
         {logo && <div className="mr-1 flex shrink-0 items-center">{logo}</div>}
 
         {breadcrumbs.map((crumb, i) => (
-          <div key={i} className="flex items-center gap-1">
-            {i > 0 && <span className="mx-0.5 text-fg-muted select-none">/</span>}
+          <div
+            key={i}
+            /* Only the last crumb survives on a phone — the full chain cannot
+               fit beside the search and avatar controls at 375px. */
+            className={cn(
+              "min-w-0 items-center gap-1",
+              i < breadcrumbs.length - 1 ? "hidden md:flex" : "flex",
+            )}
+          >
+            {i > 0 && <span className="mx-0.5 hidden text-fg-muted select-none md:inline">/</span>}
             <button
               type="button"
               onClick={crumb.onClick}
-              className="hl-focusable flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-surface-hover"
+              className="hl-focusable flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-surface-hover"
             >
               <span className="max-w-[160px] truncate">{crumb.label}</span>
               {crumb.badge && (
@@ -77,12 +103,17 @@ export function TopBar({
           <button
             type="button"
             onClick={onSearchClick}
-            className="hl-focusable flex h-8 w-56 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-[13px] text-fg-muted transition-colors duration-[120ms] hover:border-line-strong"
+            aria-label="Search"
+            /* Collapses to a 32px icon button below md; the labelled field
+               costs 224px, which a phone viewport cannot spare. */
+            className="hl-focusable flex size-8 items-center justify-center gap-2 rounded-md border border-line bg-surface text-[13px] text-fg-muted transition-colors duration-[120ms] hover:border-line-strong md:w-56 md:justify-start md:px-2.5"
           >
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <span className="flex-1 text-left">Search…</span>
+            <span className="hidden flex-1 text-left md:inline">Search…</span>
             {searchShortcut && (
-              <span className="font-mono text-[11px] text-fg-muted">{searchShortcut}</span>
+              <span className="hidden font-mono text-[11px] text-fg-muted md:inline">
+                {searchShortcut}
+              </span>
             )}
           </button>
         )}
