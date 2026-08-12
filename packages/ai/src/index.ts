@@ -54,3 +54,13 @@ export {
   type ResearchField,
   type ResearchFinding,
 } from "./tasks/research-company.ts";
+
+export {
+  MAX_RECOMMENDATIONS,
+  SOURCE_KINDS,
+  icpElements,
+  recommendSources,
+  type IcpSummary,
+  type SourceKind,
+  type SourceRecommendation,
+} from "./tasks/recommend-sources.ts";

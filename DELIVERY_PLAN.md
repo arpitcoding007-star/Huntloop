@@ -103,13 +103,23 @@ member of org A gets a 404 — not a 403 — for org B.
 - [ ] Persist product, ICP and source choices 🔴 *(needs the schema applied)*
 - [ ] ICP versioning, so a re-score can say which version judged it
 
-### B2 · Sources 🟡 *(screen built, brain not)*
+### B2 · Sources 🟡 *(recommendation works; scanning needs the job runner)*
 
 - [x] Source management screen with accept / remove / add
 - [x] Failure states surfaced rather than hidden (§58)
-- [ ] `recommend_sources` — suggest sources from the ICP
+- [x] `recommend_sources` — suggest sources from the ICP 🟡 *(written and unit
+      tested; never run against the real API — no key)*
+- [x] Every recommendation names the ICP element it came from, constrained to
+      the elements actually sent — so "TechCrunch, because it's large" cannot
+      be returned
+- [x] `/welcome/sources` calls it, and says so when no key is configured
+- [ ] Persist the accepted source list 🔴 *(needs the schema applied)*
 - [ ] `source.scan` job, per source, on a schedule
 - [ ] Failing source marks itself unavailable and the hunt continues
+
+> The recommender has no web access. A URL it returns is recalled, not checked,
+> so the task asks for `null` over a guess — a wrong address does not fail
+> visibly, it fails at scan time looking like an outage.
 
 ### B3 · Signal → company 🔴
 

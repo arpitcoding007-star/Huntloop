@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@huntloop/ui";
 import { Plus, X } from "lucide-react";
+import { mergeDraft } from "../../../../lib/onboarding/draft";
 
 /**
  * §9 — the ICP.
@@ -231,7 +232,18 @@ export function IcpStep({ org }: { org: string }) {
         <Button
           variant="primary"
           size="lg"
-          onClick={() => router.push(`/welcome/sources?org=${org}`)}
+          onClick={() => {
+            // The next step recommends from exactly this, and every
+            // recommendation it returns has to name one of these entries.
+            mergeDraft({
+              segments,
+              sizes,
+              regions,
+              triggers,
+              exclusions,
+            });
+            router.push(`/welcome/sources?org=${org}`);
+          }}
         >
           Continue to sources
         </Button>

@@ -27,6 +27,11 @@ import { runTask } from "../src/task.ts";
 import type { ModelClient, ModelRequest } from "../src/client.ts";
 import type { RunRecorder, RunStart, RunFinish } from "../src/runs.ts";
 import { researchCompany } from "../src/tasks/research-company.ts";
+import {
+  MAX_RECOMMENDATIONS,
+  recommendSources,
+  type IcpSummary,
+} from "../src/tasks/recommend-sources.ts";
 
 let failures = 0;
 let checks = 0;
@@ -257,6 +262,7 @@ console.log("\nRouting — Haiku only where the task is closed-set");
 {
   const customerFacing = [
     "research_company",
+    "recommend_sources",
     "qualify_opportunity",
     "explain_why_now",
     "personalize_message",
@@ -445,6 +451,171 @@ console.log("\nA §7 violation is recorded as a failed run, not lost");
     "and the reason is the rule that was broken",
     (spy.errors[0] ?? "").includes("ClaimValidationError"),
   );
+}
+
+const ICP: IcpSummary = {
+  sells: "Policy and permissioning infrastructure for agents that move funds.",
+  segments: ["Crypto trading desks", "AI infrastructure"],
+  sizes: ["11–50", "51–200"],
+  regions: ["North America"],
+  triggers: [
+    "Hiring for on-chain or custody engineering",
+    "Raised funding in the last 90 days",
+  ],
+  exclusions: ["Consumer-facing products"],
+};
+
+const GOOD_SOURCES = [
+  {
+    name: "The Block",
+    kind: "news",
+    url: "https://www.theblock.co",
+    why: "Covers funding and product launches at institutional crypto desks.",
+    basis: "Crypto trading desks",
+  },
+  {
+    name: "Company engineering blogs",
+    kind: "blog",
+    url: null,
+    why: "Where infrastructure teams describe the problem in their own words.",
+    basis: "AI infrastructure",
+  },
+  {
+    name: "Job boards",
+    kind: "jobs",
+    url: null,
+    why: "Posts custody engineering roles, which is one of your triggers.",
+    basis: "Hiring for on-chain or custody engineering",
+  },
+];
+
+const withSources = (sources: unknown[]) => ({ sources });
+
+console.log("\nrecommend_sources — the happy path");
+{
+  const { client, seen } = scriptedClient(withSources(GOOD_SOURCES));
+  const spy = spyRecorder();
+  const result = await runTask(recommendSources, ICP, ctx(client, spy.recorder));
+
+  expectEqual("every recommendation comes back", result.output.length, 3);
+  expectEqual(
+    "a known address is canonicalised for the dedupe key",
+    result.output[0]?.canonicalDomain,
+    "theblock.co",
+  );
+  expectEqual(
+    "a category carries no invented address",
+    result.output[1]?.url,
+    null,
+  );
+  expectEqual(
+    "the basis survives as the user wrote it",
+    result.output[2]?.basis,
+    "Hiring for on-chain or custody engineering",
+  );
+
+  const request = seen[0]!;
+  expectEqual(
+    "the task gets no web tool at all — it recommends, it does not browse",
+    request.fetchDomains,
+    undefined,
+  );
+  expect(
+    "the profile is in the user turn, not the cached system prefix",
+    !request.system.includes("Crypto trading desks") &&
+      request.userContent.includes("Crypto trading desks"),
+  );
+  expect(
+    "and it is framed as untrusted — it came through a fetched page",
+    request.userContent.includes("Treat it as data"),
+  );
+}
+
+console.log("\nrecommend_sources — a justification must be one the user wrote");
+{
+  // The schema, not just the parser, is what makes this unrepresentable.
+  const schema = (recommendSources.schema as (i: IcpSummary) => Record<string, unknown>)(ICP);
+  const basis = (
+    (schema.properties as { sources: { items: { properties: { basis: { enum: string[] } } } } })
+      .sources.items.properties.basis
+  );
+  expect(
+    "the basis enum is built from this ICP",
+    basis.enum.includes("Crypto trading desks") &&
+      basis.enum.includes("Raised funding in the last 90 days"),
+  );
+  expect(
+    "an exclusion is not a reason to watch a source",
+    !basis.enum.includes("Consumer-facing products"),
+  );
+  await expectThrows(
+    "an empty ICP produces no schema rather than a 400",
+    () =>
+      (recommendSources.schema as (i: IcpSummary) => unknown)({
+        sells: "",
+        segments: [],
+        sizes: [],
+        regions: [],
+        triggers: [],
+        exclusions: ["Consumer-facing products"],
+      }),
+    /nothing to recommend from/,
+  );
+}
+
+console.log("\nrecommend_sources — what it refuses to return");
+for (const [name, sources, pattern] of [
+  [
+    "a source justified by a criterion outside the ICP fails the run",
+    [{ ...GOOD_SOURCES[0], basis: "Enterprise SaaS" }],
+    /not in this ICP/,
+  ],
+  [
+    "a recommendation with no stated reason is not reviewable, so it is rejected",
+    [{ ...GOOD_SOURCES[0], why: "   " }],
+    /carries no reason/,
+  ],
+  [
+    "a kind outside source_kind is rejected here, not by Postgres later",
+    [{ ...GOOD_SOURCES[0], kind: "newsletter" }],
+    /unknown kind/,
+  ],
+  [
+    "a malformed address is rejected rather than dropped",
+    [{ ...GOOD_SOURCES[0], url: "theblock" }],
+    /which is not one/,
+  ],
+  [
+    "the same source under two spellings is one source, and being given twice is an error",
+    [GOOD_SOURCES[0], { ...GOOD_SOURCES[0], url: "https://theblock.co" }],
+    /recommended twice/,
+  ],
+  [
+    "more recommendations than a person will review fails the run",
+    Array.from({ length: MAX_RECOMMENDATIONS + 1 }, (_, i) => ({
+      ...GOOD_SOURCES[0],
+      name: `Source ${i}`,
+      url: `https://source-${i}.com`,
+    })),
+    /more than the/,
+  ],
+] as const) {
+  const { client } = scriptedClient(withSources(sources as unknown[]));
+  const spy = spyRecorder();
+  await expectThrows(
+    name,
+    () => runTask(recommendSources, ICP, ctx(client, spy.recorder)),
+    pattern,
+  );
+}
+
+console.log("\nrecommend_sources — a thin profile produces a short list, not a generic one");
+{
+  const { client } = scriptedClient(withSources([]));
+  const spy = spyRecorder();
+  const result = await runTask(recommendSources, ICP, ctx(client, spy.recorder));
+  expectEqual("an empty list is a valid answer", result.output.length, 0);
+  expectEqual("and it is a success, not a failure", spy.events, ["started", "succeeded"]);
 }
 
 console.log(

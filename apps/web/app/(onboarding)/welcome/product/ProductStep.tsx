@@ -13,6 +13,7 @@ import {
 } from "@huntloop/ui";
 import { Globe, Pencil } from "lucide-react";
 import { researchCompanyAction, type ResearchState } from "./actions";
+import { mergeDraft } from "../../../../lib/onboarding/draft";
 
 /**
  * §8 — the first real input is a company website, and Huntloop researches it.
@@ -230,7 +231,18 @@ export function ProductStep({ org }: { org: string }) {
         <Button
           variant="primary"
           size="lg"
-          onClick={() => router.push(`/welcome/icp?org=${org}`)}
+          onClick={() => {
+            // Carried forward as the user left it, edits included — the ICP
+            // step and source recommendation are both built on this sentence,
+            // and a correction made here that did not survive the click would
+            // be worse than never offering the edit.
+            mergeDraft({
+              companyName: result?.understanding.companyName,
+              website: result?.understanding.url,
+              sells: findings.find((f) => f.field === "sells")?.value,
+            });
+            router.push(`/welcome/icp?org=${org}`);
+          }}
         >
           Looks right — build my ideal customer
         </Button>

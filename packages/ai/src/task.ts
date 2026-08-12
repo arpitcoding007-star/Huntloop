@@ -17,8 +17,18 @@ import type { RunRecorder } from "./runs.ts";
 export interface LLMTask<TInput, TOutput> {
   name: TaskName;
   prompt: Prompt;
-  /** JSON Schema for `output_config.format`. */
-  schema: Record<string, unknown>;
+  /**
+   * JSON Schema for `output_config.format`, either fixed or derived from the
+   * input.
+   *
+   * The derived form exists for tasks whose *valid* output depends on what was
+   * asked — `recommend_sources` constrains its `basis` field to the ICP
+   * elements actually sent, so the model cannot justify a recommendation with a
+   * criterion the user never wrote. `parse` still re-checks it; the schema
+   * turns a failed run into an impossible one, which is the difference between
+   * catching the error and paying for it.
+   */
+  schema: Record<string, unknown> | ((input: TInput) => Record<string, unknown>);
   maxTokens: number;
   /** The per-call payload. Must not repeat anything already in the prompt. */
   renderInput: (input: TInput) => string;
@@ -77,7 +87,7 @@ export async function runTask<TInput, TOutput>(
       maxTokens: task.maxTokens,
       system: task.prompt.text,
       userContent: task.renderInput(input),
-      schema: task.schema,
+      schema: typeof task.schema === "function" ? task.schema(input) : task.schema,
       fetchDomains: task.fetchDomains?.(input),
     });
 
