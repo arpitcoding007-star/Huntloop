@@ -36,6 +36,7 @@ import {
   SCORE_DIMENSIONS,
   qualifyOpportunity,
 } from "../src/tasks/qualify-opportunity.ts";
+import { explainWhyNow, type WhyNowInput } from "../src/tasks/explain-why-now.ts";
 
 let failures = 0;
 let checks = 0;
@@ -856,6 +857,153 @@ console.log("\n§7 — a fact must cite the page it was actually read on");
     1,
   );
 }
+
+/* ── explain_why_now — the differentiator, and the temptation to fake it ─── */
+
+const FUNDING_CLAIM = "They describe custody permissioning as an unsolved problem.";
+const INFERRED_CLAIM = "They will need controlled signing before institutions onboard.";
+const UNKNOWN_CLAIM = "Whether budget is allocated this quarter.";
+
+const whyNowInput: WhyNowInput = {
+  companyName: "Acme",
+  canonicalDomain: "acme.co",
+  icp: ICP,
+  priority: "hot",
+  evidence: [
+    {
+      claim: FUNDING_CLAIM,
+      kind: "fact",
+      confidence: "high",
+      sourceUrl: "https://acme.co/blog/custody",
+      excerpt: null,
+    },
+    { claim: INFERRED_CLAIM, kind: "inference", confidence: "medium", sourceUrl: null, excerpt: null },
+    { claim: UNKNOWN_CLAIM, kind: "unknown", confidence: null, sourceUrl: null, excerpt: null },
+  ],
+};
+
+const REASON = {
+  hasReason: true,
+  reason: "They named the blocker publicly this month, so it is live rather than theoretical.",
+  urgency: "this_month",
+  confidence: "medium",
+  basedOn: [FUNDING_CLAIM],
+};
+
+console.log("\nexplain_why_now — a reason, grounded in what was gathered");
+{
+  const { client, seen } = scriptedClient(REASON);
+  const spy = spyRecorder();
+  const result = await runTask(explainWhyNow, whyNowInput, ctx(client, spy.recorder));
+
+  expectEqual("the reason comes back", result.output.hasReason, true);
+  expectEqual("with a horizon rather than a date", result.output.urgency, "this_month");
+  expectEqual("and names what it rests on", result.output.basedOn, [FUNDING_CLAIM]);
+  expectEqual(
+    "the task cannot fetch — it may only use what is already established",
+    seen[0]!.fetchDomains,
+    undefined,
+  );
+
+  const schema = (explainWhyNow.schema as (i: WhyNowInput) => Record<string, unknown>)(
+    whyNowInput,
+  );
+  const basedOn = (
+    schema.properties as { basedOn: { items: { enum: string[] } } }
+  ).basedOn.items;
+  expect(
+    "the grounding enum is built from the evidence passed in",
+    basedOn.enum.includes(FUNDING_CLAIM) && basedOn.enum.includes(INFERRED_CLAIM),
+  );
+  expect(
+    "an unknown is not selectable — it establishes nothing",
+    !basedOn.enum.includes(UNKNOWN_CLAIM),
+  );
+}
+
+console.log("\nexplain_why_now — 'no reason today' is a real answer");
+{
+  const none = {
+    hasReason: false,
+    reason:
+      "Nothing has changed for them recently. Watch for a funding round or a custody hire.",
+    urgency: null,
+    confidence: null,
+    basedOn: [],
+  };
+  const { client } = scriptedClient(none);
+  const spy = spyRecorder();
+  const result = await runTask(explainWhyNow, whyNowInput, ctx(client, spy.recorder));
+
+  expectEqual("it passes through intact", result.output.hasReason, false);
+  expect("and still says what to watch for", result.output.reason.includes("Watch for"));
+  expectEqual("recorded as a success, not a failure", spy.events, ["started", "succeeded"]);
+}
+
+console.log("\nexplain_why_now — manufactured urgency is refused");
+for (const [name, output, pattern] of [
+  [
+    "a reason resting on a claim nobody gathered fails the run",
+    { ...REASON, basedOn: ["They raised a $12M Series A last week."] },
+    /not in the evidence/,
+  ],
+  [
+    "a reason resting on an unknown fails, and says why",
+    { ...REASON, basedOn: [UNKNOWN_CLAIM] },
+    /is an unknown/,
+  ],
+  [
+    "a reason grounded in nothing at all is not a finding",
+    { ...REASON, basedOn: [] },
+    /rests on nothing established/,
+  ],
+  [
+    "a reason with no horizon is rejected",
+    { ...REASON, urgency: null },
+    /no horizon/,
+  ],
+  [
+    "§16 — a reason with no confidence is rejected",
+    { ...REASON, confidence: null },
+    /no confidence/,
+  ],
+  [
+    "nothing cannot be urgent: no reason, but a horizon given",
+    { ...REASON, hasReason: false, basedOn: [], confidence: null },
+    /Nothing cannot be urgent/,
+  ],
+  [
+    "no reason, but evidence cited for it",
+    { ...REASON, hasReason: false, urgency: null, confidence: null },
+    /evidence was cited/,
+  ],
+  [
+    "an empty answer in either direction is rejected",
+    { ...REASON, reason: "   " },
+    /reason is empty/,
+  ],
+] as const) {
+  const { client } = scriptedClient(output);
+  const spy = spyRecorder();
+  await expectThrows(
+    name,
+    () => runTask(explainWhyNow, whyNowInput, ctx(client, spy.recorder)),
+    pattern,
+  );
+}
+
+console.log("\nexplain_why_now — nothing established means nothing to reason from");
+await expectThrows(
+  "an evidence list of only unknowns produces no schema rather than a 400",
+  () =>
+    (explainWhyNow.schema as (i: WhyNowInput) => unknown)({
+      ...whyNowInput,
+      evidence: [
+        { claim: UNKNOWN_CLAIM, kind: "unknown", confidence: null, sourceUrl: null, excerpt: null },
+      ],
+    }),
+  /no established evidence to reason from/,
+);
 
 console.log(
   `\n${checks - failures}/${checks} checks passed` +

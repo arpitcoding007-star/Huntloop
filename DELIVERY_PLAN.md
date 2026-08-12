@@ -147,7 +147,11 @@ member of org A gets a 404 — not a 403 — for org B.
 - [ ] `ai.research` — deep company understanding (§12)
 - [ ] Problem / gap / trigger detection, stored separately (§78 needs them
       independently addressable)
-- [ ] `explain_why_now` — or an honest "no reason to contact today"
+- [x] `explain_why_now` — or an honest "no reason to contact today" 🟡
+      *(written and unit tested; never run against the real API — no key)*
+- [x] It cannot fetch, and its reasoning is constrained by schema to the
+      claims it was handed, minus the unknowns — so urgency resting on
+      something nobody gathered is unrepresentable
 - [ ] Buyer identification
 
 > The score is the model's, not a formula's. §51 records the weighting of the

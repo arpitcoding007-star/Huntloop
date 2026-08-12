@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  Badge,
   Button,
   Card,
   CardBody,
@@ -16,9 +17,14 @@ import {
   type EvidenceItem,
   type ScoreDimension,
 } from "@huntloop/ui";
-import { Globe, Search } from "lucide-react";
-import type { Qualification } from "@huntloop/ai";
-import { analyzeUrlAction, type AnalyzeState } from "./actions";
+import { CalendarClock, Globe, Search } from "lucide-react";
+import type { Qualification, Urgency } from "@huntloop/ai";
+import {
+  analyzeUrlAction,
+  whyNowAction,
+  type AnalyzeState,
+  type WhyNowState,
+} from "./actions";
 
 /**
  * §17 — paste a company URL, get a verdict.
@@ -70,16 +76,25 @@ function toEvidence(q: Qualification): EvidenceItem[] {
   }));
 }
 
+/** §16 forbids fake precision, so the horizon is a phrase, not a date. */
+const URGENCY_LABELS: Record<Urgency, string> = {
+  this_week: "This week",
+  this_month: "This month",
+  this_quarter: "This quarter",
+};
+
 export function Analyzer({ org }: { org: string }) {
   const [url, setUrl] = useState("");
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
   const [state, setState] = useState<AnalyzeState>({});
+  const [timing, setTiming] = useState<WhyNowState | "running" | null>(null);
   const [, startTransition] = useTransition();
 
   function analyze(e: React.FormEvent) {
     e.preventDefault();
     setPhase("running");
     setState({});
+    setTiming(null);
     startTransition(async () => {
       const next = await analyzeUrlAction(org, url);
       setState(next);
@@ -87,6 +102,27 @@ export function Analyzer({ org }: { org: string }) {
       // Substituting the worked example here would put an invented assessment
       // in front of someone about to decide how to spend their week.
       setPhase(next.result ? "done" : "idle");
+    });
+  }
+
+  /**
+   * A second, explicit call rather than part of qualification.
+   *
+   * §46 sequences them that way, and it also means a user who has just been
+   * told a company is a poor fit is not billed for an answer about when to
+   * contact them.
+   */
+  function askWhyNow(q: Qualification) {
+    setTiming("running");
+    startTransition(async () => {
+      setTiming(
+        await whyNowAction(org, {
+          companyName: q.companyName,
+          canonicalDomain: q.canonicalDomain,
+          priority: q.priority,
+          evidence: q.evidence,
+        }),
+      );
     });
   }
 
@@ -212,6 +248,96 @@ export function Analyzer({ org }: { org: string }) {
               </div>
             </CardBody>
           </Card>
+
+          {/* §77 Principle 3 — a strong opportunity should have a reason it
+              matters now. Behind a button because it is a second model call,
+              and hidden entirely for IGNORE: "when should you contact a company
+              you should not contact" is not a question worth paying for. */}
+          {q.priority !== "ignore" && (
+            <Card flush>
+              <CardHeader
+                title="Why now"
+                description="Whether there's a reason to contact them today — or not."
+                actions={
+                  timing === null && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={CalendarClock}
+                      onClick={() => askWhyNow(q)}
+                    >
+                      Check timing
+                    </Button>
+                  )
+                }
+              />
+              <CardBody>
+                {timing === null && (
+                  <p className="text-[13px] leading-[1.6] text-fg-muted">
+                    Not checked yet. This reasons over the evidence above — it
+                    fetches nothing new, so it can only tell you what the
+                    evidence already supports.
+                  </p>
+                )}
+
+                {timing === "running" && (
+                  <LoadingSkeleton rows={2} rowHeight={40} />
+                )}
+
+                {timing && timing !== "running" && timing.error && (
+                  <p className="text-[13px] leading-[1.6] text-danger">
+                    {timing.error}
+                  </p>
+                )}
+
+                {timing && timing !== "running" && timing.result && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {timing.result.whyNow.hasReason ? (
+                        <>
+                          <Badge variant="brand">
+                            {URGENCY_LABELS[timing.result.whyNow.urgency!]}
+                          </Badge>
+                          <span className="text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+                            {timing.result.whyNow.confidence} confidence
+                          </span>
+                        </>
+                      ) : (
+                        /* Given the same weight as a reason. This is the answer
+                           the product exists to be able to give, and rendering
+                           it as a greyed-out non-result would teach everyone
+                           that it is a failure to be avoided. */
+                        <Badge variant="neutral">No reason today</Badge>
+                      )}
+                    </div>
+
+                    <p className="text-[14px] leading-[1.6] text-fg-secondary">
+                      {timing.result.whyNow.reason}
+                    </p>
+
+                    {timing.result.whyNow.basedOn.length > 0 && (
+                      <div>
+                        <SectionLabel>Rests on</SectionLabel>
+                        {/* The traceability payoff: the timing claim names the
+                            established claims underneath it, and the task
+                            refused any that were not among them. */}
+                        <ul className="mt-1.5 space-y-1">
+                          {timing.result.whyNow.basedOn.map((claim) => (
+                            <li
+                              key={claim}
+                              className="border-l-2 border-line pl-2.5 text-[13px] leading-[1.5] text-fg-muted"
+                            >
+                              {claim}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
 
           <Card flush>
             <CardHeader

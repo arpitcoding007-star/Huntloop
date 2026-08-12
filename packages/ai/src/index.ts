@@ -76,3 +76,12 @@ export {
   type ScoreDimensionLabel,
   type ScoredDimension,
 } from "./tasks/qualify-opportunity.ts";
+
+export {
+  URGENCIES,
+  explainWhyNow,
+  groundableClaims,
+  type Urgency,
+  type WhyNow,
+  type WhyNowInput,
+} from "./tasks/explain-why-now.ts";
