@@ -32,6 +32,10 @@ import {
   recommendSources,
   type IcpSummary,
 } from "../src/tasks/recommend-sources.ts";
+import {
+  SCORE_DIMENSIONS,
+  qualifyOpportunity,
+} from "../src/tasks/qualify-opportunity.ts";
 
 let failures = 0;
 let checks = 0;
@@ -616,6 +620,241 @@ console.log("\nrecommend_sources — a thin profile produces a short list, not a
   const result = await runTask(recommendSources, ICP, ctx(client, spy.recorder));
   expectEqual("an empty list is a valid answer", result.output.length, 0);
   expectEqual("and it is a success, not a failure", spy.events, ["started", "succeeded"]);
+}
+
+/* ── qualify_opportunity — the decision the product is a claim about ─────── */
+
+const dims = (overrides: Record<string, number | "unknown"> = {}) =>
+  SCORE_DIMENSIONS.map((label) => ({
+    label,
+    value: label in overrides ? overrides[label]! : 80,
+    note: null,
+  }));
+
+const HOT_VERDICT = {
+  companyName: "Acme",
+  priority: "hot",
+  priorityReason: "Strong fit, a stated problem, and a trigger on their own blog.",
+  score: 91,
+  scoreConfidence: "medium",
+  explanation: "Fit and problem are both established on the site; the trigger is recent.",
+  dimensions: dims({ "Buying likelihood": "unknown" }),
+  summary: "Autonomous trading agents for crypto desks.",
+  recommendation: "Worth contacting this week. Lead with the blocker.",
+  evidence: [
+    {
+      claim: "They describe custody permissioning as an open problem.",
+      kind: "fact",
+      confidence: "high",
+      sourceUrl: "https://acme.co/blog/custody",
+      excerpt: "Permissioning remains the hardest part of shipping agents.",
+    },
+    {
+      claim: "They will need controlled signing before institutions onboard.",
+      kind: "inference",
+      confidence: "medium",
+      sourceUrl: null,
+      excerpt: null,
+    },
+    {
+      claim: "Whether budget is allocated this quarter.",
+      kind: "unknown",
+      confidence: null,
+      sourceUrl: null,
+      excerpt: null,
+    },
+  ],
+};
+
+const qualifyInput = { url: "acme.co", icp: ICP };
+
+console.log("\nqualify_opportunity — the happy path");
+{
+  const { client, seen } = scriptedClient(HOT_VERDICT);
+  const spy = spyRecorder();
+  const result = await runTask(qualifyOpportunity, qualifyInput, ctx(client, spy.recorder));
+
+  expectEqual("all eight dimensions come back", result.output.dimensions.length, 8);
+  expectEqual(
+    "in §51's order, so the breakdown does not reshuffle",
+    result.output.dimensions.map((d) => d.label),
+    [...SCORE_DIMENSIONS],
+  );
+  expectEqual(
+    "an unmeasured dimension stays unknown rather than becoming zero",
+    result.output.dimensions.find((d) => d.label === "Buying likelihood")?.value,
+    "unknown",
+  );
+  expectEqual("the verdict survives", result.output.priority, "hot");
+  expectEqual("with its confidence as a word", result.output.scoreConfidence, "medium");
+
+  const request = seen[0]!;
+  expectEqual(
+    "only the company's own domain is fetchable",
+    request.fetchDomains,
+    ["acme.co", "www.acme.co"],
+  );
+  expect(
+    "the ICP is per-call, so it never contaminates the cached prefix",
+    !request.system.includes("Crypto trading desks") &&
+      request.userContent.includes("Crypto trading desks"),
+  );
+}
+
+console.log("\n§17 — Huntloop must be willing to answer no");
+{
+  const ignore = {
+    ...HOT_VERDICT,
+    priority: "ignore",
+    priorityReason: "Outside every active ICP. Matched on region only.",
+    score: 21,
+    scoreConfidence: "high",
+    explanation: "An investment fund with no product this could apply to.",
+    // The verdict a qualifier is most tempted to avoid is also the one with
+    // the least measured — and IGNORE requires nothing to have been
+    // established, because "poor fit" is a conclusion, not a measurement.
+    dimensions: dims({
+      "Problem severity": "unknown",
+      "Trigger strength": "unknown",
+      "Trigger freshness": "unknown",
+      "Buying likelihood": "unknown",
+      "Decision-maker accessibility": "unknown",
+      "ICP fit": 12,
+    }),
+    recommendation: "Don't contact. There is no version of this where the product is relevant.",
+    evidence: [
+      {
+        claim: "Acme is an investment fund with no software product.",
+        kind: "fact",
+        confidence: "high",
+        sourceUrl: "https://acme.co/about",
+        excerpt: "We invest in mid-market European industrials.",
+      },
+    ],
+  };
+  const { client } = scriptedClient(ignore);
+  const spy = spyRecorder();
+  const result = await runTask(qualifyOpportunity, qualifyInput, ctx(client, spy.recorder));
+
+  expectEqual("an IGNORE verdict passes through intact", result.output.priority, "ignore");
+  expect(
+    "nothing quietly upgrades it because the user asked about this company",
+    result.output.score === 21 && result.output.recommendation.startsWith("Don't contact"),
+  );
+  expectEqual("and it is a success, not an error", spy.events, ["started", "succeeded"]);
+}
+
+console.log("\n§15/§78 — a verdict the dimensions cannot support");
+for (const [name, verdict, pattern] of [
+  [
+    "HOT with ICP fit never established is rejected, not downgraded",
+    { ...HOT_VERDICT, dimensions: dims({ "ICP fit": "unknown" }) },
+    /requires ICP fit/,
+  ],
+  [
+    "HOT with no measured trigger is WATCH, not a stretched HOT",
+    { ...HOT_VERDICT, dimensions: dims({ "Trigger strength": "unknown" }) },
+    /Trigger strength/,
+  ],
+  [
+    "WARM still needs ICP fit to mean anything",
+    {
+      ...HOT_VERDICT,
+      priority: "warm",
+      dimensions: dims({ "ICP fit": "unknown" }),
+    },
+    /requires ICP fit/,
+  ],
+  [
+    "a ninth dimension is invented scoring structure (§51)",
+    {
+      ...HOT_VERDICT,
+      dimensions: [...dims(), { label: "Vibes", value: 99, note: null }],
+    },
+    /unexpected dimension/,
+  ],
+  [
+    "a missing dimension is not quietly defaulted to unknown",
+    { ...HOT_VERDICT, dimensions: dims().slice(0, 7) },
+    /no score for Decision-maker accessibility/,
+  ],
+  [
+    "a score with no explanation is a number with no authority",
+    { ...HOT_VERDICT, explanation: "  " },
+    /explanation is missing/,
+  ],
+  [
+    "§16 — a numeric confidence is fake precision",
+    { ...HOT_VERDICT, scoreConfidence: 0.82 },
+    /high, medium or low/,
+  ],
+  [
+    "a score outside 0–100 fails rather than being clamped",
+    { ...HOT_VERDICT, score: 140 },
+    /not 0–100/,
+  ],
+] as const) {
+  const { client } = scriptedClient(verdict);
+  const spy = spyRecorder();
+  await expectThrows(
+    name,
+    () => runTask(qualifyOpportunity, qualifyInput, ctx(client, spy.recorder)),
+    pattern,
+  );
+}
+
+console.log("\n§7 — a fact must cite the page it was actually read on");
+{
+  // The most credible-looking hallucination this product can produce: a real
+  // publication's name, a FACT badge, and a working link, sourced from memory
+  // rather than from anything the run fetched.
+  const fabricated = {
+    ...HOT_VERDICT,
+    evidence: [
+      {
+        claim: "Acme closed a $12M Series A led by Northgate Ventures.",
+        kind: "fact",
+        confidence: "high",
+        sourceUrl: "https://techcrunch.com/2026/08/08/acme-series-a",
+        excerpt: "Acme has raised $12 million.",
+      },
+    ],
+  };
+  const { client } = scriptedClient(fabricated);
+  const spy = spyRecorder();
+  await expectThrows(
+    "a fact sourced to a domain that was never fetched fails the run",
+    () => runTask(qualifyOpportunity, qualifyInput, ctx(client, spy.recorder)),
+    /only acme\.co was fetched/,
+  );
+  expectEqual("and it is recorded as failed", spy.events, ["started", "failed"]);
+
+  const { client: sourceless } = scriptedClient({
+    ...HOT_VERDICT,
+    evidence: [{ ...HOT_VERDICT.evidence[0], sourceUrl: null }],
+  });
+  await expectThrows(
+    "a fact with no source at all is still rejected",
+    () => runTask(qualifyOpportunity, qualifyInput, ctx(sourceless, spyRecorder().recorder)),
+    /source URL/,
+  );
+
+  const { client: subdomain } = scriptedClient({
+    ...HOT_VERDICT,
+    evidence: [
+      { ...HOT_VERDICT.evidence[0], sourceUrl: "https://www.acme.co/blog/custody" },
+    ],
+  });
+  const okResult = await runTask(
+    qualifyOpportunity,
+    qualifyInput,
+    ctx(subdomain, spyRecorder().recorder),
+  );
+  expectEqual(
+    "www is the same company, not a different source",
+    okResult.output.evidence.length,
+    1,
+  );
 }
 
 console.log(

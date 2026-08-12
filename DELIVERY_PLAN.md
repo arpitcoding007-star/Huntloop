@@ -128,15 +128,32 @@ member of org A gets a 404 — not a 403 — for org B.
       `alphio.ai` become one row
 - [ ] Deduplication by content hash, canonical URL, domain (§60)
 
-### B4 · Research and judgement 🔴
+### B4 · Research and judgement 🟡 *(the verdict works; the pipeline into it doesn't)*
 
+- [x] `qualify_opportunity` — **willing to return IGNORE** (§17) 🟡 *(written
+      and unit tested; never run against the real API — no key)*
+- [x] `ai.score` — the eight dimensions, unmeasured ones left `unknown`, never
+      coerced to zero
+- [x] §15 enforced rather than described: HOT requires ICP fit, problem
+      severity **and** trigger strength to have been established, so §78's
+      "a strong trigger must not lift a poor-fit company" is a failed run
+      rather than a code-review note
+- [x] A fact must cite a page on the domain the run actually fetched — a
+      citation to a site that was never read fails the run
+- [x] `/[org]/analyze` calls it, and discloses that the verdict rests on the
+      company's own site alone (§78)
+- [ ] Persist the verdict — "Save as an opportunity" is disabled, and says
+      why 🔴 *(needs the schema applied)*
 - [ ] `ai.research` — deep company understanding (§12)
 - [ ] Problem / gap / trigger detection, stored separately (§78 needs them
       independently addressable)
-- [ ] `qualify_opportunity` — **must be willing to return IGNORE** (§17)
-- [ ] `ai.score` — the eight dimensions, unmeasured ones left NULL
 - [ ] `explain_why_now` — or an honest "no reason to contact today"
 - [ ] Buyer identification
+
+> The score is the model's, not a formula's. §51 records the weighting of the
+> eight dimensions as NOT DEFINED and warns against inventing weights and
+> passing them off as Huntloop's logic, so nothing here derives the composite
+> from the dimensions — it checks that the two are coherent and renders both.
 
 ### B5 · The job runner 🔴
 
@@ -156,7 +173,7 @@ acceptable for one call during setup and will not survive a scan cycle.
 - [x] Command Center
 - [x] Opportunity list with priority filters
 - [x] §47 opportunity detail page
-- [x] Analyze a URL (§17)
+- [x] Analyze a URL (§17) — wired to `qualify_opportunity`, no longer scripted
 - [ ] Companies list and company page
 - [ ] Imports — upload → map columns → dedupe → resolve → research (§61)
 

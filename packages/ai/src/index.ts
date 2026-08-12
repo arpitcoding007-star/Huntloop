@@ -64,3 +64,15 @@ export {
   type SourceKind,
   type SourceRecommendation,
 } from "./tasks/recommend-sources.ts";
+
+export {
+  PRIORITIES,
+  SCORE_DIMENSIONS,
+  qualifyOpportunity,
+  type Priority,
+  type Qualification,
+  type QualificationEvidence,
+  type QualifyInput,
+  type ScoreDimensionLabel,
+  type ScoredDimension,
+} from "./tasks/qualify-opportunity.ts";

@@ -1,151 +1,97 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   Button,
   Card,
   CardBody,
   CardHeader,
   ClaimBadge,
+  ErrorState,
   EvidenceList,
   LoadingSkeleton,
   PriorityBadge,
   ScorePill,
   SectionLabel,
   type EvidenceItem,
-  type Priority,
   type ScoreDimension,
 } from "@huntloop/ui";
 import { Globe, Search } from "lucide-react";
+import type { Qualification } from "@huntloop/ai";
+import { analyzeUrlAction, type AnalyzeState } from "./actions";
 
 /**
  * §17 — paste a company URL, get a verdict.
  *
- * The demo below is hard-wired to two outcomes, and the second one is the
- * point: a company that looks fine and is **not** a fit gets IGNORE, in the
- * same layout, with the reasons spelled out. §17 says Huntloop "should be
- * willing to answer: No", and a screen that only ever renders a happy path
- * trains everyone — designers, engineers, the model's eventual prompt — to
- * treat the refusal as an edge case rather than a core output.
+ * The screen's job is to render the verdict the model reached, including when
+ * that verdict is **no**. §17 says Huntloop must be willing to answer no and
+ * must not qualify a company merely because the user typed it in, so the
+ * refusal gets the same layout and the same visual weight as the happy path —
+ * a "don't contact" rendered quietly reads as the tool failing rather than as
+ * the tool answering.
  *
- * No model is connected. The button runs a fixed script; the panel says so.
+ * Nothing here re-derives or adjusts what came back. The score is not
+ * recomputed from the dimensions (§51 leaves the weighting undefined, so any
+ * arithmetic here would be invented), and a verdict is never softened for
+ * presentation.
  */
 
-interface Verdict {
-  domain: string;
-  priority: Priority;
-  priorityReason: string;
-  score: number;
-  explanation: string;
-  confidence: "high" | "medium" | "low";
-  dimensions: ScoreDimension[];
-  summary: string;
-  recommendation: string;
-  evidence: EvidenceItem[];
+/**
+ * `Qualification` → the component props.
+ *
+ * Explicit rather than a spread, so a drift between the model's output shape
+ * and the UI's contract is a type error here instead of a mislabelled row on
+ * screen. The `null` → `undefined` conversions are the whole reason this
+ * exists: the AI layer says "not established" with null, React props say it
+ * with absence.
+ */
+function toDimensions(q: Qualification): ScoreDimension[] {
+  return q.dimensions.map((d) => ({
+    label: d.label,
+    value: d.value,
+    note: d.note ?? undefined,
+  }));
 }
 
-const NOW = new Date("2026-08-11T09:00:00Z");
-
-const GOOD: Verdict = {
-  domain: "alphio.ai",
-  priority: "hot",
-  priorityReason:
-    "Strong ICP fit, a problem the founder stated publicly, and a funding trigger three days old.",
-  score: 91,
-  explanation:
-    "Series A closed this week and the launch post names custody permissions as an open problem.",
-  confidence: "medium",
-  dimensions: [
-    { label: "ICP fit", value: 94 },
-    { label: "Problem severity", value: 88 },
-    { label: "Evidence strength", value: 82 },
-    { label: "Trigger strength", value: 90 },
-    { label: "Trigger freshness", value: 96 },
-    { label: "Buying likelihood", value: "unknown" },
-    { label: "Product relevance", value: 92 },
-    { label: "Decision-maker accessibility", value: 71 },
-  ],
-  summary:
-    "Autonomous trading agents for crypto desks. They have just raised institutional money and have publicly named the blocker your product removes.",
-  recommendation: "Worth contacting this week. Lead with the blocker, not the round.",
-  evidence: [
-    {
-      claim: "Alphio AI closed a $12M Series A led by Northgate Ventures.",
-      kind: "fact",
-      confidence: "high",
-      source: "TechCrunch",
-      sourceUrl: "https://techcrunch.com/",
-      eventDate: "2026-08-08",
-      observedAt: "2026-08-09",
-      excerpt:
-        "Alphio AI has raised $12 million to scale its autonomous trading agents to institutional desks.",
-    },
-    {
-      claim: "They will need controlled financial permissions to onboard desks.",
-      kind: "inference",
-      confidence: "medium",
-      source: "Derived from the launch post",
-      eventDate: "2026-08-08",
-      observedAt: "2026-08-09",
-    },
-    { claim: "Whether budget is allocated this quarter.", kind: "unknown" },
-  ],
-};
-
-const BAD: Verdict = {
-  domain: "harbourfront.fund",
-  priority: "ignore",
-  priorityReason:
-    "Outside every active ICP. Matched on region only, which is not a reason to contact anyone.",
-  score: 21,
-  explanation:
-    "A regional investment fund. No product, no engineering org, and nothing your product applies to. The only overlap is geography.",
-  confidence: "high",
-  dimensions: [
-    { label: "ICP fit", value: 12 },
-    { label: "Problem severity", value: "unknown" },
-    { label: "Evidence strength", value: 44 },
-    { label: "Trigger strength", value: 0 },
-    { label: "Trigger freshness", value: 0 },
-    { label: "Buying likelihood", value: "unknown" },
-    { label: "Product relevance", value: 9 },
-    { label: "Decision-maker accessibility", value: "unknown" },
-  ],
-  summary:
-    "A boutique investment fund. They do not build software, do not run infrastructure, and have no public engineering presence.",
-  recommendation:
-    "Don't contact. There is no version of this where the product is relevant, and a good opener cannot be written for a company that does not have the problem.",
-  evidence: [
-    {
-      claim: "Harbourfront Capital is an investment fund with no software product.",
-      kind: "fact",
-      confidence: "high",
-      source: "Company website",
-      sourceUrl: "https://example.com/",
-      eventDate: "2026-08-11",
-      observedAt: "2026-08-11",
-      excerpt: "We invest in mid-market European industrials.",
-    },
-    { claim: "Any problem your product solves.", kind: "unknown" },
-  ],
-};
+function toEvidence(q: Qualification): EvidenceItem[] {
+  return q.evidence.map((e) => ({
+    claim: e.claim,
+    kind: e.kind,
+    confidence: e.confidence ?? undefined,
+    sourceUrl: e.sourceUrl ?? undefined,
+    // Every fact in this task is read from the company's own site — that is
+    // the only thing the run was allowed to fetch — so naming the domain is
+    // accurate rather than decorative.
+    source: e.sourceUrl ? q.canonicalDomain : undefined,
+    excerpt: e.excerpt ?? undefined,
+    // No dates. The task does not establish when a page's claim was made, and
+    // a freshness badge derived from the time we happened to read it would be
+    // a measurement of us, not of the company.
+  }));
+}
 
 export function Analyzer({ org }: { org: string }) {
   const [url, setUrl] = useState("");
-  const [state, setState] = useState<"idle" | "running" | "done">("idle");
-  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
+  const [state, setState] = useState<AnalyzeState>({});
+  const [, startTransition] = useTransition();
 
   function analyze(e: React.FormEvent) {
     e.preventDefault();
-    setState("running");
-    // A fixed delay standing in for the research pipeline, so the loading
-    // state is actually exercised rather than theoretical.
-    setTimeout(() => {
-      const looksLikeAFund = /fund|capital|partners|ventures/i.test(url);
-      setVerdict(looksLikeAFund ? BAD : GOOD);
-      setState("done");
-    }, 900);
+    setPhase("running");
+    setState({});
+    startTransition(async () => {
+      const next = await analyzeUrlAction(org, url);
+      setState(next);
+      // A failed run returns to the input state rather than to a demo verdict.
+      // Substituting the worked example here would put an invented assessment
+      // in front of someone about to decide how to spend their week.
+      setPhase(next.result ? "done" : "idle");
+    });
   }
+
+  const result = state.result;
+  const q = result?.qualification;
 
   return (
     <div className="mx-auto w-full max-w-[900px] px-6 py-8 lg:px-8">
@@ -157,6 +103,14 @@ export function Analyzer({ org }: { org: string }) {
           <span className="text-fg-secondary">including when it isn&rsquo;t.</span>
         </p>
       </header>
+
+      {state.error && (
+        <ErrorState
+          className="mt-6"
+          title="That didn't work"
+          description={state.error}
+        />
+      )}
 
       <form onSubmit={analyze} className="mt-6 flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -175,49 +129,65 @@ export function Analyzer({ org }: { org: string }) {
             className="hl-focusable h-10 w-full rounded-md border border-line bg-surface pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted"
           />
         </div>
-        <Button type="submit" variant="primary" size="lg" icon={Search} disabled={state === "running"}>
-          {state === "running" ? "Researching…" : "Analyze"}
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          icon={Search}
+          disabled={phase === "running"}
+        >
+          {phase === "running" ? "Researching…" : "Analyze"}
         </Button>
       </form>
 
-      <p className="mt-2 text-[12px] text-fg-muted">
-        Demo: no model is connected. Try a URL containing &ldquo;capital&rdquo; or
-        &ldquo;ventures&rdquo; to see a refusal.
-      </p>
-
-      {state === "running" && (
+      {phase === "running" && (
         <div className="mt-8">
           <SectionLabel>Researching</SectionLabel>
+          <p className="mt-2 text-[13px] text-fg-muted">
+            Reading their site and judging it against your ICP. This reads
+            several pages, so it takes a moment.
+          </p>
           <LoadingSkeleton className="mt-3" rows={4} rowHeight={64} />
         </div>
       )}
 
-      {state === "done" && verdict && (
+      {phase === "done" && q && (
         <div className="mt-8 space-y-6">
+          {/* The screen never lets a worked example pass for a real verdict. */}
+          {result?.source === "unconfigured" && (
+            <p
+              role="status"
+              className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
+            >
+              <span className="font-medium text-warning">No model is connected.</span>{" "}
+              This is a worked example, not an assessment — nothing fetched{" "}
+              <span className="font-mono text-[12px] text-fg">{q.canonicalDomain}</span>.
+              Add{" "}
+              <span className="font-mono text-[12px] text-fg">ANTHROPIC_API_KEY</span> to{" "}
+              <span className="font-mono text-[12px] text-fg">apps/web/.env.local</span>{" "}
+              to make this real.
+            </p>
+          )}
+
           <Card flush>
             <CardHeader
               title={
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-[14px]">{verdict.domain}</span>
-                  <PriorityBadge
-                    priority={verdict.priority}
-                    reason={verdict.priorityReason}
-                  />
+                  <span className="font-mono text-[14px]">{q.canonicalDomain}</span>
+                  <PriorityBadge priority={q.priority} reason={q.priorityReason} />
                 </span>
               }
               actions={
                 <ScorePill
-                  score={verdict.score}
-                  explanation={verdict.explanation}
-                  confidence={verdict.confidence}
-                  dimensions={verdict.dimensions}
+                  score={q.score}
+                  explanation={q.explanation}
+                  confidence={q.scoreConfidence}
+                  dimensions={toDimensions(q)}
                 />
               }
             />
             <CardBody className="space-y-4">
-              <p className="text-[14px] leading-[1.6] text-fg-secondary">
-                {verdict.summary}
-              </p>
+              <p className="text-[14px] leading-[1.6] text-fg-secondary">{q.summary}</p>
 
               {/* The recommendation gets the same visual weight whether it is
                   "contact this week" or "don't". A refusal rendered quietly
@@ -225,7 +195,7 @@ export function Analyzer({ org }: { org: string }) {
               <div
                 className={[
                   "rounded-md border px-4 py-3",
-                  verdict.priority === "ignore"
+                  q.priority === "ignore"
                     ? "border-line bg-surface-active"
                     : "border-brand-border bg-brand-surface",
                 ].join(" ")}
@@ -234,10 +204,10 @@ export function Analyzer({ org }: { org: string }) {
                 <p
                   className={[
                     "mt-1.5 text-[14px] leading-[1.6]",
-                    verdict.priority === "ignore" ? "text-fg-secondary" : "text-brand-text",
+                    q.priority === "ignore" ? "text-fg-secondary" : "text-brand-text",
                   ].join(" ")}
                 >
-                  {verdict.recommendation}
+                  {q.recommendation}
                 </p>
               </div>
             </CardBody>
@@ -249,9 +219,24 @@ export function Analyzer({ org }: { org: string }) {
               description="What this verdict rests on — and what it doesn't."
             />
             <CardBody>
-              <EvidenceList items={verdict.evidence} now={NOW} />
+              <EvidenceList items={toEvidence(q)} />
             </CardBody>
           </Card>
+
+          {/* §78: incomplete research is disclosed rather than left to be
+              inferred from an absence. This is the limit a reader would never
+              guess — the verdict is drawn from one website, because the scan
+              pipeline that reads everything else does not run yet. */}
+          <p className="rounded-md border border-line-subtle bg-surface px-4 py-3 text-[12px] leading-[1.6] text-fg-muted">
+            <span className="text-fg-secondary">What this verdict could see:</span>{" "}
+            <span className="font-mono text-[11px] text-fg-secondary">
+              {result?.readDomains.join(", ")}
+            </span>
+            . No news, funding, hiring or social sources were consulted — those
+            arrive with scheduled scanning. A trigger that was never published on
+            their own site is one this verdict does not know about, which is why{" "}
+            <em>trigger freshness</em> is often unknown here.
+          </p>
 
           <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
             <ClaimBadge kind="fact" /> observed at a source ·
@@ -260,11 +245,27 @@ export function Analyzer({ org }: { org: string }) {
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => { setState("idle"); setUrl(""); }}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPhase("idle");
+                setUrl("");
+                setState({});
+              }}
+            >
               Analyze another
             </Button>
-            {verdict.priority !== "ignore" && (
-              <Button variant="primary">Save as an opportunity</Button>
+            {q.priority !== "ignore" && (
+              <>
+                <Button variant="primary" disabled>
+                  Save as an opportunity
+                </Button>
+                {/* Disabled with the reason next to it. A button that looks
+                    live and does nothing is worse than one that says why. */}
+                <span className="text-[12px] text-fg-muted">
+                  Saving needs the database — not connected yet.
+                </span>
+              </>
             )}
           </div>
         </div>
