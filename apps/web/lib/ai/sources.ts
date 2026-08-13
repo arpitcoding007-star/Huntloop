@@ -8,6 +8,7 @@ import {
   type SourceRecommendation,
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
+import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
 
 /**
  * `recommend_sources`, wrapped for the onboarding step that calls it.
@@ -57,6 +58,9 @@ export async function recommend(
   const resolved = await resolveRecorder(orgSlug);
   if (!resolved.ok) return { ok: false, error: resolved.error };
   const { recorder, orgId, recorded } = resolved;
+
+  const budget = await consumeRateLimit(orgId, "recommend_sources");
+  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
 
   try {
     const { output } = await runTask(recommendSources, icp, { orgId, recorder });

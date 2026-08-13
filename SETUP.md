@@ -103,10 +103,15 @@ In the Supabase dashboard:
 3. Open `packages/db/migrations/0001_identity.sql` in your code editor.
 4. Select all of it, copy, paste into the SQL Editor, click **Run**.
 5. It should say *Success*.
-6. Repeat for the other three, **in this exact order**:
+6. Repeat for the other four, **in this exact order**:
    - `0002_icp_sources_evidence.sql`
    - `0003_companies_opportunities.sql`
    - `0004_outreach_memory_learning.sql`
+   - `0005_rate_limits.sql`
+
+> **Don't skip `0005`.** It creates the counters that cap how many AI calls an
+> organisation can make per hour. Without it, every analysis and every piece of
+> company research is uncapped — and each one is a real, paid model call.
 
 > **Why the order matters:** later files point at tables the earlier ones make.
 > Run `0003` first and it fails, because the thing it references isn't there

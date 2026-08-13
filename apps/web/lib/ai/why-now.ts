@@ -10,6 +10,7 @@ import {
 } from "@huntloop/ai";
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
+import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
 
 /**
  * `explain_why_now`, wrapped for the screens that ask it.
@@ -97,6 +98,11 @@ export async function whyNow(
       result: { source: "unconfigured", metered: false, whyNow: example(input) },
     };
   }
+
+  // Below the two early returns above, both of which answer without a model
+  // call — neither should consume budget.
+  const budget = await consumeRateLimit(orgId, "explain_why_now");
+  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
 
   try {
     const { output } = await runTask(explainWhyNow, input, { orgId, recorder });

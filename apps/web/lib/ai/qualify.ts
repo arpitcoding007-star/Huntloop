@@ -9,6 +9,7 @@ import {
 } from "@huntloop/ai";
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
+import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
 
 /**
  * `qualify_opportunity`, wrapped for the §17 analyze screen.
@@ -86,6 +87,11 @@ export async function qualify(
         "A company can only be a good lead relative to one.",
     };
   }
+
+  // After the ICP check: a caller with no ICP gets an explanation rather than
+  // silently burning a unit of budget on a request that cannot be answered.
+  const budget = await consumeRateLimit(orgId, "qualify_opportunity");
+  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
 
   try {
     const { output } = await runTask(

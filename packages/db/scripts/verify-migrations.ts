@@ -353,6 +353,118 @@ console.log("\nRole enforcement — viewer is read-only");
   await db.exec("rollback");
 }
 
+// ── Rate limiting (0005) ───────────────────────────────────────────────────
+// A rate limit is a security control, and an untested one is a guess. The
+// three failures worth catching here are all silent: a counter that resets
+// instead of accumulating, a limit another tenant can exhaust on your behalf,
+// and a table the tenant can UPDATE — each of which leaves the function
+// returning `allowed` forever while looking like it works.
+console.log("\nRate limiting — consume_rate_limit");
+{
+  const OWNER = "11111111-1111-1111-1111-111111111111";
+
+  type Consumed = { allowed: boolean; remaining: number; reset_at: string };
+  // Who the caller is comes from the GUC set below, not from an argument —
+  // the function reads auth.uid() exactly as PostgREST would.
+  const consume = (org: string, action: string, limit: number, perUser = true) =>
+    db.query<Consumed>(
+      `select * from public.consume_rate_limit($1, $2, $3, 3600, $4)`,
+      [org, action, limit, perUser],
+    );
+
+  // Per-user counter accumulates and then denies.
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER]);
+
+  const first = await consume(ORG_A, "qualify_opportunity", 2);
+  const second = await consume(ORG_A, "qualify_opportunity", 2);
+  const third = await consume(ORG_A, "qualify_opportunity", 2);
+
+  if (first.rows[0]!.allowed && second.rows[0]!.allowed && !third.rows[0]!.allowed)
+    ok("third call past a limit of 2 is denied");
+  else
+    fail(
+      "third call past a limit of 2 is denied",
+      JSON.stringify([first.rows[0], second.rows[0], third.rows[0]]),
+    );
+
+  if (first.rows[0]!.remaining === 1 && third.rows[0]!.remaining === 0)
+    ok("remaining counts down and floors at zero");
+  else fail("remaining counts down and floors at zero", JSON.stringify(third.rows[0]));
+
+  // A denied call must still increment. Otherwise a caller who keeps hammering
+  // sits permanently at limit+1 and the window never advances past them.
+  const fourth = await consume(ORG_A, "qualify_opportunity", 2);
+  const n = await db.query<{ count: number }>(
+    `select count from public.rate_limits
+      where org_id = $1 and action = 'qualify_opportunity' and user_id is not null`,
+    [ORG_A],
+  );
+  if (!fourth.rows[0]!.allowed && n.rows[0]!.count === 4)
+    ok("a denied call still increments the counter");
+  else fail("a denied call still increments the counter", JSON.stringify(n.rows[0]));
+
+  // Distinct actions do not share a budget.
+  const other = await consume(ORG_A, "research_company", 2);
+  if (other.rows[0]!.allowed) ok("a different action has its own window");
+  else fail("a different action has its own window", JSON.stringify(other.rows[0]));
+
+  // Org-wide mode uses the other partial index. This is the branch that was
+  // wrong first time: a single INSERT naming the `user_id is not null` arbiter
+  // never matched a NULL-user row, so every call inserted instead of
+  // incrementing and the limit silently did not limit.
+  const w1 = await consume(ORG_A, "org_wide_task", 1, false);
+  const w2 = await consume(ORG_A, "org_wide_task", 1, false);
+  if (w1.rows[0]!.allowed && !w2.rows[0]!.allowed)
+    ok("org-wide mode accumulates rather than inserting afresh");
+  else fail("org-wide mode accumulates rather than inserting afresh", JSON.stringify([w1.rows[0], w2.rows[0]]));
+
+  await db.exec("rollback");
+}
+{
+  // SECURITY DEFINER bypasses RLS, so the membership check inside the function
+  // is the only thing standing between a stranger and another org's quota.
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+    "33333333-3333-3333-3333-333333333333",
+  ]);
+  try {
+    await db.query(
+      `select * from public.consume_rate_limit($1, 'qualify_opportunity', 5, 3600, true)`,
+      [ORG_A],
+    );
+    fail("a non-member cannot consume another org's quota", "call was ACCEPTED");
+  } catch {
+    ok("a non-member cannot consume another org's quota");
+  }
+  await db.exec("rollback");
+}
+{
+  // A counter the constrained party can edit is not a rate limit.
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+    "11111111-1111-1111-1111-111111111111",
+  ]);
+  try {
+    await db.query(`update public.rate_limits set count = 0`);
+    // UPDATE with no matching policy affects zero rows rather than raising,
+    // so "did not throw" is not the same as "was allowed". Insert is the
+    // unambiguous test.
+    await db.query(
+      `insert into public.rate_limits (org_id, action, window_start, count)
+       values ($1, 'forged', now(), 0)`,
+      [ORG_A],
+    );
+    fail("a member cannot write rate_limits directly", "insert was ACCEPTED");
+  } catch {
+    ok("a member cannot write rate_limits directly");
+  }
+  await db.exec("rollback");
+}
+
 // ── Every tenant table actually has RLS on ─────────────────────────────────
 // A table added later without `enable row level security` is readable by any
 // authenticated user in any tenant. That is the leak D2 exists to prevent, so

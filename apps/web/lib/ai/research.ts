@@ -8,6 +8,7 @@ import {
   type CompanyUnderstanding,
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
+import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
 
 /**
  * `research_company`, wrapped for the screens that call it.
@@ -66,6 +67,11 @@ export async function research(
   // org the caller belongs to is not a run we pay for. See recorder.ts.
   if (!resolved.ok) return { ok: false, error: resolved.error };
   const { recorder, orgId, recorded } = resolved;
+
+  // The most expensive task in the product: ~8 page fetches plus Opus at high
+  // effort. Consumed before the call for the reason given in rate-limit.ts.
+  const budget = await consumeRateLimit(orgId, "research_company");
+  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
 
   try {
     const { output } = await runTask(researchCompany, { url }, { orgId, recorder });
