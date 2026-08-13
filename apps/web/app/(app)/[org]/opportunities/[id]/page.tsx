@@ -339,5 +339,5 @@ function Prose({
 }
 
 export const metadata = {
-  title: "Opportunity · Huntloop",
+  title: "Opportunity",
 };

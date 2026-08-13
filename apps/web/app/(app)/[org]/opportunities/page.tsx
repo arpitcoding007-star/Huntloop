@@ -30,5 +30,5 @@ export default async function OpportunitiesPage({
 }
 
 export const metadata = {
-  title: "Opportunities · Huntloop",
+  title: "Opportunities",
 };

@@ -9,4 +9,4 @@ export default async function ProductPage({
   return <ProductStep org={org ?? "acme"} />;
 }
 
-export const metadata = { title: "Your company · Huntloop" };
+export const metadata = { title: "Your company" };

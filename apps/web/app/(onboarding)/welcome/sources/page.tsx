@@ -9,4 +9,4 @@ export default async function SourcesOnboardingPage({
   return <SourcesStep org={org ?? "acme"} />;
 }
 
-export const metadata = { title: "Sources · Huntloop" };
+export const metadata = { title: "Sources" };

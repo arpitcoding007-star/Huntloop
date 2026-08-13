@@ -114,7 +114,14 @@ export const config = {
      * because the alternative — listing protected routes — fails open: a new
      * route added later would be unguarded by default, and nobody would notice
      * until it mattered.
+     *
+     * `robots.txt` and `sitemap.xml` are excluded explicitly. They are routes
+     * (app/robots.ts, app/sitemap.ts), not files, so without this they fall
+     * through to the guard below and a crawler is answered with a 307 to
+     * /login — which makes a robots policy that nothing can read. They are
+     * safe to exclude because neither is generated from a session: see the
+     * files themselves, which list only public paths.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

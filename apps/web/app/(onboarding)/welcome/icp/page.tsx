@@ -9,4 +9,4 @@ export default async function IcpPage({
   return <IcpStep org={org ?? "acme"} />;
 }
 
-export const metadata = { title: "Ideal customer · Huntloop" };
+export const metadata = { title: "Ideal customer" };

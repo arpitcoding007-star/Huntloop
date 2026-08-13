@@ -15,6 +15,16 @@ export interface NavItem {
   count?: number;
   /** Bare presence dot with no number, e.g. "Command ●". */
   dot?: boolean;
+  /**
+   * The destination does not exist yet.
+   *
+   * Renders the item as a non-interactive label instead of a link. The nav is
+   * a deliberate surface map — it shows the shape of the product while it is
+   * being built — but an item that *looks* like a link and returns a 404 is
+   * not a map, it is a broken app. This keeps the entry visible and stops it
+   * lying about being reachable.
+   */
+  unbuilt?: boolean;
 }
 
 export interface NavGroup {
@@ -78,51 +88,86 @@ export function Sidebar({
             <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const active = item.href === activeHref;
+                const active = item.href === activeHref && !item.unbuilt;
+
+                const inner = (
+                  <>
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-brand"
+                      />
+                    )}
+                    <Icon className="size-4 shrink-0" strokeWidth={1.75} />
+                    {!collapsed && (
+                      <>
+                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                        {item.unbuilt ? (
+                          <span className="shrink-0 text-[10px] tracking-[0.06em] text-fg-muted uppercase">
+                            Soon
+                          </span>
+                        ) : (
+                          <>
+                            {item.badge && (
+                              <Badge variant={item.badge.variant ?? "ai"} size="sm">
+                                {item.badge.label}
+                              </Badge>
+                            )}
+                            {typeof item.count === "number" && item.count > 0 && (
+                              <span className="hl-tabular flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-surface px-1 text-[10px] font-semibold text-brand-text">
+                                {item.count}
+                              </span>
+                            )}
+                            {item.dot && (
+                              <span
+                                aria-hidden
+                                className="size-1.5 shrink-0 rounded-full bg-brand"
+                              />
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+
+                const shared = cn(
+                  "relative flex h-8 items-center gap-2 rounded-md px-2 text-[13px]",
+                  "transition-colors duration-[120ms]",
+                  collapsed && "justify-center px-0",
+                );
+
                 return (
                   <li key={item.href}>
-                    <a
-                      href={item.href}
-                      title={collapsed ? item.label : undefined}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "hl-focusable relative flex h-8 items-center gap-2 rounded-md px-2 text-[13px]",
-                        "transition-colors duration-[120ms]",
-                        collapsed && "justify-center px-0",
-                        active
-                          ? "bg-brand-surface font-medium text-brand-text"
-                          : "text-fg-secondary hover:bg-surface-hover hover:text-fg",
-                      )}
-                    >
-                      {active && (
-                        <span
-                          aria-hidden
-                          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-brand"
-                        />
-                      )}
-                      <Icon className="size-4 shrink-0" strokeWidth={1.75} />
-                      {!collapsed && (
-                        <>
-                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                          {item.badge && (
-                            <Badge variant={item.badge.variant ?? "ai"} size="sm">
-                              {item.badge.label}
-                            </Badge>
-                          )}
-                          {typeof item.count === "number" && item.count > 0 && (
-                            <span className="hl-tabular flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-surface px-1 text-[10px] font-semibold text-brand-text">
-                              {item.count}
-                            </span>
-                          )}
-                          {item.dot && (
-                            <span
-                              aria-hidden
-                              className="size-1.5 shrink-0 rounded-full bg-brand"
-                            />
-                          )}
-                        </>
-                      )}
-                    </a>
+                    {item.unbuilt ? (
+                      /* A span, not a disabled link: there is no destination to
+                         disable. Kept out of the tab order for the same reason —
+                         a keyboard user landing on it would have nowhere to go.
+                         `title` carries the explanation at every width, since
+                         the "Soon" marker is hidden while collapsed. */
+                      <span
+                        title={`${item.label} — not built yet`}
+                        aria-disabled="true"
+                        className={cn(shared, "cursor-default text-fg-muted/70")}
+                      >
+                        {inner}
+                      </span>
+                    ) : (
+                      <a
+                        href={item.href}
+                        title={collapsed ? item.label : undefined}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          shared,
+                          "hl-focusable",
+                          active
+                            ? "bg-brand-surface font-medium text-brand-text"
+                            : "text-fg-secondary hover:bg-surface-hover hover:text-fg",
+                        )}
+                      >
+                        {inner}
+                      </a>
+                    )}
                   </li>
                 );
               })}

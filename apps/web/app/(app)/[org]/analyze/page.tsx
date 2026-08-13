@@ -17,4 +17,4 @@ export default async function AnalyzePage({
   return <Analyzer org={org} />;
 }
 
-export const metadata = { title: "Analyze a URL · Huntloop" };
+export const metadata = { title: "Analyze a URL" };

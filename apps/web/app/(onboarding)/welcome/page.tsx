@@ -18,4 +18,4 @@ export default function WelcomePage() {
   );
 }
 
-export const metadata = { title: "Set up · Huntloop" };
+export const metadata = { title: "Set up" };

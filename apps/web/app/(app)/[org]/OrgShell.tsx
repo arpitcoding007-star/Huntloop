@@ -61,19 +61,31 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
    *  · Analyze a URL gets its own entry (§17), because "is this actually a
    *    good lead?" is a top-level job, not a filter on a list.
    *
-   * Routes below `dashboard` are not built yet; they are the §45 surface map
-   * and exist here so the shape of the product is visible while it is built.
+   * Most of these routes are not built yet; they are the §45 surface map and
+   * exist here so the shape of the product is visible while it is built.
+   *
+   * Those carry `unbuilt`, which renders them as labels rather than links.
+   * Five of seventeen destinations exist today, and until this flag was added
+   * the other twelve were ordinary links onto a 404 — the app asserting a
+   * capability it does not have, which is the §7 failure pointed at ourselves.
+   * Delete the flag in the same commit that adds the page.
    */
   const groups: NavGroup[] = [
     {
       label: "Company",
       items: [
-        { label: "Product", href: `/${org}/settings/product`, icon: Building2 },
+        {
+          label: "Product",
+          href: `/${org}/settings/product`,
+          icon: Building2,
+          unbuilt: true,
+        },
         {
           label: "ICP",
           href: `/${org}/settings/icp`,
           icon: Target,
           badge: { label: "AI", variant: "ai" },
+          unbuilt: true,
         },
         { label: "Sources", href: `/${org}/sources`, icon: Radar },
       ],
@@ -83,42 +95,67 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       items: [
         { label: "Command Center", href: `/${org}/dashboard`, icon: Zap, dot: true },
         { label: "Opportunities", href: `/${org}/opportunities`, icon: Flame },
-        { label: "Companies", href: `/${org}/companies`, icon: Building2 },
+        {
+          label: "Companies",
+          href: `/${org}/companies`,
+          icon: Building2,
+          unbuilt: true,
+        },
         { label: "Analyze a URL", href: `/${org}/analyze`, icon: Globe },
-        { label: "Imports", href: `/${org}/imports`, icon: Upload },
+        { label: "Imports", href: `/${org}/imports`, icon: Upload, unbuilt: true },
       ],
     },
     {
       label: "Engage",
       items: [
-        { label: "Outreach", href: `/${org}/outreach`, icon: Send },
-        { label: "Inbox", href: `/${org}/inbox`, icon: InboxIcon, count: 12 },
-        { label: "Pipeline", href: `/${org}/pipeline`, icon: KanbanSquare },
+        { label: "Outreach", href: `/${org}/outreach`, icon: Send, unbuilt: true },
+        // The count goes with the flag: "12" was a fixture, and an unread
+        // badge on a screen that does not exist is a notification about nothing.
+        { label: "Inbox", href: `/${org}/inbox`, icon: InboxIcon, unbuilt: true },
+        {
+          label: "Pipeline",
+          href: `/${org}/pipeline`,
+          icon: KanbanSquare,
+          unbuilt: true,
+        },
       ],
     },
     {
       label: "Team",
       items: [
-        { label: "Members", href: `/${org}/team`, icon: Users },
-        { label: "Assignments", href: `/${org}/team/assignments`, icon: UserCheck },
+        { label: "Members", href: `/${org}/team`, icon: Users, unbuilt: true },
+        {
+          label: "Assignments",
+          href: `/${org}/team/assignments`,
+          icon: UserCheck,
+          unbuilt: true,
+        },
       ],
     },
     {
       label: "Learn",
       items: [
-        { label: "Analytics", href: `/${org}/analytics`, icon: BarChart3 },
+        {
+          label: "Analytics",
+          href: `/${org}/analytics`,
+          icon: BarChart3,
+          unbuilt: true,
+        },
         {
           label: "Intelligence",
           href: `/${org}/intelligence`,
           icon: Lightbulb,
           badge: { label: "AI", variant: "ai" },
+          unbuilt: true,
         },
-        { label: "Memory", href: `/${org}/memory`, icon: Brain },
+        { label: "Memory", href: `/${org}/memory`, icon: Brain, unbuilt: true },
       ],
     },
     {
       label: "Settings",
-      items: [{ label: "Settings", href: `/${org}/settings`, icon: Settings }],
+      items: [
+        { label: "Settings", href: `/${org}/settings`, icon: Settings, unbuilt: true },
+      ],
     },
   ];
 

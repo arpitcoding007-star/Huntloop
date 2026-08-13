@@ -26,4 +26,4 @@ export default function SignupPage() {
   );
 }
 
-export const metadata = { title: "Create account · Huntloop" };
+export const metadata = { title: "Create account" };

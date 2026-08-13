@@ -18,5 +18,5 @@ export default async function SourcesPage({
 }
 
 export const metadata = {
-  title: "Sources · Huntloop",
+  title: "Sources",
 };

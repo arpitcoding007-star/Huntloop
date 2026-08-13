@@ -63,7 +63,9 @@ nothing in this UI is communicated by colour alone.
 
 ## Local development
 
-Requires Node 20+.
+Requires Node 22.6+ — the version in `package.json`'s `engines` field. The
+floor is 22.6 rather than 20 because `packages/ai` and `packages/db` run their
+test suites through `node --experimental-strip-types`, which lands there.
 
 ```bash
 npm install
@@ -102,10 +104,22 @@ project, copying keys, running the migrations, and creating your first login.
 
 ## Status
 
-The design system, the database schema, and four screens exist. **No page reads
-the database yet** — every screen renders fixtures, and there is no auth. See
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for exactly what is and is
-not built.
+The design system, the database schema, four AI tasks, authentication, and
+nine screens exist.
+
+What works end to end: sign-in (magic link + Google), the org membership guard,
+onboarding (company research → ICP → source recommendations), and the analyze
+screen, which runs a real qualification and why-now against a pasted URL.
+
+What does not: **the dashboard and the opportunity screens still render
+fixtures.** `listOpportunities()` and `getOpportunity()` throw rather than
+return demo data when Supabase is connected, deliberately — see
+`apps/web/lib/data/opportunities.ts`. Twelve of the seventeen nav destinations
+are not built and are marked "Soon" rather than linked.
+
+See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for the build plan and
+[audit/FINDINGS.md](audit/FINDINGS.md) for an audited account of the gap
+between the two.
 
 ## Deploying to Vercel
 
@@ -118,5 +132,9 @@ This is an npm-workspaces monorepo, so the defaults do not work:
 | Install Command | leave default — Vercel installs from the workspace root |
 
 Add every variable from `.env.example` under Project → Settings →
-Environment Variables. `SUPABASE_SERVICE_ROLE_KEY` must never carry the
+Environment Variables. `SUPABASE_SECRET_KEY` must never carry the
 `NEXT_PUBLIC_` prefix.
+
+Set `NEXT_PUBLIC_SITE_URL` to the production origin. Without it, canonical and
+Open Graph URLs fall back to the per-deployment Vercel host — or to
+`localhost:3100` — and get published that way. See `apps/web/lib/site-url.ts`.

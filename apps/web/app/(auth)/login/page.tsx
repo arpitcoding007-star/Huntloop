@@ -23,4 +23,4 @@ export default function LoginPage() {
   );
 }
 
-export const metadata = { title: "Sign in · Huntloop" };
+export const metadata = { title: "Sign in" };
