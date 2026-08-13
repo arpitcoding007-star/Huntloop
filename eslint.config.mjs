@@ -79,7 +79,32 @@ export default tseslint.config(
   {
     // Scripts are operational tooling: they run in Node, outside the app, and
     // legitimately talk to the console.
-    files: ["packages/db/scripts/**/*.ts"],
+    files: ["packages/db/scripts/**/*.ts", "scripts/**/*.mjs"],
     rules: { "no-console": "off" },
+  },
+
+  {
+    /*
+     * Node globals for the plain-JavaScript scripts.
+     *
+     * The `.ts` scripts don't need this: typescript-eslint turns `no-undef`
+     * off for TypeScript files, because the compiler already checks it and
+     * running both produces false positives on type-only names. A `.mjs` file
+     * gets no such treatment, so `js.configs.recommended` flags `process`,
+     * `console` and `URL` as undefined.
+     *
+     * Declared inline rather than pulling in the `globals` package — this is
+     * the only place in the repo that needs them, and it is five names.
+     */
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        URL: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+      },
+    },
   },
 );

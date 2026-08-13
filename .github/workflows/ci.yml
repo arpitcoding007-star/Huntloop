@@ -42,6 +42,13 @@ jobs:
       - name: Test — schema, constraints, tenant isolation
         run: npm test
 
+      # The mechanizable half of audit/README.md. Gates on the findings that
+      # are decidable from the repo — a nav link onto a 404, a missing security
+      # header, a model-calling path that doesn't resolve its org — so they
+      # come back as a failing step rather than as a document nobody re-reads.
+      - name: Audit — repository, security, SEO, routes
+        run: npm run audit:site
+
       - name: Build
         run: npm run build
         env:
