@@ -104,8 +104,17 @@ function check(phase, id, title, ok, sev, detail) {
       referenced.add(m[1]);
     }
   }
-  // Set by the platform, not by us.
-  const PROVIDED = new Set(["NODE_ENV", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"]);
+  // Set by the platform or the framework, not by an operator — listing these
+  // in .env.example would imply they are ours to configure.
+  const PROVIDED = new Set([
+    "NODE_ENV",
+    "CI",
+    "NEXT_RUNTIME",
+    "VERCEL_ENV",
+    "NEXT_PUBLIC_VERCEL_ENV",
+    "VERCEL_URL",
+    "VERCEL_PROJECT_PRODUCTION_URL",
+  ]);
   const undocumented = [...referenced].filter(
     (v) => !PROVIDED.has(v) && !envExample.includes(v),
   );
@@ -258,6 +267,39 @@ function check(phase, id, title, ok, sev, detail) {
     unguarded.length === 0,
     "fail",
     unguarded.length ? `Unguarded: ${unguarded.join(", ")}` : null,
+  );
+
+  /*
+   * The other half of SEC-SPEND. That one stops a non-member spending the
+   * budget; this one bounds how fast a member can. Both are `fail`, because a
+   * wrapper silently losing its limiter looks exactly like one that never had
+   * it — and the symptom is a bill, which arrives a month late.
+   */
+  const unlimited = spendPaths.filter((name) => {
+    const src = read(`apps/web/lib/ai/${name}.ts`) ?? "";
+    if (!src.includes("runTask")) return false;
+    return !(src.includes("consumeRateLimit") && /if\s*\(!budget\.allowed\)/.test(src));
+  });
+  check(
+    5,
+    "SEC-RATELIMIT",
+    "Every model-calling wrapper consumes a rate-limit budget",
+    unlimited.length === 0,
+    "fail",
+    unlimited.length ? `Unlimited: ${unlimited.join(", ")}` : null,
+  );
+
+  // The counters must be unwritable by the party they constrain.
+  const rateLimitSql = read("packages/db/migrations/0005_rate_limits.sql") ?? "";
+  check(
+    5,
+    "SEC-RATELIMIT-RLS",
+    "rate_limits grants read only — no tenant write policy",
+    rateLimitSql.includes("for select using") &&
+      !/create policy[^;]*for (all|insert|update)[^;]*on (public\.)?rate_limits/i.test(
+        rateLimitSql,
+      ),
+    "fail",
   );
 
   const anyValidation = ["zod", "valibot", "yup"].some((lib) =>

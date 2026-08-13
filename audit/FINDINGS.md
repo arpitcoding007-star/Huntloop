@@ -42,7 +42,14 @@ themes:
    boundary despite the data layer deliberately throwing. No security headers,
    no robots policy, no metadata base.
 
-**11 fixed in this pass · 18 open · 3 accepted.**
+**13 fixed · 18 open · 3 accepted.**
+
+> **Update — second pass.** `API-02` (rate limiting) and `ANL-01a` (error
+> reporting) have since been closed; both are marked Fixed below with what
+> was built and what it cost. Two new items came out of that work: `RL-01`, a
+> residual configuration where the limiter cannot be enforced, and `PERF-06`,
+> a bundle budget — because Sentry added 33 kB and nothing would have caught
+> it. The suite is now 39 database checks and 34 audit checks.
 
 | Phase | Critical | High | Medium | Low |
 |---|---|---|---|---|
@@ -396,16 +403,55 @@ shapes, re-derived by hand at each call site. A schema validator at the
 boundary (`zod`) would make it structural instead of argued. This matters more
 now that `SEC-01` established these endpoints are directly reachable.
 
-### API-02 · No rate limiting anywhere — **Open** (High)
+### API-02 · No rate limiting anywhere — **Fixed** (was High)
+`packages/db/migrations/0005_rate_limits.sql`, `apps/web/lib/rate-limit.ts`
 
 No rate limiting on Server Actions, the auth callback, or magic-link requests.
 Combined with `SEC-01` this was the amplifier: unbounded requests to an
 unauthenticated endpoint that each cost a real Opus call with `web_fetch`.
+`SEC-01` closed the authentication half; this closes the volume half, for the
+authenticated case that remained.
 
-`SEC-01` closed the authentication half. Rate limiting is still needed for the
-authenticated case — a legitimate member can still call `analyzeUrlAction` in a
-loop, and each call is billable. `RateLimited` already exists in the design
-system, unused.
+**Postgres, not Redis.** The obvious answer is Upstash or Vercel KV, and for a
+hot path it would be right. This is not a hot path — the limited actions fetch
+several pages and reason over them, so they take tens of seconds. A 5ms round
+trip to a database we already have, already authenticate against, and already
+back up is not the cost worth optimizing, and a second stateful service is a
+second thing to provision, secure, pay for, and document.
+
+Fixed-window counters, per-user *and* per-org: a per-user limit stops one
+person looping a form; an org-wide limit stops ten seats doing it at once,
+which is the same bill. Budgets are set against what each task costs — 20/hour
+per user for the two that fetch pages and run Opus at `high`, 60/hour for
+`explain_why_now`, which reasons over evidence it is handed.
+
+Two details that are load-bearing rather than incidental:
+
+- `consume_rate_limit()` is `SECURITY DEFINER`, because the caller must be able
+  to increment a counter that constrains them — a row a tenant can `UPDATE` is
+  not a rate limit. That makes the **membership check inside the function** the
+  only thing standing between a stranger and another org's quota, so it is
+  tested directly.
+- The application-side check **fails closed**. If the limiter errors, the call
+  is refused. Proceeding when the limiter is broken is the same reasoning that
+  produced `SEC-01`: "the limiter is unreachable" is indistinguishable from
+  "someone is hammering the limiter", and the blast radius of failing open is
+  an unbounded bill.
+
+Seven database-level tests, in the existing PGlite suite (39/39 total). One
+caught a real bug during implementation: the first version used a single
+`INSERT … ON CONFLICT` naming the `user_id IS NOT NULL` partial index while
+sometimes inserting a NULL user. For those rows the arbiter never matched, so
+every call inserted afresh instead of incrementing — the limit silently would
+not have limited. Now two explicit branches.
+
+Gated by `audit.mjs` `SEC-RATELIMIT` and `SEC-RATELIMIT-RLS`.
+
+**Residual, recorded as RL-01:** a deployment with an `ANTHROPIC_API_KEY` and
+no database has no auth, no metering, and now no limit either — nothing can be
+counted in a table that does not exist. `consumeRateLimit` reports this as
+`unenforced` rather than hiding it. It is a misconfiguration, not a code
+defect, but it is the one arrangement where `SEC-01` effectively still exists.
 
 ### API-03 · No API versioning strategy — **Open** (Medium)
 
@@ -813,19 +859,52 @@ See `REPO-06` and `A11Y-03`.
 
 # Phase 10 — Analytics & growth
 
-### ANL-01 · No analytics implementation — **Open** (High)
+### ANL-01a · No error reporting — **Fixed** (was High)
+`instrumentation.ts`, `sentry.*.config.ts`, `instrumentation-client.ts`
 
-`.env.example` reserves `NEXT_PUBLIC_POSTHOG_KEY` and `SENTRY_DSN`. Neither is
-installed or initialised. There is no event tracking, no funnel instrumentation,
-no error reporting.
+`SENTRY_DSN` was reserved in `.env.example` and nothing was installed. The new
+`error.tsx` `console.error`d, which in production is nobody, and a crash in a
+Server Component was invisible entirely.
 
-The most consequential absence is **error reporting**. The new `error.tsx`
-currently `console.error`s, which in production is nobody. A crash in a
-Server Component is invisible.
+`@sentry/nextjs` across all three runtimes. The half that matters most is
+`onRequestError` in `instrumentation.ts`: `app/error.tsx` is a Client
+Component that only ever receives a `digest` — Next replaces the message and
+stack before they cross the boundary, deliberately — so without the server
+hook, the server side of every failure stays invisible. The digest joins the
+two events.
 
-The second is that onboarding is a four-step pipeline where each step feeds the
-next, and there is no measurement of where people drop out — the one funnel
-whose shape most determines whether the product works.
+Three decisions worth recording:
+
+- **`tracesSampleRate: 0`.** The one thing worth tracing is the analyze path,
+  and `ai_runs.latency_ms` already records it per call with the model and
+  prompt version attached. Turn tracing up when there is a question it answers.
+- **Session Replay off, and not merely unconfigured.** A replay of the
+  opportunity page is a recording of a named prospect's research; a replay of
+  the analyze screen records what a customer is prospecting. Enabling it needs
+  a masking policy and a customer conversation, not a config flag.
+- **`ModelRefusalError` is dropped in `beforeSend`.** A model declining a
+  request is an answer surfaced to the user by design, not an outage.
+  Reporting it would train everyone to ignore the alert channel.
+
+**Cost, measured rather than assumed:** shared First Load JS went 103 kB →
+**185 kB** on the first build. Tree-shaking tracing and Replay via
+`DefinePlugin` recovered 49 kB, landing at **136 kB** — a real +33 kB. Setting
+the sample rates to 0 disables the behaviour but not the code; the flags are
+what remove it.
+
+That is a genuine regression against `PERF-01`/`PERF-02` and is stated as one.
+It is judged worth it — a Server Component crash currently has no other way to
+be seen — but the fact that nobody would have noticed without measuring is
+itself the finding, and `PERF-06` adds a bundle budget to CI.
+
+### ANL-01b · No product analytics — **Open** (High)
+
+`NEXT_PUBLIC_POSTHOG_KEY` is reserved and nothing is installed. No event
+tracking, no funnel instrumentation.
+
+Onboarding is a four-step pipeline where each step feeds the next, and there is
+no measurement of where people drop out — the one funnel whose shape most
+determines whether the product works.
 
 ### ANL-02 · Cost accounting is designed but not surfaced — **Open** (Medium)
 
@@ -855,8 +934,8 @@ npm run typecheck && npm run lint && npm test && npm run audit:site && npm run b
 |---|---|
 | `npm run typecheck` | Clean, 4 workspaces |
 | `npm run lint` | Clean |
-| `npm test` | 31/31 · 56 files scanned, no admin imports |
-| `npm run audit:site` | 32 checks · 0 failing · 8 warning |
+| `npm test` | 39/39 · 61 files scanned, no admin imports |
+| `npm run audit:site` | 34 checks · 0 failing · 8 warning |
 | `npm run build` | 18 routes, succeeds |
 | `npm audit` | 3 high (all → Next 16 major) |
 | Headers | `curl -sI` against the dev server |

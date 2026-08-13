@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { ErrorState } from "@huntloop/ui";
 
 /**
@@ -27,9 +28,15 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Until Sentry is wired up (see .env.example, SENTRY_DSN) this is the only
-    // record that the boundary fired.
-    console.error("Unhandled error in route:", error);
+    /*
+     * Reported from the client, but the useful half arrives from the server.
+     *
+     * This component only ever sees a `digest` for a server-side failure —
+     * Next replaces the message and stack before they cross the boundary. The
+     * matching event with the real stack comes from `onRequestError` in
+     * instrumentation.ts, and the digest is what joins the two.
+     */
+    Sentry.captureException(error);
   }, [error]);
 
   return (

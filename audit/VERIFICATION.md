@@ -2,6 +2,10 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
+> **Second pass appended at the end** — rate limiting (`API-02`) and error
+> reporting (`ANL-01a`). The tables immediately below describe the first pass;
+> current totals are 39 database checks and 34 audit checks.
+
 Everything below was run against the working tree after the fixes described in
 [FINDINGS.md](FINDINGS.md). Reproduce the whole thing with:
 
@@ -175,3 +179,102 @@ README.md                         Status, Node floor, key name, site URL
 ```
 
 No migrations were added or altered. No dependencies were added or removed.
+
+---
+
+# Second pass — R1 items 1 and 2
+
+**Date:** 2026-08-13 · **Baseline:** `431ad03`
+
+Closes `API-02` (rate limiting) and `ANL-01a` (error reporting), the first two
+items of [R1](ROADMAP.md#r1--make-it-safe-to-run-in-production--15-weeks).
+
+## Toolchain
+
+| Gate | Before this pass | After |
+|---|---|---|
+| Types | Clean | **Clean** |
+| Lint | Clean | **Clean** |
+| Database suite | 31/31 | **39/39** |
+| Admin-import boundary | 56 files | **61 files** |
+| Audit | 32 checks · 0 failing · 8 warn | **34 checks · 0 failing · 8 warn** |
+| Build | 18 routes | **18 routes** |
+
+`npm run verify` exits **0**.
+
+## Rate limiting
+
+Seven new database-level tests, all passing:
+
+```
+✓ third call past a limit of 2 is denied
+✓ remaining counts down and floors at zero
+✓ a denied call still increments the counter
+✓ a different action has its own window
+✓ org-wide mode accumulates rather than inserting afresh
+✓ a non-member cannot consume another org's quota
+✓ a member cannot write rate_limits directly
+```
+
+Two of those exist because they caught real bugs rather than to pad the count:
+
+- *"org-wide mode accumulates"* — the first implementation used one
+  `INSERT … ON CONFLICT` naming the `user_id IS NOT NULL` partial index while
+  sometimes inserting a NULL user. `ON CONFLICT` can only use a partial index
+  as arbiter when the inserted row satisfies its predicate, so those rows never
+  matched and every call inserted afresh. The limit would not have limited.
+- *"a non-member cannot consume another org's quota"* — `consume_rate_limit()`
+  is `SECURITY DEFINER` and therefore bypasses RLS, which makes the membership
+  check inside it the entire boundary rather than a convenience.
+
+The structural RLS test caught the new table automatically, which is the check
+earning its keep: `rate_limits` was covered before anyone thought about it.
+
+**Falsification.** The new `SEC-RATELIMIT` audit check was verified by removing
+the guard from `sources.ts` and confirming the check fails, then restoring it:
+
+```
+=== with guard removed ===
+  [FAIL] SEC-RATELIMIT   Every model-calling wrapper consumes a rate-limit budget
+  34 checks · 1 failing · 8 warning
+=== restored ===
+  [ ok ] SEC-RATELIMIT
+  34 checks · 0 failing · 8 warning
+```
+
+A check that has never been seen to fail is not known to work. This is the
+discipline [README.md](README.md#adding-a-check) asks for, applied to itself.
+
+## Error reporting
+
+Verified: the build succeeds with **empty credentials**, matching what CI does
+— no DSN, no auth token, no warnings. `Sentry.init` with an undefined DSN is a
+no-op, and source-map upload is skipped unless all three of `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG`, and `SENTRY_PROJECT` are set.
+
+**Bundle cost, measured at each step:**
+
+| | Shared First Load JS | Middleware |
+|---|---|---|
+| Before Sentry | 103 kB | 92.5 kB |
+| After Sentry, default config | 185 kB | 129 kB |
+| After tree-shaking flags | **136 kB** | **125 kB** |
+
+The `DefinePlugin` flags matter because `tracesSampleRate: 0` and
+`replaysSessionSampleRate: 0` disable the *behaviour* while still shipping the
+*code*. Net cost is +33 kB, accepted, and recorded as `PERF-06` — a bundle
+budget in CI, because nothing would have caught this without someone reading
+the build output.
+
+## Not verified
+
+- **No error was deliberately thrown against a live Sentry project.** There is
+  no DSN configured here. The wiring is verified by build and by types; that
+  an event actually arrives needs a DSN and one deliberate throw, and is the
+  first thing to do after provisioning the project.
+- **Rate limiting was verified at the database layer, not end to end.** The
+  seven tests run the real function against real Postgres. The application
+  wiring (`lib/rate-limit.ts` → the four wrappers) is covered by types and by
+  `SEC-RATELIMIT`, not by an integration test — that arrives with `TEST-02`.
+- **`prune_rate_limits()` has no caller.** The function exists; nothing
+  schedules it, so the table grows until something does. Tracked as `RL-02`.

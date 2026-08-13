@@ -20,7 +20,8 @@ as a floor.
 
 ## R0 — Done
 
-Shipped during the audit. Baseline for everything below.
+Shipped during the audit. Baseline for everything below. R1 steps 1–2 have
+since landed too; see that section.
 
 **The critical fix:** model calls now refuse when the caller's org cannot be
 resolved. Before this, any caller naming an org slug they didn't belong to got
@@ -42,17 +43,24 @@ behind it, so it fails a build rather than reappearing quietly.
 **Goal:** the app can be exposed to real users and real money without anything
 unbounded or unobserved.
 
-| Order | Task | Effort | Why here |
+| Order | Task | Effort | Status |
 |---|---|---|---|
-| 1 | **ANL-01a** Sentry | S | Everything after this is easier to debug, and a Server Component crash is currently invisible |
-| 2 | **API-02** Rate limiting | M | SEC-01 closed the unauthenticated hole; an authenticated member can still loop a billable Opus call |
-| 3 | **API-01** `zod` on action inputs | S | Public POST endpoints, runtime-unvalidated. Makes structural what is currently argued per call site |
-| 4 | **SEC-03** Nonce CSP | L | Report-only for a week first. Needs Sentry (step 1) for reports |
-| 5 | **REPO-06** `npm audit` in CI | XS | Cheap; nothing currently surfaces advisories |
-| 6 | **SEO-05** `app/icon.svg` | XS | Cheap; stops every browser 404ing on `/favicon.ico` |
+| 1 | **ANL-01a** Sentry | S | **Done** — server, edge, and client; +33 kB after tree-shaking |
+| 2 | **API-02** Rate limiting | M | **Done** — Postgres fixed-window, per-user and per-org, 7 tests |
+| 3 | **RL-01** Close the unlimited-demo-mode configuration | S | Fell out of 2. Refuse when unenforced *and* production |
+| 4 | **API-01** `zod` on action inputs | S | Public POST endpoints, runtime-unvalidated |
+| 5 | **SEC-03** Nonce CSP | L | Report-only for a week first. Needed Sentry — now unblocked |
+| 6 | **REPO-06** `npm audit` in CI | XS | Cheap; nothing currently surfaces advisories |
+| 7 | **SEO-05** `app/icon.svg` | XS | Cheap; stops every browser 404ing on `/favicon.ico` |
+
+Steps 1 and 2 are complete — see the second-pass section of
+[VERIFICATION.md](VERIFICATION.md). Step 3 is new: it is the configuration the
+rate-limiting work revealed cannot be enforced, and it is cheap.
 
 **Exit:** `npm run audit:site` has zero `SEC-*` warnings. A load test against
-`analyzeUrlAction` is bounded. A deliberately thrown error appears in Sentry.
+`analyzeUrlAction` is bounded. A deliberately thrown error appears in Sentry —
+which needs a real DSN, and is the first thing to do after provisioning the
+project, since the wiring is currently verified only by build and types.
 
 ---
 
@@ -83,7 +91,7 @@ opportunity screens read Postgres. CI runs a browser suite.
 | Order | Task | Effort |
 |---|---|---|
 | 1 | **ANL-01b** PostHog — onboarding funnel first | M |
-| 2 | **ANL-02** Cost dashboard over `ai_runs` | M |
+| 2 | **ANL-02** Cost dashboard over `ai_runs` (and `rate_limits`) | M |
 | 3 | **SEC-07** Next 15 → 16 (clears all 3 advisories) | M |
 | 4 | **UI-04** Load the fonts, or drop them from the token | S |
 | 5 | **UI-05** `loading.tsx` at route segments | S |

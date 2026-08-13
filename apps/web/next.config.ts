@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 /**
  * Response headers applied to every route.
@@ -59,6 +60,68 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+
+  /**
+   * Tree-shake the Sentry features this app does not use.
+   *
+   * The SDK ships tracing and Session Replay in the client bundle and gates
+   * them on these flags at build time. Setting sampleRate to 0 in
+   * `instrumentation-client.ts` disables the *behaviour* but does not remove
+   * the *code* — the first measured build after adding Sentry took shared
+   * First Load JS from 103 kB to 185 kB, which is a large regression to
+   * accept for features deliberately switched off.
+   *
+   * Replay in particular is not "off pending configuration": a replay of the
+   * opportunity page records a named prospect's research, so it needs a
+   * masking policy and a customer conversation before it could ever be
+   * enabled. Shipping its implementation to every visitor meanwhile is pure
+   * cost.
+   */
+  webpack(config, { webpack }) {
+    config.plugins.push(
+      new webpack.DefinePlugin({
+        __SENTRY_DEBUG__: false,
+        __SENTRY_TRACING__: false,
+        __RRWEB_EXCLUDE_REPLAY__: true,
+      }),
+    );
+    return config;
+  },
 };
 
-export default nextConfig;
+/**
+ * Source maps are uploaded only when there is a token to upload them with.
+ *
+ * Without this guard the plugin warns on every build that has no
+ * `SENTRY_AUTH_TOKEN` — which is every local build and every CI build, since
+ * CI deliberately builds with empty credentials to prove nothing reads them.
+ * A warning that fires on every correct build is noise that hides the one that
+ * matters.
+ */
+const uploadsSourceMaps = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Quiet locally, verbose in CI where the output is the only record.
+  silent: !process.env.CI,
+
+  sourcemaps: { disable: !uploadsSourceMaps },
+
+  // Strips the SDK's own debug logging from the production bundle.
+  disableLogger: true,
+
+  /*
+   * Deliberately NOT setting `tunnelRoute`.
+   *
+   * It proxies events through the app's own domain to get past ad blockers,
+   * at the cost of a route that accepts arbitrary payloads and forwards them
+   * to a third party — an open relay with our origin on it. Not worth adding
+   * to close a reporting gap that mostly affects developers, who are the
+   * people most likely to be blocking it on purpose.
+   */
+});

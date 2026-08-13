@@ -27,8 +27,27 @@ re-litigates a decision already made.
 | UI-02 | `not-found.tsx` preserving the 404-not-403 decision | XS |
 | FEAT-01 | `unbuilt` nav state; 12 dead links stop being links | S |
 | REPO-01/02/03/04 | Documentation drift; `NEXT_PUBLIC_SITE_URL` | S |
-| AUDIT-00 | `scripts/audit.mjs` — 32 checks, gating CI | M |
+| AUDIT-00 | `scripts/audit.mjs` — 34 checks, gating CI | M |
 | WHYNOW-01 | Latent uuid bug: slug passed where an org id was expected | XS |
+| **API-02** | **Rate limiting on all four model-calling paths** | **M** |
+| **ANL-01a** | **Sentry error reporting, server + edge + client** | **S** |
+
+### Notes on the two just closed
+
+**API-02** is Postgres-backed (`migrations/0005_rate_limits.sql`), not Redis —
+the limited actions take tens of seconds, so a 5ms round trip to a database we
+already have beats provisioning a second stateful service. Per-user *and*
+per-org counters, because ten seats looping the same form is the same bill.
+Seven database-level tests cover it, including that a non-member cannot
+exhaust another org's quota (the function is `SECURITY DEFINER`, so its
+internal membership check is the only thing enforcing that) and that a member
+cannot write the counters directly. Gated by `SEC-RATELIMIT` and
+`SEC-RATELIMIT-RLS`.
+
+**ANL-01a** costs 33 kB of shared First Load JS (103 → 136 kB). The first
+build measured 185 kB; tree-shaking tracing and Session Replay via
+`DefinePlugin` recovered 49 kB of that. Recorded rather than absorbed quietly,
+because it works against PERF-01/PERF-02 — see **PERF-06**.
 
 ---
 
@@ -36,6 +55,21 @@ re-litigates a decision already made.
 
 Nothing here is optional. Each is either a security or cost control, or the
 thing that tells you when one has failed.
+
+### RL-01 · Close the unlimited-demo-mode configuration · **S** · Phase 5
+A deployment with an `ANTHROPIC_API_KEY` and **no database** has no auth
+(middleware passes through when Supabase is unconfigured), no metering, and
+now no rate limit either — `consumeRateLimit` cannot count in a table that
+does not exist, and returns `unenforced: true`.
+
+This is a misconfiguration rather than a code defect, and the alternative
+(refusing all AI calls without a database) would break the documented
+onboarding-before-migration flow. But it is the one arrangement where the
+SEC-01 hole effectively still exists.
+
+**Fix:** refuse model calls when `unenforced` is true *and* `NODE_ENV` is
+production. Demo mode stays working locally; a production deploy cannot be
+accidentally unlimited.
 
 ### SEC-03 · Nonce-based Content-Security-Policy · **L** · Phase 5
 Generate a per-request nonce in middleware, thread it to the document, emit
@@ -47,19 +81,21 @@ and it breaks production silently when wrong.
 **Depends on:** ANL-01 (needs somewhere to send violation reports).
 **Done when:** `audit.mjs` `SEC-CSP` passes.
 
-### API-02 · Rate limiting on Server Actions and auth · **M** · Phase 4
-Per-user and per-org limits on the four model-calling actions; per-IP limits on
-magic-link requests. `RateLimited` already exists in the design system, unused.
-**Why:** `SEC-01` closed the unauthenticated hole. An authenticated member can
-still loop `analyzeUrlAction`, and every call is a billable Opus request.
-**Blocks:** nothing. **Depends on:** nothing (Upstash/Vercel KV, or Postgres).
+### API-02b · Rate limit magic-link requests · **S** · Phase 4
+The model-calling half is done. What remains is the pre-auth half: an
+unauthenticated POST that causes an email to be sent.
 
-### ANL-01a · Error reporting (Sentry) · **S** · Phase 10
-Wire `SENTRY_DSN` (already reserved). Report from `error.tsx`, `global-error.tsx`,
-and Server Actions.
-**Why P0:** the new error boundary currently `console.error`s, which in
-production is nobody. Every finding below is harder to work on without this,
-and a Server Component crash is invisible today.
+Not solvable with the same mechanism — `consume_rate_limit()` is org-scoped
+and requires `auth.uid()`, and there is nobody to scope by before sign-in.
+**Check Supabase's built-in email rate limits first** (Dashboard → Auth →
+Rate Limits); they are configurable and may be sufficient, which would make
+this a settings task rather than an engineering one. Only build a per-IP
+limiter if they are not.
+
+### UI-06 · Render rate-limit refusals with `RateLimited` · **S** · Phase 2
+Refusals currently surface as a plain error string naming the reset time. The
+design system already has a `RateLimited` component taking a `retryAt`, unused.
+Needs a distinct outcome type through the wrappers rather than a string.
 
 ### API-01 · Runtime validation on Server Action inputs · **S** · Phase 4
 Add `zod`; parse every action argument at the boundary.
@@ -143,6 +179,8 @@ subtle regression ships.
 | DB-02 | Document backup / PITR / recovery | S | 4 | Untested backups are not backups |
 | DB-03 | Generated types in CI | S | 4 | Hand-written types can drift with nothing detecting it |
 | REPO-07 | Document branch strategy + protection | XS | 1 | Fine for one developer; write it down before two |
+| PERF-06 | Bundle-size budget gate in CI | S | 6 | Sentry added 33 kB before anyone measured. A budget makes the next regression a failing step |
+| RL-02 | Scheduled `prune_rate_limits()` | XS | 4 | The function exists; nothing calls it. The table grows until something does |
 
 ---
 
@@ -172,8 +210,6 @@ subtle regression ships.
 ## Dependency graph
 
 ```
-ANL-01a (Sentry) ──────► SEC-03 (CSP needs a report endpoint)
-
 TEST-02 (E2E) ─────────► SEC-07 (don't upgrade a framework untested)
 
 Live Supabase project ─► FEAT-02 ──► PERF-04 (can't profile queries that don't run)
