@@ -43,9 +43,19 @@ export async function whyNow(
   orgSlug: string,
   request: WhyNowRequest,
 ): Promise<WhyNowOutcome> {
-  const { recorder, orgId, recorded } = isAiConfigured()
-    ? await resolveRecorder(orgSlug)
-    : { recorder: null, orgId: orgSlug, recorded: false };
+  /*
+   * Resolved unconditionally, not only when a key is present.
+   *
+   * This used to skip resolution when AI was unconfigured and pass `orgSlug`
+   * onward as `orgId` — which `getActiveIcp` then compared against a uuid
+   * column, so a configured-and-migrated deployment with no ANTHROPIC_API_KEY
+   * failed the query outright (22P02) rather than showing the worked example.
+   * Resolving first also means the membership refusal below applies whether or
+   * not a model would have been called.
+   */
+  const resolved = await resolveRecorder(orgSlug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const { recorder, orgId, recorded } = resolved;
 
   const { data: icp } = await getActiveIcp(orgId);
   if (!icp) {
@@ -81,7 +91,7 @@ export async function whyNow(
     };
   }
 
-  if (!recorder) {
+  if (!isAiConfigured()) {
     return {
       ok: true,
       result: { source: "unconfigured", metered: false, whyNow: example(input) },

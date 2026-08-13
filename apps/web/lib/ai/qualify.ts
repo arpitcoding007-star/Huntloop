@@ -70,7 +70,9 @@ export async function qualify(
     };
   }
 
-  const { recorder, orgId, recorded } = await resolveRecorder(orgSlug);
+  const resolved = await resolveRecorder(orgSlug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const { recorder, orgId, recorded } = resolved;
 
   const { data: icp } = await getActiveIcp(orgId);
   if (!icp) {

@@ -19,20 +19,46 @@ export interface ResolvedRecorder {
 }
 
 /**
+ * Either a recorder to run under, or a refusal.
+ *
+ * The refusal case is the point. See `resolveRecorder`.
+ */
+export type RecorderOutcome =
+  | ({ ok: true } & ResolvedRecorder)
+  | { ok: false; error: string };
+
+/**
  * Resolves the org and returns a recorder for it.
  *
- * Falls back to `nullRecorder` when there is no database yet — which is the
- * normal state during setup, before the migrations are applied. That is a
- * deliberate trade and it is the smaller of two harms: refusing to run without
- * cost accounting would make onboarding untestable before Supabase is wired up,
- * while running unmetered is visible (the screen says so) and bounded (nothing
- * is scheduled yet, so a runaway loop cannot exist).
+ * There are three states here and only two of them may run a model:
+ *
+ *   no database    Normal during setup, before the migrations are applied.
+ *                  Runs unmetered. That is a deliberate trade and the smaller
+ *                  of two harms: refusing would make onboarding untestable
+ *                  before Supabase is wired up, while running unmetered is
+ *                  visible (the screen says so) and bounded (nothing is
+ *                  scheduled, so a runaway loop cannot exist).
+ *   org resolved   Metered, normally.
+ *   org NOT
+ *   resolved       **Refused.**
+ *
+ * That last case used to fall back to `nullRecorder` alongside the first, and
+ * the two are not alike. `organizations` is behind RLS resolving through
+ * `user_org_ids()`, so "no row" does not mean "no such org" — it means *this
+ * caller is not a member of it*. Server Actions are public POST endpoints, so
+ * treating that as unmetered-but-proceed meant any caller could name an org
+ * they don't belong to and get a real Opus call with web_fetch, billed to us
+ * and recorded against nothing. RLS cannot defend this: the tenant boundary
+ * protects rows, and the Anthropic bill is not a row.
+ *
+ * Cost accounting is a boundary here, not just reporting. If the run cannot be
+ * attributed to an org the caller belongs to, the run does not happen.
  */
-export async function resolveRecorder(orgSlug: string): Promise<ResolvedRecorder> {
-  const unmetered = { recorder: nullRecorder, orgId: orgSlug, recorded: false };
-
+export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome> {
   const { db } = await resolveDataSource();
-  if (!db) return unmetered;
+  if (!db) {
+    return { ok: true, recorder: nullRecorder, orgId: orgSlug, recorded: false };
+  }
 
   const { data: org } = await db
     .from("organizations")
@@ -40,7 +66,15 @@ export async function resolveRecorder(orgSlug: string): Promise<ResolvedRecorder
     .eq("slug", orgSlug)
     .maybeSingle();
 
-  if (!org) return unmetered;
+  if (!org) {
+    // Same wording whether the org is missing or merely not yours — see
+    // resolveMembership() in @huntloop/db for why that distinction is not
+    // one we hand out.
+    return {
+      ok: false,
+      error: `No organisation “${orgSlug}” is available to you.`,
+    };
+  }
   const orgId = org.id as string;
 
   const recorder: RunRecorder = {
@@ -98,5 +132,5 @@ export async function resolveRecorder(orgSlug: string): Promise<ResolvedRecorder
     },
   };
 
-  return { recorder, orgId, recorded: true };
+  return { ok: true, recorder, orgId, recorded: true };
 }

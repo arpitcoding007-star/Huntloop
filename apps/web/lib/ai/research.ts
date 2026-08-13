@@ -61,7 +61,11 @@ export async function research(
     };
   }
 
-  const { recorder, orgId, recorded } = await resolveRecorder(orgSlug);
+  const resolved = await resolveRecorder(orgSlug);
+  // Refused before the call, not after: a run that cannot be attributed to an
+  // org the caller belongs to is not a run we pay for. See recorder.ts.
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const { recorder, orgId, recorded } = resolved;
 
   try {
     const { output } = await runTask(researchCompany, { url }, { orgId, recorder });

@@ -54,7 +54,9 @@ export async function recommend(
     };
   }
 
-  const { recorder, orgId, recorded } = await resolveRecorder(orgSlug);
+  const resolved = await resolveRecorder(orgSlug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const { recorder, orgId, recorded } = resolved;
 
   try {
     const { output } = await runTask(recommendSources, icp, { orgId, recorder });
