@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
-> **Second pass appended at the end** — rate limiting (`API-02`) and error
-> reporting (`ANL-01a`). The tables immediately below describe the first pass;
-> current totals are 39 database checks and 34 audit checks.
+> **Two further passes are appended at the end.** The tables immediately below
+> describe the first pass only. Current totals: **39 database checks, 34 audit
+> checks, 0 failing, 7 warnings**, and `SEC-03` is the only P0 item left.
 
 Everything below was run against the working tree after the fixes described in
 [FINDINGS.md](FINDINGS.md). Reproduce the whole thing with:
@@ -278,3 +278,98 @@ the build output.
   `SEC-RATELIMIT`, not by an integration test — that arrives with `TEST-02`.
 - **`prune_rate_limits()` has no caller.** The function exists; nothing
   schedules it, so the table grows until something does. Tracked as `RL-02`.
+
+---
+
+# Third pass — the rest of R1's small items
+
+**Date:** 2026-08-13 · **Baseline:** `a2fd596`
+
+Closes `RL-01`, `API-01`, `API-02b` and `UI-06`, leaving `SEC-03` (a
+nonce-based CSP) as the only remaining P0 item.
+
+## Toolchain
+
+`npm run verify` exits **0** — 39 database checks, 34 audit checks, 0 failing,
+**7 warnings** (down from 8: `SEC-VAL` now passes).
+
+## What each one turned out to be
+
+**RL-01** — `consumeRateLimit` now refuses when it cannot count, but only where
+that matters. Locally, no database is a normal state and refusing would break
+onboarding-before-migration; in production it means auth, metering and limits
+are all absent at once. The gate is `NODE_ENV`, not a production-URL check,
+because preview deploys also build as production, are also publicly reachable,
+and bill to the same account. The operator finds out through Sentry; the user
+gets a message that says nothing about why, since "this server has an AI key
+and no database" is a map of what to attack.
+
+**API-01** — validates shape *and bounds*. The bounds were the real gap: the
+existing reasoning about untrusted input was correct about trust and silent
+about size. Found one live bug on the way — `createOrganisation` did
+`String(formData.get("name"))`, and a `FormData` entry is `string | File`, so
+`String(file)` gives `"[object File]"`: non-empty, slugifies to `objectfile`,
+and creates an organisation. Now parsed rather than coerced.
+
+`SEC-VAL` was strengthened from "is zod installed" to "does every
+`"use server"` module actually parse", matching on `parseInput(`/`safeParse(`
+rather than on the import, since an unused import satisfies a grep and
+validates nothing. Falsified:
+
+```
+=== validation stripped from one action ===
+  [FAIL] SEC-VAL   Every Server Action validates its inputs at runtime
+=== restored ===
+  [ ok ] SEC-VAL
+```
+
+**API-02b** — needed no code, which is the finding. Supabase already enforces
+magic-link limits at the auth layer (2 emails/hour on the built-in sender, 30
+OTPs/hour project-wide, a 60-second per-user window, 360 verifications/hour per
+IP). A limiter in the app would duplicate them and do it worse, because a
+serverless function cannot reliably identify the caller's IP. Documented in
+`SETUP.md` with the trap named: moving to custom SMTP — which you must, since 2
+per hour is unusable — makes the email cap yours to set, and the protection
+then disappears quietly.
+
+**UI-06** — rate-limit refusals render as `RateLimited` with a retry time
+instead of `ErrorState` with a "Try again" button that will not work for
+another forty minutes. On the sources step the retry button is dropped
+entirely on that branch.
+
+This also corrected a modelling error from RL-01: `unenforceable` is no longer
+tagged as a rate limit. From the user's side the two are different events — one
+is their doing and passes with time, the other is a deployment fault — and
+tagging them alike would have put a misconfiguration under the heading "Too
+many requests" with a retry time that never arrives.
+
+## A measurement worth keeping
+
+Same commit, same command, only the environment differing:
+
+| | Shared First Load JS | Middleware |
+|---|---|---|
+| Empty Supabase credentials (what CI does) | 136 kB | **125 kB** |
+| Real credentials (what production does) | 136 kB | **154 kB** |
+
+`NEXT_PUBLIC_*` values are inlined at build time, so with empty strings webpack
+proves the early return in `middleware.ts` is always taken and drops the whole
+Supabase client path behind it. CI builds with empty credentials deliberately —
+that step exists to prove nothing reads the database at build time — so **CI's
+middleware figure understates the deployed one by 29 kB and always will.**
+
+This changes how `PERF-06` has to be built: a budget reading CI's output would
+be guarding a bundle nobody ships. Recorded in the backlog.
+
+## Not verified
+
+- **No live rate-limit refusal was rendered.** `RateLimited` is wired and
+  typechecked, but reaching it needs a real database and 21 requests in an
+  hour. Covered by types and `audit.mjs`, not by a browser.
+- **The Supabase auth rate limits were read from Supabase's documentation, not
+  confirmed against this project's dashboard.** Defaults change and can have
+  been edited. Check **Authentication → Rate Limits** before relying on the
+  numbers in `SETUP.md`.
+- **`RL-01`'s production branch was not executed.** Triggering it needs a
+  production build with an AI key and no database. Verified by reading, types,
+  and the fact that the non-production branch is exercised on every local run.

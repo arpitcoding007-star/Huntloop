@@ -31,8 +31,12 @@ re-litigates a decision already made.
 | WHYNOW-01 | Latent uuid bug: slug passed where an org id was expected | XS |
 | **API-02** | **Rate limiting on all four model-calling paths** | **M** |
 | **ANL-01a** | **Sentry error reporting, server + edge + client** | **S** |
+| **RL-01** | **Refuse model calls when the limiter cannot be enforced** | **S** |
+| **API-01** | **`zod` on every Server Action input** | **S** |
+| **API-02b** | **Magic-link limits — documented; Supabase already enforces them** | **S** |
+| **UI-06** | **Rate-limit refusals render as `RateLimited`, not `ErrorState`** | **S** |
 
-### Notes on the two just closed
+### Notes on what closed
 
 **API-02** is Postgres-backed (`migrations/0005_rate_limits.sql`), not Redis —
 the limited actions take tens of seconds, so a 5ms round trip to a database we
@@ -49,60 +53,48 @@ build measured 185 kB; tree-shaking tracing and Session Replay via
 `DefinePlugin` recovered 49 kB of that. Recorded rather than absorbed quietly,
 because it works against PERF-01/PERF-02 — see **PERF-06**.
 
+**API-01** validates shape *and bounds*. The bounds are the part that was
+actually missing: the existing per-call-site reasoning about why untrusted
+input is harmless was correct about trust and silent about size, so a caller
+could hand `whyNowAction` 500 claims of 50 kB each and we would pay Opus to
+read all of it. `SEC-VAL` now fails CI if any `"use server"` module skips
+parsing — checked by falsification, not assumed.
+
+**API-02b** turned out to need no code. Supabase already enforces magic-link
+limits (2 emails/hour on the built-in sender, 30 OTPs/hour project-wide,
+60-second per-user window, 360 verifications/hour per IP), and a second
+limiter in the app would duplicate them while doing a worse job — a serverless
+function cannot reliably identify the caller's IP. Documented in `SETUP.md`
+instead, including the trap: moving to custom SMTP, which you must, makes the
+email cap yours to set, and the protection then disappears quietly rather than
+loudly.
+
+**UI-06** also corrected a modelling error introduced by RL-01. "Unenforceable"
+is no longer tagged as a rate limit, because from the user's side the two are
+different events: one is their doing and passes with time, the other is a
+deployment fault. Tagging both alike would have put a misconfiguration under
+the heading "Too many requests" with a retry time that never arrives.
+
 ---
 
 ## P0 — Before the next production deploy
 
-Nothing here is optional. Each is either a security or cost control, or the
-thing that tells you when one has failed.
-
-### RL-01 · Close the unlimited-demo-mode configuration · **S** · Phase 5
-A deployment with an `ANTHROPIC_API_KEY` and **no database** has no auth
-(middleware passes through when Supabase is unconfigured), no metering, and
-now no rate limit either — `consumeRateLimit` cannot count in a table that
-does not exist, and returns `unenforced: true`.
-
-This is a misconfiguration rather than a code defect, and the alternative
-(refusing all AI calls without a database) would break the documented
-onboarding-before-migration flow. But it is the one arrangement where the
-SEC-01 hole effectively still exists.
-
-**Fix:** refuse model calls when `unenforced` is true *and* `NODE_ENV` is
-production. Demo mode stays working locally; a production deploy cannot be
-accidentally unlimited.
+One item left. Everything else that was here has shipped — see the closed
+table above.
 
 ### SEC-03 · Nonce-based Content-Security-Policy · **L** · Phase 5
 Generate a per-request nonce in middleware, thread it to the document, emit
 `script-src 'nonce-…' 'strict-dynamic'`. Report-only first, for at least a
 week, before enforcing.
+
 **Why L, not S:** Next injects inline bootstrap scripts. `unsafe-inline`
 certifies nothing, so a real CSP means nonce plumbing plus a report endpoint,
 and it breaks production silently when wrong.
-**Depends on:** ANL-01 (needs somewhere to send violation reports).
+
+**Unblocked:** it needed somewhere to send violation reports, and Sentry is
+now wired.
+
 **Done when:** `audit.mjs` `SEC-CSP` passes.
-
-### API-02b · Rate limit magic-link requests · **S** · Phase 4
-The model-calling half is done. What remains is the pre-auth half: an
-unauthenticated POST that causes an email to be sent.
-
-Not solvable with the same mechanism — `consume_rate_limit()` is org-scoped
-and requires `auth.uid()`, and there is nobody to scope by before sign-in.
-**Check Supabase's built-in email rate limits first** (Dashboard → Auth →
-Rate Limits); they are configurable and may be sufficient, which would make
-this a settings task rather than an engineering one. Only build a per-IP
-limiter if they are not.
-
-### UI-06 · Render rate-limit refusals with `RateLimited` · **S** · Phase 2
-Refusals currently surface as a plain error string naming the reset time. The
-design system already has a `RateLimited` component taking a `retryAt`, unused.
-Needs a distinct outcome type through the wrappers rather than a string.
-
-### API-01 · Runtime validation on Server Action inputs · **S** · Phase 4
-Add `zod`; parse every action argument at the boundary.
-**Why:** Server Actions are public POST endpoints and TypeScript is erased at
-runtime. The existing per-call-site reasoning about why untrusted input is
-harmless is sound but hand-derived; this makes it structural.
-**Done when:** `audit.mjs` `SEC-VAL` passes.
 
 ---
 
@@ -179,8 +171,30 @@ subtle regression ships.
 | DB-02 | Document backup / PITR / recovery | S | 4 | Untested backups are not backups |
 | DB-03 | Generated types in CI | S | 4 | Hand-written types can drift with nothing detecting it |
 | REPO-07 | Document branch strategy + protection | XS | 1 | Fine for one developer; write it down before two |
-| PERF-06 | Bundle-size budget gate in CI | S | 6 | Sentry added 33 kB before anyone measured. A budget makes the next regression a failing step |
+| PERF-06 | Bundle-size budget gate in CI | S | 6 | See the note below — this is not as simple as reading CI's build output |
 | RL-02 | Scheduled `prune_rate_limits()` | XS | 4 | The function exists; nothing calls it. The table grows until something does |
+
+---
+
+### Note on PERF-06 — CI's build measures the wrong number
+
+Measured 2026-08-13, same commit, same command, only the environment differing:
+
+| | Shared First Load JS | Middleware |
+|---|---|---|
+| Empty Supabase credentials (what CI does) | 136 kB | **125 kB** |
+| Real credentials (what production does) | 136 kB | **154 kB** |
+
+`NEXT_PUBLIC_*` variables are inlined at build time, so with empty strings
+webpack can prove `if (!url \|\| !key) return` is always taken in
+`middleware.ts` and drops the entire Supabase client path after it. CI builds
+with empty credentials **on purpose** — that step exists to prove nothing reads
+the database at build time — so CI's middleware figure understates the
+deployed one by 29 kB and always will.
+
+A budget that reads CI's output would therefore be measuring a bundle nobody
+ships. Either build a second time with placeholder non-empty values, or budget
+only the shared client chunks, which are credential-independent.
 
 ---
 

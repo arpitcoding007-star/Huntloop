@@ -302,16 +302,29 @@ function check(phase, id, title, ok, sev, detail) {
     "fail",
   );
 
-  const anyValidation = ["zod", "valibot", "yup"].some((lib) =>
-    (read("apps/web/package.json") ?? "").includes(`"${lib}"`),
+  /*
+   * Not "is zod installed" — that only proves someone ran npm install. Every
+   * "use server" module is a public POST endpoint, so the check is that each
+   * one actually parses what it is handed.
+   *
+   * Matching on `parseInput`/`safeParse` rather than on the import, because an
+   * unused import satisfies a grep and validates nothing.
+   */
+  const actionFiles = walk("apps/web/app").filter(
+    (f) => /\.ts$/.test(f) && /^["']use server["']/.test((read(f) ?? "").trimStart()),
+  );
+  const unvalidated = actionFiles.filter(
+    (f) => !/parseInput\(|safeParse\(/.test(read(f) ?? ""),
   );
   check(
     5,
     "SEC-VAL",
-    "A schema validator guards Server Action inputs",
-    anyValidation,
-    "warn",
-    "Action arguments are currently typed but not validated at runtime.",
+    "Every Server Action validates its inputs at runtime",
+    actionFiles.length > 0 && unvalidated.length === 0,
+    "fail",
+    actionFiles.length === 0
+      ? "No action modules found — the detector is probably wrong."
+      : `Unvalidated: ${unvalidated.join(", ")}`,
   );
 }
 

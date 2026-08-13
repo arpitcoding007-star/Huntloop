@@ -47,15 +47,16 @@ unbounded or unobserved.
 |---|---|---|---|
 | 1 | **ANL-01a** Sentry | S | **Done** — server, edge, and client; +33 kB after tree-shaking |
 | 2 | **API-02** Rate limiting | M | **Done** — Postgres fixed-window, per-user and per-org, 7 tests |
-| 3 | **RL-01** Close the unlimited-demo-mode configuration | S | Fell out of 2. Refuse when unenforced *and* production |
-| 4 | **API-01** `zod` on action inputs | S | Public POST endpoints, runtime-unvalidated |
-| 5 | **SEC-03** Nonce CSP | L | Report-only for a week first. Needed Sentry — now unblocked |
-| 6 | **REPO-06** `npm audit` in CI | XS | Cheap; nothing currently surfaces advisories |
-| 7 | **SEO-05** `app/icon.svg` | XS | Cheap; stops every browser 404ing on `/favicon.ico` |
+| 3 | **RL-01** Close the unlimited-demo-mode configuration | S | **Done** — refuses when unenforceable *and* production |
+| 4 | **API-01** `zod` on action inputs | S | **Done** — shape and bounds; found a `FormData` coercion bug |
+| 5 | **API-02b** Magic-link limits | S | **Done** — no code needed; Supabase enforces them, documented |
+| 6 | **UI-06** Render refusals as `RateLimited` | S | **Done** |
+| 7 | **SEC-03** Nonce CSP | L | **The only P0 left.** Report-only for a week first |
+| 8 | **REPO-06** `npm audit` in CI | XS | Cheap; nothing currently surfaces advisories |
+| 9 | **SEO-05** `app/icon.svg` | XS | Cheap; stops every browser 404ing on `/favicon.ico` |
 
-Steps 1 and 2 are complete — see the second-pass section of
-[VERIFICATION.md](VERIFICATION.md). Step 3 is new: it is the configuration the
-rate-limiting work revealed cannot be enforced, and it is cheap.
+Everything except `SEC-03` and the two XS items is complete — see the second-
+and third-pass sections of [VERIFICATION.md](VERIFICATION.md).
 
 **Exit:** `npm run audit:site` has zero `SEC-*` warnings. A load test against
 `analyzeUrlAction` is bounded. A deliberately thrown error appears in Sentry —

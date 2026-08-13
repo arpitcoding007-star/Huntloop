@@ -18,8 +18,21 @@
  * important rules in the engine. A rule that important is worth checking twice.
  */
 
-export type ClaimKind = "fact" | "inference" | "unknown";
-export type Confidence = "high" | "medium" | "low";
+/**
+ * The member lists are the source of truth and the types derive from them,
+ * matching `PRIORITIES` in qualify-opportunity.ts.
+ *
+ * Written this way round so that a consumer needing the values at runtime — a
+ * schema validator, say — can import them rather than retyping the union as a
+ * literal array. A hand-copied list drifts the first time a kind is added, and
+ * drifts silently: the copy keeps validating and starts rejecting the new
+ * member as invalid.
+ */
+export const CLAIM_KINDS = ["fact", "inference", "unknown"] as const;
+export type ClaimKind = (typeof CLAIM_KINDS)[number];
+
+export const CONFIDENCES = ["high", "medium", "low"] as const;
+export type Confidence = (typeof CONFIDENCES)[number];
 
 export interface Claim {
   kind: ClaimKind;
@@ -45,8 +58,6 @@ export class ClaimValidationError extends Error {
   }
 }
 
-const KINDS: ClaimKind[] = ["fact", "inference", "unknown"];
-const CONFIDENCES: Confidence[] = ["high", "medium", "low"];
 
 /**
  * Rejects a claim that violates §7, rather than softening it.
@@ -61,7 +72,7 @@ export function assertValidClaim(claim: Claim): void {
     throw new ClaimValidationError(why, claim);
   };
 
-  if (!KINDS.includes(claim.kind)) {
+  if (!CLAIM_KINDS.includes(claim.kind)) {
     reject(`Unknown claim kind ${JSON.stringify(claim.kind)}.`);
   }
   if (!claim.claim || !claim.claim.trim()) {

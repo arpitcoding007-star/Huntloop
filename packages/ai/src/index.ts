@@ -30,6 +30,8 @@ export {
 } from "./client.ts";
 
 export {
+  CLAIM_KINDS,
+  CONFIDENCES,
   ClaimValidationError,
   assertValidClaim,
   assertValidClaims,

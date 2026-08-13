@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { resolveDataSource } from "../../../lib/data/source";
 import { RESERVED_SLUGS, slugify } from "../../../lib/slug";
+import { orgNameSchema } from "../../../lib/validation";
 
 /**
  * Creates an organisation and makes the caller its owner.
@@ -22,8 +23,12 @@ export async function createOrganisation(
   _prev: OrgFormState,
   formData: FormData,
 ): Promise<OrgFormState> {
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { error: "Give your organisation a name." };
+  // Parsed rather than coerced: a FormData entry is `string | File`, and
+  // String(file) is "[object File]" — non-empty, slugifiable, and an org
+  // nobody meant to create.
+  const parsed = orgNameSchema.safeParse(formData.get("name"));
+  if (!parsed.success) return { error: "Give your organisation a name." };
+  const name = parsed.data;
 
   const slug = slugify(name);
   if (!slug) {

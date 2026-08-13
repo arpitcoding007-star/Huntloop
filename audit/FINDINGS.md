@@ -42,8 +42,12 @@ themes:
    boundary despite the data layer deliberately throwing. No security headers,
    no robots policy, no metadata base.
 
-**13 fixed · 18 open · 3 accepted.**
+**18 fixed · 13 open · 3 accepted.**
 
+> **Update — third pass.** `RL-01`, `API-01`, `API-02b` and `UI-06` are now
+> closed too, leaving `SEC-03` (a nonce-based CSP) as the only P0 item. Detail
+> in the third-pass section of [VERIFICATION.md](VERIFICATION.md).
+>
 > **Update — second pass.** `API-02` (rate limiting) and `ANL-01a` (error
 > reporting) have since been closed; both are marked Fixed below with what
 > was built and what it cost. Two new items came out of that work: `RL-01`, a
@@ -386,7 +390,7 @@ a scoped memory cannot be subject-less; an outbound message cannot claim
 `memberships (user_id, org_id)` — on the hot path of literally every tenant
 query, since every policy resolves through it.
 
-### API-01 · Server Action inputs are typed but not validated — **Open** (High)
+### API-01 · Server Action inputs are typed but not validated — **Fixed** (was High)
 `analyze/actions.ts`, `welcome/*/actions.ts`
 
 Server Actions are public POST endpoints. TypeScript types are erased at
@@ -398,10 +402,23 @@ traceable to that ICP and nothing more, so there is nothing to escalate with.
 `analyze/actions.ts` explains why the ICP is loaded server-side while evidence
 crosses from the client.
 
-But "there is nothing to escalate with" is an argument about *today's* task
-shapes, re-derived by hand at each call site. A schema validator at the
-boundary (`zod`) would make it structural instead of argued. This matters more
-now that `SEC-01` established these endpoints are directly reachable.
+But "there is nothing to escalate with" was an argument about *today's* task
+shapes, re-derived by hand at each call site — and it was an argument about
+trust that said nothing about **size**. Without bounds, a caller could hand
+`whyNowAction` 500 claims of 50 kB each and we would pay Opus to read all of
+it.
+
+`zod` now parses every action argument at the boundary. Shape and bounds only:
+whether a URL is a real company stays `normalizeUrl`'s job and then the
+model's; whether the caller may act on this org stays `resolveRecorder`'s.
+
+One bug found while writing it: `createOrganisation` did
+`String(formData.get("name"))`, and a `FormData` entry is `string | File` —
+`String(file)` yields `"[object File]"`, which is non-empty, slugifies to
+`objectfile`, and creates an organisation. Now parsed rather than coerced.
+
+`SEC-VAL` was strengthened from "is zod installed" to "does every `use server`
+module actually parse", and verified by falsification.
 
 ### API-02 · No rate limiting anywhere — **Fixed** (was High)
 `packages/db/migrations/0005_rate_limits.sql`, `apps/web/lib/rate-limit.ts`

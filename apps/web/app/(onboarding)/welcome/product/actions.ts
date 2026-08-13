@@ -2,6 +2,8 @@
 
 import { research } from "../../../../lib/ai/research";
 import type { ResearchResult } from "../../../../lib/ai/research";
+import { toFailureState } from "../../../../lib/ai/outcome";
+import { orgSlugSchema, parseInput, urlInputSchema } from "../../../../lib/validation";
 
 /**
  * The onboarding step's one server action.
@@ -15,12 +17,20 @@ import type { ResearchResult } from "../../../../lib/ai/research";
 export interface ResearchState {
   result?: ResearchResult;
   error?: string;
+  /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
+  rateLimited?: { retryAt: string | null };
 }
 
 export async function researchCompanyAction(
   org: string,
   url: string,
 ): Promise<ResearchState> {
-  const outcome = await research(org, url);
-  return outcome.ok ? { result: outcome.result } : { error: outcome.error };
+  const slug = parseInput(orgSlugSchema, org, "organisation");
+  if (!slug.ok) return { error: slug.error };
+
+  const target = parseInput(urlInputSchema, url, "address");
+  if (!target.ok) return { error: target.error };
+
+  const outcome = await research(slug.value, target.value);
+  return outcome.ok ? { result: outcome.result } : toFailureState(outcome);
 }

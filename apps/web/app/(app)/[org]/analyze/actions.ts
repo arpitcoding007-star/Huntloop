@@ -4,6 +4,13 @@ import { qualify } from "../../../../lib/ai/qualify";
 import type { QualifyResult } from "../../../../lib/ai/qualify";
 import { whyNow } from "../../../../lib/ai/why-now";
 import type { WhyNowRequest, WhyNowResult } from "../../../../lib/ai/why-now";
+import { toFailureState } from "../../../../lib/ai/outcome";
+import {
+  orgSlugSchema,
+  parseInput,
+  urlInputSchema,
+  whyNowRequestSchema,
+} from "../../../../lib/validation";
 
 /**
  * The analyze screen's one server action.
@@ -22,19 +29,32 @@ import type { WhyNowRequest, WhyNowResult } from "../../../../lib/ai/why-now";
 export interface AnalyzeState {
   result?: QualifyResult;
   error?: string;
+  /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
+  rateLimited?: { retryAt: string | null };
 }
 
 export async function analyzeUrlAction(
   org: string,
   url: string,
 ): Promise<AnalyzeState> {
-  const outcome = await qualify(org, url);
-  return outcome.ok ? { result: outcome.result } : { error: outcome.error };
+  /* Validated before anything else runs. These parameters are typed but not
+     checked — this is a public POST endpoint and the types are gone by the
+     time it executes. See lib/validation.ts. */
+  const slug = parseInput(orgSlugSchema, org, "organisation");
+  if (!slug.ok) return { error: slug.error };
+
+  const target = parseInput(urlInputSchema, url, "address");
+  if (!target.ok) return { error: target.error };
+
+  const outcome = await qualify(slug.value, target.value);
+  return outcome.ok ? { result: outcome.result } : toFailureState(outcome);
 }
 
 export interface WhyNowState {
   result?: WhyNowResult;
   error?: string;
+  /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
+  rateLimited?: { retryAt: string | null };
 }
 
 /**
@@ -49,11 +69,22 @@ export interface WhyNowState {
  * is handed, so a rewritten list produces a why-now traceable to that list and
  * nothing more. There is no privileged read here to abuse, and the ICP — the
  * one input that is genuinely tenant data — is loaded server-side.
+ *
+ * The schema below is therefore not about trust — it is about cost. Untrusted
+ * *shape* was always fine here; untrusted *size* was not. Without the bounds,
+ * a caller could hand us 500 claims of 50 kB each and we would pay Opus to
+ * read all of it.
  */
 export async function whyNowAction(
   org: string,
   request: WhyNowRequest,
 ): Promise<WhyNowState> {
-  const outcome = await whyNow(org, request);
-  return outcome.ok ? { result: outcome.result } : { error: outcome.error };
+  const slug = parseInput(orgSlugSchema, org, "organisation");
+  if (!slug.ok) return { error: slug.error };
+
+  const parsed = parseInput(whyNowRequestSchema, request, "request");
+  if (!parsed.ok) return { error: parsed.error };
+
+  const outcome = await whyNow(slug.value, parsed.value);
+  return outcome.ok ? { result: outcome.result } : toFailureState(outcome);
 }
