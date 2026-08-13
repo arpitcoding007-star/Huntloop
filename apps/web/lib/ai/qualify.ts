@@ -9,7 +9,8 @@ import {
 } from "@huntloop/ai";
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
-import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
+import { consumeRateLimit, refusal } from "../rate-limit";
+import type { AiFailure } from "./outcome";
 
 /**
  * `qualify_opportunity`, wrapped for the §17 analyze screen.
@@ -43,7 +44,7 @@ export interface QualifyResult {
 
 export type QualifyOutcome =
   | { ok: true; result: QualifyResult }
-  | { ok: false; error: string };
+  | AiFailure;
 
 export async function qualify(
   orgSlug: string,
@@ -91,7 +92,7 @@ export async function qualify(
   // After the ICP check: a caller with no ICP gets an explanation rather than
   // silently burning a unit of budget on a request that cannot be answered.
   const budget = await consumeRateLimit(orgId, "qualify_opportunity");
-  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
+  if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(

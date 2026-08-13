@@ -10,7 +10,8 @@ import {
 } from "@huntloop/ai";
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
-import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
+import { consumeRateLimit, refusal } from "../rate-limit";
+import type { AiFailure } from "./outcome";
 
 /**
  * `explain_why_now`, wrapped for the screens that ask it.
@@ -31,7 +32,7 @@ export interface WhyNowResult {
 
 export type WhyNowOutcome =
   | { ok: true; result: WhyNowResult }
-  | { ok: false; error: string };
+  | AiFailure;
 
 export interface WhyNowRequest {
   companyName: string;
@@ -102,7 +103,7 @@ export async function whyNow(
   // Below the two early returns above, both of which answer without a model
   // call — neither should consume budget.
   const budget = await consumeRateLimit(orgId, "explain_why_now");
-  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
+  if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(explainWhyNow, input, { orgId, recorder });

@@ -8,7 +8,8 @@ import {
   type SourceRecommendation,
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
-import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
+import { consumeRateLimit, refusal } from "../rate-limit";
+import type { AiFailure } from "./outcome";
 
 /**
  * `recommend_sources`, wrapped for the onboarding step that calls it.
@@ -33,7 +34,7 @@ export interface SourcesResult {
 
 export type SourcesOutcome =
   | { ok: true; result: SourcesResult }
-  | { ok: false; error: string };
+  | AiFailure;
 
 export async function recommend(
   orgSlug: string,
@@ -60,7 +61,7 @@ export async function recommend(
   const { recorder, orgId, recorded } = resolved;
 
   const budget = await consumeRateLimit(orgId, "recommend_sources");
-  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
+  if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(recommendSources, icp, { orgId, recorder });

@@ -169,6 +169,31 @@ missing, go to **Authentication → Providers** in the dashboard and confirm
    shows you on that same Providers page
 4. Paste the Client ID and Secret back into Supabase and save
 
+### Sign-in rate limits — check these before going live
+
+Sending a magic link is an unauthenticated action that causes an email to be
+sent, so it needs a limit. **Supabase already enforces one**, which is why
+there is no code for this in the repo — a second limiter in the app would
+duplicate it and do a worse job, because a serverless function cannot reliably
+identify the caller's IP.
+
+Defaults worth knowing:
+
+| | Default |
+|---|---|
+| Emails per hour (built-in sender) | **2** |
+| OTP / magic links per hour, project-wide | 30 |
+| Per-user window between requests | 60 seconds |
+| Verification attempts per hour, per IP | 360 |
+
+Adjust under **Authentication → Rate Limits**.
+
+> **The one that will bite you.** The built-in email sender's limit of 2 per
+> hour is unusable for real signups, so you will move to custom SMTP — and at
+> that moment the email cap becomes *yours* to set. Set it deliberately when
+> you do. The protection does not disappear loudly; it disappears by becoming
+> whatever your SMTP provider's ceiling happens to be.
+
 ---
 
 ## Step 6 — Set up your organisation

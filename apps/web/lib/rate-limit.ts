@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import type { TaskName } from "@huntloop/ai";
 import { resolveDataSource } from "./data/source";
 
@@ -29,6 +30,58 @@ export interface RateLimitDecision {
    * answer is available to whoever asks "was this call limited?".
    */
   unenforced?: boolean;
+  /**
+   * Why the call was refused. Absent when `allowed`.
+   *
+   * `exhausted`     the budget is spent — a normal, user-facing outcome.
+   * `unenforceable` the limit could not be applied at all. Not the user's
+   *                 doing and not something they can wait out.
+   */
+  reason?: "exhausted" | "unenforceable";
+}
+
+/**
+ * A refusal, in the shape the AI wrappers return.
+ *
+ * `kind` exists so a screen can tell "you've done this too often" apart from
+ * "that failed" and render the right thing — `RateLimited` carries a retry
+ * time, `ErrorState` carries a retry button, and showing either in the other's
+ * place is actively misleading.
+ *
+ * `retryAt` is an ISO string rather than a Date because this crosses a Server
+ * Action boundary, and a string has one unambiguous representation on both
+ * sides.
+ */
+export interface RateLimitRefusal {
+  ok: false;
+  kind: "rate_limited";
+  error: string;
+  retryAt: string | null;
+}
+
+export function refusal(
+  decision: RateLimitDecision,
+): RateLimitRefusal | { ok: false; error: string } {
+  /*
+   * `unenforceable` is deliberately NOT tagged as a rate limit.
+   *
+   * From the user's side the two are different events: one is "you have done
+   * this too often", which is their doing and passes with time, and the other
+   * is "this deployment is misconfigured", which is neither. Tagging both the
+   * same way would put them under a heading reading "Too many requests" and a
+   * retry time that will never arrive — blaming the user for our mistake, and
+   * telling them to wait for something that is not coming.
+   */
+  if (decision.reason === "unenforceable") {
+    return { ok: false, error: rateLimitMessage(decision) };
+  }
+
+  return {
+    ok: false,
+    kind: "rate_limited",
+    error: rateLimitMessage(decision),
+    retryAt: decision.resetAt?.toISOString() ?? null,
+  };
 }
 
 interface Limit {
@@ -85,19 +138,41 @@ export async function consumeRateLimit(
   /*
    * No database → nothing to count in.
    *
-   * This is the same trade `resolveRecorder` already makes for cost accounting
-   * and it is made here for consistency rather than re-argued: before the
-   * migrations are applied there is no `rate_limits` table, and refusing would
-   * make onboarding untestable during setup. It is bounded by the fact that
-   * this configuration has no auth either — it is a local demo, not a
-   * deployment — and it is reported rather than hidden.
+   * Locally this is a normal state: before the migrations are applied there is
+   * no `rate_limits` table, and refusing would make onboarding untestable
+   * during setup. It is bounded by the fact that this configuration has no
+   * auth either — it is a demo, not a deployment.
    *
-   * A deployment that has an ANTHROPIC_API_KEY and no database is the one
-   * configuration where this is a real hole. That is a misconfiguration, and
-   * it is recorded in the audit backlog rather than papered over here.
+   * In production it is none of those things. A deployment with an
+   * ANTHROPIC_API_KEY and no database has no auth, no metering, and no limit,
+   * which is every control removed at once — so it refuses instead. That is
+   * RL-01 in the audit backlog, and the asymmetry is the whole point: the
+   * permissive branch is only reachable where nothing is at stake.
+   *
+   * NODE_ENV rather than a check for the production URL, deliberately: preview
+   * deploys also build as production, they are also publicly reachable, and
+   * their model calls are billed to the same account.
    */
   if (!db) {
-    return { allowed: true, remaining: Infinity, resetAt: null, unenforced: true };
+    if (process.env.NODE_ENV !== "production") {
+      return { allowed: true, remaining: Infinity, resetAt: null, unenforced: true };
+    }
+
+    // The user cannot act on this and did nothing wrong; the operator can, and
+    // would otherwise never find out. Sentry is the right audience.
+    Sentry.captureMessage(
+      "Rate limiting is unenforceable: a production deployment has an AI key " +
+        "and no database. Refusing model calls. See audit/BACKLOG.md RL-01.",
+      "error",
+    );
+
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: null,
+      unenforced: true,
+      reason: "unenforceable",
+    };
   }
 
   const perUser = await consumeOne(db, orgId, task, limit.perUser, limit.windowSeconds, true);
@@ -144,15 +219,25 @@ async function consumeOne(
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error("Rate limit check returned no decision.");
 
+  const allowed = Boolean(row.allowed);
   return {
-    allowed: Boolean(row.allowed),
+    allowed,
     remaining: Number(row.remaining ?? 0),
     resetAt: row.reset_at ? new Date(row.reset_at) : null,
+    ...(allowed ? {} : { reason: "exhausted" as const }),
   };
 }
 
 /** Message for a caller that has been refused. Names when, not just no. */
 export function rateLimitMessage(decision: RateLimitDecision): string {
+  if (decision.reason === "unenforceable") {
+    // Says nothing about why. The cause is a deployment misconfiguration, and
+    // "this server has an AI key but no database" is a map of what to attack.
+    return (
+      "This feature is temporarily unavailable. The team has been notified — " +
+      "nothing you did caused this."
+    );
+  }
   if (!decision.resetAt) {
     return "You've made too many requests. Try again shortly.";
   }

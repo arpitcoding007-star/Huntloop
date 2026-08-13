@@ -9,6 +9,7 @@ import {
   CardHeader,
   ClaimBadge,
   ErrorState,
+  RateLimited,
   EvidenceList,
   LoadingSkeleton,
   PriorityBadge,
@@ -140,13 +141,22 @@ export function Analyzer({ org }: { org: string }) {
         </p>
       </header>
 
-      {state.error && (
+      {/* A rate limit is not a failure, and rendering it as one gives the user
+          a "Try again" button for something that will not succeed for another
+          forty minutes. RateLimited states the time instead — absolutely, not
+          as a countdown; see the reasoning in States.tsx. */}
+      {state.rateLimited ? (
+        <RateLimited
+          className="mt-6"
+          retryAt={state.rateLimited.retryAt ?? undefined}
+        />
+      ) : state.error ? (
         <ErrorState
           className="mt-6"
           title="That didn't work"
           description={state.error}
         />
-      )}
+      ) : null}
 
       <form onSubmit={analyze} className="mt-6 flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1">

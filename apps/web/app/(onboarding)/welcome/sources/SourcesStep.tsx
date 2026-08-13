@@ -10,6 +10,7 @@ import {
   CardHeader,
   EmptyState,
   ErrorState,
+  RateLimited,
   LoadingSkeleton,
 } from "@huntloop/ui";
 import { Check, Compass, Plus, X } from "lucide-react";
@@ -145,13 +146,24 @@ export function SourcesStep({ org }: { org: string }) {
             substituted for a failed run is the one error here nobody would
             ever catch — the names would be real, and the hunt would simply
             never surface anything. */}
-        <ErrorState
-          className="mt-6 max-w-2xl"
-          title="We couldn't work out your sources"
-          description="Nothing was saved. You can try again, or add your own sources on the next screen."
-          detail={state.error}
-          onRetry={() => void run()}
-        />
+        {/* No onRetry on the rate-limited branch: retrying is exactly what
+            will not work, and offering the button invites the user to keep
+            spending a budget that is already gone. */}
+        {state.rateLimited ? (
+          <RateLimited
+            className="mt-6 max-w-2xl"
+            retryAt={state.rateLimited.retryAt ?? undefined}
+            description="Nothing was saved. You can add your own sources on the next screen in the meantime."
+          />
+        ) : (
+          <ErrorState
+            className="mt-6 max-w-2xl"
+            title="We couldn't work out your sources"
+            description="Nothing was saved. You can try again, or add your own sources on the next screen."
+            detail={state.error}
+            onRetry={() => void run()}
+          />
+        )}
       </>
     );
   }

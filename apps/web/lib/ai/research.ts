@@ -8,7 +8,8 @@ import {
   type CompanyUnderstanding,
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
-import { consumeRateLimit, rateLimitMessage } from "../rate-limit";
+import { consumeRateLimit, refusal } from "../rate-limit";
+import type { AiFailure } from "./outcome";
 
 /**
  * `research_company`, wrapped for the screens that call it.
@@ -39,7 +40,7 @@ export interface ResearchResult {
 
 export type ResearchOutcome =
   | { ok: true; result: ResearchResult }
-  | { ok: false; error: string };
+  | AiFailure;
 
 export async function research(
   orgSlug: string,
@@ -71,7 +72,7 @@ export async function research(
   // The most expensive task in the product: ~8 page fetches plus Opus at high
   // effort. Consumed before the call for the reason given in rate-limit.ts.
   const budget = await consumeRateLimit(orgId, "research_company");
-  if (!budget.allowed) return { ok: false, error: rateLimitMessage(budget) };
+  if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(researchCompany, { url }, { orgId, recorder });

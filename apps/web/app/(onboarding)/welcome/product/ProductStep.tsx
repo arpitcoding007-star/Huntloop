@@ -9,6 +9,7 @@ import {
   CardHeader,
   ClaimBadge,
   ErrorState,
+  RateLimited,
   LoadingSkeleton,
 } from "@huntloop/ui";
 import { Globe, Pencil } from "lucide-react";
@@ -84,13 +85,18 @@ export function ProductStep({ org }: { org: string }) {
           before anything else happens.
         </p>
 
-        {state.error && (
+        {state.rateLimited ? (
+          <RateLimited
+            className="mt-6 max-w-lg"
+            retryAt={state.rateLimited.retryAt ?? undefined}
+          />
+        ) : state.error ? (
           <ErrorState
             className="mt-6 max-w-lg"
             title="That didn't work"
             description={state.error}
           />
-        )}
+        ) : null}
 
         <form onSubmit={research} className="mt-6 flex max-w-lg flex-wrap gap-2">
           <div className="relative min-w-0 flex-1">
