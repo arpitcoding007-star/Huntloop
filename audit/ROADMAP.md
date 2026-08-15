@@ -68,7 +68,7 @@ unbounded or unobserved.
 
 ---
 
-## R2 — Make it real · blocked on provisioning
+## R2 — Make it real · **Done**
 
 **Goal:** the product stops rendering fixtures and starts being testable
 against real rows.
@@ -77,16 +77,36 @@ against real rows.
 |---|---|---|
 | 1 | **TEST-02** Playwright | **Done** — 68 tests, desktop + mobile, gating CI |
 | 2 | **TEST-02b** Scripted-client tests for `lib/ai/*` | **Done** — SEC-01 is now "cannot regress", verified by falsification |
-| 3 | **FEAT-02** Live opportunity queries | **Blocked** — needs a migrated project with seed data |
+| 3 | **FEAT-02** Live opportunity queries | **Done** — both loaders return rows; seeded by `npm run db:seed` |
 | 4 | **FEAT-04** Role-aware UI | **Done** — shipped against fixtures, live branch written |
 | 5 | **PERF-01** `next/link` | **Done** |
 
 Steps 1, 2, 4 and 5 landed ahead of the ordering, because none of them needed a
-database. Step 3 is the whole of what is left, and the reason it is left is
-recorded in `lib/data/opportunities.ts`: writing that join blind produces a
-query that reads as finished and has never returned a row.
+database. Step 3 waited, and the waiting was the right call: the join it would
+have produced was wrong in three ways that only running it revealed — an
+embed PostgREST cannot follow, a uuid comparison against a URL segment, and
+soft deletes filtered at one level of a two-level result. All three are now
+comments beside the code that handles them.
 
-**Exit:** `audit.mjs` `FEAT-FIXTURE` passes. It is the only warning left.
+What unblocked it was not a credential. The credentials were already in
+`apps/web/.env.local`; what was missing was *rows*. `npm run db:seed` is that,
+made repeatable.
+
+**Exit:** `audit.mjs` `FEAT-FIXTURE` passes — **met**. The audit now runs 36
+checks with 0 failing and **0 warnings**.
+
+Connecting to the project produced two new defects, both fixed:
+
+- **`FEAT-07`** — closing `FEAT-02` silenced the demo-data banner, which was
+  the only thing marking the Command Center's hard-coded pipeline figures as
+  invented. A database made the §7 problem worse. `DemoFigures` has no quiet
+  state; `FEAT-DEMO` fails the build without it.
+- **`DB-04`** — a schema with `0001`–`0004` applied and `0005` missing reported
+  as fully applied, so every screen rendered live rows while every model call
+  threw. `npm run db:doctor` is the standing check.
+
+Both are the argument for the release: neither was visible to four passes of
+review, and both appeared within minutes of a real connection.
 
 ---
 
@@ -149,10 +169,17 @@ does not read as though work remains where it does not.
 
 | Needs | Unblocks |
 |---|---|
-| A migrated Supabase project with seed data | `FEAT-02`, `TEST-02c`, `DB-03`, `OPS-02`, and the first real `ANL-02` figures |
+| **`0005` + `0006` applied** to the configured project | `DB-05` — and with it every model-calling path, which refuses until `consume_rate_limit()` exists |
+| `DATABASE_URL` (the database password) | Applying those migrations from the command line instead of the SQL editor; `PERF-04`, because PostgREST cannot return a query plan; `DB-03` |
 | `ANTHROPIC_API_KEY` | `AI-01` — four tasks that have never called the real API |
 | A Sentry DSN | `OPS-01` — a week of quiet CSP reports, then `CSP_ENFORCE=true` |
 | `NEXT_PUBLIC_POSTHOG_KEY` | The onboarding funnel emitting anything at all |
+| A second seeded org, or a hosted test project | `TEST-02c` — the membership-guard 404 needs an org the user is *not* in |
+
+The row that used to head this table — "a migrated Supabase project with seed
+data" — is gone, because the project exists, four of its five migrations are
+applied, and `npm run db:seed` provides the data. What is left of it is the
+first two rows: one paste into a SQL editor, and one password.
 
 See [AGENT-REACH.md](AGENT-REACH.md) for the full account of what only a human
 can provide.

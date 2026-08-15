@@ -104,6 +104,35 @@ Every migration runs against PGlite in `npm test`. If it needs an extension
 PGlite does not have, guard it the way `0006_prune_schedule.sql` does and say
 plainly in the file which half is therefore unverified.
 
+**They are applied to hosted projects by hand**, in the Supabase SQL editor,
+because `DATABASE_URL` is not set anywhere. That means there is no ledger of
+what has run, and "applied everywhere" is a belief rather than a fact. Two
+consequences worth holding on to:
+
+- Run `npm run db:doctor` against a project before assuming its schema is
+  current. It infers the state from what each file creates, and it exists
+  because a project with `0001`–`0004` applied looks fully migrated to the app
+  — see `DB-04` in [audit/FINDINGS.md](audit/FINDINGS.md).
+- When you add a migration, add its probe to the list in
+  `packages/db/scripts/doctor.ts`. Pick the *last* object the file creates, so
+  a half-run file reports as missing rather than as applied.
+
+## Seeding
+
+`npm run db:seed` writes one organisation with three worked opportunities, and
+`-- --reset` removes it. It is a development tool, not a fixture loader: the
+unit suites run against PGlite and stay self-contained.
+
+Keep it idempotent, and keep it scoped to the organisation it names — it runs
+on the service-role client, which bypasses RLS entirely, so that scoping is the
+only thing preventing it from reaching another tenant. Rule 3 in
+`packages/db/src/admin.ts` applies to every statement in it.
+
+Add rows that exercise a *state the interface must distinguish*, not rows that
+look impressive. The seed's third company has no buyer and three unmeasured
+score dimensions precisely because a dataset where every column is populated
+proves nothing about the NULL path — which is the one that ships.
+
 ## The standard the codebase holds itself to
 
 Read a few files before writing new ones — the conventions are visible and

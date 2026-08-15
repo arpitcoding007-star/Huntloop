@@ -315,24 +315,45 @@ prospect data and had not turned it on its own navigation.
 Now gated by `audit.mjs` `NAV-01`, which parses the nav and the route tree and
 fails CI on any linked-but-missing destination.
 
-### FEAT-02 · Two screens still render fixtures — **Open** (High)
+### FEAT-02 · Two screens still render fixtures — **Fixed** (was High)
 `lib/data/opportunities.ts`
 
-`listOpportunities()` and `getOpportunity()` have their live branches written
-against real table and column names, but both throw rather than return:
+`listOpportunities()` and `getOpportunity()` had their live branches written
+against real table and column names, but both threw rather than returned:
 
 > `getOpportunity: live mapping is not implemented yet. Connect Supabase and
 > finish this against real rows rather than trusting an unrun query.`
 
-**This is the right call and should not be "fixed" by silencing it.** The
-comment explains that assembling the full §47 page needs evidence, triggers,
-and buyers joined in, and writing that blind would produce a query that reads
-as finished and has never returned a row. Recorded as the largest remaining
-functional gap, not as a defect in judgement.
+**That was the right call and was not "fixed" by silencing it.** The refusal
+stood until there was something to run the query against. It now has one: a
+migrated project, seeded by `npm run db:seed`, queried as a real user with RLS
+on. Both loaders return rows; both screens render them; `FEAT-FIXTURE` passes
+and the audit has no warnings left.
 
-Consequence today: with Supabase connected and migrated, the Command Center and
-both opportunity screens throw. Before this pass that throw hit Next's default
-error page; it now lands in `error.tsx` (`UI-01`).
+The refusal earned its keep. Three things were wrong in ways only running it
+could show, and each is now a comment in the file:
+
+1. **`evidence` cannot be embedded.** Its subject is polymorphic
+   (`subject_type` + `subject_id`), so there is no foreign key for PostgREST
+   to follow. A join written from the ERD would have nested it and failed at
+   runtime. It is a second query, batched across the list rather than issued
+   per row.
+2. **A non-uuid id raises rather than returning nothing.** The detail route's
+   `id` comes from a URL and meets a `uuid` column, so an old link to a
+   fixture slug (`/opportunities/alphio-ai`) produced `22P02 invalid input
+   syntax` — a 500 where a 404 belongs. Rejected before the query now.
+3. **Soft deletes need filtering on the embedded rows too.** A deleted trigger
+   or person lives under `companies`, where the top-level `deleted_at is null`
+   does not reach it.
+
+Two shapes had no column behind them and are derived rather than invented.
+`recommendedAction` is a function of the verdict and whether a buyer has been
+identified — both visible on the page directly above it, so the recommendation
+can be checked against its inputs. An owner renders as "You" or "another
+member": naming a colleague would mean reading `auth.users`, which the tenant
+client cannot do and should not.
+
+One thing this exposed and did not fix: `UI-07`, below.
 
 ### FEAT-03 · Authentication is complete and well-reasoned — **No finding**
 
@@ -507,6 +528,109 @@ Documented and reasoned: generation needs a live project, this package must
 typecheck offline, and the header says the SQL wins on conflict. Correct as a
 trade — but nothing *detects* the drift. Once a Supabase project is stably
 available, add `supabase gen types` in CI and diff.
+
+### DB-04 · A partially applied schema reports as fully applied — **Fixed**
+`apps/web/lib/data/source.ts` · `apps/web/lib/rate-limit.ts`
+
+Found by connecting to the project this repository is configured against.
+Migrations `0001`–`0004` had been applied and `0005` had not.
+
+`isSchemaApplied()` probes one table, `organizations`. That is the right check
+for the question it asks — "is this a fresh project or a migrated one?" — and
+it answered yes, so every screen rendered live rows and no banner appeared.
+Meanwhile `consume_rate_limit()` did not exist, so every model-calling path
+threw `Rate limit check failed: Could not find the function
+public.consume_rate_limit` on a screen with no way to explain it.
+
+The failure was safe — it failed closed, and nothing spent money — but it was
+unreadable, and the state that produced it is the *normal* one during setup:
+migrations are applied by hand, one file at a time, in the Supabase SQL editor.
+
+Two changes, deliberately not one:
+
+1. `consumeOne()` now recognises a missing limiter schema by error code and
+   returns the `unenforceable` decision the code already had for "there is no
+   database to count in". Same refusal, same fail-closed behaviour, same
+   Sentry alert to the operator — but the user sees the designed message and
+   the operator is told which migration to run.
+2. `npm run db:doctor` reports which migrations a live project has actually
+   had applied, and names the file to run next. Inferred from what each file
+   creates, because hand-applied migrations leave no ledger to consult.
+
+The probe itself is unchanged, and that is the decision worth recording.
+Widening it to "is every migration applied" would send a project with
+`0001`–`0004` back to demo mode and hide real rows behind a banner — worse,
+not better. The right shape is a specific, actionable answer from the
+component that needs the missing object, which is what (1) does.
+
+### FEAT-07 · Connecting a database *removed* the demo-data marking — **Fixed** (High)
+`app/(app)/[org]/dashboard/page.tsx` · `sources/page.tsx` · `DemoFigures.tsx`
+
+The most important finding of this pass, and it was created by fixing another
+one.
+
+`DataSourceBanner` answers "is this deployment connected to a database?" and
+renders nothing when the answer is yes. That was sufficient while nothing was
+connected: every screen was demo, and every screen was marked. Once a project
+was migrated and seeded, the banner correctly went quiet — and the Command
+Center went on rendering `12 hot`, `34 warm`, `180 discovered`, `2 meetings`,
+all hard-coded, now beside opportunity screens showing genuinely real rows,
+with **nothing at all saying which was which**.
+
+That is the exact failure `DataSourceBanner`'s own header warns about — §7
+aimed at ourselves, "a dashboard rendering invented pipeline numbers with no
+marking". Connecting a database made it worse rather than better, because it
+removed the only marking there was.
+
+The Command Center also carried a `<Badge variant="brand" dot>Live</Badge>`.
+It meant the hunt was live; next to invented figures it read as a claim that
+they were. Removed.
+
+**Why `FEAT-FIXTURE` did not catch it.** That check greps `page.tsx` for an
+import of `lib/fixtures`. The Command Center never had one — its numbers were
+`value={12}` written inline — so it passed while being the worst offender.
+
+**The fix, and why it has no quiet state.** `DemoFigures` takes no
+`DataSource`. A screen renders it when its numbers do not come from the
+database and stops on the commit that wires it up, which is a change a
+reviewer can see — unlike a banner that silently stops appearing. `FEAT-DEMO`
+in `audit.mjs` now **fails** (not warns) if a screen under `/[org]` neither
+reads through `lib/data` nor renders it. Verified by falsification: removing
+the notice from the sources screen fails the check and names the file.
+
+### UI-07 · A missing opportunity answers 200, not 404 — **Open** (Low)
+`apps/web/app/(app)/[org]/loading.tsx` · `opportunities/loading.tsx`
+
+`/[org]/opportunities/<id that does not exist>` renders the not-found page
+with an HTTP **200**. Measured against a production build, signed in:
+
+| Route | Status |
+|---|---|
+| `/notanorg/opportunities` (not a member) | **404** ✓ |
+| `/acme/opportunities/00000000-…` (no such row) | **200** ✗ |
+| `/acme/opportunities/alphio-ai` (stale fixture slug) | **200** ✗ |
+
+Both call `notFound()`. The difference is *when*. The org guard is in a
+layout, which resolves before the response begins, so its `notFound()` sets
+the status. The detail page sits under two `loading.tsx` boundaries, so Next
+flushes the shell — with a 200 — and streams the page after it. A status
+cannot be changed once sent.
+
+Not introduced by FEAT-02: both `loading.tsx` files and the page's
+`notFound()` predate it. It became *visible* then, because the page started
+resolving real ids and rejecting non-uuids.
+
+Low, and left open rather than fixed, because the fix is worth more scrutiny
+than the defect. These routes are authenticated and `Disallow`ed, so no
+crawler sees the wrong status; the cost is to monitoring, and to any client
+that trusts a status code over a body. Removing the loading boundaries would
+fix it and would remove the skeletons that make the app feel instant —
+trading a visible benefit for an invisible one. Scoping them with route
+groups (`opportunities/(list)/loading.tsx`) keeps both, at the cost of a
+routing tree shaped around a status code.
+
+That is a product decision, not a cleanup, so it is recorded rather than
+taken.
 
 ---
 

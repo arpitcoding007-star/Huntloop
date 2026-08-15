@@ -510,6 +510,38 @@ function check(phase, id, title, ok, sev, detail) {
     "warn",
     fixtureScreens.map((f) => f.replace("apps/web/app", "")).join(", "),
   );
+
+  /*
+   * FEAT-DEMO — the check that FEAT-FIXTURE could not make.
+   *
+   * FEAT-FIXTURE greps for an import of `lib/fixtures`. The Command Center
+   * never had one: its numbers were `value={12}` written inline, so it passed
+   * that check while rendering invented pipeline figures. That was tolerable
+   * only while `DataSourceBanner` was on every page saying "demo data" —
+   * which it stops doing the moment a database is connected, exactly when the
+   * surrounding screens start showing real rows and the invented ones become
+   * indistinguishable from them.
+   *
+   * So: a screen under /[org] must either read through `lib/data` — where
+   * every loader carries its own `DataSource` — or render `DemoFigures`,
+   * which has no quiet state. Failing rather than warning, because §7 aimed
+   * at ourselves is the product's central claim and this is the one check
+   * standing behind it.
+   */
+  const unmarked = walk("apps/web/app/(app)")
+    .filter((f) => f.endsWith("page.tsx"))
+    .filter((f) => {
+      const src = read(f) ?? "";
+      return !/lib\/data\//.test(src) && !/DemoFigures/.test(src);
+    });
+  check(
+    3,
+    "FEAT-DEMO",
+    "Every /[org] screen either reads lib/data or says its figures are demo",
+    unmarked.length === 0,
+    "fail",
+    unmarked.map((f) => f.replace("apps/web/app", "")).join(", "),
+  );
 }
 
 /* ── Report ─────────────────────────────────────────────────────────────── */

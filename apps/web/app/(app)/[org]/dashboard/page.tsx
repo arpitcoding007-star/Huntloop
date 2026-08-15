@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
+import { DemoFigures } from "../DemoFigures";
 import {
   ActionRail,
   ActionRailItem,
-  Badge,
   BreakdownList,
   Button,
   Card,
@@ -173,7 +173,16 @@ export default async function DashboardPage({
   const mayHunt = canSpend(await currentViewer(org));
 
   return (
-    <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
+    <>
+      {/* Unconditional, not tied to the data source. Every number below this
+          line is hard-coded, and once Supabase is connected the org layout's
+          banner correctly goes quiet — which would leave them unmarked. See
+          the component. */}
+      <div className="px-6 pt-6 lg:px-8">
+        <DemoFigures what="The Command Center's queries are not written yet." />
+      </div>
+
+      <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
       {/* ── Main column ─────────────────────────────────────────────── */}
       <div className="min-w-0">
         <header className="flex flex-wrap items-start justify-between gap-4">
@@ -182,13 +191,12 @@ export default async function DashboardPage({
               <h1 className="text-[30px] leading-9 font-semibold text-fg">
                 Command Center
               </h1>
-              <Badge variant="brand" dot>
-                Live
-              </Badge>
+              {/* No "Live" badge. It described the hunt, not the data, and
+                  next to invented figures it read as a claim that they were
+                  real — the §7 failure this screen is most exposed to. */}
             </div>
             <p className="mt-1 text-[13px] text-fg-muted">
-              {org} · 14 sources monitored · last scan 20 minutes ago · autonomy
-              L2 — Huntloop recommends, you approve
+              {org} · autonomy L2 — Huntloop recommends, you approve
             </p>
           </div>
           {/* Refresh and Export are reads and stay for everyone. "New hunt"
@@ -500,6 +508,7 @@ export default async function DashboardPage({
           secondaryLabel="Dismiss"
         />
       </ActionRail>
-    </div>
+      </div>
+    </>
   );
 }

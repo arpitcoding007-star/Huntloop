@@ -1,52 +1,96 @@
-import type { Priority, ScoreDimension } from "@huntloop/ui";
+import type { TenantClient } from "@huntloop/db";
+import type { EvidenceItem } from "@huntloop/ui";
 import { OPPORTUNITIES, findOpportunity } from "../fixtures/opportunities";
+import { currentViewer } from "./membership";
 import { load, type Loaded } from "./source";
+import {
+  byPriorityThenScore,
+  isUuid,
+  mapDetail,
+  mapEvidence,
+  mapListRow,
+  type DetailQueryRow,
+  type EvidenceQueryRow,
+  type ListQueryRow,
+  type OpportunityDetail,
+  type OpportunityRow,
+} from "./opportunity-map";
+
+export type { OpportunityDetail, OpportunityRow } from "./opportunity-map";
 
 /**
- * Opportunity loaders.
+ * Opportunity loaders — FEAT-02.
  *
- * The `live` branches are written against the real table and column names from
- * packages/db/migrations — they are the query this screen will run, not a
- * placeholder. They are unexercised until Supabase is connected, which is
- * stated plainly rather than implied by silence.
+ * These were the last fixture-backed screens, and they stayed that way on
+ * purpose: the note this comment replaces said that writing the join blind
+ * "produces a query that reads as finished and has never returned a row".
+ * Both queries below have now been run against a migrated project with seeded
+ * rows, as a real user with RLS on, and their shapes are what came back — not
+ * what the schema suggested would.
  *
- * Note the ordering in `listOpportunities`: priority first, then recency. Not
- * score. §78 requires that a strong trigger cannot lift a poor-fit company, so
- * the verdict orders the list and the score is detail within it — and that is
- * also the index the migration creates (`opportunities_priority_idx`), so the
- * UI default and the query plan agree instead of quietly fighting.
+ * Three things that only running it settled:
+ *
+ *   1. **`evidence` cannot be embedded.** Its subject is polymorphic
+ *      (`subject_type` + `subject_id`) so there is no foreign key for
+ *      PostgREST to follow, and it must be a second query. A join written
+ *      from the ERD would have nested it and failed at runtime, on the page
+ *      the product is judged on.
+ *   2. **A non-uuid id raises rather than returning nothing.** The detail
+ *      route's `id` comes from a URL and meets a `uuid` column, so an old link
+ *      to a fixture slug produced `22P02` — a 500 where a 404 belongs. It is
+ *      rejected before the query, not after.
+ *   3. **Soft deletes have to be filtered on the embedded rows too.** A
+ *      deleted trigger or person lives under `companies`, where the top-level
+ *      `deleted_at is null` does not reach it.
+ *
+ * Ordering: priority first, then recency — not score. §78 requires that a
+ * strong trigger cannot lift a poor-fit company, so the verdict orders the
+ * list and the score is detail within it. That is also the index the migration
+ * creates (`opportunities_priority_idx`), so the UI default and the query plan
+ * agree instead of quietly fighting.
+ *
+ * The row-to-screen mapping lives in `./opportunity-map`, which is pure and
+ * has its own tests. This file is the part that needs a database.
  */
 
-export interface OpportunityRow {
-  id: string;
-  company: string;
-  domain: string;
-  priority: Priority;
-  priorityReason: string;
-  score: number;
-  scoreExplanation: string;
-  confidence: "high" | "medium" | "low";
-  dimensions: ScoreDimension[];
-  status: string;
-  trigger: string;
-  triggerDate: string;
-  evidence: { kind: "fact" | "inference" | "unknown" }[];
-  industry: string;
+/**
+ * The org's UUID, for a caller already known to be a member.
+ *
+ * The layout has 404'd a non-member before any page renders, and RLS would
+ * return zero rows regardless — this is how the loader gets the id, not a
+ * second authorization check. `currentViewer` is React-cached, so it costs
+ * nothing beyond the lookup the layout already did.
+ */
+async function orgIdFor(orgSlug: string, caller: string): Promise<string> {
+  const viewer = await currentViewer(orgSlug);
+  if (!viewer || viewer.kind !== "member") {
+    // Unreachable through the app: `load()` only calls in here when the
+    // database is live, and a live request with no membership never gets past
+    // the layout. Loud rather than a silent empty list, because an empty list
+    // is indistinguishable from "you have no opportunities".
+    throw new Error(
+      `${caller}: no membership resolved for "${orgSlug}" on a live database. ` +
+        `The org layout should have returned 404 before this ran.`,
+    );
+  }
+  return viewer.orgId;
 }
 
-/** Postgres sorts enums by declaration order; this makes HOT sort first. */
-const PRIORITY_ORDER: Priority[] = ["hot", "warm", "watch", "ignore"];
+/* ── The list ────────────────────────────────────────────────────────────── */
 
 export async function listOpportunities(
-  orgId: string,
+  orgSlug: string,
 ): Promise<Loaded<OpportunityRow[]>> {
   return load(
     async (db) => {
+      const orgId = await orgIdFor(orgSlug, "listOpportunities");
+
       const { data, error } = await db
         .from("opportunities")
         .select(
           `id, priority, priority_reason, status, first_seen_at,
-           companies!inner(name, canonical_domain, industry),
+           companies!inner(name, canonical_domain, industry,
+             company_triggers(trigger_type, event_date, deleted_at)),
            opportunity_scores(score, explanation, confidence, computed_at,
              icp_fit, problem_severity, evidence_strength, trigger_strength,
              trigger_freshness, buying_likelihood, product_relevance,
@@ -58,49 +102,146 @@ export async function listOpportunities(
         .order("first_seen_at", { ascending: false });
 
       if (error) throw new Error(`listOpportunities: ${error.message}`);
-      return (data ?? []).map(mapRow).sort(byPriorityThenScore);
+
+      const rows = (data ?? []) as unknown as ListQueryRow[];
+      const kinds = await evidenceKindsFor(
+        db,
+        orgId,
+        rows.map((r) => r.id),
+      );
+
+      return rows
+        .map((r) => mapListRow(r, kinds.get(r.id) ?? []))
+        .sort(byPriorityThenScore);
     },
-    () =>
-      [...OPPORTUNITIES]
-        .map(toRow)
-        .sort(byPriorityThenScore),
+    () => [...OPPORTUNITIES].map(toRow).sort(byPriorityThenScore),
   );
 }
 
-export async function getOpportunity(
+/**
+ * Evidence kinds per opportunity, in one round trip.
+ *
+ * A second query rather than an embed, because `evidence.subject_id` is
+ * polymorphic and carries no foreign key. Batched over the whole page rather
+ * than issued per row, which is the N+1 this list would otherwise grow.
+ */
+async function evidenceKindsFor(
+  db: TenantClient,
   orgId: string,
+  opportunityIds: string[],
+): Promise<Map<string, { kind: "fact" | "inference" | "unknown" }[]>> {
+  const out = new Map<string, { kind: "fact" | "inference" | "unknown" }[]>();
+  if (opportunityIds.length === 0) return out;
+
+  const { data, error } = await db
+    .from("evidence")
+    .select("subject_id, kind")
+    .eq("org_id", orgId)
+    .eq("subject_type", "opportunity")
+    .in("subject_id", opportunityIds)
+    .is("deleted_at", null)
+    .is("superseded_by", null);
+
+  if (error) throw new Error(`listOpportunities evidence: ${error.message}`);
+
+  for (const row of (data ?? []) as unknown as {
+    subject_id: string;
+    kind: "fact" | "inference" | "unknown";
+  }[]) {
+    const list = out.get(row.subject_id) ?? [];
+    list.push({ kind: row.kind });
+    out.set(row.subject_id, list);
+  }
+  return out;
+}
+
+/* ── The detail page ─────────────────────────────────────────────────────── */
+
+export async function getOpportunity(
+  orgSlug: string,
   id: string,
-): Promise<Loaded<ReturnType<typeof findOpportunity>>> {
+): Promise<Loaded<OpportunityDetail | undefined>> {
   return load(
     async (db) => {
+      // Before the query, not after — see note 2 at the top of this file.
+      if (!isUuid(id)) return undefined;
+
+      const orgId = await orgIdFor(orgSlug, "getOpportunity");
+
       const { data, error } = await db
         .from("opportunities")
-        .select("*, companies!inner(*)")
+        .select(
+          `id, priority, priority_reason, status, confidence, first_seen_at,
+           owner_id, why_this_company, identified_problem, potential_gap,
+           why_now, current_approach, potential_use_case, outreach_angle,
+           companies!inner(name, canonical_domain, industry, region,
+             employee_count, description,
+             company_triggers(trigger_type, event_date, strength, deleted_at),
+             people(first_name, last_name, title, is_decision_maker,
+               linkedin_url, deleted_at,
+               contact_points(kind, value, confidence, verification_status,
+                 deleted_at))),
+           opportunity_scores(score, explanation, confidence, computed_at,
+             icp_fit, problem_severity, evidence_strength, trigger_strength,
+             trigger_freshness, buying_likelihood, product_relevance,
+             decision_maker_accessibility)`,
+        )
         .eq("org_id", orgId)
         .eq("id", id)
         .is("deleted_at", null)
         .maybeSingle();
+
       if (error) throw new Error(`getOpportunity: ${error.message}`);
-      // Deliberately not implemented past the fetch: assembling the full §47
-      // page needs evidence, triggers and buyers joined in, and writing that
-      // blind — with no database to run it against — would produce a query
-      // that reads as finished and has never returned a row.
       if (!data) return undefined;
-      throw new Error(
-        "getOpportunity: live mapping is not implemented yet. Connect Supabase " +
-          "and finish this against real rows rather than trusting an unrun query.",
-      );
+
+      const [evidence, viewerId] = await Promise.all([
+        evidenceFor(db, orgId, id),
+        currentUserId(db),
+      ]);
+
+      return mapDetail(data as unknown as DetailQueryRow, evidence, viewerId);
     },
-    () => findOpportunity(id),
+    () => {
+      const fixture = findOpportunity(id);
+      return fixture && { ...fixture };
+    },
   );
 }
 
-function byPriorityThenScore(a: OpportunityRow, b: OpportunityRow): number {
-  const p = PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority);
-  return p !== 0 ? p : b.score - a.score;
+/** Full evidence for one opportunity, newest event first. */
+async function evidenceFor(
+  db: TenantClient,
+  orgId: string,
+  opportunityId: string,
+): Promise<EvidenceItem[]> {
+  const { data, error } = await db
+    .from("evidence")
+    .select("claim, kind, confidence, source_url, excerpt, event_date, observed_at")
+    .eq("org_id", orgId)
+    .eq("subject_type", "opportunity")
+    .eq("subject_id", opportunityId)
+    .is("deleted_at", null)
+    // A superseded claim is history, not evidence. Showing both would present
+    // a corrected fact and its correction as two independent findings.
+    .is("superseded_by", null)
+    .order("event_date", { ascending: false, nullsFirst: false });
+
+  if (error) throw new Error(`getOpportunity evidence: ${error.message}`);
+  return mapEvidence((data ?? []) as unknown as EvidenceQueryRow[]);
 }
 
-/** Fixture → row. Kept explicit so a drift in either shape is a type error. */
+/**
+ * The signed-in user's id, used only to label an owner as "You". See the note
+ * beside `owner` in `opportunity-map.ts` for why nothing else is looked up.
+ */
+async function currentUserId(db: TenantClient): Promise<string | null> {
+  const { data } = await db.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+/* ── Fixture → screen shape ──────────────────────────────────────────────── */
+
+/** Kept explicit so a drift in either shape is a type error. */
 function toRow(o: (typeof OPPORTUNITIES)[number]): OpportunityRow {
   return {
     id: o.id,
@@ -119,49 +260,3 @@ function toRow(o: (typeof OPPORTUNITIES)[number]): OpportunityRow {
     industry: o.industry,
   };
 }
-
-/* eslint-disable @typescript-eslint/no-explicit-any --
-   The Supabase response type for a nested select is generated from the
-   project's schema, which requires a live project. Until the generated types
-   exist this mapping is unavoidably untyped; it is isolated to this one
-   function so the rest of the file stays checked. */
-function mapRow(r: any): OpportunityRow {
-  const score = (r.opportunity_scores ?? [])
-    .slice()
-    .sort(
-      (a: any, b: any) =>
-        Date.parse(b.computed_at) - Date.parse(a.computed_at),
-    )[0];
-
-  return {
-    id: r.id,
-    company: r.companies.name,
-    domain: r.companies.canonical_domain,
-    industry: r.companies.industry ?? "—",
-    priority: r.priority,
-    priorityReason: r.priority_reason,
-    score: score?.score ?? 0,
-    scoreExplanation: score?.explanation ?? "Not scored yet.",
-    confidence: score?.confidence ?? "low",
-    // NULL stays "unknown" — never coerced to 0. §78: a zero would assert
-    // "we measured this and it is bad", a finding Huntloop never made.
-    dimensions: [
-      { label: "ICP fit", value: score?.icp_fit ?? "unknown" },
-      { label: "Problem severity", value: score?.problem_severity ?? "unknown" },
-      { label: "Evidence strength", value: score?.evidence_strength ?? "unknown" },
-      { label: "Trigger strength", value: score?.trigger_strength ?? "unknown" },
-      { label: "Trigger freshness", value: score?.trigger_freshness ?? "unknown" },
-      { label: "Buying likelihood", value: score?.buying_likelihood ?? "unknown" },
-      { label: "Product relevance", value: score?.product_relevance ?? "unknown" },
-      {
-        label: "Decision-maker accessibility",
-        value: score?.decision_maker_accessibility ?? "unknown",
-      },
-    ],
-    status: r.status,
-    trigger: "—",
-    triggerDate: r.first_seen_at,
-    evidence: [],
-  };
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */

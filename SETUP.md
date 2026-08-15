@@ -8,6 +8,33 @@ tell whether it matters.
 
 ---
 
+## Where this stands right now
+
+Checked against your project on **2026-08-15**. Steps 1, 2 (partly), 3 (partly),
+4 and 6 are already done. Re-check any time with:
+
+```bash
+npm run db:doctor
+```
+
+| Step | State |
+|---|---|
+| 1 · Which project | **Done.** `hnoycsbdddpmsivtmrws`, and it holds nothing but Huntloop — see the note in step 1 |
+| 2 · Keys in `.env.local` | **Three of five.** URL, publishable and secret keys are set. `DATABASE_URL` and `ANTHROPIC_API_KEY` are empty |
+| 3 · Create the tables | **`0001`–`0004` applied. `0005` and `0006` are not.** ← **this is the one thing blocking the AI features** |
+| 4 · Check it worked | **Done.** No orange banner; the app reads real rows |
+| 5 · Make a login work | **An account exists for `arpitcoding007@gmail.com`**, created by the seed. Sign in with a magic link — no password was ever set |
+| 6 · Set up your organisation | **Done by the seed**, not by hand — `acme`, with three worked opportunities |
+| 7 · CI | Runs on push. Branch protection still needs a repo admin |
+| 8 · Enforce the CSP | Not started — needs a Sentry DSN first |
+
+**Do step 3 first.** Until `0005_rate_limits.sql` is applied, every screen that
+calls a model refuses. It refuses *politely* — "this feature is temporarily
+unavailable" — and tells you why in Sentry, but it refuses, because the thing
+that caps spending does not exist yet.
+
+---
+
 ## Before you start
 
 Open a terminal in the project folder and check the app still works:
@@ -16,39 +43,47 @@ Open a terminal in the project folder and check the app still works:
 npm run verify
 ```
 
-That runs four things: types, lint, tests, build. It should end without errors.
-If it doesn't, stop and say so — don't carry on top of a broken build.
+That runs six things: types, lint, tests, the audit, the build, and the bundle
+budget. It should end without errors. If it doesn't, stop and say so — don't
+carry on top of a broken build.
 
 ---
 
 ## Step 1 — Decide which Supabase project to use
 
-**This is the one that needs a real decision, and it's the riskiest step in
-the file.**
+**Done — but read this once, because it was the riskiest step in the file.**
 
-Your `apps/web/.env.local` currently points at project
-`hnoycsbdddpmsivtmrws`.
+Your `apps/web/.env.local` points at project `hnoycsbdddpmsivtmrws`.
 
 The build plan mentions you already run Supabase in production for another
-product (TruChat). **If that is the same project, do not continue.** Running
-Huntloop's migrations there would add about 40 tables, several new types, and
-new security policies into a live database. That is very hard to undo.
+product (TruChat). If that were the same project, running Huntloop's migrations
+would have added about 40 tables into a live database, which is very hard to
+undo.
 
-Pick one:
+**It is not.** The project was inspected before anything was written to it, and
+every table in it belongs to Huntloop. If you ever point this repo at a
+different project, do that check again first — `npm run db:doctor` lists what
+is there.
 
-- **Option A (recommended): make a brand-new project.** Go to
-  [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
-  Name it `huntloop-dev`. Choose a region near you. Save the database password
-  somewhere safe — you cannot see it again later.
-- **Option B: reuse the existing project**, but only if you are certain it is
-  empty or Huntloop-only.
+<details>
+<summary>If you do want a separate project instead</summary>
 
-> **Why this matters:** migrations are not like editing a file. They change the
-> shape of a live database, and there is no undo button.
+Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New
+project**. Name it `huntloop-dev`. Choose a region near you. Save the database
+password somewhere safe — you cannot see it again later. Then redo steps 2, 3
+and 6 against it.
+
+</details>
 
 ---
 
 ## Step 2 — Copy four values into `.env.local`
+
+**Partly done.** Three of the four are already in `apps/web/.env.local`:
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
+`SUPABASE_SECRET_KEY`. **`DATABASE_URL` is the one still missing**, and it is
+the one that lets a command line create tables — which is why step 3 is still a
+copy-and-paste job.
 
 In the Supabase dashboard for the project you chose:
 
@@ -96,34 +131,58 @@ The same warning applies: never paste it anywhere.
 
 ## Step 3 — Create the tables
 
-In the Supabase dashboard:
+**`0001`–`0004` are already applied. You need to run `0005` and `0006`.**
+
+Check for yourself first:
+
+```bash
+npm run db:doctor
+```
+
+It prints one line per migration and names any that are missing.
+
+Then, in the Supabase dashboard:
 
 1. Click **SQL Editor** in the left sidebar.
 2. Click **New query**.
-3. Open `packages/db/migrations/0001_identity.sql` in your code editor.
+3. Open `packages/db/migrations/0005_rate_limits.sql` in your code editor.
 4. Select all of it, copy, paste into the SQL Editor, click **Run**.
 5. It should say *Success*.
-6. Repeat for the other four, **in this exact order**:
-   - `0002_icp_sources_evidence.sql`
-   - `0003_companies_opportunities.sql`
-   - `0004_outreach_memory_learning.sql`
-   - `0005_rate_limits.sql`
+6. Repeat for `0006_prune_schedule.sql`.
 
-> **Don't skip `0005`.** It creates the counters that cap how many AI calls an
-> organisation can make per hour. Without it, every analysis and every piece of
-> company research is uncapped — and each one is a real, paid model call.
+Then re-run `npm run db:doctor`. It should report all five applied.
+
+> **`0005` is not optional.** It creates the counters that cap how many AI
+> calls an organisation can make per hour, and the `consume_rate_limit()`
+> function the app calls before every model call. Without it the app **refuses
+> those calls** rather than making them uncapped — each one is a real, paid
+> model call, and a spend cap that isn't there is not a cap.
 
 > **Why the order matters:** later files point at tables the earlier ones make.
 > Run `0003` first and it fails, because the thing it references isn't there
-> yet.
+> yet. `0006` needs `prune_rate_limits()`, which `0005` creates.
+
+**One extra check after `0006`.** Run this in the SQL editor:
+
+```sql
+select * from cron.job;
+```
+
+You should see a job named `prune-rate-limits`. That half of `0006` has never
+been exercised by any test — the test database has no `pg_cron` — so this is
+the only place it gets confirmed. If the list is empty, `0006` printed a notice
+instead of scheduling, and the counter table will grow forever.
 
 **If a step fails:** stop. Don't run the next one. Copy the red error message
 and send it over. Half-applied migrations are much easier to fix immediately
-than after three more have run on top.
+than after another has run on top — which is exactly the state this project was
+found in, and what `npm run db:doctor` now exists to catch.
 
 ---
 
 ## Step 4 — Check it worked
+
+**Already true**, but here is the test.
 
 Restart the app:
 
@@ -131,27 +190,74 @@ Restart the app:
 npm run dev
 ```
 
-Open <http://localhost:3100/acme/dashboard>.
+Open <http://localhost:3100/acme/opportunities>.
 
 **Before Step 3** there was an orange bar at the top saying *"Supabase is
 connected, but the migrations haven't been applied yet."*
 
-**After Step 3** that bar should be gone.
-
-If it's gone, the tables exist and the app can see them. That's the whole test.
+**Now** that bar is gone and you should see three companies — Alphio AI,
+Northwind Logistics, Cormorant Health — with priorities, scores and trigger
+ages. Those are real rows, put there by `npm run db:seed`.
 
 > The app deliberately tells you when it's showing pretend data. It will never
-> show you made-up numbers without saying so.
+> show you made-up numbers without saying so. No banner means the numbers came
+> from your database.
+
+> **The banner cannot tell you about `0005`.** It reports whether the schema
+> exists at all, and `0001`–`0004` were enough to satisfy it. That gap is what
+> `npm run db:doctor` is for.
+
+---
+
+## Step 4b — The seeded data, and how to remove it
+
+`npm run db:seed` writes one organisation (`acme`) with three worked
+opportunities, chosen to exercise the states the interface has to tell apart:
+a fresh trigger with a named decision maker, an older one with a contact but no
+verified address, and a stale one with no buyer identified and several score
+dimensions deliberately left unmeasured.
+
+```bash
+npm run db:seed                       # re-run any time; it replaces its own rows
+npm run db:seed -- --reset            # remove the organisation and everything in it
+npm run db:seed -- --slug other       # a second org, for testing the 404 guard
+```
+
+It touches nothing outside the organisation it names. `--reset` deletes that
+organisation and lets the database's cascades remove the rest; it leaves the
+login account alone, because that may be a real account.
+
+**It is demonstration data, and it is not labelled as such inside the app** —
+those rows look exactly like real ones, because that is what makes them useful
+for checking the screens. Run `--reset` before you put real customers in.
 
 ---
 
 ## Step 5 — Make a login work
 
-Right now nobody has an account.
+**An account already exists for `arpitcoding007@gmail.com`.** The seed created
+it, marked the address confirmed, and made it the **owner** of `acme` — that
+membership is what lets you see the seeded opportunities at all, because
+without one the app answers 404 for every page under `/acme`.
+
+**No password was ever set**, and there is no password field in this app by
+design. To sign in:
+
+1. Go to <http://localhost:3100/login>
+2. Type `arpitcoding007@gmail.com`, click the button
+3. Click the link in your inbox
+
+If you would rather that account did not exist, delete it under
+**Authentication → Users** in the Supabase dashboard and sign up normally
+below. `npm run db:seed -- --reset` does *not* remove it — deleting someone's
+login is not something a seed script should decide.
+
+To create any other account:
 
 1. Go to <http://localhost:3100/signup>
 2. Type your email, click **Create account**
 3. Check your inbox for a sign-in link and click it
+4. Then run `npm run db:seed -- --email that@address` to join it to `acme`
 
 **If no email arrives:** Supabase's built-in email sender only allows a few
 messages per hour and often lands in spam. Check spam first. If it's still
@@ -198,10 +304,12 @@ Adjust under **Authentication → Rate Limits**.
 
 ## Step 6 — Set up your organisation
 
-Signing up creates a *user*. It does not create a *company* for that user to
-belong to — so do that now.
+**Already done for `acme`, by the seed.** This step is how you would make a
+real one — and worth walking through once, because it is the flow your future
+users see.
 
-Go to <http://localhost:3100/welcome> and follow the four steps:
+Signing up creates a *user*. It does not create a *company* for that user to
+belong to. Go to <http://localhost:3100/welcome> and follow the four steps:
 
 1. **Organisation** — type a name. Watch the URL preview underneath; that
    becomes your web address and can't be changed afterwards.
@@ -293,16 +401,18 @@ worse than a thing that says what it is:
 
 | Thing | State |
 |---|---|
-| Creating an organisation | **Real.** Writes to the database once migrations are applied. |
+| Creating an organisation | **Real.** Writes to the database. |
 | Signing in | **Real.** Magic link and Google both work. |
-| Every other screen | Still shows **pretend data**. The tables are real but empty, and no code fills them yet. |
-| Onboarding step 2 — your company | **Real, if you added an AI key.** A model reads your site and reports what it found, marking each answer as observed, concluded, or not established. Nothing is saved yet. |
+| **The opportunity list and detail pages** | **Real.** They read your database — the join, the evidence, the triggers, the buyers. Verified against real rows in a browser, signed in. |
+| The Command Center, analytics, sources | Still **demo figures**, and each says so. Those queries are not written. |
+| **Anything that calls a model** | **Refused until `0005` is applied** — see step 3. After that, refused again unless `ANTHROPIC_API_KEY` is set, and it says which. |
+| Onboarding step 2 — your company | **Real, if you add an AI key.** A model reads your site and reports what it found, marking each answer as observed, concluded, or not established. Nothing is saved yet. |
 | Onboarding steps 3–4 — ICP, sources | Real screens, fake brain. Nothing is generated, nothing is saved. |
-| Finding companies | Not built. No code reads news, jobs, or GitHub. |
-| Scoring, why-now, evidence | Not built. The shelves exist; nothing puts anything on them. |
+| Finding companies | Not built. No code reads news, jobs, or GitHub — the three opportunities you can see were seeded, not found. |
+| Scoring, why-now, evidence | **Displayed, not generated.** The pages render them from the database faithfully; nothing yet computes them. |
 | The AI chat on each opportunity | A shell. It says "not connected" and means it. |
 | Sending email | Not built. |
-| Everything else on the sidebar | Links that go nowhere yet. |
+| Everything else on the sidebar | Marked `SOON` rather than linked, so nothing leads to a dead end. |
 
 The full list is in [DELIVERY_PLAN.md](DELIVERY_PLAN.md).
 

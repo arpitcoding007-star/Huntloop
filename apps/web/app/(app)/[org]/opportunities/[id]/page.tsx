@@ -15,8 +15,7 @@ import {
   SectionLabel,
 } from "@huntloop/ui";
 import { ArrowLeft, ExternalLink, Linkedin, Mail, Send, UserPlus } from "lucide-react";
-import { NOW, findOpportunity } from "../../../../../lib/fixtures/opportunities";
-import { load } from "../../../../../lib/data/source";
+import { getOpportunity } from "../../../../../lib/data/opportunities";
 import { AgentPanel } from "./AgentPanel";
 
 /**
@@ -46,17 +45,13 @@ export default async function OpportunityPage({
 }) {
   const { org, id } = await params;
 
-  const { data: o } = await load(
-    async () => {
-      throw new Error(
-        "Opportunity detail: live query not implemented. Connect Supabase and " +
-          "finish getOpportunity() — see lib/data/opportunities.ts.",
-      );
-    },
-    () => findOpportunity(id),
-  );
+  const { data: o } = await getOpportunity(org, id);
 
   if (!o) notFound();
+
+  /* One instant for the whole page, so the trigger age in the header and the
+     evidence ages further down cannot disagree by a render's worth of time. */
+  const now = new Date();
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
@@ -116,7 +111,7 @@ export default async function OpportunityPage({
       <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md border border-line-subtle bg-surface px-4 py-3">
         <SectionLabel>Recommended</SectionLabel>
         <span className="text-[14px] text-fg">{o.recommendedAction}</span>
-        <Freshness date={o.triggerDate} now={NOW} label="Trigger" className="ml-auto" />
+        <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -150,7 +145,7 @@ export default async function OpportunityPage({
               }
             />
             <CardBody>
-              <EvidenceList items={o.evidence} now={NOW} />
+              <EvidenceList items={o.evidence} now={now} />
             </CardBody>
           </Card>
 
@@ -179,7 +174,7 @@ export default async function OpportunityPage({
                             strength {t.strength}
                           </span>
                         )}
-                        <Freshness date={t.date} now={NOW} />
+                        <Freshness date={t.date} now={now} />
                       </div>
                     </li>
                   ))}

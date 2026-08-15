@@ -10,6 +10,40 @@ ones are the work, not the document.
 
 ---
 
+## DB-05 · Which migrations are applied
+
+**Applied by hand, one file at a time, in the Supabase SQL editor.** There is
+no migration runner and therefore no `schema_migrations` ledger to consult,
+which means "is this project up to date?" has no direct answer.
+
+```bash
+npm run db:doctor
+```
+
+infers it from what each migration creates — one representative object per
+file, chosen as the *last* thing that file makes so a half-run file reports as
+missing rather than as applied. Exits non-zero when anything is absent.
+
+**Why it exists.** The app's own probe, `isSchemaApplied()`, checks a single
+table (`organizations`) and answers the question *it* needs: fresh project, or
+migrated one? For a project with `0001`–`0004` applied it answers "migrated",
+every screen renders live rows, and nothing indicates that
+`consume_rate_limit()` is missing until a model call fails. That was the state
+this repository's configured project was found in — see `DB-04` in
+[audit/FINDINGS.md](../audit/FINDINGS.md).
+
+**`0006` is invisible to it**, and cannot be otherwise. It creates no table and
+no function; it schedules `prune_rate_limits()` with `pg_cron`, and `cron.job`
+is not reachable through PostgREST. The check is `select * from cron.job` in
+the SQL editor, and it is the only place that half of the migration is ever
+confirmed — the test suite runs against PGlite, which has no `pg_cron` at all.
+
+**Before pointing this repo at a different project**, run `db:doctor` against
+it first. It lists what is already there, which is the check `SETUP.md` step 1
+asks for in prose.
+
+---
+
 ## DB-02 · Backups, point-in-time recovery, and restoring
 
 > **Status: not yet verified.** Nothing in this repo states which Supabase plan

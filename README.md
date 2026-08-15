@@ -105,6 +105,25 @@ The app runs on demo data until Supabase is connected and migrated. Follow
 [SETUP.md](SETUP.md) — it covers the steps that need a human: choosing a
 project, copying keys, running the migrations, and creating your first login.
 
+Three commands do the parts that don't:
+
+```bash
+npm run db:doctor       # which migrations this project has actually had applied
+npm run db:seed         # one worked organisation, three opportunities
+npm run db:seed -- --reset
+```
+
+`db:doctor` exists because migrations are applied by hand, one file at a time,
+and a half-applied schema does not announce itself — the app's own probe checks
+one table and will happily report a project missing the rate-limit migration as
+fully migrated. It is not hypothetical; it is the state this repo's configured
+project was found in.
+
+`db:seed` writes rows shaped to exercise the states the interface has to tell
+apart: a fresh trigger with a named decision maker, a contact with no verified
+address, and an opportunity with no buyer and three score dimensions left
+unmeasured. It is idempotent and scoped to one organisation.
+
 ## Status
 
 The design system, the database schema, four AI tasks, authentication, and ten
@@ -112,22 +131,23 @@ screens exist.
 
 What works end to end: sign-in (magic link + Google), the org membership guard,
 onboarding (company research → ICP → source recommendations), the analyze
-screen, which runs a real qualification and why-now against a pasted URL, and
-the AI spend dashboard over `ai_runs`.
+screen, which runs a real qualification and why-now against a pasted URL, the
+AI spend dashboard over `ai_runs`, and **the opportunity list and detail pages,
+which read the database** — the join, the evidence, the triggers, the buyers.
 
-What does not: **the dashboard and the opportunity screens still render
-fixtures.** `listOpportunities()` and `getOpportunity()` throw rather than
-return demo data when Supabase is connected, deliberately — see
-`apps/web/lib/data/opportunities.ts`. Eleven of the seventeen nav destinations
-are not built and are marked "Soon" rather than linked.
+What does not: the Command Center and sources screens still render illustrative
+figures, and now say so on the screen itself in every configuration — a check
+fails the build if one of them stops. Eleven of the seventeen nav destinations
+are not built and are marked "Soon" rather than linked. Nothing yet *finds*
+companies or computes a score — those screens display what is in the database
+faithfully, and nothing puts anything there but the seed.
 
 Three things have never run, and it is worth knowing which:
 
 - **No AI task has called the real API.** All four are tested against a
   scripted client. Add `ANTHROPIC_API_KEY` and they run for the first time.
-- **No screen has read a hosted database.** The browser suite exercises the app
-  in demo mode, which is a real configuration — the one CI builds — but not the
-  configured one.
+- **No load test.** The rate limiter is proven by seven database-level tests
+  and by nothing driving it through HTTP.
 - **The Content-Security-Policy is report-only.** It carries a per-request
   nonce and passes its whole suite under `CSP_ENFORCE=true`; enforcing it in
   production is a deliberate later step. See SETUP.md step 8.

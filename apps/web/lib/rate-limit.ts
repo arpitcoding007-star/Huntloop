@@ -201,6 +201,38 @@ async function consumeOne(
 
   if (error) {
     /*
+     * A partially applied schema is its own state, and it is the one this
+     * project was actually found in: 0001–0004 applied, 0005 not.
+     *
+     * `isSchemaApplied()` probes `organizations`, so that project reports as
+     * fully live — every screen renders real rows — while this RPC does not
+     * exist. Left as the generic branch below, the result was an unhandled
+     * "Rate limit check failed: Could not find the function
+     * public.consume_rate_limit" on a screen with no way to explain it.
+     *
+     * It is the same *situation* as a production deployment with no database:
+     * the limiter cannot run. So it takes the same path — refuse, tag it
+     * `unenforceable`, and tell the operator rather than the user, because
+     * only the operator can fix it. The user-facing behaviour is identical to
+     * the branch above and for the identical reason.
+     */
+    if (isMissingLimiterSchema(error)) {
+      Sentry.captureMessage(
+        "Rate limiting is unenforceable: consume_rate_limit() is missing. " +
+          "Apply packages/db/migrations/0005_rate_limits.sql — see SETUP.md " +
+          "step 3. Refusing model calls until then.",
+        "error",
+      );
+      return {
+        allowed: false,
+        remaining: 0,
+        resetAt: null,
+        unenforced: true,
+        reason: "unenforceable",
+      };
+    }
+
+    /*
      * Fail closed.
      *
      * The tempting alternative — proceed when the limiter is broken, so an
@@ -226,6 +258,26 @@ async function consumeOne(
     resetAt: row.reset_at ? new Date(row.reset_at) : null,
     ...(allowed ? {} : { reason: "exhausted" as const }),
   };
+}
+
+/**
+ * Is this error "0005 has not been applied" rather than "the call failed"?
+ *
+ * Narrow on purpose. Widening it would turn a transient database fault into a
+ * silent refusal that never reaches the `throw` below, which is the failure the
+ * generic branch exists to make loud.
+ *
+ *   PGRST202  PostgREST cannot find the function in its schema cache
+ *   PGRST205  …or the table
+ *   42883     Postgres: undefined_function
+ *   42P01     Postgres: undefined_table
+ */
+function isMissingLimiterSchema(error: { code?: string; message: string }): boolean {
+  if (error.code && ["PGRST202", "PGRST205", "42883", "42P01"].includes(error.code)) {
+    return true;
+  }
+  return /consume_rate_limit|rate_limits/.test(error.message) &&
+    /(does not exist|schema cache|could not find)/i.test(error.message);
 }
 
 /** Message for a caller that has been refused. Names when, not just no. */

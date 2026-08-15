@@ -18,7 +18,7 @@ import {
   type Priority,
 } from "@huntloop/ui";
 import { Binoculars, Eye, Flame, Plus, RefreshCw, Send, Thermometer } from "lucide-react";
-import { NOW, type OpportunityFixture } from "../../../../lib/fixtures/opportunities";
+import type { OpportunityRow } from "../../../../lib/data/opportunities";
 
 /**
  * The opportunity list.
@@ -47,11 +47,18 @@ const FILTERS: { value: Priority | "all"; label: string; icon: typeof Flame }[] 
 export function OpportunityTable({
   org,
   rows: all,
+  now,
   initialPriority,
   canWrite,
 }: {
   org: string;
-  rows: OpportunityFixture[];
+  rows: OpportunityRow[];
+  /**
+   * The server's clock as an ISO string, so every relative age on the page is
+   * measured from one instant. Passed rather than read here: a client clock
+   * can be wrong, and two `new Date()` calls in one render are two instants.
+   */
+  now: string;
   /** Seeded from `?priority=` by the server component. See page.tsx. */
   initialPriority?: Priority;
   /**
@@ -106,7 +113,7 @@ export function OpportunityTable({
     });
   }, [all, priority, query, scope, sort]);
 
-  const columns: Column<OpportunityFixture>[] = [
+  const columns: Column<OpportunityRow>[] = [
     {
       key: "company",
       header: "Company",
@@ -152,7 +159,7 @@ export function OpportunityTable({
       render: (o) => (
         <div className="min-w-0">
           <div className="truncate text-fg-secondary">{o.trigger}</div>
-          <Freshness date={o.triggerDate} now={NOW} />
+          <Freshness date={o.triggerDate} now={now} />
         </div>
       ),
     },

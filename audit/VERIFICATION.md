@@ -2,13 +2,20 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
-> **Three further passes are appended at the end.** The tables immediately
+> **Four further passes are appended at the end.** The tables immediately
 > below describe the first pass only.
 >
-> **Current totals (fourth pass, 2026-08-14):** 42 database checks · 34
-> `apps/web` and `packages/ui` unit tests · 68 browser tests · 36 audit checks,
-> 0 failing, 1 warning · 0 dependency advisories. **No P0 items remain.** The
-> single warning is `FEAT-FIXTURE`, which needs a hosted Supabase project.
+> **Current totals (fifth pass, 2026-08-15):** 42 database checks · 75
+> `apps/web` and `packages/ui` unit tests · 111 prompt-contract checks · 68
+> browser tests · 37 audit checks, 0 failing, **0 warnings** · 0 dependency
+> advisories. **No P0 items remain.**
+>
+> The fifth pass is the first run against a live database. It closed
+> `FEAT-02` — the last warning — and found three things no amount of reading
+> would have: **`FEAT-07`**, where connecting a database *removed* the
+> demo-data marking from the Command Center; `DB-04`, a partially applied
+> schema reporting as complete; and `UI-07`, a soft 404. What remains needs a
+> password, a key, or a DSN, and is listed in that pass's "Still not verified".
 
 Everything below was run against the working tree after the fixes described in
 [FINDINGS.md](FINDINGS.md). Reproduce the whole thing with:
@@ -482,3 +489,187 @@ Each was confirmed to fail when the thing it guards was removed, then restored:
   real project.
 - **Sentry has still never received an event.** Wiring is verified by build and
   types only, and the CSP report endpoint depends on it.
+
+---
+
+# Fifth pass — against a live database, for the first time
+
+**Date:** 2026-08-15 · **Baseline:** `0cfffd1` · **Branch:** `main`
+
+Every previous pass verified this application against fixtures, PGlite, or a
+demo-mode build. This one ran it against the hosted Supabase project the repo
+is configured for, signed in as a real member with row-level security on.
+
+That distinction is the point of the pass. Four passes of careful work left one
+audit warning and a page of claims that began "once there is a database". This
+records which of those claims survived contact with one.
+
+## What the project actually contained
+
+Not what `SETUP.md` assumed. Probed before anything was written to it:
+
+| | Found |
+|---|---|
+| Reachable with the configured keys | Yes |
+| Migrations applied | `0001`–`0004` |
+| Migrations **not** applied | **`0005_rate_limits.sql`** |
+| Rows in any table | **Zero** |
+| Tables belonging to another product | None — the project is Huntloop-only |
+
+The last row mattered before anything else did. `SETUP.md` step 1 warns that
+this project might be shared with another product, in which case applying
+Huntloop's migrations would be very hard to undo. The 40 tables present are all
+Huntloop's, so it is not.
+
+The `0005` gap is `DB-04`, and it is the finding of this pass. See below.
+
+## Toolchain
+
+| Gate | Command | Result |
+|---|---|---|
+| Types | `npm run typecheck` | **Clean** (4 workspaces) |
+| Lint | `npm run lint` | **Clean** |
+| Schema + tenant isolation | `npm test` | **42/42** |
+| Admin-import boundary | (part of `npm test`) | Clean |
+| Unit — `apps/web` | `npm test` | **68 passing** (34 before) |
+| Unit — `packages/ui` | `npm test` | **7 passing** |
+| Prompt contracts — `packages/ai` | `npm test` | **111/111** |
+| Audit | `npm run audit:site` | **37 checks · 0 failing · 0 warning** |
+| Bundle | `npm run audit:bundle` | **244.6 kB gzipped of 275 kB** |
+| Build | `npm run build` | **21 routes** |
+
+`npm run verify` exits **0**. `FEAT-FIXTURE` is no longer a warning, which
+leaves the audit with none for the first time.
+
+## Measured against real rows
+
+**The list query returns rows.** Run as the signed-in member, not with the
+service key — so RLS was in the path, and a query that only works as superuser
+would have returned nothing:
+
+```
+Alphio AI            hot    91   Funding — Series A              6 days ago
+Northwind Logistics  warm   74   Hiring — integration engineers  13 days ago
+Cormorant Health     watch  48   Regulatory approval             4 months ago  STALE
+```
+
+Ordering is priority, then score — the verdict first, exactly as §78 requires
+and as `opportunities_priority_idx` is built for.
+
+**The detail page assembles from four sources in two round trips.** Company,
+opportunity, latest score, triggers, people and contact points arrive in one
+nested embed; evidence in a second query, because it cannot be embedded at all.
+Rendered: eight score dimensions with three of Cormorant's left as UNKNOWN,
+five evidence rows split 2 fact / 1 inference / 2 unknown, source labels
+derived from the stored URLs, and a decision maker with a verified address
+beside one without — rendering "No verified address" rather than a guess.
+
+**A null narrative field renders as a finding.** Cormorant's
+`identified_problem` is NULL in the database and the page shows UNKNOWN — "Not
+established by the evidence on file" — rather than an empty section. That is
+§78 working through a database column, and it is the reason the seed leaves
+those columns NULL instead of storing the string "Not established".
+
+**The membership guard's 404 is real.** `/notanorg/opportunities` answers
+**404** for a signed-in user who is not a member. This was listed under "still
+not verified" in the fourth pass; it now has a measurement.
+
+## What only running it revealed
+
+Four things, and the pattern is the same one as every previous pass: none were
+visible to typecheck, lint, or review.
+
+1. **`evidence` cannot be embedded.** Its subject is polymorphic, so there is
+   no foreign key for PostgREST to follow. The blind version of this join —
+   which had been written and correctly refused to ship — would have nested it
+   and failed at runtime, on the page the product is judged on.
+
+2. **A non-uuid id raises rather than returning nothing.** `/opportunities/
+   alphio-ai`, a link this app itself served for months, meets a `uuid` column
+   and produces `22P02 invalid input syntax` — a 500 where a 404 belongs.
+   Rejected before the query now.
+
+3. **`DB-04` — a partial schema reports as complete.** With `0005` missing,
+   `isSchemaApplied()` said "migrated", every screen rendered live rows, and
+   every model call threw `Could not find the function
+   public.consume_rate_limit`. Safe — it failed closed and spent nothing — but
+   unreadable, and this is the *normal* state during setup, because migrations
+   are applied by hand one file at a time.
+
+4. **`UI-07` — a missing opportunity answers 200.** Measured on a production
+   build, signed in. `notFound()` in a layout sets the status; `notFound()` in
+   a page under a `loading.tsx` boundary cannot, because the shell has already
+   flushed. Recorded, not fixed — the fix costs either the loading skeletons or
+   a routing tree shaped around a status code, and that is a product decision.
+
+5. **`FEAT-07` — connecting a database removed the demo-data marking.** The
+   one that matters most, and the one this pass created. `DataSourceBanner`
+   goes quiet when a database is connected, which is correct for the question
+   it answers and wrong for the Command Center, whose figures are hard-coded
+   in every configuration. So the moment the opportunity screens started
+   showing real rows, `180 discovered` and `2 meetings` sat beside them with
+   nothing saying they were invented — and a `Live` badge above them.
+
+   `FEAT-FIXTURE` could not see it: the numbers were written inline, not
+   imported from `lib/fixtures`. `DemoFigures` has no quiet state, and the new
+   `FEAT-DEMO` check **fails** the build if a screen under `/[org]` neither
+   reads through `lib/data` nor renders it. Falsified by removing it from the
+   sources screen: the check failed and named the file.
+
+   Worth stating plainly, because it is the argument for running the thing:
+   four passes of review did not find this, and it appeared within minutes of
+   a database being connected — not as a regression, but because fixing
+   `FEAT-02` removed the accident that had been covering it.
+
+## What was made repeatable
+
+The browser evidence above was gathered once, by hand. The rules it confirmed
+are now held still by tests, because a one-off measurement stops being true the
+moment someone refactors.
+
+The pure row-to-screen mapping moved to `lib/data/opportunity-map.ts` — the
+same move `safe-next.ts` got, and for the same reason: it is where the
+product's rules about *not asserting things* live, it was the only
+implementation, and it had no test. **34 new tests**, taking `apps/web` from 34
+to 68.
+
+Verified by falsification, each break reverted afterwards:
+
+| Rule | Broken deliberately | Result |
+|---|---|---|
+| §78 — an unmeasured dimension is not a zero | `?? "unknown"` → `?? 0` on one dimension | 2 failed, both naming §78 |
+| §78 — the verdict orders the list, not the score | Dropped the priority term from the comparator | Failed on "a low-scoring hot above a high-scoring warm" |
+| §78 — do not fabricate contact details | Dropped `verification_status === "verified"` | Failed on "does not show an unverified address" |
+
+The third is the one worth noting. Removing that clause makes an unverified
+address render as a `mailto:` — a guess that gets sent — and every other test
+still passed, which is exactly the shape of change a review waves through.
+
+`process.exit()` also turned out to abort the process on Windows once a
+Supabase client is open — `Assertion failed: !(handle->flags &
+UV_HANDLE_CLOSING)` — returning a 32-bit abort code instead of 0 or 1 and
+truncating unflushed stdout. Both new scripts end by setting `exitCode` and
+letting the process finish, which is why they can be trusted in a shell.
+
+## Still not verified, and why
+
+Supersedes the same section in the fourth pass.
+
+- **`0005` and `0006` are still not applied.** Applying them needs the database
+  password (`DATABASE_URL` is empty) or a paste into the SQL editor. Until
+  then `consume_rate_limit()` does not exist, and every model-calling path
+  refuses — correctly, and now legibly. `npm run db:doctor` is the check.
+- **`0006`'s scheduled half has still never run.** PGlite has no `pg_cron`, so
+  the test suite proves the file parses and nothing more. `select * from
+  cron.job` on the real project is the check, and it cannot be run until the
+  file is.
+- **No AI key has ever been used.** All four tasks remain unit-tested against a
+  scripted client and have never called the real API.
+- **Sentry has still never received an event**, so the CSP report endpoint has
+  still never delivered one, and `OPS-01` still cannot start its clock.
+- **No load test.** The limiter is proven at the database level by seven tests
+  and by nothing driving it through HTTP — and it cannot be, until `0005` is
+  applied.
+- **The live evidence above is evidence, not regression coverage.** It was
+  driven through a real browser once. Nothing re-runs it; `TEST-02c` is the
+  task that would, and the reason it is not done is recorded there.

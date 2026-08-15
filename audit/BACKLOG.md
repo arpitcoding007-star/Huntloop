@@ -35,6 +35,9 @@ re-litigates a decision already made.
 | **API-01** | **`zod` on every Server Action input** | **S** |
 | **API-02b** | **Magic-link limits — documented; Supabase already enforces them** | **S** |
 | **UI-06** | **Rate-limit refusals render as `RateLimited`, not `ErrorState`** | **S** |
+| **FEAT-02** | **Live opportunity list and detail queries** | **L** |
+| **DB-04** | **A partially applied schema no longer reports as fully applied** | **S** |
+| **FEAT-07** | **Screens whose figures are invented say so, whatever the data source** | **S** |
 
 ### Notes on what closed
 
@@ -137,33 +140,65 @@ boundary and refuses the write regardless. The distinction is written into
 `lib/data/membership.ts` so nobody later moves a policy out of Postgres to
 match the UI.
 
+**FEAT-02** closed because the thing it was waiting for arrived: a migrated
+project with rows in it. `npm run db:seed` is the durable half of that — one
+organisation, three companies chosen to exercise the states the UI must
+distinguish (a fresh trigger with a named buyer, a stale one with no buyer,
+three score dimensions left NULL), idempotent, and undone by `--reset`.
+
+The refusal it replaced was worth its year. Writing the join blind would have
+embedded `evidence`, which has no foreign key to embed through; would have
+compared a URL segment against a `uuid` column, turning a stale bookmark into
+a 500; and would have filtered soft deletes only at the top level. All three
+are now comments in `lib/data/opportunities.ts`, next to the code that got
+them right.
+
+**FEAT-07** is the one to read if you read only one. Closing `FEAT-02` made the
+data-source banner go quiet — correctly — and that banner was the only thing
+marking the Command Center's hard-coded `180 discovered` and `2 meetings` as
+invented. A database made the §7 problem *worse*. `DemoFigures` has no quiet
+state and `FEAT-DEMO` fails the build without it, so the marking can now only
+be removed by a visible edit rather than by a configuration change somewhere
+else.
+
+**DB-04** came out of connecting to a real project rather than from reading
+code, which is the whole argument for doing so. `isSchemaApplied()` probes
+`organizations` and answered "migrated" for a project missing `0005`, so the
+app looked live while every model call threw an unreadable PostgREST error.
+The limiter now recognises its own missing schema and takes the refusal path
+it already had for "no database to count in" — same fail-closed behaviour, a
+message the user can read, and a Sentry alert naming the migration. The probe
+itself was deliberately left alone: widening it would hide real rows behind a
+setup banner, which is worse. `npm run db:doctor` is the check.
+
 ---
 
 ## P0 — Before the next production deploy
 
-**Nothing.** `SEC-03` was the last one.
+**Nothing in code.** `SEC-03` was the last one.
 
-The next P0 will come from a hosted Supabase project, because that is where the
-remaining unverified claims live — see "Still not verified" in
-[VERIFICATION.md](VERIFICATION.md).
+The prediction in the previous pass — that the next P0 would come from a hosted
+project — was right, and it did: connecting to one found `DB-04`, a partially
+applied schema reporting as fully applied. That is fixed. What it left behind
+is `DB-05` in P1, which is a five-minute paste into a SQL editor and cannot be
+done from code.
 
 ---
 
 ## P1 — This cycle
 
-Everything left in P1 is blocked on the same thing: a hosted Supabase project
-with the migrations applied and some seed data. That is the constraint now, not
-engineering time.
+### DB-05 · Apply `0005` and `0006` to the configured project · **XS** · Phase 4
+**The one thing blocking the AI features, and the only item here a human must
+do.** The project in `apps/web/.env.local` has `0001`–`0004` applied and
+`0005_rate_limits.sql` not. Until it is, `consume_rate_limit()` does not exist
+and every model-calling path refuses — correctly, and now with a message that
+names the cause (see `DB-04` in FINDINGS.md), but it refuses.
 
-### FEAT-02 · Live opportunity queries · **L** · Phase 3
-Finish `listOpportunities()` and `getOpportunity()` against real rows, joining
-evidence, triggers, and buyers for the §47 page.
-**Why still not done:** deliberately unfinished, for a good documented reason —
-writing the join blind produces a query that reads as finished and has never
-returned a row. `lib/data/spend.ts` was written blind and that was defensible
-because it is one table with no joins; this is not that.
-**Depends on:** a migrated project with seed data.
-**Done when:** `audit.mjs` `FEAT-FIXTURE` passes. It is the only warning left.
+**Check:** `npm run db:doctor` — it names the missing file.
+**Do:** paste `0005_rate_limits.sql` then `0006_prune_schedule.sql` into the
+Supabase SQL editor, in that order. SETUP.md step 3.
+**Then:** `select * from cron.job` should list `prune-rate-limits`. That is the
+half of `0006` no test has ever exercised, because PGlite has no `pg_cron`.
 
 ### TEST-02c · Browser specs that need a real session · **M** · Phase 9
 The Playwright suite runs in demo mode, which is a real configuration of this
@@ -174,9 +209,22 @@ app and the one CI builds — but it cannot reach:
   no browser test
 - `RateLimited` rendering, which needs 21 requests in an hour against a real
   limiter
-- the live opportunity queries, once FEAT-02 lands
 
-**Depends on:** a migrated project, plus a seeded test user in two orgs.
+**Now partly discharged, outside the suite.** The live opportunity queries and
+the membership guard's 404 have both been driven in a real browser against the
+seeded project — see the fifth pass in [VERIFICATION.md](VERIFICATION.md).
+That is evidence, not a regression test: nothing re-runs it.
+
+**Why it is still not in the suite.** `playwright.config.ts` builds with empty
+Supabase credentials on purpose, and `NEXT_PUBLIC_*` are inlined at build time,
+so one build cannot serve both modes. A live project means a second build with
+real credentials into its own `distDir`, a second web server, and a Playwright
+project pointed at it — which doubles CI's slowest step to cover paths CI has
+no credentials for anyway. The shape that works is a `live` project gated on an
+explicit base URL, run by a developer against a seeded project, not by CI.
+
+**Depends on:** a seeded test user in *two* orgs — the 404 test needs an org
+the user is not a member of, and `db:seed --slug other` provides it.
 
 ### AI-01 · Run the four tasks against the real API once · **S**
 `research_company`, `recommend_sources`, `qualify_opportunity` and
@@ -204,7 +252,8 @@ into a throwaway project once, end to end, and write down the measured RTO.
 | ID | Task | Effort | Phase | Note |
 |---|---|---|---|---|
 | DB-03 | Generated Supabase types in CI | S | 4 | Design recorded in docs/OPERATIONS.md; needs a project ref and the first CI secret |
-| PERF-04 | `EXPLAIN ANALYZE` the live list queries | S | 6 | Not measurable until FEAT-02 runs |
+| PERF-04 | `EXPLAIN ANALYZE` the live list queries | S | 6 | Now measurable — the queries run against seeded rows. Needs `DATABASE_URL`; PostgREST cannot return a plan |
+| UI-07 | A missing opportunity answers 200, not 404 | S | 2 | Streaming commits the status before `notFound()` runs. Fixing it costs the loading skeletons or a routing tree shaped around a status code — see FINDINGS.md |
 | ANL-04 | Per-org AI budgets and alerting | M | 10 | The spend screen shows the bill; nothing acts on it. `rate_limits` bounds rate, not total |
 | PERF-05 | Revisit per-worker schema-probe caches | XS | 6 | One extra round trip per cold start |
 | API-03 | Build the versioned surface *when* an integration needs it | S | 4 | Decision recorded in docs/OPERATIONS.md; the work is deferred, not the decision |

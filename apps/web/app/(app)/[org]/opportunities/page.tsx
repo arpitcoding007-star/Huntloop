@@ -1,6 +1,5 @@
 import type { Priority } from "@huntloop/ui";
-import { OPPORTUNITIES } from "../../../../lib/fixtures/opportunities";
-import { load } from "../../../../lib/data/source";
+import { listOpportunities } from "../../../../lib/data/opportunities";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { OpportunityTable } from "./OpportunityTable";
 
@@ -43,20 +42,17 @@ export default async function OpportunitiesPage({
 }) {
   const [{ org }, query] = await Promise.all([params, searchParams]);
 
-  const { data } = await load(
-    async () => {
-      throw new Error(
-        "Opportunity list: live query not implemented. Connect Supabase and " +
-          "finish listOpportunities() against real rows — see lib/data/opportunities.ts.",
-      );
-    },
-    () => OPPORTUNITIES,
-  );
+  const { data } = await listOpportunities(org);
 
   return (
     <OpportunityTable
       org={org}
       rows={data}
+      /* The server's clock, resolved once per request and passed down, so
+         every relative age on the page is measured from the same instant.
+         Reading `new Date()` inside the client component instead would make
+         the ages drift against the data they describe. */
+      now={new Date().toISOString()}
       initialPriority={parsePriority(query.priority)}
       // Resolved on the server and passed down, rather than read in the client
       // component: the role is not something the browser should be asked to
