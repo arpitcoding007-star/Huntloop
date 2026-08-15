@@ -16,6 +16,16 @@ export interface ActionRailItemProps {
   secondaryLabel?: string;
   onSecondary?: () => void;
   onDismiss?: () => void;
+  /**
+   * Why neither button can act yet. See `Button`'s own `pending`.
+   *
+   * This rail is the sharpest case of UX-01 in the app, which is why the prop
+   * is threaded through rather than left to the call site: the heading says
+   * "Needs you", every item asserts that something requires a decision, and
+   * every Approve and Review button under it did nothing when pressed. A queue
+   * of demands with no way to satisfy them is worse than an empty queue.
+   */
+  pending?: string;
 }
 
 export function ActionRailItem({
@@ -28,6 +38,7 @@ export function ActionRailItem({
   secondaryLabel,
   onSecondary,
   onDismiss,
+  pending,
 }: ActionRailItemProps) {
   return (
     <div className="rounded-md border border-line-subtle bg-surface p-3">
@@ -56,11 +67,22 @@ export function ActionRailItem({
       </div>
 
       <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" variant="primary" onClick={onPrimary} className="flex-1">
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onPrimary}
+          pending={pending}
+          className="flex-1"
+        >
           {primaryLabel}
         </Button>
         {secondaryLabel && (
-          <Button size="sm" variant="secondary" onClick={onSecondary}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onSecondary}
+            pending={pending}
+          >
             {secondaryLabel}
           </Button>
         )}
@@ -102,14 +124,21 @@ export function ActionRail({
         </div>
       )}
       <div className="flex flex-col gap-2">{children}</div>
+      {/* The arrow promises navigation, so it goes with the handler — the same
+          rule the Command Center's alert chips already follow. Without
+          `onMoreClick` this was a focusable "+5 more →" that moved nowhere. */}
       {typeof moreCount === "number" && moreCount > 0 && (
-        <button
-          type="button"
-          onClick={onMoreClick}
-          className="hl-focusable rounded-sm text-left text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary"
-        >
-          +{moreCount} more →
-        </button>
+        onMoreClick ? (
+          <button
+            type="button"
+            onClick={onMoreClick}
+            className="hl-focusable rounded-sm text-left text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary"
+          >
+            +{moreCount} more →
+          </button>
+        ) : (
+          <span className="text-[12px] text-fg-muted">+{moreCount} more</span>
+        )
       )}
     </div>
   );

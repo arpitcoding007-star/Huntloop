@@ -81,19 +81,40 @@ export function TopBar({
             )}
           >
             {i > 0 && <span className="mx-0.5 hidden text-fg-muted select-none md:inline">/</span>}
-            <button
-              type="button"
-              onClick={crumb.onClick}
-              className="hl-focusable flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-surface-hover"
-            >
-              <span className="max-w-[160px] truncate">{crumb.label}</span>
-              {crumb.badge && (
-                <Badge variant={crumb.badge.variant ?? "neutral"} size="sm">
-                  {crumb.badge.label}
-                </Badge>
-              )}
-              <ChevronDown className="size-3.5 shrink-0 text-fg-muted" strokeWidth={1.75} />
-            </button>
+            {/*
+              The chevron goes with the handler (audit UX-12).
+
+              A ChevronDown is the universal promise of a menu, and both crumbs
+              rendered one with `onClick` undefined — a focusable control that
+              announced as a button, showed a dropdown affordance, and did
+              nothing. Without a handler this is now plain text: no button, no
+              focus ring, no chevron. Same rule as the `unbuilt` nav flag and
+              the topbar's own Feedback and Help links.
+            */}
+            {crumb.onClick ? (
+              <button
+                type="button"
+                onClick={crumb.onClick}
+                className="hl-focusable flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-surface-hover"
+              >
+                <span className="max-w-[160px] truncate">{crumb.label}</span>
+                {crumb.badge && (
+                  <Badge variant={crumb.badge.variant ?? "neutral"} size="sm">
+                    {crumb.badge.label}
+                  </Badge>
+                )}
+                <ChevronDown className="size-3.5 shrink-0 text-fg-muted" strokeWidth={1.75} />
+              </button>
+            ) : (
+              <span className="flex h-8 min-w-0 items-center gap-1.5 px-2 text-[13px] text-fg">
+                <span className="max-w-[160px] truncate">{crumb.label}</span>
+                {crumb.badge && (
+                  <Badge variant={crumb.badge.variant ?? "neutral"} size="sm">
+                    {crumb.badge.label}
+                  </Badge>
+                )}
+              </span>
+            )}
           </div>
         ))}
       </div>

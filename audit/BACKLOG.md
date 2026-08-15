@@ -298,6 +298,27 @@ into a throwaway project once, end to end, and write down the measured RTO.
 
 ---
 
+## Interface review — open items
+
+The full pass is [UX-REVIEW.md](UX-REVIEW.md); six of its fourteen findings
+closed in the commit that added it. These are the rest, and `UX-05` is the one
+worth doing first — it is the only item in this backlog that changes what the
+product *is* rather than how well it behaves.
+
+| ID | Task | Effort | Note |
+|---|---|---|---|
+| **UX-05** | **A qualification can be saved, and lands on its detail page** | **M** | Analyze discards the most valuable thing the product produces. One insert plus one redirect turns four disconnected screens into a loop — and closes UX-03 by making the button real |
+| UX-07 | Onboarding lands somewhere real | S | It currently ends on the Command Center, the one screen whose figures are entirely invented |
+| UX-13 | `HoverPanel` opens on tap; fix the `pointer-events`/`overflow` contradiction | XS | Score and priority explanations are unreachable on a phone — the two places §51 and §77 P4 are discharged |
+| UX-14 | A confirmation state, with undo | S | The sixth member of the `States.tsx` family. Every write added from here needs it |
+| UX-09 | One priority control on `/opportunities`, not two | S | Four stat cards and five chips, same buckets, same counts — and the card is a link on one screen and inert on the next |
+| UX-10 | Filter state in the URL via `history.replaceState` | S | The deep link is true on arrival and wrong after the first click. No `router.push`, so the stated objection does not apply |
+| UX-11 | Promote the action rail below 1440px | S | "Needs you" sits ~2000px down on a 1280px laptop |
+| UX-08 | Give row selection a verb, or remove it | S | Its only action was `Add to campaign`, now `pending` |
+| UX-15 | A command palette | M | Optional. UX-02 removed the ⌘K affordance rather than building one; a dozen verbs have no screen of their own and a palette can host them first |
+
+---
+
 ### Note on PERF-06 — why the budget measures what it measures
 
 *Kept after PERF-06 shipped, because it is the reasoning behind the scope

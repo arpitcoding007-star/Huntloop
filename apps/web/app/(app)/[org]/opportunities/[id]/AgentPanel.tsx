@@ -71,7 +71,17 @@ export function AgentPanel({ company }: { company: string }) {
             placeholder="Ask anything about this opportunity…"
             className="hl-focusable min-h-[64px] w-full resize-y rounded-md border border-line bg-surface px-2.5 py-2 text-[13px] text-fg placeholder:text-fg-muted"
           />
-          <Button variant="primary" icon={Send} aria-label="Send" disabled />
+          {/* `disabled` alone until NAV-03, which is the one case in the app
+              where the panel already explained itself in the notice above.
+              The reason still belongs on the control: a keyboard user reaching
+              this button need not have read, or been able to reach, the
+              paragraph three elements earlier. */}
+          <Button
+            variant="primary"
+            icon={Send}
+            aria-label="Send"
+            pending="The agent isn't connected yet — nothing will answer you."
+          />
         </div>
 
         <p className="flex flex-wrap items-center gap-1.5 text-[11px] leading-[1.5] text-fg-muted">

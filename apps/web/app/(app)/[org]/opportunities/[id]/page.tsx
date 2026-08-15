@@ -97,10 +97,22 @@ export default async function OpportunityPage({
             dimensions={o.dimensions}
           />
           <Badge variant="neutral">{o.status}</Badge>
-          <Button variant="secondary" icon={UserPlus}>
+          {/* Both carry their reason rather than rendering as live controls
+              on the screen the product is judged on (audit UX-01). Ownership
+              is a membership write with no UI behind it yet; drafting is the
+              outreach half of the loop, which is not built at all. */}
+          <Button
+            variant="secondary"
+            icon={UserPlus}
+            pending="Assigning an owner isn't built yet."
+          >
             {o.owner ? `Owned by ${o.owner}` : "Assign"}
           </Button>
-          <Button variant="primary" icon={Send}>
+          <Button
+            variant="primary"
+            icon={Send}
+            pending="Outreach drafting isn't built yet. The angle and its caveats are below."
+          >
             Draft outreach
           </Button>
         </div>

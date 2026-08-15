@@ -123,11 +123,22 @@ export function SourceManager({ org }: { org: string }) {
             {org} · {active.length} monitored · where Huntloop looks for signals
           </p>
         </div>
+        {/* "Scan now" promises the scheduled scan this product is built
+            around, and no code reads news, jobs or GitHub yet — so it says so
+            rather than rendering as a live control (audit UX-01). */}
         <div className="flex items-center gap-2">
-          <Button icon={RefreshCw} variant="secondary">
+          <Button
+            icon={RefreshCw}
+            variant="secondary"
+            pending="Scheduled scanning isn't built yet — nothing reads these sources on a timer."
+          >
             Scan now
           </Button>
-          <Button icon={Plus} variant="primary">
+          <Button
+            icon={Plus}
+            variant="primary"
+            pending="Adding a source isn't wired to the database yet."
+          >
             Add a source
           </Button>
         </div>

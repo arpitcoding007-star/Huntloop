@@ -393,13 +393,27 @@ export function Analyzer({ org }: { org: string }) {
             </Button>
             {q.priority !== "ignore" && (
               <>
-                <Button variant="primary" disabled>
+                {/*
+                  The reason here was "Saving needs the database — not
+                  connected yet", written when that was true. The database is
+                  now migrated and seeded, so the sentence became false without
+                  anything touching this file (audit UX-03) — the same shape as
+                  FEAT-07, and the reason a disabled state must never name a
+                  condition some other file can quietly satisfy.
+
+                  What is actually missing is the writer: nothing in
+                  `lib/data/opportunities.ts` inserts. That is UX-05, and it is
+                  the edge that turns four screens into a loop.
+                */}
+                <Button
+                  variant="primary"
+                  pending="Saving a qualification isn't built yet — nothing writes opportunities."
+                >
                   Save as an opportunity
                 </Button>
-                {/* Disabled with the reason next to it. A button that looks
-                    live and does nothing is worse than one that says why. */}
                 <span className="text-[12px] text-fg-muted">
-                  Saving needs the database — not connected yet.
+                  Nothing writes opportunities yet, so this verdict lives only
+                  on this page.
                 </span>
               </>
             )}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
+import { RefreshButton } from "../RefreshButton";
 import {
   ActionRail,
   ActionRailItem,
@@ -29,7 +30,6 @@ import {
   Flame,
   MessageSquare,
   Plus,
-  RefreshCw,
   Search,
   Send,
   Sparkles,
@@ -201,14 +201,26 @@ export default async function DashboardPage({
           </div>
           {/* Refresh and Export are reads and stay for everyone. "New hunt"
               starts work that costs money, so a viewer does not get a button
-              that would fail at the database (audit FEAT-04). */}
+              that would fail at the database (audit FEAT-04).
+
+              Two of the three carry `pending` rather than a handler: neither
+              exporting nor scheduled hunting is built, and until UX-01 they
+              rendered as live controls that did nothing when pressed. */}
           <div className="flex items-center gap-2">
-            <Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />
-            <Button icon={Download} variant="secondary">
+            <RefreshButton />
+            <Button
+              icon={Download}
+              variant="secondary"
+              pending="Exporting isn't built yet."
+            >
               Export
             </Button>
             {mayHunt && (
-              <Button icon={Plus} variant="primary">
+              <Button
+                icon={Plus}
+                variant="primary"
+                pending="Scheduled hunts aren't built yet. Analyze a URL to qualify one company now."
+              >
                 New hunt
               </Button>
             )}
@@ -474,6 +486,10 @@ export default async function DashboardPage({
           names. Below it the grid collapses to one column and the rail
           stacks under the main content; it is never absolutely positioned,
           so it cannot overlay anything at any width. */}
+      {/* Every item here is a fixture describing a screen that does not exist,
+          so every button carries its reason (audit UX-01). This rail was the
+          worst instance in the app: a column headed "Needs you", asserting
+          four decisions were required, with six inert buttons under it. */}
       <ActionRail moreCount={5}>
         <ActionRailItem
           title="12 replies unread"
@@ -481,6 +497,7 @@ export default async function DashboardPage({
           sourceVariant="info"
           meta="2h ago"
           primaryLabel="Review"
+          pending="The inbox isn't built yet."
         />
         <ActionRailItem
           title="5 messages need approval"
@@ -489,6 +506,7 @@ export default async function DashboardPage({
           meta="Autonomy L2"
           primaryLabel="Approve"
           secondaryLabel="Skip"
+          pending="Outreach drafting isn't built yet."
         />
         {/* §58: a source that fails does not fail the hunt — it is marked
             unavailable, retried, and surfaced as something a human can see. */}
@@ -498,6 +516,7 @@ export default async function DashboardPage({
           sourceVariant="warning"
           meta="Failing since 06:10 · retrying"
           primaryLabel="View"
+          pending="Source health detail isn't built yet."
         />
         <ActionRailItem
           title="7 opportunities on evidence older than 90 days"
@@ -506,6 +525,7 @@ export default async function DashboardPage({
           meta="Re-research to re-score"
           primaryLabel="Re-research"
           secondaryLabel="Dismiss"
+          pending="Re-research isn't built yet."
         />
       </ActionRail>
       </div>

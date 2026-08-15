@@ -17,8 +17,9 @@ import {
   type Column,
   type Priority,
 } from "@huntloop/ui";
-import { Binoculars, Eye, Flame, Plus, RefreshCw, Send, Thermometer } from "lucide-react";
+import { Binoculars, Eye, Flame, Plus, Radar, Send, Thermometer } from "lucide-react";
 import type { OpportunityRow } from "../../../../lib/data/opportunities";
+import { RefreshButton } from "../RefreshButton";
 
 /**
  * The opportunity list.
@@ -191,10 +192,21 @@ export function OpportunityTable({
             {all.length} qualified against your ICP · ordered by verdict, then score
           </p>
         </div>
+        {/* One Refresh, not two. There was a second identical one eleven rows
+            below in the FilterBar; that is the one kept, because it sits with
+            the other controls that change what is displayed (audit UX-04).
+
+            "Analyze a URL" is a real destination and is now a link to it. It
+            was a primary button with no handler on the screen a salesperson
+            spends the most time on. */}
         <div className="flex items-center gap-2">
-          <Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />
           {canWrite && (
-            <Button icon={Plus} variant="primary">
+            <Button
+              icon={Plus}
+              variant="primary"
+              href={`/${org}/analyze`}
+              linkComponent={Link}
+            >
               Analyze a URL
             </Button>
           )}
@@ -254,7 +266,12 @@ export function OpportunityTable({
                 viewer can still select and clear, which is how you compare
                 things — they just get no button that would fail. */}
             {canWrite && (
-              <Button size="sm" variant="secondary" icon={Send}>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={Send}
+                pending="Campaigns aren't built yet, so a selection has nowhere to go."
+              >
                 Add to campaign
               </Button>
             )}
@@ -263,7 +280,7 @@ export function OpportunityTable({
             </Button>
           </>
         }
-        actions={<Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />}
+        actions={<RefreshButton />}
       />
 
       <DataTable
@@ -283,10 +300,52 @@ export function OpportunityTable({
                 ? "No opportunities match this filter"
                 : "No opportunities discovered yet"
             }
+            /*
+             * The description used to read "Define an ICP and pick your
+             * sources to start hunting" — an instruction naming two screens
+             * that are `unbuilt` in the nav, given on the one screen where the
+             * user has nothing else to try (audit UX-06).
+             *
+             * It now names only what exists, and offers it. An empty state
+             * with no exit is the only place a first-time user is guaranteed
+             * to be stuck.
+             */
             description={
               query || priority !== "all"
                 ? "Try a different priority or search field."
-                : "Define an ICP and pick your sources to start hunting."
+                : "Nothing has been qualified against your ICP yet. Analyze a company you already have in mind, or check where Huntloop is looking."
+            }
+            action={
+              query || priority !== "all" ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setQuery("");
+                    setPriority("all");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="primary"
+                    icon={Plus}
+                    href={`/${org}/analyze`}
+                    linkComponent={Link}
+                  >
+                    Analyze a company URL
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={Radar}
+                    href={`/${org}/sources`}
+                    linkComponent={Link}
+                  >
+                    Review sources
+                  </Button>
+                </>
+              )
             }
           />
         }

@@ -240,6 +240,60 @@ function check(phase, id, title, ok, sev, detail) {
     deadHrefs.length ? `Placeholder hrefs: ${deadHrefs.join(" ")}` : null,
   );
 
+  /*
+   * Buttons that do nothing when pressed.
+   *
+   * NAV-02 above is the same defect, and it could never have caught these:
+   * it greps for placeholder hrefs, and a <Button> has no href to inspect.
+   * That blind spot left twenty-one controls across six screens rendering as
+   * live primary and secondary actions with full focus rings and no behaviour
+   * at all — Export, New hunt, Draft outreach, Assign, Scan now, Add a source,
+   * Add to campaign, four Refreshes, and every button in the rail headed
+   * "Needs you" (audit UX-01).
+   *
+   * A button is answerable if it does exactly one of:
+   *   onClick   it acts
+   *   type=     it submits or resets a form
+   *   href      it navigates
+   *   pending   it says why it cannot act yet, and refuses the click
+   *
+   * `disabled` alone is deliberately NOT sufficient. A greyed-out control with
+   * no reason is the question this check exists to stop shipping, and it also
+   * leaves the tab order — so the users who most need the explanation are the
+   * ones who cannot reach it. Use `pending`.
+   *
+   * Scoped to apps/web/app, so packages/ui may still define a Button whose
+   * handler its caller supplies. The kitchen sink is exempt: it is the
+   * component gallery, and its buttons exist to be looked at.
+   */
+  const inertButtons = [];
+  for (const f of walk("apps/web/app")) {
+    if (!f.endsWith(".tsx")) continue;
+    const rel = relative(".", f).split(sep).join("/");
+    if (rel.includes("/kitchen-sink/")) continue;
+    const src = stripComments(read(f) ?? "");
+    // Each `<Button …>` up to the closing `>` of its opening tag. `[^>]` would
+    // stop at the first `>` inside an arrow function in a prop, so this walks
+    // attributes instead and tolerates `=>` within them.
+    let inert = 0;
+    for (const m of src.matchAll(/<Button\b((?:[^>]|=>)*?)\/?>/g)) {
+      const attrs = m[1] ?? "";
+      if (/\b(onClick|type|href|pending)[=\s]/.test(attrs)) continue;
+      inert++;
+    }
+    if (inert) inertButtons.push(`${rel}(${inert})`);
+  }
+  check(
+    3,
+    "NAV-03",
+    "Every button either acts, navigates, submits, or says why it cannot",
+    inertButtons.length === 0,
+    "fail",
+    inertButtons.length
+      ? `Buttons with no behaviour: ${inertButtons.join(" ")}`
+      : null,
+  );
+
   // Route-level safety nets. `notFound()` is called deliberately by the org
   // layout as a security decision, so the 404 page is not optional cosmetics.
   for (const [file, id] of [

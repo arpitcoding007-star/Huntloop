@@ -235,18 +235,31 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
-          /* org → workspace, per the §38 tenancy hierarchy. The second crumb
-             was a campaign, which put an execution artefact above the
-             intelligence it comes from; the ICP is what a hunt is scoped by. */
-          breadcrumbs={[
-            { label: org },
-            {
-              label: "Web3 Infrastructure ICP",
-              badge: { label: "Hunting", variant: "brand" },
-            },
-          ]}
+          /*
+            org → workspace, per the §38 tenancy hierarchy. The second crumb
+            was a campaign, which put an execution artefact above the
+            intelligence it comes from; the ICP is what a hunt is scoped by.
+
+            That second crumb is gone for now (audit UX-12). It read
+            "Web3 Infrastructure ICP · Hunting" for every organisation,
+            hard-coded — so a multi-tenant product named someone else's ICP
+            above every screen. No ICP name is plumbed here yet, and the honest
+            minimum is to show the one thing that is true. Restore it, from the
+            org's real ICP, in the commit that loads one.
+          */
+          breadcrumbs={[{ label: org }]}
           onMenuClick={() => setNavOpen(true)}
-          onSearchClick={() => {}}
+          /*
+            No `onSearchClick`. It was `() => {}`, and because the prop was
+            present TopBar rendered the full search control — a 224px field
+            with ⌘K printed inside it — for a shortcut nothing binds and a
+            click that did nothing (audit UX-02).
+
+            A dead link disappoints once; a dead shortcut teaches a habit and
+            then breaks it on every page. TopBar omits the control entirely
+            when the handler is absent, which is the same mechanism already
+            used for Feedback and Help. Pass a handler when the palette exists.
+          */
           /*
             Both were `"#"` — a Feedback link and a Help button that looked
             live, tabbed like links, and went nowhere (audit ANL-03).
