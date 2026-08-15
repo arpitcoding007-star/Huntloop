@@ -173,32 +173,67 @@ setup banner, which is worse. `npm run db:doctor` is the check.
 
 ---
 
+## Closed in the sixth pass — 2026-08-15
+
+| ID | Task | Effort |
+|---|---|---|
+| **DB-05** | **`0005` and `0006` applied to the configured project** | **XS** |
+
+Applied by hand in the SQL editor, which is the only route available while
+`DATABASE_URL` is empty — the publishable and secret keys talk to PostgREST,
+which reads and writes rows and cannot execute DDL.
+
+**Verified beyond the name.** `db:doctor` asks only whether PostgREST exposes
+`consume_rate_limit`, which a stub would satisfy. The deployed function was
+driven directly instead, and behaved like the file in this repo: it refused a
+caller it could not identify (`P0001 · consume_rate_limit requires an
+authenticated caller` — the guard that is load-bearing, because SECURITY
+DEFINER bypasses RLS), `prune_rate_limits()` ran and returned a count, and the
+refused call wrote **no** counter row, which places the membership guard before
+the upsert where it belongs.
+
+**What could not be verified from here**, and is now `DB-05b` above: `0006`'s
+`pg_cron` schedule. `cron.job` is not exposed through PostgREST.
+
+**What this did not unblock, contrary to the note it replaces.** `AI-01` still
+needs a key. `isAiConfigured()` is checked *before* `resolveRecorder()` and
+before the limiter in all four wrappers, so with no `ANTHROPIC_API_KEY` the
+limiter is never reached — meaning the "every model-calling path refuses"
+phrasing used across these documents was only ever true of a deployment that
+*had* a key. Corrected in SETUP.md rather than left to be rediscovered.
+
+---
+
 ## P0 — Before the next production deploy
 
 **Nothing in code.** `SEC-03` was the last one.
 
 The prediction in the previous pass — that the next P0 would come from a hosted
 project — was right, and it did: connecting to one found `DB-04`, a partially
-applied schema reporting as fully applied. That is fixed. What it left behind
-is `DB-05` in P1, which is a five-minute paste into a SQL editor and cannot be
-done from code.
+applied schema reporting as fully applied. That is fixed, and `DB-05`, the
+paste it left behind, is done: all five migrations are applied and the
+limiter has been driven against the live project.
+
+The remaining human items are no longer *blocking* anything — they are keys
+(`ANTHROPIC_API_KEY`, a Sentry DSN, `DATABASE_URL`) and one check in a SQL
+editor.
 
 ---
 
 ## P1 — This cycle
 
-### DB-05 · Apply `0005` and `0006` to the configured project · **XS** · Phase 4
-**The one thing blocking the AI features, and the only item here a human must
-do.** The project in `apps/web/.env.local` has `0001`–`0004` applied and
-`0005_rate_limits.sql` not. Until it is, `consume_rate_limit()` does not exist
-and every model-calling path refuses — correctly, and now with a message that
-names the cause (see `DB-04` in FINDINGS.md), but it refuses.
+### DB-05b · Confirm `0006` actually scheduled · **XS** · Phase 4
+All that survives of `DB-05`, which is otherwise closed — see below.
 
-**Check:** `npm run db:doctor` — it names the missing file.
-**Do:** paste `0005_rate_limits.sql` then `0006_prune_schedule.sql` into the
-Supabase SQL editor, in that order. SETUP.md step 3.
-**Then:** `select * from cron.job` should list `prune-rate-limits`. That is the
-half of `0006` no test has ever exercised, because PGlite has no `pg_cron`.
+`0006` creates no table and no function of its own; it schedules
+`prune_rate_limits()` with `pg_cron`. `cron.job` is not reachable through
+PostgREST, so neither `db:doctor` nor any script can see it, and PGlite has no
+`pg_cron` so no test has ever exercised it. `select * from cron.job` in the SQL
+editor is the only check there is, and it has not been run.
+
+**If the list is empty**, `0006` printed a notice instead of scheduling and
+`rate_limits` grows forever — a slow leak, not an outage, which is why it needs
+a deliberate check rather than a wait-and-see.
 
 ### TEST-02c · Browser specs that need a real session · **M** · Phase 9
 The Playwright suite runs in demo mode, which is a real configuration of this
@@ -308,25 +343,29 @@ where it now sits behind a stated dependency rather than behind "someday".*
 
 ## Dependency graph
 
-The graph is almost entirely one node now, and that is the useful thing to see:
+**The root node is gone, and that is the useful thing to see.** Two versions of
+this graph had "a hosted, migrated Supabase project" fanning out to five items.
+It is now provisioned, migrated, seeded and verified, and every one of those
+items has either closed or fallen back to a credential of its own:
 
 ```
-                        ┌─► FEAT-02 ──► PERF-04 (can't profile queries that don't run)
-                        │        └─────► TEST-02c (browser specs need real rows)
-A hosted, migrated ─────┤
-Supabase project        ├─► TEST-02c (sign-in, the 404-not-403 guard, RateLimited)
-                        ├─► DB-03    (type generation needs a project ref)
-                        └─► OPS-02   (a restore needs something to restore)
-
 ANTHROPIC_API_KEY ──────► AI-01     (four tasks that have never called the API)
 
 Sentry DSN ─────────────► OPS-01    (a week of quiet CSP reports, then enforce)
+
+DATABASE_URL ───────────┬─► PERF-04 (PostgREST will not return a query plan)
+                        └─► DB-03   (type generation)
+
+A seeded second org ────► TEST-02c  (the 404 guard needs an org you are not in)
+
+select * from cron.job ─► DB-05b    (the half of 0006 nothing can see from code)
 ```
 
-`ANL-02` and `FEAT-04` are off the graph — both shipped against fixtures with
-the live branch written, so they light up when the data arrives rather than
-needing to be built then.
+`FEAT-02`, `ANL-02` and `FEAT-04` are off the graph entirely — the first closed
+when the rows arrived, and the other two shipped against fixtures with the live
+branch written, so they lit up rather than needing to be built.
 
-Everything else is independent and parallelizable — but note that almost
-nothing else is left. **The backlog is no longer the constraint; provisioning
-is.** See [AGENT-REACH.md](AGENT-REACH.md) for what only a human can supply.
+What is left has **no internal edges**: nothing above blocks anything else
+above, so all five can be done in any order or none. **The backlog is no longer
+the constraint, and neither is provisioning — what remains is four keys and a
+query.** See [AGENT-REACH.md](AGENT-REACH.md) for what only a human can supply.

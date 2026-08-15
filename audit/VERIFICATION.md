@@ -2,20 +2,27 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
-> **Four further passes are appended at the end.** The tables immediately
+> **Five further passes are appended at the end.** The tables immediately
 > below describe the first pass only.
 >
-> **Current totals (fifth pass, 2026-08-15):** 42 database checks · 75
+> **Current totals (sixth pass, 2026-08-15):** 42 database checks · 75
 > `apps/web` and `packages/ui` unit tests · 111 prompt-contract checks · 68
 > browser tests · 37 audit checks, 0 failing, **0 warnings** · 0 dependency
-> advisories. **No P0 items remain.**
+> advisories. **All 5 migrations applied. No P0 items remain.**
 >
 > The fifth pass is the first run against a live database. It closed
 > `FEAT-02` — the last warning — and found three things no amount of reading
 > would have: **`FEAT-07`**, where connecting a database *removed* the
 > demo-data marking from the Command Center; `DB-04`, a partially applied
-> schema reporting as complete; and `UI-07`, a soft 404. What remains needs a
-> password, a key, or a DSN, and is listed in that pass's "Still not verified".
+> schema reporting as complete; and `UI-07`, a soft 404.
+>
+> The sixth pass completed the schema and drove `consume_rate_limit()` against
+> the live project, which is a stronger claim than `db:doctor`'s — that probe
+> only asks whether PostgREST exposes the name. Its finding was in the prose,
+> not the code: **"every model-calling path refuses until `0005` is applied"
+> was only ever true of a deployment holding an AI key**, because
+> `isAiConfigured()` is checked two guards earlier. What remains needs a key,
+> a DSN, a password, or one query in a SQL editor.
 
 Everything below was run against the working tree after the fixes described in
 [FINDINGS.md](FINDINGS.md). Reproduce the whole thing with:
@@ -653,7 +660,8 @@ letting the process finish, which is why they can be trusted in a shell.
 
 ## Still not verified, and why
 
-Supersedes the same section in the fourth pass.
+Supersedes the same section in the fourth pass. The first two entries were
+discharged the next day — see the sixth pass below.
 
 - **`0005` and `0006` are still not applied.** Applying them needs the database
   password (`DATABASE_URL` is empty) or a paste into the SQL editor. Until
@@ -673,3 +681,125 @@ Supersedes the same section in the fourth pass.
 - **The live evidence above is evidence, not regression coverage.** It was
   driven through a real browser once. Nothing re-runs it; `TEST-02c` is the
   task that would, and the reason it is not done is recorded there.
+
+---
+
+# Sixth pass — the schema completed, and the limiter driven
+
+**Date:** 2026-08-15 · **Baseline:** `5d46aea` · **Branch:** `main`
+
+A short pass with one subject: `0005_rate_limits.sql` and `0006_prune_schedule.sql`
+were applied to the configured project, by hand in the Supabase SQL editor.
+This records what was checked afterwards, and — more usefully — the one thing
+the pass proved about the *documentation* rather than the code.
+
+## Why the check is not `db:doctor`
+
+`npm run db:doctor` reports all five migrations applied. That is worth exactly
+what its method is worth, and its method is a single request for PostgREST's
+OpenAPI document, asking whether the name `consume_rate_limit` appears in it.
+
+An empty function with the right signature would satisfy that. So would a
+function whose membership guard had been dropped to make an error go away.
+Neither is likely; both are invisible to the probe; and the whole argument of
+the fifth pass was that probes which infer state from one signal are how
+`DB-04` happened in the first place.
+
+So the deployed function was driven directly, through PostgREST, with the
+service key.
+
+## What the live function did
+
+| Check | Result |
+|---|---|
+| `rate_limits` table readable | HTTP 200 |
+| `consume_rate_limit()` with no identity | **HTTP 400 · `P0001` · *"consume_rate_limit requires an authenticated caller"*** |
+| `prune_rate_limits()` | HTTP 200, returned a count |
+| Counter rows written by the refused call | **none** |
+
+The second row is the one that matters, and it is worth being precise about
+why. `consume_rate_limit()` is `SECURITY DEFINER`, so it bypasses RLS by
+construction; the `auth.uid()` guard at the top of its body is therefore not
+defensive, it is *the* boundary between a stranger and another org's quota.
+The service key carries no `auth.uid()`, which makes an unauthenticated call
+the one branch reachable from a script — and it is the branch worth reaching.
+The error text matches `0005_rate_limits.sql` exactly.
+
+The fourth row places that guard **before** the upsert. A function that
+counted first and checked membership second would have left a row behind; the
+table is empty, so it does not.
+
+Together these establish that the deployed object is this repository's object,
+which is a different and stronger claim than "the name resolves".
+
+## What the pass found, and it was in the prose
+
+The documents in this directory, `SETUP.md`, and the backlog all said some
+version of *"until `0005` is applied, every model-calling path refuses"*.
+
+That is true only of a deployment **that has an `ANTHROPIC_API_KEY`**. All four
+wrappers check `isAiConfigured()` first — before `resolveRecorder()`, before
+`consumeRateLimit()` — and return a worked example labelled `unconfigured`
+when there is no key:
+
+```
+research.ts:59   if (!isAiConfigured()) return { ok: true, result: { source: "unconfigured", … } }
+research.ts:66   const resolved = await resolveRecorder(orgSlug)
+research.ts:74   const budget = await consumeRateLimit(orgId, "research_company")
+```
+
+The project in `.env.local` has no key. So the state those documents described
+as a refusal has never been reachable on it, and the migration everyone was
+told was "the one thing blocking the AI features" was blocking a path that
+stops two guards earlier.
+
+It was still worth applying — the cap must exist before a key does, which is
+the ordering rule this roadmap is built on — but the *reason* given for it was
+wrong, and it was wrong in the direction that flatters the writer: it made a
+prerequisite sound like a blocker. Corrected in `SETUP.md`, `BACKLOG.md` and
+`ROADMAP.md` rather than left for someone to rediscover.
+
+This is the same class of defect as `FEAT-07` and `DB-04`, in the only place
+those two could not reach: a statement about behaviour that no test asserts,
+because it is prose.
+
+## Toolchain
+
+Unchanged from the fifth pass, re-run on `5d46aea` after the migrations landed.
+
+| Gate | Command | Result |
+|---|---|---|
+| Types | `npm run typecheck` | **Clean** |
+| Lint | `npm run lint` | **Clean** |
+| Schema + tenant isolation | `npm test` | **42/42** |
+| Audit | `npm run audit:site` | **37 checks · 0 failing · 0 warning** |
+| Bundle | `npm run audit:bundle` | **244.6 kB gzipped of 275 kB** |
+| Build | `npm run build` | **21 routes** |
+| Migrations | `npm run db:doctor` | **All 5 applied** |
+
+No code changed in this pass. The gates were re-run because the database
+underneath them did.
+
+## Still not verified, and why
+
+Supersedes the same section in the fifth pass. Three of its six entries stand
+unchanged; the two about `0005` are discharged, and one is narrower.
+
+- **`0006`'s scheduled half has still never run.** Narrower than before but not
+  closed: `0006` is applied, and whether it *scheduled* remains unknown.
+  `cron.job` is not exposed through PostgREST, so no script in this repo can
+  see it — `db:doctor` prints `[?]` against `0006` for exactly this reason.
+  `select * from cron.job` in the SQL editor is the only check. It is `DB-05b`.
+- **No AI key has ever been used.** Unchanged. All four tasks remain
+  unit-tested against a scripted client. The limiter they now consume from is
+  real; the calls it would meter are still hypothetical.
+- **Sentry has still never received an event**, so the CSP report endpoint has
+  still never delivered one, and `OPS-01` still cannot start its clock.
+- **No load test.** The blocker named here in the fifth pass is gone —
+  `consume_rate_limit()` exists — but nothing has driven it through HTTP, and
+  doing so needs a signed-in session, which needs a magic link from a real
+  inbox. Still `TEST-02c`.
+- **The allow path has never run against this project.** Everything above
+  exercises the refusal branch, because a script cannot hold an `auth.uid()`.
+  That a member is granted quota, that the counter increments, and that the
+  window rolls over are proven by the 22 PGlite tests and by nothing else.

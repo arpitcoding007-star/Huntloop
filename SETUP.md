@@ -10,8 +10,8 @@ tell whether it matters.
 
 ## Where this stands right now
 
-Checked against your project on **2026-08-15**. Steps 1, 2 (partly), 3 (partly),
-4 and 6 are already done. Re-check any time with:
+Checked against your project on **2026-08-15**. Steps 1, 2 (partly), 3, 4 and 6
+are already done. Re-check any time with:
 
 ```bash
 npm run db:doctor
@@ -21,17 +21,22 @@ npm run db:doctor
 |---|---|
 | 1 · Which project | **Done.** `hnoycsbdddpmsivtmrws`, and it holds nothing but Huntloop — see the note in step 1 |
 | 2 · Keys in `.env.local` | **Three of five.** URL, publishable and secret keys are set. `DATABASE_URL` and `ANTHROPIC_API_KEY` are empty |
-| 3 · Create the tables | **`0001`–`0004` applied. `0005` and `0006` are not.** ← **this is the one thing blocking the AI features** |
+| 3 · Create the tables | **Done.** All five applied, and `consume_rate_limit()` driven against the live project to confirm the deployed function is this repo's. **One check left: `select * from cron.job`** — see step 3 |
 | 4 · Check it worked | **Done.** No orange banner; the app reads real rows |
 | 5 · Make a login work | **An account exists for `arpitcoding007@gmail.com`**, created by the seed. Sign in with a magic link — no password was ever set |
 | 6 · Set up your organisation | **Done by the seed**, not by hand — `acme`, with three worked opportunities |
 | 7 · CI | Runs on push. Branch protection still needs a repo admin |
 | 8 · Enforce the CSP | Not started — needs a Sentry DSN first |
 
-**Do step 3 first.** Until `0005_rate_limits.sql` is applied, every screen that
-calls a model refuses. It refuses *politely* — "this feature is temporarily
-unavailable" — and tells you why in Sentry, but it refuses, because the thing
-that caps spending does not exist yet.
+**Step 3 is done, and that was the thing blocking the AI features.** What is
+left is an **`ANTHROPIC_API_KEY`** (step 2). Without one, nothing refuses and
+nothing is charged — each AI screen shows a worked example *labelled as one*,
+because `isAiConfigured()` is checked before anything is spent or counted.
+That labelling is the §7 rule applied to ourselves: an app with no key must say
+it has no key, not invent a company profile.
+
+Add the key and the same screens call Opus for real, metered against the
+counters step 3 just created.
 
 ---
 
@@ -131,17 +136,22 @@ The same warning applies: never paste it anywhere.
 
 ## Step 3 — Create the tables
 
-**`0001`–`0004` are already applied. You need to run `0005` and `0006`.**
+**Done — all five are applied.** Kept below because it is how you would set up
+a second project, and because the last check in it is still outstanding.
 
-Check for yourself first:
+Confirm any time:
 
 ```bash
 npm run db:doctor
 ```
 
-It prints one line per migration and names any that are missing.
+It prints one line per migration and names any that are missing. It now reports
+all five, and `consume_rate_limit()` has been driven against the live project:
+it exists, it refuses a caller it cannot identify, `prune_rate_limits()` runs,
+and the refused call wrote no counter row. So the deployed function is this
+repo's function, not just a name PostgREST exposes.
 
-Then, in the Supabase dashboard:
+For a fresh project, in the Supabase dashboard:
 
 1. Click **SQL Editor** in the left sidebar.
 2. Click **New query**.
@@ -154,24 +164,29 @@ Then re-run `npm run db:doctor`. It should report all five applied.
 
 > **`0005` is not optional.** It creates the counters that cap how many AI
 > calls an organisation can make per hour, and the `consume_rate_limit()`
-> function the app calls before every model call. Without it the app **refuses
-> those calls** rather than making them uncapped — each one is a real, paid
-> model call, and a spend cap that isn't there is not a cap.
+> function the app calls before every model call. Without it, a deployment
+> *with an AI key* **refuses those calls** rather than making them uncapped —
+> each one is a real, paid model call, and a spend cap that isn't there is not
+> a cap. Without a key it never gets that far; see step 2.
 
 > **Why the order matters:** later files point at tables the earlier ones make.
 > Run `0003` first and it fails, because the thing it references isn't there
 > yet. `0006` needs `prune_rate_limits()`, which `0005` creates.
 
-**One extra check after `0006`.** Run this in the SQL editor:
+**One extra check after `0006` — still outstanding.** Run this in the SQL
+editor:
 
 ```sql
 select * from cron.job;
 ```
 
 You should see a job named `prune-rate-limits`. That half of `0006` has never
-been exercised by any test — the test database has no `pg_cron` — so this is
-the only place it gets confirmed. If the list is empty, `0006` printed a notice
-instead of scheduling, and the counter table will grow forever.
+been exercised by any test — the test database has no `pg_cron` — and it cannot
+be checked from the command line either: `cron.job` is not reachable through
+PostgREST, which is why `db:doctor` prints `[?]` against `0006` rather than
+`[ok]`. This is the only place it gets confirmed. If the list is empty, `0006`
+printed a notice instead of scheduling, and the counter table will grow
+forever.
 
 **If a step fails:** stop. Don't run the next one. Copy the red error message
 and send it over. Half-applied migrations are much easier to fix immediately
@@ -405,7 +420,7 @@ worse than a thing that says what it is:
 | Signing in | **Real.** Magic link and Google both work. |
 | **The opportunity list and detail pages** | **Real.** They read your database — the join, the evidence, the triggers, the buyers. Verified against real rows in a browser, signed in. |
 | The Command Center, analytics, sources | Still **demo figures**, and each says so. Those queries are not written. |
-| **Anything that calls a model** | **Refused until `0005` is applied** — see step 3. After that, refused again unless `ANTHROPIC_API_KEY` is set, and it says which. |
+| **Anything that calls a model** | **Metered and ready.** `0005` is applied, so the spend cap exists. With no `ANTHROPIC_API_KEY` each screen shows a worked example **labelled as one** — it is not refused, and nothing is charged. Add the key and they call Opus for real. |
 | Onboarding step 2 — your company | **Real, if you add an AI key.** A model reads your site and reports what it found, marking each answer as observed, concluded, or not established. Nothing is saved yet. |
 | Onboarding steps 3–4 — ICP, sources | Real screens, fake brain. Nothing is generated, nothing is saved. |
 | Finding companies | Not built. No code reads news, jobs, or GitHub — the three opportunities you can see were seeded, not found. |

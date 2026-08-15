@@ -169,17 +169,22 @@ does not read as though work remains where it does not.
 
 | Needs | Unblocks |
 |---|---|
-| **`0005` + `0006` applied** to the configured project | `DB-05` — and with it every model-calling path, which refuses until `consume_rate_limit()` exists |
-| `DATABASE_URL` (the database password) | Applying those migrations from the command line instead of the SQL editor; `PERF-04`, because PostgREST cannot return a query plan; `DB-03` |
 | `ANTHROPIC_API_KEY` | `AI-01` — four tasks that have never called the real API |
 | A Sentry DSN | `OPS-01` — a week of quiet CSP reports, then `CSP_ENFORCE=true` |
+| `DATABASE_URL` (the database password) | `PERF-04`, because PostgREST cannot return a query plan; `DB-03`; and applying future migrations from the command line rather than by hand |
 | `NEXT_PUBLIC_POSTHOG_KEY` | The onboarding funnel emitting anything at all |
+| One query in the SQL editor | `DB-05b` — `select * from cron.job`, the only way to see whether `0006` scheduled |
 | A second seeded org, or a hosted test project | `TEST-02c` — the membership-guard 404 needs an org the user is *not* in |
 
-The row that used to head this table — "a migrated Supabase project with seed
-data" — is gone, because the project exists, four of its five migrations are
-applied, and `npm run db:seed` provides the data. What is left of it is the
-first two rows: one paste into a SQL editor, and one password.
+Two rows have now left this table. "A migrated Supabase project with seed data"
+went when the project was connected and `npm run db:seed` made the rows
+repeatable. "`0005` + `0006` applied" went in the sixth pass: all five are
+applied, and the limiter was driven against the live project rather than
+inferred from a name PostgREST exposes.
+
+**Nothing on this list blocks another item on it.** That is new. The graph
+below used to have a root; it now has four independent leaves, and each one is
+a credential rather than a decision.
 
 See [AGENT-REACH.md](AGENT-REACH.md) for the full account of what only a human
 can provide.
