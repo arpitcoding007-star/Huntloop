@@ -25,6 +25,16 @@ import { siteUrl } from "../lib/site-url";
  * on purpose: a new tenant route added later is disallowed by default, which
  * is the correct direction for a mistake to fail in.
  */
+/**
+ * Opts back out of the root layout's `force-dynamic`.
+ *
+ * That setting exists so every page carries a CSP nonce (see `app/layout.tsx`).
+ * This response ships no scripts, so it needs no nonce — and it is one of the
+ * two responses in the app most worth serving from a cache rather than
+ * rendering per crawler.
+ */
+export const dynamic = "force-static";
+
 export default function robots(): MetadataRoute.Robots {
   const base = siteUrl();
 

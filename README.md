@@ -30,7 +30,7 @@ is actually built today (short version: the design system and a fixture-backed d
 
 | Layer | Choice |
 |---|---|
-| Frontend | Next.js 15 (App Router), TypeScript, Tailwind v4 |
+| Frontend | Next.js 16 (App Router, Turbopack), TypeScript, Tailwind v4 |
 | Backend | Supabase — Postgres + Auth + Storage, tenant isolation via RLS |
 | Jobs | Durable job runner (Inngest / Trigger.dev) |
 | AI | Claude (Anthropic) |
@@ -96,6 +96,9 @@ It also fails the build if anything under `apps/` imports the service-role
 client, which bypasses RLS and is the one thing that can turn the tenant
 boundary back into a matter of discipline.
 
+Branching, commit conventions, what CI gates, and which paths need a pull
+request are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Connecting Supabase
 
 The app runs on demo data until Supabase is connected and migrated. Follow
@@ -104,22 +107,42 @@ project, copying keys, running the migrations, and creating your first login.
 
 ## Status
 
-The design system, the database schema, four AI tasks, authentication, and
-nine screens exist.
+The design system, the database schema, four AI tasks, authentication, and ten
+screens exist.
 
 What works end to end: sign-in (magic link + Google), the org membership guard,
-onboarding (company research → ICP → source recommendations), and the analyze
-screen, which runs a real qualification and why-now against a pasted URL.
+onboarding (company research → ICP → source recommendations), the analyze
+screen, which runs a real qualification and why-now against a pasted URL, and
+the AI spend dashboard over `ai_runs`.
 
 What does not: **the dashboard and the opportunity screens still render
 fixtures.** `listOpportunities()` and `getOpportunity()` throw rather than
 return demo data when Supabase is connected, deliberately — see
-`apps/web/lib/data/opportunities.ts`. Twelve of the seventeen nav destinations
+`apps/web/lib/data/opportunities.ts`. Eleven of the seventeen nav destinations
 are not built and are marked "Soon" rather than linked.
 
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for the build plan and
+Three things have never run, and it is worth knowing which:
+
+- **No AI task has called the real API.** All four are tested against a
+  scripted client. Add `ANTHROPIC_API_KEY` and they run for the first time.
+- **No screen has read a hosted database.** The browser suite exercises the app
+  in demo mode, which is a real configuration — the one CI builds — but not the
+  configured one.
+- **The Content-Security-Policy is report-only.** It carries a per-request
+  nonce and passes its whole suite under `CSP_ENFORCE=true`; enforcing it in
+  production is a deliberate later step. See SETUP.md step 8.
+
+### Verifying it
+
+```bash
+npm run verify          # typecheck · lint · tests · audit · build · bundle budget
+npx playwright test     # 68 browser tests, desktop and mobile
+```
+
+See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for the build plan,
 [audit/FINDINGS.md](audit/FINDINGS.md) for an audited account of the gap
-between the two.
+between the two, and [docs/OPERATIONS.md](docs/OPERATIONS.md) for backups,
+schema drift, and the API-surface decision.
 
 ## Deploying to Vercel
 

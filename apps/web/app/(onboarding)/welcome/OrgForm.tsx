@@ -43,6 +43,12 @@ export function OrgForm() {
           id="name"
           name="name"
           required
+          /* jsx-a11y bans autoFocus outright, and it is right to by default:
+             stealing focus on a content page skips whatever the user was
+             about to read. This is the narrow case where it doesn't — a
+             dedicated onboarding step whose entire content is one labelled
+             field and a button. There is nothing above to skip past. */
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}

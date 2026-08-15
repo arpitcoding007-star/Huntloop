@@ -1,4 +1,6 @@
 export { cn } from "./utils/cn";
+export { Anchor } from "./utils/link";
+export type { LinkComponent, LinkComponentProps } from "./utils/link";
 
 export { Badge, StatusDot } from "./components/Badge";
 export type { BadgeProps, BadgeVariant } from "./components/Badge";

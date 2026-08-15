@@ -3,6 +3,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "../utils/cn";
+import { Anchor, type LinkComponent } from "../utils/link";
 import { Badge, type BadgeVariant } from "./Badge";
 
 export interface NavItem {
@@ -39,14 +40,24 @@ export interface SidebarProps {
   onToggleCollapse?: () => void;
   header?: ReactNode;
   footer?: ReactNode;
+  /**
+   * Router-aware link component, e.g. `next/link`. Defaults to a plain `<a>`.
+   * See utils/link.ts — this is the seam that keeps the package
+   * framework-agnostic without leaving the app on full page reloads.
+   */
+  linkComponent?: LinkComponent;
   className?: string;
 }
 
 /**
  * Grouped nav — Kima's grouping (COMPANY / INTELLIGENCE / PIPELINE / REPORTS
  * / SETTINGS), Supabase's active-item treatment (filled surface + left bar,
- * not just a color change). Plain <a> tags so packages/ui stays framework-
- * agnostic; the app wraps hrefs with next/link routing where it matters.
+ * not just a color change).
+ *
+ * Plain `<a>` by default so packages/ui stays framework-agnostic. This file
+ * used to claim "the app wraps hrefs with next/link routing where it matters"
+ * — it did not, and there was no way for it to, so all seventeen nav items
+ * reloaded the document. `linkComponent` is the missing half.
  */
 export function Sidebar({
   groups,
@@ -55,6 +66,7 @@ export function Sidebar({
   onToggleCollapse,
   header,
   footer,
+  linkComponent: Link = Anchor,
   className,
 }: SidebarProps) {
   return (
@@ -153,7 +165,7 @@ export function Sidebar({
                         {inner}
                       </span>
                     ) : (
-                      <a
+                      <Link
                         href={item.href}
                         title={collapsed ? item.label : undefined}
                         aria-current={active ? "page" : undefined}
@@ -166,7 +178,7 @@ export function Sidebar({
                         )}
                       >
                         {inner}
-                      </a>
+                      </Link>
                     )}
                   </li>
                 );

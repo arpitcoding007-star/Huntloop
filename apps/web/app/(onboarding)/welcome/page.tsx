@@ -1,6 +1,18 @@
 import { OrgForm } from "./OrgForm";
+import { captureForViewer } from "../../../lib/analytics";
 
-export default function WelcomePage() {
+/**
+ * Step one of the funnel.
+ *
+ * The four `onboarding_step_viewed` events plus the matching `_completed` ones
+ * are what make drop-off readable: onboarding is a pipeline where each step
+ * feeds the next, and until now nothing measured where people stopped (audit
+ * ANL-01b). Recorded server-side — see lib/analytics.ts for why there is no
+ * browser SDK.
+ */
+export default async function WelcomePage() {
+  await captureForViewer("onboarding_step_viewed", { step: "organisation" });
+
   return (
     <>
       <h1 className="text-[26px] leading-8 font-semibold text-fg">

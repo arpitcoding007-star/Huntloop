@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Check } from "lucide-react";
 
@@ -62,13 +63,13 @@ export function OnboardingProgress() {
           return (
             <li key={step.href} className="flex items-center gap-2">
               {done ? (
-                <a
+                <Link
                   href={step.href}
                   className="hl-focusable flex items-center gap-2 rounded-sm hover:opacity-80"
                 >
                   {dot}
                   {label}
-                </a>
+                </Link>
               ) : (
                 <span
                   className="flex items-center gap-2"

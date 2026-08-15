@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "../utils/cn";
+import type { LinkComponent } from "../utils/link";
 
 export type StatTone =
   | "neutral"
@@ -23,8 +24,17 @@ export interface StatCardProps {
   value: number | string;
   icon?: ComponentType<{ className?: string; strokeWidth?: number }>;
   tone?: StatTone;
-  /** Renders the "Click to view →" affordance and makes the card a link. */
+  /**
+   * Renders the "Click to view →" affordance and makes the card a link.
+   *
+   * Omit it when there is nowhere to go. The affordance is the promise, so a
+   * card given a placeholder href tells every user it is clickable and then
+   * does nothing — which is what eight cards on the Command Center did until
+   * audit NAV-02 went looking for them.
+   */
   href?: string;
+  /** Router-aware link component, e.g. `next/link`. See utils/link.ts. */
+  linkComponent?: LinkComponent;
   /** Short qualifier under the value, e.g. "of 1,000 this month". */
   hint?: ReactNode;
   /** Marks the number as model-produced — tints the icon tile violet. */
@@ -56,12 +66,15 @@ export function StatCard({
   icon: Icon,
   tone = "neutral",
   href,
+  linkComponent,
   hint,
   aiGenerated,
   className,
 }: StatCardProps) {
   const effectiveTone: StatTone = aiGenerated ? "ai" : tone;
-  const Root = (href ? "a" : "div") as "a";
+  // Three cases, not two: a routed link, a plain anchor, and a non-link card.
+  // The cast keeps one JSX element below rather than branching the whole tree.
+  const Root = (href ? (linkComponent ?? "a") : "div") as "a";
 
   return (
     <Root

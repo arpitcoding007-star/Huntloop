@@ -77,82 +77,125 @@ the heading "Too many requests" with a retry time that never arrives.
 
 ---
 
+## Closed in the fourth pass — 2026-08-14
+
+Everything the backlog listed as buildable without a hosted Supabase project.
+Detail and measurements in the fourth-pass section of
+[VERIFICATION.md](VERIFICATION.md).
+
+| ID | Task | Effort |
+|---|---|---|
+| **SEC-03** | **Nonce CSP, report-only, with a rehearsed path to enforcing** | **L** |
+| **TEST-02** | **Playwright: 68 tests, desktop + mobile, gating CI** | **L** |
+| **TEST-02b** | **Scripted-client tests for the `lib/ai/*` wrappers** | **S** |
+| **SEC-07** | **Next 15.5.23 → 16.3.1; all three advisories cleared** | **M** |
+| **PERF-01** | **`next/link` throughout, via a `linkComponent` seam** | **S** |
+| **PERF-02** | **Auth off the client SDK — 217 kB → 151 kB** | **M** |
+| **ANL-01b** | **PostHog on the onboarding funnel, server-side, 0 kB** | **M** |
+| **ANL-02** | **AI spend dashboard over `ai_runs`** | **M** |
+| **ANL-03** | **Feedback/help links render only when configured** | **S** |
+| **FEAT-04** | **Role-aware UI** | **M** |
+| **SEO-04** | **`/` redirects to `/login`** | **S** |
+| **SEO-05** | **`app/icon.svg`** | **XS** |
+| **UI-04** | **Inter and JetBrains Mono, self-hosted via `next/font`** | **S** |
+| **UI-05** | **`loading.tsx` at three route segments** | **S** |
+| **A11Y-01** | **`DataTable` keyboard rows, with a unit test** | **XS** |
+| **A11Y-02** | **Skip link** | **XS** |
+| **A11Y-03** | **`eslint-plugin-jsx-a11y`** | **XS** |
+| **REPO-06** | **`npm audit` in CI** | **XS** |
+| **REPO-07** | **`CONTRIBUTING.md`** | **XS** |
+| **RL-02** | **`prune_rate_limits()` scheduled, and tested** | **XS** |
+| **PERF-06** | **Gzipped shared-bundle budget in CI** | **S** |
+| **DB-02 / DB-03 / API-03** | **`docs/OPERATIONS.md`** | **S** |
+| **NAV-02** *(new)* | **Audit check for placeholder hrefs — found 16** | **XS** |
+
+### Notes on what closed
+
+**SEC-03** ships **report-only**. That is the finished state of the task, not a
+half-done one: a wrong CSP blocks one script on one route and the page
+half-works, so it observes first. `CSP_ENFORCE=true` flips it, the full browser
+suite passes under enforcement today, and `SETUP.md` step 8 has the procedure.
+Two failures were found by running it that no reading would have produced —
+prerendered pages cannot carry a per-request nonce, and
+`upgrade-insecure-requests` is ignored in report-only mode and warns about it
+on every page load.
+
+**SEC-07** was done after TEST-02, as the roadmap required. It cost three
+follow-on changes, all of which were silent: Turbopack ignores `webpack()`, so
+the Sentry tree-shaking config had to move; `middleware.ts` became `proxy.ts`;
+and `audit.mjs` read the old path, which would have made two checks pass by
+reading an empty string.
+
+**PERF-06** budgets **gzipped** shared chunks. The unit matters — the same
+bundle is 787 kB raw and 245 kB gzipped — and the scope matters, for the reason
+recorded below: the proxy bundle is 29 kB smaller in CI than in production.
+This became urgent rather than optional because Next 16 no longer prints a
+First Load JS column at all.
+
+**FEAT-04** hides write affordances; it does not authorize. RLS is the
+boundary and refuses the write regardless. The distinction is written into
+`lib/data/membership.ts` so nobody later moves a policy out of Postgres to
+match the UI.
+
+---
+
 ## P0 — Before the next production deploy
 
-One item left. Everything else that was here has shipped — see the closed
-table above.
+**Nothing.** `SEC-03` was the last one.
 
-### SEC-03 · Nonce-based Content-Security-Policy · **L** · Phase 5
-Generate a per-request nonce in middleware, thread it to the document, emit
-`script-src 'nonce-…' 'strict-dynamic'`. Report-only first, for at least a
-week, before enforcing.
-
-**Why L, not S:** Next injects inline bootstrap scripts. `unsafe-inline`
-certifies nothing, so a real CSP means nonce plumbing plus a report endpoint,
-and it breaks production silently when wrong.
-
-**Unblocked:** it needed somewhere to send violation reports, and Sentry is
-now wired.
-
-**Done when:** `audit.mjs` `SEC-CSP` passes.
+The next P0 will come from a hosted Supabase project, because that is where the
+remaining unverified claims live — see "Still not verified" in
+[VERIFICATION.md](VERIFICATION.md).
 
 ---
 
 ## P1 — This cycle
 
-### PERF-01 · Client-side navigation · **S** · Phase 6
-Add a `linkComponent` prop to `Sidebar`/`TopBar` (keeping `packages/ui`
-framework-agnostic, which was the original and correct reason for raw `<a>`),
-and pass `next/link` from `apps/web`. Convert the 7 internal anchors in
-`apps/web/app`.
-**Why P1 and not P2:** every internal navigation is currently a full document
-reload. Largest user-perceived performance win available, at S effort.
-**Done when:** `audit.mjs` `PERF-01` passes.
-
-### TEST-02 · End-to-end suite · **L** · Phase 9
-Playwright, first spec covering sign-in → onboarding → analyze.
-**Why:** no frontend test of any kind exists. The `next` redirect validation is
-a security control with no test. `SEC-01` lived in exactly the layer that has
-no coverage.
-**Second spec:** the `apps/web/lib/ai/*` wrappers with a scripted `ModelClient`
-— the pattern `packages/ai` already uses — asserting each refuses an
-unresolvable org. That converts SEC-01 from "fixed" to "cannot regress".
+Everything left in P1 is blocked on the same thing: a hosted Supabase project
+with the migrations applied and some seed data. That is the constraint now, not
+engineering time.
 
 ### FEAT-02 · Live opportunity queries · **L** · Phase 3
 Finish `listOpportunities()` and `getOpportunity()` against real rows, joining
 evidence, triggers, and buyers for the §47 page.
-**Why not sooner:** deliberately unfinished, for a good documented reason —
+**Why still not done:** deliberately unfinished, for a good documented reason —
 writing the join blind produces a query that reads as finished and has never
-returned a row. Needs a live Supabase project with seed data.
-**Depends on:** a migrated project (see [AGENT-REACH.md](AGENT-REACH.md)).
-**Done when:** `audit.mjs` `FEAT-FIXTURE` passes.
+returned a row. `lib/data/spend.ts` was written blind and that was defensible
+because it is one table with no joins; this is not that.
+**Depends on:** a migrated project with seed data.
+**Done when:** `audit.mjs` `FEAT-FIXTURE` passes. It is the only warning left.
 
-### SEO-04 · Decide what `/` serves · **S** (+ design) · Phase 8
-Today it redirects to the design-system gallery — which is the canonical URL,
-the Open Graph `url`, and the first thing any visitor sees.
-**Product decision, not a code change.** Minimum viable: redirect to `/login`
-for authenticated-product positioning. Better: an actual landing page.
+### TEST-02c · Browser specs that need a real session · **M** · Phase 9
+The Playwright suite runs in demo mode, which is a real configuration of this
+app and the one CI builds — but it cannot reach:
 
-### FEAT-04 · Role-aware UI · **M** · Phase 3
-`resolveMembership()` already returns the role and no screen reads it. A viewer
-sees write actions that fail at the database. `PermissionDenied` exists, unused.
-**Not a security finding** — RLS holds. A UX one.
+- sign-in, and the OAuth callback
+- the org membership guard's **404-not-403**, which is a security decision with
+  no browser test
+- `RateLimited` rendering, which needs 21 requests in an hour against a real
+  limiter
+- the live opportunity queries, once FEAT-02 lands
 
-### ANL-01b · Product analytics · **M** · Phase 10
-PostHog (`NEXT_PUBLIC_POSTHOG_KEY` reserved). Instrument the onboarding funnel
-first: it is a four-step pipeline where each step feeds the next, and nothing
-measures where people drop out.
+**Depends on:** a migrated project, plus a seeded test user in two orgs.
 
-### UI-04 · Load the fonts, or stop declaring them · **S** · Phase 2
-`next/font` for Inter and JetBrains Mono, **or** delete them from the token and
-commit to the system stack. Either is fine; the current state promises a font
-it does not deliver, and the type scale was tuned against Inter.
+### AI-01 · Run the four tasks against the real API once · **S**
+`research_company`, `recommend_sources`, `qualify_opportunity` and
+`explain_why_now` are unit-tested against a scripted client and have **never
+called Anthropic**. Every claim about their behaviour is a claim about the
+scripted client.
+**Depends on:** `ANTHROPIC_API_KEY`.
 
-### SEC-07 · Next 15 → 16 · **M** · Phase 5
-Clears all three high-severity advisories. Semver-major; schedule with time to
-test rather than as an `audit fix --force`.
-**Do after TEST-02** — upgrading a framework with no end-to-end tests is how a
-subtle regression ships.
+### OPS-01 · Enforce the CSP · **XS** · Phase 5
+The policy ships report-only and the full browser suite passes under
+`CSP_ENFORCE=true`, so the work is done and the *decision* is what remains.
+Needs a Sentry DSN, then roughly a week of quiet reports.
+**Procedure:** SETUP.md step 8.
+
+### OPS-02 · Rehearse a restore · **S** · Phase 4
+[docs/OPERATIONS.md](../docs/OPERATIONS.md) records the plan, the procedure and
+what is *not* backed up. The unchecked box is the one that matters: restore
+into a throwaway project once, end to end, and write down the measured RTO.
+**Depends on:** a hosted project.
 
 ---
 
@@ -160,23 +203,21 @@ subtle regression ships.
 
 | ID | Task | Effort | Phase | Note |
 |---|---|---|---|---|
-| A11Y-02 | Skip link to `<main>` | XS | 7 | ~17 nav items before content on every page |
-| A11Y-01 | Keyboard support for `DataTable` clickable rows | XS | 7 | Latent — no current caller, but a trap for the next |
-| A11Y-03 | `eslint-plugin-jsx-a11y` | XS | 7 | Current quality came from care; care doesn't survive turnover |
-| SEO-05 | `app/icon.svg` | XS | 8 | Every browser currently 404s on `/favicon.ico` |
-| REPO-06 | `npm audit` gate in CI | XS | 1 | Nothing would have surfaced SEC-07 |
-| UI-05 | `loading.tsx` at route segments | S | 2 | Most visible on `/analyze` — tens of seconds |
-| PERF-02 | Move auth off the client Supabase SDK | M | 6 | 180 kB vs 103 kB baseline, on the first page visitors load |
-| ANL-02 | Cost dashboard over `ai_runs` | M | 10 | Schema and cost model done; no screen reads it |
-| DB-02 | Document backup / PITR / recovery | S | 4 | Untested backups are not backups |
-| DB-03 | Generated types in CI | S | 4 | Hand-written types can drift with nothing detecting it |
-| REPO-07 | Document branch strategy + protection | XS | 1 | Fine for one developer; write it down before two |
-| PERF-06 | Bundle-size budget gate in CI | S | 6 | See the note below — this is not as simple as reading CI's build output |
-| RL-02 | Scheduled `prune_rate_limits()` | XS | 4 | The function exists; nothing calls it. The table grows until something does |
+| DB-03 | Generated Supabase types in CI | S | 4 | Design recorded in docs/OPERATIONS.md; needs a project ref and the first CI secret |
+| PERF-04 | `EXPLAIN ANALYZE` the live list queries | S | 6 | Not measurable until FEAT-02 runs |
+| ANL-04 | Per-org AI budgets and alerting | M | 10 | The spend screen shows the bill; nothing acts on it. `rate_limits` bounds rate, not total |
+| PERF-05 | Revisit per-worker schema-probe caches | XS | 6 | One extra round trip per cold start |
+| API-03 | Build the versioned surface *when* an integration needs it | S | 4 | Decision recorded in docs/OPERATIONS.md; the work is deferred, not the decision |
+| SEC-08 | Sanitization policy if model output is ever rendered as markup | — | 5 | Standing constraint, not a task |
+| SEO-06 | A landing page for `/` | XL | 8 | `/` redirects to `/login` today — deliberate, and the honest minimum until there is copy worth serving |
+| REPO-08 | Branch protection on `main` | XS | 1 | Needs a repo admin in the GitHub UI; checklist in CONTRIBUTING.md |
 
 ---
 
-### Note on PERF-06 — CI's build measures the wrong number
+### Note on PERF-06 — why the budget measures what it measures
+
+*Kept after PERF-06 shipped, because it is the reasoning behind the scope
+of `scripts/bundle-budget.mjs` and would otherwise be re-derived.*
 
 Measured 2026-08-13, same commit, same command, only the environment differing:
 
@@ -200,13 +241,8 @@ only the shared client chunks, which are credential-independent.
 
 ## P3 — Opportunistic
 
-| ID | Task | Effort | Phase |
-|---|---|---|---|
-| API-03 | API versioning decision (before any external integration) | S | 4 |
-| PERF-04 | `EXPLAIN ANALYZE` the live list queries | S | 6 |
-| PERF-05 | Revisit per-worker schema-probe caches | XS | 6 |
-| ANL-03 | Wire up the feedback link | S | 10 |
-| SEC-08 | Sanitization policy if model output is ever rendered as markup | — | 5 |
+*Emptied in the fourth pass — every item either shipped or moved up to P2,
+where it now sits behind a stated dependency rather than behind "someday".*
 
 ---
 
@@ -223,13 +259,25 @@ only the shared client chunks, which are credential-independent.
 
 ## Dependency graph
 
+The graph is almost entirely one node now, and that is the useful thing to see:
+
 ```
-TEST-02 (E2E) ─────────► SEC-07 (don't upgrade a framework untested)
+                        ┌─► FEAT-02 ──► PERF-04 (can't profile queries that don't run)
+                        │        └─────► TEST-02c (browser specs need real rows)
+A hosted, migrated ─────┤
+Supabase project        ├─► TEST-02c (sign-in, the 404-not-403 guard, RateLimited)
+                        ├─► DB-03    (type generation needs a project ref)
+                        └─► OPS-02   (a restore needs something to restore)
 
-Live Supabase project ─► FEAT-02 ──► PERF-04 (can't profile queries that don't run)
-                                └──► ANL-02 (dashboard needs rows)
+ANTHROPIC_API_KEY ──────► AI-01     (four tasks that have never called the API)
 
-FEAT-02 ───────────────► FEAT-04 (role-aware UI wants real data to gate)
+Sentry DSN ─────────────► OPS-01    (a week of quiet CSP reports, then enforce)
 ```
 
-Everything else is independent and parallelizable.
+`ANL-02` and `FEAT-04` are off the graph — both shipped against fixtures with
+the live branch written, so they light up when the data arrives rather than
+needing to be built then.
+
+Everything else is independent and parallelizable — but note that almost
+nothing else is left. **The backlog is no longer the constraint; provisioning
+is.** See [AGENT-REACH.md](AGENT-REACH.md) for what only a human can supply.

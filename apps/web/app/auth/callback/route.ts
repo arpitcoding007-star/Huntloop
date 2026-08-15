@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createTenantClient } from "@huntloop/db";
+import { safeNextPath } from "../../../lib/safe-next";
 
 /**
  * Where the magic link and the OAuth redirect land.
@@ -14,17 +15,14 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get("next");
 
   /**
-   * Only same-origin *paths* are honoured.
+   * Only same-origin *paths* are honoured — see `lib/safe-next.ts` for which
+   * shapes are rejected and why each clause is there.
    *
-   * `next` arrives from a URL the user clicked, which means an attacker can
-   * set it. Without this check, `?next=https://evil.example` turns the sign-in
-   * flow into an open redirect on a trusted domain — the classic way a
-   * phishing link gets a legitimate-looking hop. A leading `//` is rejected
-   * too, because browsers read `//evil.example` as protocol-relative and it is
-   * a path only by appearance.
+   * It was inlined here, and moved out for one reason: this is a security
+   * control, it was the only implementation, and it had no test. It now has
+   * both a name and a suite (`lib/__tests__/safe-next.test.ts`).
    */
-  const safeNext =
-    next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = safeNextPath(next);
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);

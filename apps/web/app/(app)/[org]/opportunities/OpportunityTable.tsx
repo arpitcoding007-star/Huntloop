@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   Badge,
@@ -46,13 +47,28 @@ const FILTERS: { value: Priority | "all"; label: string; icon: typeof Flame }[] 
 export function OpportunityTable({
   org,
   rows: all,
+  initialPriority,
+  canWrite,
 }: {
   org: string;
   rows: OpportunityFixture[];
+  /** Seeded from `?priority=` by the server component. See page.tsx. */
+  initialPriority?: Priority;
+  /**
+   * Whether to render the write affordances. Resolved on the server — this is
+   * a rendering decision, not an authorization one; RLS is the boundary and
+   * refuses the write regardless. See lib/data/membership.ts.
+   */
+  canWrite: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("company");
-  const [priority, setPriority] = useState<Priority | "all">("all");
+  /* Initial value only — clicking a filter does not rewrite the URL. Keeping
+     them in sync would mean a router push per click, which re-runs the server
+     component to change a `useState` the client already owns. The deep link is
+     for arriving here from elsewhere; once you are here, the buttons are the
+     control. */
+  const [priority, setPriority] = useState<Priority | "all">(initialPriority ?? "all");
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
     key: "priority",
@@ -97,13 +113,13 @@ export function OpportunityTable({
       width: "26%",
       sortable: true,
       render: (o) => (
-        <a
+        <Link
           href={`/${org}/opportunities/${o.id}`}
           className="hl-focusable block min-w-0 rounded-sm"
         >
           <div className="truncate font-medium text-fg">{o.company}</div>
           <div className="truncate font-mono text-[11px] text-fg-muted">{o.domain}</div>
-        </a>
+        </Link>
       ),
     },
     {
@@ -170,9 +186,11 @@ export function OpportunityTable({
         </div>
         <div className="flex items-center gap-2">
           <Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />
-          <Button icon={Plus} variant="primary">
-            Analyze a URL
-          </Button>
+          {canWrite && (
+            <Button icon={Plus} variant="primary">
+              Analyze a URL
+            </Button>
+          )}
         </div>
       </header>
 
@@ -225,9 +243,14 @@ export function OpportunityTable({
         selectionCount={selected.length}
         selectionActions={
           <>
-            <Button size="sm" variant="secondary" icon={Send}>
-              Add to campaign
-            </Button>
+            {/* Selecting rows is a read; acting on the selection is not. A
+                viewer can still select and clear, which is how you compare
+                things — they just get no button that would fail. */}
+            {canWrite && (
+              <Button size="sm" variant="secondary" icon={Send}>
+                Add to campaign
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
               Clear
             </Button>

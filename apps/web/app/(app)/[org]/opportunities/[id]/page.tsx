@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   Badge,
@@ -59,13 +60,13 @@ export default async function OpportunityPage({
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
-      <a
+      <Link
         href={`/${org}/opportunities`}
         className="hl-focusable inline-flex items-center gap-1.5 rounded-sm text-[13px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary"
       >
         <ArrowLeft className="size-3.5" strokeWidth={1.75} />
         All opportunities
-      </a>
+      </Link>
 
       {/* ── Header: the verdict, above everything it justifies ─────────── */}
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">

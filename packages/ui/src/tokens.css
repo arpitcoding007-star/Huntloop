@@ -124,10 +124,16 @@
   --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
 
   /* ── Typography ──────────────────────────────────────────────────────── */
-  --hl-font-sans: "Inter var", "Inter", system-ui, -apple-system,
-    "Segoe UI", sans-serif;
-  --hl-font-mono: "JetBrains Mono", "Source Code Pro", ui-monospace,
-    "Cascadia Mono", "Consolas", monospace;
+  /* The `var(--font-*, …)` indirection keeps this package framework-agnostic.
+     An app that self-hosts the fonts — apps/web does, via next/font — defines
+     those variables on <html> and they win. An app that doesn't gets the
+     fallback family name, which resolves if the font happens to be installed
+     locally and falls through to the system stack if not. Either way this file
+     never learns that Next exists. */
+  --hl-font-sans: var(--font-inter, "Inter var"), "Inter", system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --hl-font-mono: var(--font-jetbrains-mono, "JetBrains Mono"),
+    "Source Code Pro", ui-monospace, "Cascadia Mono", "Consolas", monospace;
 
   --hl-text-display: 1.875rem;  /* 30 / 36 / 600 */
   --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
@@ -214,4 +220,15 @@ body {
 .hl-focusable:focus-visible {
   outline: none;
   box-shadow: var(--hl-focus-ring);
+}
+
+/* Table rows need their own, because the standard ring is a box-shadow and a
+   box-shadow on a <tr> inside `border-collapse: collapse` is drawn
+   inconsistently across browsers — Safari clips it to the cell boxes, so the
+   ring appears on some columns and not others. An inset outline is painted by
+   the row itself and survives collapse. Same colour and width, so the two
+   read as one convention. */
+.hl-focusable-row:focus-visible {
+  outline: 2px solid var(--hl-brand);
+  outline-offset: -2px;
 }

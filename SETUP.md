@@ -244,6 +244,48 @@ the test itself.
 
 ---
 
+## Step 8 — Turn the Content-Security-Policy on (after a week, not today)
+
+The app already sends a full CSP with a per-request nonce. It ships in
+**observation mode**: violations are reported and nothing is blocked. That is
+deliberate, and the delay before enforcing it is the point of this step.
+
+A wrong CSP does not fail loudly. It blocks one script on one route, the page
+renders perfectly, and nothing responds to a click. So it watches first.
+
+**Where the reports go.** Browsers POST them to `/api/csp-report`, which
+forwards them to Sentry as warnings tagged `csp_directive`. No Sentry DSN means
+no reports — set `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` first or this step
+proves nothing.
+
+**When to flip it.** After roughly a week of real use with no reports you did
+not expect. Then set, in your hosting environment:
+
+```bash
+CSP_ENFORCE=true
+```
+
+**Before you flip it,** run the browser suite against an enforcing build — this
+is the rehearsal, and it is the same check CI runs in observation mode:
+
+```bash
+CSP_ENFORCE=true npx playwright test e2e/csp.spec.ts
+```
+
+That suite asserts the things a static reading cannot: that the nonce reaches
+Next's inline hydration scripts, that a real page renders with no violation,
+and that the app still hydrates under the policy. It has already caught two
+failures that looked fine on paper — statically prerendered pages cannot carry
+a per-request nonce (which is why `app/layout.tsx` sets `force-dynamic`), and
+`upgrade-insecure-requests` is ignored in report-only mode and warns about it
+on every page load.
+
+**If something breaks after enforcing**, unset `CSP_ENFORCE` and redeploy. You
+are back to observation mode in one deploy, with the violation in Sentry
+naming the directive.
+
+---
+
 ## What still won't work after all this
 
 Being straight with you, because a half-working thing that looks finished is

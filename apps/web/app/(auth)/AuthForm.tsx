@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "@huntloop/ui";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import { createClientSideClient } from "@huntloop/db";
+import {
+  initialAuthState,
+  sendMagicLink,
+  signInWithGoogle,
+} from "./actions";
 
 /**
  * Login / signup form.
@@ -13,53 +19,28 @@ import { createClientSideClient } from "@huntloop/db";
  * that comes with both — for a product at this stage that is a straight win.
  * Google OAuth sits alongside it for people who'd rather not check email.
  *
- * The error text below never distinguishes "no such account" from "wrong
- * details". That distinction is an account-enumeration oracle: it lets anyone
- * check whether a given person is a Huntloop customer.
+ * The error text never distinguishes "no such account" from "wrong details".
+ * That distinction is an account-enumeration oracle: it lets anyone check
+ * whether a given person is a Huntloop customer. The action returns one
+ * message for every failure so this component cannot leak the difference even
+ * by accident.
+ *
+ * ── Why there is no Supabase client in this file ─────────────────────────
+ *
+ * There used to be. `createClientSideClient()` here pulled
+ * `@supabase/supabase-js` into the browser bundle and made these two pages
+ * 217 kB against a 136 kB baseline — on the first pages an unauthenticated
+ * visitor loads (audit PERF-02). Both submissions are Server Actions now, so
+ * this component is a form and a spinner. Keep it that way: an import of
+ * `@huntloop/db` here silently undoes it.
  */
-export function AuthForm({ mode }: { mode: "login" | "signup" }) {
-  const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [message, setMessage] = useState("");
+export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: string }) {
+  const [state, formAction] = useActionState(sendMagicLink, initialAuthState);
 
   const configured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   );
-
-  async function sendLink(e: React.FormEvent) {
-    e.preventDefault();
-    setState("sending");
-    try {
-      const supabase = createClientSideClient();
-      const next = new URLSearchParams(window.location.search).get("next") ?? "";
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-          shouldCreateUser: mode === "signup",
-        },
-      });
-      if (error) throw error;
-      setState("sent");
-    } catch (err) {
-      setState("error");
-      setMessage(err instanceof Error ? err.message : "Something went wrong.");
-    }
-  }
-
-  async function signInWithGoogle() {
-    try {
-      const supabase = createClientSideClient();
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
-    } catch (err) {
-      setState("error");
-      setMessage(err instanceof Error ? err.message : "Something went wrong.");
-    }
-  }
 
   if (!configured) {
     return (
@@ -76,19 +57,19 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </p>
         <p className="mt-3 text-[13px] text-fg-muted">
           Until then the app runs on demo data —{" "}
-          <a
+          <Link
             href="/acme/dashboard"
             className="hl-focusable rounded-sm text-brand-text underline underline-offset-2"
           >
             open the Command Center
-          </a>
+          </Link>
           .
         </p>
       </div>
     );
   }
 
-  if (state === "sent") {
+  if (state.status === "sent") {
     return (
       <div className="rounded-md border border-brand-border bg-brand-surface p-4">
         <p className="flex items-center gap-2 text-[13px] font-medium text-brand-text">
@@ -97,8 +78,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </p>
         <p className="mt-1.5 text-[13px] leading-[1.5] text-fg-secondary">
           If an account can be created or found for{" "}
-          <span className="text-fg">{email}</span>, a sign-in link is on its way.
-          It expires in an hour.
+          <span className="text-fg">{state.email}</span>, a sign-in link is on its
+          way. It expires in an hour.
         </p>
       </div>
     );
@@ -106,7 +87,13 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={sendLink} className="space-y-3">
+      <form action={formAction} className="space-y-3">
+        {/* Both carried in the form rather than read from `window.location`:
+            the action runs on the server, where there is no window, and both
+            are re-validated there anyway. */}
+        <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="next" value={next} />
+
         <div>
           <label
             htmlFor="email"
@@ -116,29 +103,18 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </label>
           <input
             id="email"
+            name="email"
             type="email"
             required
             autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@company.com"
             className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-surface px-3 text-[14px] text-fg placeholder:text-fg-muted"
           />
         </div>
 
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          className="w-full"
-          disabled={state === "sending"}
-        >
-          {state === "sending"
-            ? "Sending…"
-            : mode === "signup"
-              ? "Create account"
-              : "Email me a sign-in link"}
-        </Button>
+        <SubmitButton
+          label={mode === "signup" ? "Create account" : "Email me a sign-in link"}
+        />
       </form>
 
       <div className="flex items-center gap-3">
@@ -147,15 +123,41 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <span className="h-px flex-1 bg-line-subtle" />
       </div>
 
-      <Button variant="secondary" size="lg" className="w-full" onClick={signInWithGoogle}>
-        Continue with Google
-      </Button>
+      {/* A form rather than an onClick: the OAuth handoff is a server-issued
+          redirect now, so it works before hydration and without the SDK. */}
+      <form action={signInWithGoogle}>
+        <input type="hidden" name="next" value={next} />
+        <Button type="submit" variant="secondary" size="lg" className="w-full">
+          Continue with Google
+        </Button>
+      </form>
 
-      {state === "error" && (
+      {state.status === "error" && (
         <p role="alert" className="text-[13px] text-danger">
-          {message}
+          {state.message}
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Split out because `useFormStatus` reads the state of the nearest enclosing
+ * form, and only reports `pending` from a component *inside* it. Called in the
+ * parent it returns false forever, which is the kind of bug that looks like a
+ * slow network.
+ */
+function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      variant="primary"
+      size="lg"
+      className="w-full"
+      disabled={pending}
+    >
+      {pending ? "Sending…" : label}
+    </Button>
   );
 }

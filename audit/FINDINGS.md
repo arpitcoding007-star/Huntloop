@@ -42,7 +42,25 @@ themes:
    boundary despite the data layer deliberately throwing. No security headers,
    no robots policy, no metadata base.
 
-**18 fixed · 13 open · 3 accepted.**
+**18 fixed · 13 open · 3 accepted** *(first pass; see the updates below)*.
+
+> **Update — fourth pass, 2026-08-14.** Every remaining finding that did not
+> need a hosted Supabase project is now closed: `SEC-03`, `TEST-02`, `SEC-07`,
+> `PERF-01`, `PERF-02`, `PERF-06`, `ANL-01b`, `ANL-02`, `ANL-03`, `FEAT-04`,
+> `SEO-04`, `SEO-05`, `UI-04`, `UI-05`, `A11Y-01/02/03`, `REPO-06`, `REPO-07`,
+> `RL-02`, `DB-02`, `DB-03` and `API-03`. **No P0 items remain** and there are
+> **no dependency advisories**.
+>
+> One new finding came out of it — `NAV-02`, sixteen `href="#"` placeholders
+> that neither `jsx-a11y` nor `PERF-01` could see because they were props on a
+> component that renders an anchor three files away — and it is closed, with a
+> check behind it.
+>
+> What is left is not engineering work. `FEAT-02` and everything in P1 needs a
+> migrated Supabase project, an Anthropic key, or a Sentry DSN. See
+> [BACKLOG.md](BACKLOG.md) and the fourth-pass section of
+> [VERIFICATION.md](VERIFICATION.md), which records what was *measured* — and
+> the four things that only running the code revealed.
 
 > **Update — third pass.** `RL-01`, `API-01`, `API-02b` and `UI-06` are now
 > closed too, leaving `SEC-03` (a nonce-based CSP) as the only P0 item. Detail

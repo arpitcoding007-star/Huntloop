@@ -1,15 +1,28 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { buildCsp, createNonce } from "./lib/csp";
 
 /**
- * Session refresh and route guard.
+ * Session refresh, route guard, and the per-request CSP nonce.
  *
- * Two jobs, in this order:
+ * ── The file name ────────────────────────────────────────────────────────
+ *
+ * This was `middleware.ts` until the Next 16 upgrade, which deprecated that
+ * convention in favour of `proxy.ts` and warns on every build until you move.
+ * Renamed by hand rather than by codemod, because the codemod also rewrites
+ * the comments and this file's comments are the reason it is readable. The
+ * matcher config and the semantics are unchanged; only the file name and the
+ * exported function name are different.
+ *
+ * Three jobs, in this order:
  *
  *   1. Refresh the Supabase session. Server Components cannot set cookies, so
- *      if middleware doesn't do this, tokens expire mid-session and the user
- *      is silently logged out on a page navigation.
+ *      if this doesn't do it, tokens expire mid-session and the user is
+ *      silently logged out on a page navigation.
  *   2. Bounce anonymous visitors off `/[org]/*`.
+ *   3. Mint a CSP nonce and put it on both the request and the response. It
+ *      has to be here because it must be per-request, and this is the only
+ *      place that runs before the document is rendered. See lib/csp.ts.
  *
  * The guard here is a *convenience*, not the security boundary. The boundary
  * is Row Level Security in Postgres (plan D2) — middleware can be bypassed by
@@ -20,8 +33,26 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
  * everything through — otherwise the demo mode would be unreachable.
  */
 
-/** Route groups are a Next.js folder convention, not URL segments. */
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/kitchen-sink"];
+/**
+ * Route groups are a Next.js folder convention, not URL segments.
+ *
+ * `/api/csp-report` is public of necessity: a browser sends a violation report
+ * on its own initiative, often for a visitor who has no session and sometimes
+ * for a page that failed before any session could be read. Behind the guard it
+ * would be answered with a 307 to /login, and the report stream — the entire
+ * point of shipping the policy report-only first — would be silently empty.
+ * The endpoint is written for that exposure; see the route file.
+ *
+ * Listed as the exact path rather than `/api`, so a future authenticated API
+ * route does not inherit this by accident.
+ */
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/signup",
+  "/auth",
+  "/kitchen-sink",
+  "/api/csp-report",
+];
 
 /**
  * Cached answer to "have the migrations been applied?".
@@ -55,7 +86,57 @@ async function isSchemaApplied(url: string, key: string): Promise<boolean> {
   return schemaApplied;
 }
 
-export async function middleware(request: NextRequest) {
+/**
+ * Per-request CSP plumbing.
+ *
+ * The nonce goes on the **request** headers as well as the response, because
+ * that is how Next learns it: it reads the incoming
+ * `Content-Security-Policy` header, finds the nonce, and stamps it onto the
+ * inline bootstrap scripts it injects. Setting it only on the response would
+ * produce a policy that blocks the framework's own scripts — which is exactly
+ * the silent half-broken page that made SEC-03 a task of its own.
+ *
+ * Applied to every branch below, including the demo-mode early returns. A
+ * security header that is present only on the fully-configured path is a
+ * header that is absent from every preview deployment.
+ */
+function withCsp(request: NextRequest, nonce: string) {
+  const headers = new Headers(request.headers);
+  headers.set("x-nonce", nonce);
+
+  const { header, policy } = buildCsp(nonce);
+  // Next looks for the enforcing name specifically when deciding whether to
+  // nonce its scripts, so it is always set on the *request* — the response is
+  // where report-only versus enforcing is decided.
+  headers.set("Content-Security-Policy", policy);
+
+  return { requestHeaders: headers, responseHeader: header, policy };
+}
+
+/** Copies the policy onto whatever response the guard produced. */
+function sealCsp<T extends NextResponse>(
+  response: T,
+  responseHeader: string,
+  policy: string,
+): T {
+  response.headers.set(responseHeader, policy);
+  response.headers.set(
+    "Reporting-Endpoints",
+    'csp-endpoint="/api/csp-report"',
+  );
+  return response;
+}
+
+export async function proxy(request: NextRequest) {
+  const nonce = createNonce();
+  const { requestHeaders, responseHeader, policy } = withCsp(request, nonce);
+  const pass = () =>
+    sealCsp(
+      NextResponse.next({ request: { headers: requestHeaders } }),
+      responseHeader,
+      policy,
+    );
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -63,19 +144,22 @@ export async function middleware(request: NextRequest) {
 
   // Not configured → demo mode. Guarding here would lock everyone out of an
   // app that has no way to log in yet.
-  if (!url || !key) return NextResponse.next();
+  if (!url || !key) return pass();
 
   // Configured but not migrated → also demo mode. See isSchemaApplied.
-  if (!(await isSchemaApplied(url, key))) return NextResponse.next();
+  if (!(await isSchemaApplied(url, key))) return pass();
 
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (all: { name: string; value: string; options?: CookieOptions }[]) => {
         for (const { name, value } of all) request.cookies.set(name, value);
-        response = NextResponse.next({ request });
+        // Rebuilt with the same request headers: dropping them here would
+        // lose the nonce for exactly the requests that refresh a session,
+        // which is most of them.
+        response = NextResponse.next({ request: { headers: requestHeaders } });
         for (const { name, value, options } of all) {
           response.cookies.set(name, value, options);
         }
@@ -100,11 +184,12 @@ export async function middleware(request: NextRequest) {
     login.pathname = "/login";
     // Send them back where they were headed after signing in — but only the
     // path, never the full URL, so this cannot be turned into an open redirect.
+    // `lib/safe-next.ts` is the other half, where the value is consumed.
     login.searchParams.set("next", path);
-    return NextResponse.redirect(login);
+    return sealCsp(NextResponse.redirect(login), responseHeader, policy);
   }
 
-  return response;
+  return sealCsp(response, responseHeader, policy);
 }
 
 export const config = {

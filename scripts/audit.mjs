@@ -53,6 +53,44 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * Source with comments removed, for checks that grep for a code pattern.
+ *
+ * This codebase documents its decisions in prose, which means a file very
+ * often *discusses* the exact string a check is looking for — SEC-CSP already
+ * carries a note about this, and NAV-02 was written twice for the same reason:
+ * the first version reported every comment explaining why a placeholder href
+ * had been removed as a placeholder href.
+ *
+ * Line comments are only stripped when `//` starts the line. Stripping them
+ * anywhere would eat the rest of any line containing `https://`, which is how
+ * a comment-stripper quietly starts hiding real matches.
+ */
+const stripComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+/**
+ * The request-interception file, under whichever name it currently has.
+ *
+ * Next 16 deprecated `middleware.ts` in favour of `proxy.ts`. Two checks here
+ * read that file, and both would have gone on "passing" against an empty
+ * string after the rename — a check that reads nothing and reports success is
+ * worse than no check, because it is credited in the summary. Throwing when
+ * neither exists is the point: this file is load-bearing for the auth guard,
+ * the crawler exclusions and the CSP nonce, so its absence is never routine.
+ */
+function proxySource() {
+  const source = read("apps/web/proxy.ts") ?? read("apps/web/middleware.ts");
+  if (source === null) {
+    throw new Error(
+      "Neither apps/web/proxy.ts nor apps/web/middleware.ts exists. " +
+        "The auth guard, the crawler-route exclusions and the CSP nonce all " +
+        "live there — this is not a check that should be skipped.",
+    );
+  }
+  return source;
+}
+
 const results = [];
 /**
  * @param phase  Which audit phase this belongs to (audit/README.md).
@@ -168,6 +206,40 @@ function check(phase, id, title, ok, sev, detail) {
       : `${entries.filter((e) => e.unbuilt).length} of ${entries.length} marked unbuilt`,
   );
 
+  /*
+   * Dead hrefs — `href="#"` and `href=""`.
+   *
+   * NAV-01 above only inspects the sidebar, and PERF-01 below only matches
+   * hrefs beginning with `/`. Between them sat eight StatCards on the
+   * Command Center and eight more in the gallery, each rendering as a link
+   * that announced as a link, displayed "Click to view →", and moved focus
+   * nowhere when activated.
+   *
+   * `eslint-plugin-jsx-a11y` misses them too, and the reason is worth
+   * recording: `anchor-is-valid` inspects literal `<a>` elements, and these
+   * were `<StatCard href="#">` — a prop on a component that renders an anchor
+   * three files away. A lint rule cannot see through that; a grep for the
+   * string can.
+   *
+   * `#main`-style fragments are fine and are not matched — the skip link is
+   * one, and it points at a real element.
+   */
+  const deadHrefs = [];
+  for (const f of walk("apps/web/app")) {
+    if (!f.endsWith(".tsx")) continue;
+    const src = stripComments(read(f) ?? "");
+    const hits = [...src.matchAll(/href=(?:"#"|""|\{""\}|\{`#`\}|\{`{2}\})/g)].length;
+    if (hits) deadHrefs.push(`${relative(".", f).split(sep).join("/")}(${hits})`);
+  }
+  check(
+    3,
+    "NAV-02",
+    "No component is handed a placeholder href",
+    deadHrefs.length === 0,
+    "fail",
+    deadHrefs.length ? `Placeholder hrefs: ${deadHrefs.join(" ")}` : null,
+  );
+
   // Route-level safety nets. `notFound()` is called deliberately by the org
   // layout as a security decision, so the 404 page is not optional cosmetics.
   for (const [file, id] of [
@@ -215,18 +287,59 @@ function check(phase, id, title, ok, sev, detail) {
     check(5, `SEC-H-${header}`, `${header} is set`, nextConfig.includes(header), "fail");
   }
 
-  // Matched against the header *value*, not the file. This config discusses
-  // script-src in a comment explaining why it is absent, and a check that
-  // reads prose would report the explanation as the implementation.
-  const cspValue =
-    nextConfig.match(/"Content-Security-Policy",\s*value:\s*"([^"]*)"/)?.[1] ?? "";
+  /*
+   * The real policy is built per request in lib/csp.ts, because it carries a
+   * nonce — so this reads that module rather than next.config.ts, which now
+   * only carries the static `frame-ancestors` line.
+   *
+   * Comments are stripped first, and that is not incidental here: csp.ts
+   * discusses `'unsafe-inline'` at length in prose explaining why script-src
+   * does *not* have it. A check reading the raw file would find the word and
+   * fail on the explanation — the same trap NAV-02 fell into, and the reason
+   * `stripComments` exists.
+   */
+  const csp = stripComments(read("apps/web/lib/csp.ts") ?? "");
+  const middleware = stripComments(proxySource());
+
+  const hasScriptSrc = /"script-src"/.test(csp);
+  const hasNonce = /nonce-\$\{nonce\}/.test(csp) && /createNonce/.test(middleware);
+  // The two directives that make a script-src worth having. Without
+  // object-src a plugin is still a code-execution path, and without base-uri
+  // an injected <base> re-points every relative script URL on the page.
+  const hasHardening = /"object-src"/.test(csp) && /"base-uri"/.test(csp);
+  // `'unsafe-inline'` inside script-src would make the nonce decorative.
+  const scriptSrcBlock = csp.match(/"script-src":\s*\[([^\]]*)\]/s)?.[1] ?? "";
+  const nonceIsMeaningful = !/unsafe-inline/.test(scriptSrcBlock);
+
   check(
     5,
     "SEC-CSP",
-    "A script-src Content-Security-Policy is in place",
-    /script-src/.test(cspValue),
+    "A nonce-based script-src Content-Security-Policy is in place",
+    hasScriptSrc && hasNonce && hasHardening && nonceIsMeaningful,
+    "fail",
+    hasScriptSrc && hasNonce && hasHardening && nonceIsMeaningful
+      ? null
+      : [
+          !hasScriptSrc && "no script-src directive",
+          !hasNonce && "no per-request nonce threaded through middleware",
+          !hasHardening && "missing object-src or base-uri",
+          !nonceIsMeaningful && "script-src allows 'unsafe-inline', which voids the nonce",
+        ]
+          .filter(Boolean)
+          .join("; "),
+  );
+
+  // Report-only is the correct *default*, so this reports rather than gates.
+  // It exists to stop the policy sitting in observation mode forever, which is
+  // the usual fate of a CSP that ships report-only.
+  const enforced = /CSP_ENFORCE === "true"/.test(csp);
+  check(
+    5,
+    "SEC-CSP-MODE",
+    "The CSP has a documented path from report-only to enforcing",
+    enforced && /csp-report/.test(csp),
     "warn",
-    `Current policy: ${cspValue || "none"}. A nonce-based script-src needs middleware work — see BACKLOG SEC-03.`,
+    "Set CSP_ENFORCE=true once the report stream is quiet — see SETUP.md.",
   );
 
   // The one Critical risk in plan D2. `packages/db/scripts/check-admin-imports`
@@ -343,7 +456,7 @@ function check(phase, id, title, ok, sev, detail) {
   check(8, "SEO-OG", "Open Graph tags are set", layout.includes("openGraph"), "warn");
 
   // A crawler route behind the auth guard is a policy nothing can read.
-  const mw = read("apps/web/middleware.ts") ?? "";
+  const mw = proxySource();
   check(
     8,
     "SEO-MW",

@@ -464,6 +464,50 @@ console.log("\nRate limiting — consume_rate_limit");
   }
   await db.exec("rollback");
 }
+{
+  // The sweep (0005's prune_rate_limits, scheduled by 0006). Two failures
+  // worth catching, and both leave a function that looks like it works: one
+  // that deletes nothing — the table then grows forever, which is the bug
+  // RL-02 was raised for — and one that deletes too much, taking live windows
+  // with it and handing every caller a fresh quota.
+  //
+  // No `set local role`: these inserts are the housekeeping path, not the
+  // tenant path, and 0005 deliberately gives tenants no write policy.
+  await db.exec("begin");
+  await db.query(
+    `insert into public.rate_limits (org_id, user_id, action, window_start, count)
+     values ($1, null, 'stale_window',  now() - interval '2 days', 7),
+            ($1, null, 'live_window',   now(),                     3)`,
+    [ORG_A],
+  );
+
+  const pruned = await db.query<{ prune_rate_limits: number }>(
+    `select public.prune_rate_limits()`,
+  );
+  const survivors = await db.query<{ action: string }>(
+    `select action from public.rate_limits where org_id = $1
+      and action in ('stale_window', 'live_window')`,
+    [ORG_A],
+  );
+
+  if (pruned.rows[0]!.prune_rate_limits === 1)
+    ok("prune_rate_limits deletes windows past the retention interval");
+  else
+    fail(
+      "prune_rate_limits deletes windows past the retention interval",
+      `reported ${pruned.rows[0]!.prune_rate_limits} deleted, expected 1`,
+    );
+
+  if (survivors.rows.length === 1 && survivors.rows[0]!.action === "live_window")
+    ok("prune_rate_limits leaves the current window alone");
+  else
+    fail(
+      "prune_rate_limits leaves the current window alone",
+      JSON.stringify(survivors.rows),
+    );
+
+  await db.exec("rollback");
+}
 
 // ── Every tenant table actually has RLS on ─────────────────────────────────
 // A table added later without `enable row level security` is readable by any

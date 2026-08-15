@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import {
   ActionRail,
   ActionRailItem,
@@ -168,6 +170,7 @@ export default async function DashboardPage({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
+  const mayHunt = canSpend(await currentViewer(org));
 
   return (
     <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
@@ -188,42 +191,58 @@ export default async function DashboardPage({
               L2 — Huntloop recommends, you approve
             </p>
           </div>
+          {/* Refresh and Export are reads and stay for everyone. "New hunt"
+              starts work that costs money, so a viewer does not get a button
+              that would fail at the database (audit FEAT-04). */}
           <div className="flex items-center gap-2">
             <Button icon={RefreshCw} variant="ghost" aria-label="Refresh" />
             <Button icon={Download} variant="secondary">
               Export
             </Button>
-            <Button icon={Plus} variant="primary">
-              New hunt
-            </Button>
+            {mayHunt && (
+              <Button icon={Plus} variant="primary">
+                New hunt
+              </Button>
+            )}
           </div>
         </header>
 
+        {/*
+          Alert chips. All three were `href="#"` — links that look like links,
+          announce as links, and go nowhere (audit A11Y-03 caught them; the
+          underlying fault is the FEAT-01 one, the product asserting a
+          capability it doesn't have).
+
+          Two have real destinations and now point at them. The triggers chip
+          does not: there is no triggers screen, so it renders as a plain
+          status chip — no anchor, no focus ring, no "→". The arrow is the
+          part that promises navigation, so it goes with the href.
+        */}
         <div className="mt-6 flex flex-wrap gap-2">
-          <a
-            href="#"
-            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning transition-colors duration-[120ms] hover:border-warning"
-          >
+          <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
             <Zap className="size-3.5" strokeWidth={1.75} />
-            9 new triggers in the last 24h →
-          </a>
-          <a
-            href="#"
+            9 new triggers in the last 24h
+          </span>
+          <Link
+            href={`/${org}/opportunities`}
             className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
           >
             <Sparkles className="size-3.5" strokeWidth={1.75} />
             12 opportunities awaiting your review →
-          </a>
-          <a
-            href="#"
+          </Link>
+          <Link
+            href={`/${org}/analyze`}
             className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
           >
             <Search className="size-3.5" strokeWidth={1.75} />
             Analyze a company URL →
-          </a>
+          </Link>
         </div>
 
-        {/* §15 — the headline classification, above everything else. */}
+        {/* §15 — the headline classification, above everything else.
+            Each card deep-links into the list filtered to its bucket, which is
+            why `?priority=` exists on that page. These four were `href="#"`:
+            cards that said "Click to view →" and did not. */}
         <section className="mt-8">
           <SectionLabel>Priority</SectionLabel>
           <StatGrid className="mt-3">
@@ -232,7 +251,8 @@ export default async function DashboardPage({
               value={12}
               icon={Flame}
               tone="hot"
-              href="#"
+              href={`/${org}/opportunities?priority=hot`}
+              linkComponent={Link}
               hint="Strong fit · strong pain · fresh trigger"
               aiGenerated
             />
@@ -241,7 +261,8 @@ export default async function DashboardPage({
               value={34}
               icon={Thermometer}
               tone="warm"
-              href="#"
+              href={`/${org}/opportunities?priority=warm`}
+              linkComponent={Link}
               hint="Good fit · weaker trigger"
               aiGenerated
             />
@@ -250,7 +271,8 @@ export default async function DashboardPage({
               value={88}
               icon={Eye}
               tone="watch"
-              href="#"
+              href={`/${org}/opportunities?priority=watch`}
+              linkComponent={Link}
               hint="Possible fit · evidence too thin"
               aiGenerated
             />
@@ -259,7 +281,8 @@ export default async function DashboardPage({
               value={46}
               icon={Binoculars}
               tone="ignore"
-              href="#"
+              href={`/${org}/opportunities?priority=ignore`}
+              linkComponent={Link}
               hint="Poor fit — kept, not deleted"
               aiGenerated
             />
@@ -339,27 +362,36 @@ export default async function DashboardPage({
           </div>
         </section>
 
-        {/* Activity, demoted below the verdict it produces. */}
+        {/* Activity, demoted below the verdict it produces.
+
+            No `href` on any of these, deliberately. Each one's natural
+            destination — companies, outreach, inbox, pipeline — is an unbuilt
+            nav entry, and `StatCard` renders "Click to view →" plus a hover
+            arrow whenever it is given one. They were all `href="#"`, so the
+            most-visited screen in the product carried eight links that
+            announced as links and went nowhere.
+
+            Give each its href in the same commit that builds its screen,
+            exactly as with the `unbuilt` nav flag. */}
         <section className="mt-10">
           <SectionLabel>Loop this week</SectionLabel>
           <StatGrid className="mt-3">
-            <StatCard label="Discovered" value={180} icon={Search} href="#" />
-            <StatCard label="Researched" value={134} icon={Target} tone="ai" href="#" aiGenerated />
-            <StatCard label="Contacted" value={90} icon={Send} href="#" />
+            <StatCard label="Discovered" value={180} icon={Search} />
+            <StatCard label="Researched" value={134} icon={Target} tone="ai" aiGenerated />
+            <StatCard label="Contacted" value={90} icon={Send} />
             <StatCard
               label="Replied"
               value={5}
               icon={MessageSquare}
               tone="info"
-              href="#"
               hint="2 positive · 3 neutral"
             />
           </StatGrid>
 
           <SectionLabel className="mt-8">Outcomes</SectionLabel>
           <StatGrid className="mt-3" columns={3}>
-            <StatCard label="Meetings" value={2} icon={CalendarCheck} tone="success" href="#" />
-            <StatCard label="Opportunities" value={1} icon={Flame} tone="brand" href="#" />
+            <StatCard label="Meetings" value={2} icon={CalendarCheck} tone="success" />
+            <StatCard label="Opportunities" value={1} icon={Flame} tone="brand" />
             <StatCard
               label="Total companies"
               value={180}

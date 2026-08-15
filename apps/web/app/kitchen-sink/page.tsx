@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   Badge,
@@ -357,59 +358,61 @@ export default function KitchenSink() {
         </div>
       </header>
 
-      {/* ── Alert chips ───────────────────────────────────────────────── */}
+      {/* ── Alert chips ───────────────────────────────────────────────────
+          Spans, not anchors. This page is a swatch board: it exists to show
+          what a chip looks like in each of the three semantic colours, and it
+          has no org in scope to link anywhere. `href="#"` would announce three
+          links to a screen reader and move focus nowhere when activated.
+          The trailing "→" goes too — it reads as "this navigates". */}
       <div className="mt-6 flex flex-wrap gap-2">
-        <a
-          href="#"
-          className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning transition-colors duration-[120ms] hover:border-warning"
-        >
+        <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
           <Zap className="size-3.5" strokeWidth={1.75} />
-          9 new triggers in the last 24h →
-        </a>
-        <a
-          href="#"
-          className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
-        >
+          9 new triggers in the last 24h
+        </span>
+        <span className="inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text">
           <Sparkles className="size-3.5" strokeWidth={1.75} />
-          12 opportunities awaiting review →
-        </a>
-        <a
-          href="#"
-          className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-ai-border bg-ai-surface px-3 text-[13px] text-ai-text transition-colors duration-[120ms] hover:border-ai"
-        >
+          12 opportunities awaiting review
+        </span>
+        <span className="inline-flex h-8 items-center gap-2 rounded-md border border-ai-border bg-ai-surface px-3 text-[13px] text-ai-text">
           <MessageSquare className="size-3.5" strokeWidth={1.75} />
-          5 messages need approval →
-        </a>
+          5 messages need approval
+        </span>
       </div>
 
       {/* ── Pipeline overview ─────────────────────────────────────────── */}
       <section className="mt-8">
         <SectionLabel>Pipeline overview</SectionLabel>
+        {/*
+          Exactly one card keeps an `href`, and it points at a real page.
+
+          All eight carried `href="#"`, so the gallery rendered eight links
+          that announced as links, showed "Click to view →", and moved focus
+          nowhere on activation. The linked variant is worth demonstrating —
+          it changes the hover border, reveals the corner arrow, and adds the
+          affordance line — but demonstrating it once against a URL that
+          resolves is enough. The rest show the default, which is what most
+          real call sites use.
+        */}
         <StatGrid className="mt-3">
-          <StatCard label="New today" value={0} icon={Inbox} href="#" />
+          <StatCard label="New today" value={0} icon={Inbox} />
           <StatCard
             label="Qualified"
             value={54}
             icon={Target}
             tone="brand"
-            href="#"
+            href="/kitchen-sink"
+            linkComponent={Link}
             aiGenerated
           />
-          <StatCard label="Approved" value={5} icon={CheckCircle2} tone="success" href="#" />
-          <StatCard label="Contacted" value={90} icon={Send} href="#" />
+          <StatCard label="Approved" value={5} icon={CheckCircle2} tone="success" />
+          <StatCard label="Contacted" value={90} icon={Send} />
         </StatGrid>
 
         <SectionLabel className="mt-8">Outcomes</SectionLabel>
         <StatGrid className="mt-3">
-          <StatCard label="Replied" value={5} icon={MessageSquare} tone="info" href="#" />
-          <StatCard
-            label="Meetings"
-            value={2}
-            icon={CalendarCheck}
-            tone="success"
-            href="#"
-          />
-          <StatCard label="Rejected" value={2} icon={XCircle} tone="danger" href="#" />
+          <StatCard label="Replied" value={5} icon={MessageSquare} tone="info" />
+          <StatCard label="Meetings" value={2} icon={CalendarCheck} tone="success" />
+          <StatCard label="Rejected" value={2} icon={XCircle} tone="danger" />
           <StatCard
             label="Total companies"
             value={180}
@@ -705,9 +708,9 @@ export default function KitchenSink() {
         </span>{" "}
         · color and chrome from Supabase, dashboard IA from Kima BD OS
         <br />
-        <a href="/acme/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
+        <Link href="/acme/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
           View the assembled Command Center →
-        </a>
+        </Link>
       </footer>
     </main>
   );

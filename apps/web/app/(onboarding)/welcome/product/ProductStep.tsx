@@ -108,6 +108,9 @@ export function ProductStep({ org }: { org: string }) {
             <input
               type="text"
               required
+              /* Same reasoning as OrgForm: a single-input onboarding step,
+                 nothing above the field to skip. See the note there. */
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -198,6 +201,13 @@ export function ProductStep({ org }: { org: string }) {
 
               {editing === i ? (
                 <textarea
+                  /* This one is not a concession — it is the textbook correct
+                     use. The textarea exists only because the user just
+                     pressed "Edit", and the control they pressed is now gone
+                     from the DOM. Without moving focus here, focus falls back
+                     to <body> and a keyboard user has to tab from the top of
+                     the page to reach the field they asked for. */
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   rows={3}
                   aria-label={f.label}

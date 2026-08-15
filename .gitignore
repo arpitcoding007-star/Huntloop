@@ -17,3 +17,9 @@ Thumbs.db
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright output. Traces and failure screenshots are diagnostic artefacts of
+# one run — useful for ten minutes, never worth committing.
+test-results/
+playwright-report/
+blob-report/

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EmptyState } from "@huntloop/ui";
 import { SearchX } from "lucide-react";
 
@@ -24,12 +25,12 @@ export default function NotFound() {
         title="Not found"
         description="There is nothing at this address."
         action={
-          <a
+          <Link
             href="/"
             className="hl-focusable inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
           >
             Go back
-          </a>
+          </Link>
         }
       />
     </div>

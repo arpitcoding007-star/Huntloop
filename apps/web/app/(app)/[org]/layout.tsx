@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { resolveMembership } from "@huntloop/db";
 import { resolveDataSource } from "../../../lib/data/source";
+import { currentViewer } from "../../../lib/data/membership";
 import { DataSourceBanner } from "./DataSourceBanner";
 import { OrgShell } from "./OrgShell";
 
@@ -27,11 +27,15 @@ export default async function OrgLayout({
 }) {
   const { org } = await params;
 
-  const { db, source } = await resolveDataSource();
-  if (db) {
-    const membership = await resolveMembership(db, org);
-    if (!membership) notFound();
-  }
+  const { source } = await resolveDataSource();
+
+  /* `currentViewer` wraps `resolveMembership` and is React-cached, so the
+     pages inside this layout can ask what the caller may do without paying for
+     a second `auth.getUser()` plus join. Returns a `demo` viewer rather than
+     null when there is no database — see the module for why that is a third
+     state and not a shade of the other two. */
+  const viewer = await currentViewer(org);
+  if (!viewer) notFound();
   // db === null means either no credentials or no schema yet — both are demo
   // mode, and both are normal states during setup. Membership cannot be
   // checked against a `memberships` table that does not exist, and 404ing here

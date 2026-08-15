@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 /**
  * Flat config for the whole monorepo.
@@ -44,6 +45,25 @@ export default tseslint.config(
       // shows up in review rather than blocking a legitimate use.
       "@typescript-eslint/no-explicit-any": "warn",
     },
+  },
+
+  {
+    /**
+     * Accessibility, on the JSX only.
+     *
+     * The audit found the existing accessibility quality to be well above
+     * typical — semantic elements, a consistent focus-ring convention,
+     * `prefers-reduced-motion` at the token level, Escape closing the mobile
+     * drawer. All of it came from somebody caring, and care does not survive
+     * contributor turnover (audit A11Y-03).
+     *
+     * `recommended` rather than `strict`: strict enables rules that fire on
+     * legitimate patterns (`no-onchange`, opinionated label associations) and
+     * a lint rule people learn to disable inline is worse than no rule.
+     */
+    name: "huntloop/accessibility",
+    files: ["**/*.{jsx,tsx}"],
+    ...jsxA11y.flatConfigs.recommended,
   },
 
   {

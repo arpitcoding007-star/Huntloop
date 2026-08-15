@@ -4,15 +4,18 @@ import { withSentryConfig } from "@sentry/nextjs";
 /**
  * Response headers applied to every route.
  *
- * Deliberately *not* including a Content-Security-Policy. A useful CSP for
- * this app needs a per-request nonce (Next injects inline bootstrap scripts,
- * and `unsafe-inline` in a script-src is a CSP that certifies nothing), which
- * means generating it in middleware and threading it through — a real change
- * with a real chance of breaking the app silently in production. It is in the
- * backlog as its own task rather than half-done here. See the audit's security
- * section.
+ * The full Content-Security-Policy — the one with `script-src` in it — is
+ * built per request in `proxy.ts`, because it carries a nonce and a nonce
+ * cannot be a static config value. See `lib/csp.ts`.
  *
- * What is here is the set that is unambiguous and cannot break a working page:
+ * The `frame-ancestors` line below stays here anyway, and the duplication is
+ * deliberate: the proxy matcher excludes `_next/static`, `_next/image`
+ * and image files, so those responses never see the per-request policy. They
+ * are also the responses least likely to matter for clickjacking — but a
+ * security header with a hole in it should have the hole documented rather
+ * than discovered.
+ *
+ * The rest is the set that is unambiguous and cannot break a working page:
  *
  *   HSTS                      Browsers remember to use TLS. `preload` is
  *                             omitted on purpose — submitting to the preload
@@ -61,32 +64,6 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
 
-  /**
-   * Tree-shake the Sentry features this app does not use.
-   *
-   * The SDK ships tracing and Session Replay in the client bundle and gates
-   * them on these flags at build time. Setting sampleRate to 0 in
-   * `instrumentation-client.ts` disables the *behaviour* but does not remove
-   * the *code* — the first measured build after adding Sentry took shared
-   * First Load JS from 103 kB to 185 kB, which is a large regression to
-   * accept for features deliberately switched off.
-   *
-   * Replay in particular is not "off pending configuration": a replay of the
-   * opportunity page records a named prospect's research, so it needs a
-   * masking policy and a customer conversation before it could ever be
-   * enabled. Shipping its implementation to every visitor meanwhile is pure
-   * cost.
-   */
-  webpack(config, { webpack }) {
-    config.plugins.push(
-      new webpack.DefinePlugin({
-        __SENTRY_DEBUG__: false,
-        __SENTRY_TRACING__: false,
-        __RRWEB_EXCLUDE_REPLAY__: true,
-      }),
-    );
-    return config;
-  },
 };
 
 /**
@@ -112,8 +89,45 @@ export default withSentryConfig(nextConfig, {
 
   sourcemaps: { disable: !uploadsSourceMaps },
 
-  // Strips the SDK's own debug logging from the production bundle.
-  disableLogger: true,
+  /**
+   * Tree-shake the Sentry features this app does not use.
+   *
+   * Replay is not "off pending configuration": a replay of the opportunity
+   * page records a named prospect's research, and one of the analyze screen
+   * records what a customer is prospecting. Enabling it would need a masking
+   * policy and a conversation with customers, so its implementation should not
+   * be in the bundle meanwhile.
+   *
+   * ── What replaced what, and what it is actually worth ──────────────────
+   *
+   * This was a `webpack()` block pushing a `DefinePlugin` that set
+   * `__SENTRY_TRACING__` and `__RRWEB_EXCLUDE_REPLAY__`. Next 16 builds with
+   * Turbopack, which never calls `webpack()` — so that block became dead code
+   * that still read as live. `bundleSizeOptimizations` is the SDK's
+   * bundler-agnostic equivalent and also replaces the deprecated
+   * `disableLogger`.
+   *
+   * **Measured on upgrade, and the honest answer is that it changes nothing
+   * today.** Two clean builds, `.next` deleted between them, with and without
+   * this block: 1013.9 kB of client chunks either way, and zero occurrences of
+   * `rrweb`, `replayIntegration` or `ReplayContainer` in both. The reason is
+   * `instrumentation-client.ts` — it never adds the Replay or BrowserTracing
+   * integrations, so on SDK v10 that code is not in the module graph at all
+   * and there is nothing left for a flag to strip. The 49 kB the audit
+   * recorded was real when it was measured, against an older SDK.
+   *
+   * Kept anyway, because it costs nothing and the condition it depends on is
+   * one line in another file: the day someone adds `Sentry.replayIntegration()`
+   * to that init, this is what stops the implementation shipping to every
+   * visitor. Recorded here so nobody re-derives the measurement.
+   */
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeTracing: true,
+    excludeReplayShadowDom: true,
+    excludeReplayIframe: true,
+    excludeReplayWorker: true,
+  },
 
   /*
    * Deliberately NOT setting `tunnelRoute`.

@@ -2,9 +2,13 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
-> **Two further passes are appended at the end.** The tables immediately below
-> describe the first pass only. Current totals: **39 database checks, 34 audit
-> checks, 0 failing, 7 warnings**, and `SEC-03` is the only P0 item left.
+> **Three further passes are appended at the end.** The tables immediately
+> below describe the first pass only.
+>
+> **Current totals (fourth pass, 2026-08-14):** 42 database checks · 34
+> `apps/web` and `packages/ui` unit tests · 68 browser tests · 36 audit checks,
+> 0 failing, 1 warning · 0 dependency advisories. **No P0 items remain.** The
+> single warning is `FEAT-FIXTURE`, which needs a hosted Supabase project.
 
 Everything below was run against the working tree after the fixes described in
 [FINDINGS.md](FINDINGS.md). Reproduce the whole thing with:
@@ -373,3 +377,108 @@ be guarding a bundle nobody ships. Recorded in the backlog.
 - **`RL-01`'s production branch was not executed.** Triggering it needs a
   production build with an AI key and no database. Verified by reading, types,
   and the fact that the non-production branch is exercised on every local run.
+
+---
+
+# Fourth pass — the eight-phase completion run
+
+**Date:** 2026-08-14 · **Baseline:** `0cfffd1` · **Branch:** `main`
+
+Everything the backlog listed as buildable without a hosted Supabase project
+was built, in eight phases, each verified before the next began. This section
+records what was measured rather than what was intended.
+
+## Toolchain, before and after
+
+| Gate | Command | Before | After |
+|---|---|---|---|
+| Types | `npm run typecheck` | Clean (4 workspaces) | **Clean** |
+| Lint | `npm run lint` | Clean, no a11y rules | **Clean, with `jsx-a11y`** |
+| Schema + tenant isolation | `npm test` | 39/39 | **42/42** |
+| Admin-import boundary | (part of `npm test`) | 61 files clean | **80 files clean** |
+| Unit — `apps/web` | `npm test` | *did not exist* | **34 passing** |
+| Unit — `packages/ui` | `npm test` | *did not exist* | **7 passing** |
+| Browser | `npx playwright test` | *did not exist* | **68 passing, 2 skipped** |
+| Audit | `npm run audit:site` | 34 checks · 7 warning | **36 checks · 0 failing · 1 warning** |
+| Bundle | `npm run audit:bundle` | *did not exist* | **244.6 kB gzipped of 275 kB** |
+| Advisories | `npm audit` | 3 high | **0** |
+| Build | `npm run build` | 18 routes, Next 15.5.23 | **20 routes, Next 16.3.1** |
+
+## Measured, not assumed
+
+**Auth pages, PERF-02.** `/login` and `/signup` went **217 kB → 151 kB** First
+Load JS. Confirmed structurally as well as numerically: `GoTrueClient`,
+`supabase-js` and their symbols appear in **zero** client chunks. Both
+submissions are Server Actions now.
+
+**PostHog cost nothing.** Shared First Load JS was unchanged after adding
+analytics, because `posthog-node` runs server-side only. That was the reason
+for choosing it over `posthog-js`, and the number is the evidence.
+
+**The Sentry tree-shaking was already inert.** The `webpack()` `DefinePlugin`
+block became dead on Next 16 (Turbopack never calls `webpack()`), and was
+replaced with `bundleSizeOptimizations`. Two clean builds with `.next` deleted
+between them, with and without that block: **1013.9 kB of client chunks either
+way**, and zero occurrences of `rrweb`, `replayIntegration` or
+`ReplayContainer` in both. `instrumentation-client.ts` never adds those
+integrations, so on SDK v10 the code is not in the module graph at all. The
+49 kB the second pass recorded was real when measured, against an older SDK.
+The option is kept because it costs nothing and one line in another file would
+make it load-bearing again.
+
+**The bundle budget needed the right unit.** The shared client chunks are
+787.3 kB raw, 244.6 kB gzipped, 211.4 kB brotli. Next's old First Load JS
+column was gzipped, so a budget in raw bytes would have been off by a factor of
+three — either never firing or always. `scripts/bundle-budget.mjs` measures
+gzip, and budgets the *shared* chunks only, for the reason recorded in the
+third pass: the proxy bundle is 29 kB smaller in CI than in production and
+always will be.
+
+## Found by verification, not by reading
+
+Four things a static reading would have shipped:
+
+1. **A statically prerendered page cannot carry a per-request CSP nonce.** The
+   Playwright CSP suite caught it on `/login` under `CSP_ENFORCE=true`: the
+   page renders perfectly and never hydrates. Fixed by `force-dynamic` at the
+   root layout, with `robots.ts` and `sitemap.ts` opting back out.
+2. **`upgrade-insecure-requests` is ignored in a report-only policy**, and
+   browsers say so in the console on every page load. Now emitted only when
+   enforcing.
+3. **`DataTable` is a Client Component**, so the analytics page could not build
+   its `columns` — `render` is a function and functions cannot cross the
+   boundary. Every request logged an error while the nav test still passed,
+   because a check that a route *answers* is not a check that it works. The
+   spend table is now its own client component and has its own spec.
+4. **Sixteen `href="#"` placeholders** that neither `jsx-a11y` nor `PERF-01`
+   could see — eight on the Command Center, eight in the gallery — because they
+   were props on a component that renders an anchor three files away. `NAV-02`
+   greps for them now, and was itself verified by falsification.
+
+## Checks verified by falsification
+
+Each was confirmed to fail when the thing it guards was removed, then restored:
+
+| Check | Broken deliberately | Result |
+|---|---|---|
+| `audit.mjs` `NAV-02` | Added `href="#"` to a StatCard | Failed, named the file |
+| `spend-guard.test.ts` | Deleted the org guard in `qualify.ts` | Failed on the wrapper |
+| `DataTable.test.tsx` | Removed `tabIndex` from the row | Failed on keyboard reachability |
+
+## Still not verified, and why
+
+- **No live Supabase project.** The membership guard's 404, real sign-in, the
+  OAuth callback, and the live opportunity queries remain unexercised. The
+  browser suite runs in demo mode — a real configuration of this app, and the
+  one CI builds, but not the configured one.
+- **No AI key has ever been used.** All four tasks remain unit-tested against a
+  scripted client and have never called the real API.
+- **The CSP has not been enforced in production.** It has been proven to work
+  under enforcement locally — the full suite passes with `CSP_ENFORCE=true` —
+  which is the rehearsal, not the event.
+- **`0006_prune_schedule.sql` schedules nothing here.** PGlite has no `pg_cron`,
+  so the migration's guard skips it by design. The function it schedules *is*
+  now tested; the scheduling is not. `select * from cron.job` is the check on a
+  real project.
+- **Sentry has still never received an event.** Wiring is verified by build and
+  types only, and the CSP report endpoint depends on it.

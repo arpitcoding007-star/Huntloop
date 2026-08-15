@@ -58,6 +58,22 @@ export const orgSlugSchema = z
 export const orgNameSchema = z.string().trim().min(1).max(120);
 
 /**
+ * A sign-in email address.
+ *
+ * `z.email()` for shape, and a length cap because the field is on an
+ * unauthenticated endpoint. 254 is the RFC 5321 maximum for a whole address,
+ * so anything longer is not an address that could ever be delivered to.
+ *
+ * Lowercased, because Supabase treats addresses case-insensitively and two
+ * casings of the same mailbox arriving as two accounts is a support ticket
+ * nobody enjoys.
+ */
+export const emailSchema = z.string().trim().toLowerCase().max(254).pipe(z.email());
+
+/** Which form was submitted. Decides `shouldCreateUser`, so it is not free-form. */
+export const authModeSchema = z.enum(["login", "signup"]);
+
+/**
  * What a user may paste into "analyze a URL".
  *
  * Deliberately loose: people type `acme.co` without a scheme, and rejecting

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, Sidebar, TopBar, type NavGroup } from "@huntloop/ui";
 import {
@@ -135,12 +136,8 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
     {
       label: "Learn",
       items: [
-        {
-          label: "Analytics",
-          href: `/${org}/analytics`,
-          icon: BarChart3,
-          unbuilt: true,
-        },
+        // The flag goes in the same commit that adds the page — this one.
+        { label: "Analytics", href: `/${org}/analytics`, icon: BarChart3 },
         {
           label: "Intelligence",
           href: `/${org}/intelligence`,
@@ -161,6 +158,26 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas">
+      {/*
+        Skip link. Every authenticated page renders ~17 nav items before
+        <main>, so without this a keyboard or screen-reader user tabs the
+        entire sidebar again on every single page load (audit A11Y-02).
+
+        It must be the first focusable thing in the document, which is why it
+        sits above the scrim and the sidebar rather than somewhere tidier.
+
+        Hidden until focused — `sr-only` keeps it in the accessibility tree and
+        out of the visual design; `focus:not-sr-only` brings it back with real
+        geometry. `display:none` would have removed it from the tab order,
+        which is the usual way this gets built and the way that does nothing.
+      */}
+      <a
+        href="#main"
+        className="hl-focusable sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:rounded-md focus:border focus:border-line-subtle focus:bg-surface focus:px-3 focus:py-2 focus:text-[13px] focus:font-medium focus:text-fg"
+      >
+        Skip to content
+      </a>
+
       {/* Scrim — only exists below lg, where the sidebar is an overlay. */}
       {navOpen && (
         <button
@@ -183,6 +200,11 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       >
         <Sidebar
           groups={groups}
+          /* The app-side half of the framework-agnostic `<a>` in packages/ui.
+             Without it every one of these seventeen items reloaded the whole
+             document — the single largest user-perceived performance cost in
+             the app (audit PERF-01). */
+          linkComponent={Link}
           /* Longest matching prefix, so a detail route
              (/opportunities/alphio-ai) still lights up its section, while
              /settings/icp does not also light up /settings. An exact match
@@ -225,8 +247,22 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           ]}
           onMenuClick={() => setNavOpen(true)}
           onSearchClick={() => {}}
-          feedbackHref="#"
-          helpHref="#"
+          /*
+            Both were `"#"` — a Feedback link and a Help button that looked
+            live, tabbed like links, and went nowhere (audit ANL-03).
+
+            There is no feedback system and no help site yet, so the fix is not
+            to invent a destination: `TopBar` already omits each control when
+            its href is undefined, so an unset variable renders no affordance
+            at all. Set them in the environment when the destinations exist and
+            the controls appear — same rule as the `unbuilt` nav flag, applied
+            to the topbar.
+
+            `NEXT_PUBLIC_` because this is a Client Component; the value is a
+            public URL, and there is nothing here worth hiding.
+          */
+          feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
+          helpHref={process.env.NEXT_PUBLIC_HELP_URL}
           avatar={<Avatar initials={org} />}
           actions={
             /* A real form POST rather than a link: sign-out changes state, and
@@ -243,7 +279,15 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           }
         />
 
-        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        {/*
+          `tabIndex={-1}` is what makes the skip link actually skip. Without
+          it, following `#main` moves the scroll position but leaves focus
+          where it was, so the next Tab returns to the second nav item and the
+          user is back in the sidebar they just escaped.
+        */}
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto">
+          {children}
+        </main>
       </div>
     </div>
   );

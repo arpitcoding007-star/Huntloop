@@ -23,6 +23,15 @@ export interface DataTableProps<T> {
   onSelectionChange?: (ids: string[]) => void;
   sort?: { key: string; direction: "asc" | "desc" };
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
+  /**
+   * Whole-row activation. Keyboard-operable (Tab to the row, Enter or Space),
+   * but treat it as a *redundant* convenience rather than the only way in:
+   * the accessible pattern is a real `<a>` in the identifying cell, which is
+   * what `OpportunityTable` does. A row is not a link, screen readers do not
+   * announce it as one, and `role="button"` on a `<tr>` would fix the
+   * announcement by removing the row from the table's structure entirely —
+   * which is a worse trade than leaving it a row.
+   */
   onRowClick?: (row: T) => void;
   loading?: boolean;
   empty?: ReactNode;
@@ -175,10 +184,27 @@ export function DataTable<T>({
                 <tr
                   key={id}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          // Only the row itself. Without this, Enter on the
+                          // selection checkbox — or on a link inside a cell —
+                          // bubbles up and fires the row action too, so one
+                          // keypress does two things.
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          // Space scrolls the page by default, which on a long
+                          // table moves the thing you just activated off-screen.
+                          e.preventDefault();
+                          onRowClick(row);
+                        }
+                      : undefined
+                  }
                   className={cn(
                     "border-b border-line-subtle transition-colors duration-[120ms] last:border-b-0",
                     isSelected ? "bg-surface-hover" : "hover:bg-surface-hover",
-                    onRowClick && "cursor-pointer",
+                    onRowClick && "hl-focusable-row cursor-pointer",
                   )}
                 >
                   {selectable && (

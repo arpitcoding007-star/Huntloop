@@ -5,6 +5,7 @@ import { recommend } from "../../../../lib/ai/sources";
 import type { SourcesResult } from "../../../../lib/ai/sources";
 import { toFailureState } from "../../../../lib/ai/outcome";
 import { icpSchema, orgSlugSchema, parseInput } from "../../../../lib/validation";
+import { captureForViewer } from "../../../../lib/analytics";
 
 /**
  * The sources step's one server action.
@@ -42,5 +43,19 @@ export async function recommendSourcesAction(
   if (!profile.ok) return { error: profile.error };
 
   const outcome = await recommend(slug.value, profile.value);
+
+  // The last step of the funnel. No part of the ICP is sent — it is the
+  // customer's description of who they sell to, which is close to the most
+  // commercially sensitive thing they will type into this product.
+  await captureForViewer(
+    outcome.ok ? "onboarding_step_completed" : "onboarding_step_failed",
+    {
+      step: "sources",
+      ...(outcome.ok
+        ? { aiConfigured: outcome.result.source === "live" }
+        : { reason: outcome.kind === "rate_limited" ? "rate_limited" : "model_refused" }),
+    },
+  );
+
   return outcome.ok ? { result: outcome.result } : toFailureState(outcome);
 }

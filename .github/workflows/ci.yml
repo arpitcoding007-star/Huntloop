@@ -49,6 +49,22 @@ jobs:
       - name: Audit — repository, security, SEO, routes
         run: npm run audit:site
 
+      # Advisories were previously invisible to CI: three high-severity ones
+      # sat in the tree through an entire audit and nothing surfaced them
+      # (audit REPO-06).
+      #
+      # `--audit-level=high` rather than the default `low`. A gate that fires
+      # on every low-severity transitive advisory gets disabled within a month,
+      # and a disabled gate protects nothing. High and critical are the levels
+      # worth stopping a build for.
+      #
+      # `continue-on-error` because a new advisory can be published against an
+      # unchanged dependency tree — that must not turn an unrelated pull
+      # request red. It reports; it does not block.
+      - name: Audit — dependency advisories
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Build
         run: npm run build
         env:
@@ -57,3 +73,47 @@ jobs:
           # build time, which would also break preview deploys.
           NEXT_PUBLIC_SUPABASE_URL: ""
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+
+      # After the build, because it measures build output.
+      #
+      # It budgets the *shared* client chunks only — those are independent of
+      # the empty credentials above, unlike the proxy bundle, which the
+      # bundler shrinks by 29 kB when it can prove the Supabase branch is dead.
+      # See the script and audit/BACKLOG.md PERF-06.
+      - name: Bundle budget
+        run: npm run audit:bundle
+
+  # Split from `verify` rather than appended to it, for one reason: this job
+  # downloads a browser, and a ~1 minute install has no business delaying the
+  # feedback from typecheck and lint. The two run in parallel and both gate.
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Chromium only. The suite asserts routing, headers, focus order and
+      # responsive behaviour — none of which are engine-specific — and three
+      # browsers would triple the runtime to re-prove the same things.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Playwright builds and starts the app itself (see playwright.config.ts),
+      # with empty Supabase credentials so the app runs in demo mode and the
+      # whole UI is reachable without anyone's login.
+      - name: Test — browser
+        run: npx playwright test
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

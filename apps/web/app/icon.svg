@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Huntloop">
+  <!--
+    Served by Next at /icon.svg from `app/icon.svg`, which also emits the
+    <link rel="icon"> tag. Before this existed every browser requested
+    /favicon.ico and got the app's 404 handler (audit SEO-05).
+
+    Literal hex rather than the design tokens: an SVG served as a file has no
+    stylesheet, so `var(--hl-brand)` would resolve to nothing and the mark
+    would render invisible. These are copies of --hl-brand-surface,
+    --hl-brand-border and --hl-brand, and are the one place in the repo
+    allowed to duplicate them. If the brand green changes, change it here too.
+
+    A wordmark rather than a loop glyph: at 16px — the size that actually
+    ships, in a browser tab — anything with an interior gap closes up into a
+    blob. The H matches the in-app mark in OrgShell's sidebar header, so the
+    tab and the product agree.
+  -->
+  <rect width="32" height="32" rx="7" fill="#0e2a1e" />
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" fill="none" stroke="#1f5a3f" />
+  <path d="M9 8h4v6h6V8h4v16h-4v-6h-6v6H9V8Z" fill="#3ecf8e" />
+</svg>

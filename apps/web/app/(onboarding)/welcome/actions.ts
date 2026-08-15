@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { resolveDataSource } from "../../../lib/data/source";
 import { RESERVED_SLUGS, slugify } from "../../../lib/slug";
 import { orgNameSchema } from "../../../lib/validation";
+import { capture } from "../../../lib/analytics";
 
 /**
  * Creates an organisation and makes the caller its owner.
@@ -79,6 +80,20 @@ export async function createOrganisation(
     await db.from("organizations").delete().eq("id", org.id);
     return { error: `Could not add you to the organisation: ${memberError.message}` };
   }
+
+  /*
+   * Step 1 of the funnel, recorded after the writes succeeded rather than on
+   * submit — "started to create an org" and "has an org" are different facts,
+   * and only the second one means the step completed.
+   *
+   * Neither the organisation name nor the slug is sent. The step and two
+   * opaque uuids are enough to build the funnel, and a customer's company name
+   * is their data, not our telemetry. See lib/analytics.ts.
+   */
+  await capture("onboarding_step_completed", user.user.id, {
+    step: "organisation",
+    orgId: org.id as string,
+  });
 
   redirect(`/welcome/product?org=${slug}`);
 }
