@@ -204,6 +204,87 @@ phrasing used across these documents was only ever true of a deployment that
 
 ---
 
+## Closed in the seventh pass — 2026-08-20
+
+Worth a section of its own because what changed is *what the product is*
+rather than how well it behaves. The engine runs, and every screen it feeds
+now has a way in and a way out.
+
+| ID | Task | Effort |
+|---|---|---|
+| **ENG-01** | **A Postgres job queue, a scanner, and the tick that drives it** | **L** |
+| **ENG-02** | **Four sweepers — scans, mailbox syncs, enrollments, sends** | **M** |
+| **TEAM-01** | **`profiles`, so a member has a name rather than a uuid** | **S** |
+| **TEAM-02** | **Invitations, so one member can bring in another** | **M** |
+| **OUT-01** | **Mailbox OAuth: Gmail and Graph, tokens encrypted at the app layer** | **L** |
+| **OUT-02** | **Enrollments, drafting, sending, and reply classification** | **L** |
+| **OUT-03** | **The approval queue has an exit, and the inbox has a reply box** | **M** |
+| **UX-05** | **A qualification can be saved, and lands on its detail page** | **M** |
+| **UX-08** | **Row selection has a verb: a selection is added to a campaign** | **S** |
+| **FEAT-06** | **The `AgentPanel` has a model, and cites what it rests on** | **L** |
+| **DASH-01** | **The Command Center reads from the database** | **L** |
+| **UX-07** | **Onboarding lands somewhere real** | **—** |
+| **SEC-09** | **`javascript:` refused where an evidence URL becomes an `href`** | **XS** |
+
+### Notes on what closed
+
+**ENG-02** is four sweepers rather than one, and `sweep()` lives in the jobs
+package rather than in the cron route. The Inngest driver was ticking without
+enqueuing anything — an engine that processes whatever it is handed and never
+notices that a source is overdue, a reply unread, or a sequence due. That is
+invisible in every log line, so the fix was to make it impossible to write a
+driver that forgets.
+
+**OUT-02** splits drafting from sending on purpose. `advance_enrollments`
+decides what should go out; `send_message` is what sends. Nothing else makes
+§46's autonomy ladder expressible — a design that generated and sent in one
+step would have no state in which a message exists and has not gone, and so no
+approval queue to build. **OUT-03** is the other half: `schedule_sends` sweeps
+`messages.scheduled_at`, which already meant "approved and due", so a person
+approving a draft writes a request to a tenant table exactly as "scan now"
+does. Before it, the approval queue had no exit.
+
+**UX-05** was the item this backlog called "the only one that changes what the
+product *is*". It writes the same shape `score_opportunity` writes, because
+they are the same act arriving two ways. The verdict round-trips through the
+browser rather than being re-derived server-side, and that trade is argued
+beside `qualificationSchema`: qualification is not deterministic, so
+re-running would mean the row saved is not the verdict the user approved.
+
+**SEC-09** came out of writing that schema. `z.url()` accepts
+`javascript:alert(1)`, and evidence `source_url` is stored and then rendered as
+an `href` by `EvidenceList` — so a crafted save was stored XSS on the
+opportunity page. `httpUrlSchema` checks the scheme and a test pins it.
+
+**FEAT-06** was listed below under *Accepted — not defects*, on the grounds
+that the panel said so rather than pretending. It has moved here because the
+model arrived, and with the contract the footer was already promising: an
+answer names the claims it rests on, constrained by schema to claims Huntloop
+actually gathered, and says separately what it could not establish. The
+conversation history is wrapped as untrusted alongside the evidence — a claim
+planted in a question cannot become citable, and there is a test for it.
+
+**UX-07** closed without being worked on, which is worth saying rather than
+quietly ticking. It read "onboarding lands on the Command Center, the one
+screen whose figures are entirely invented" — and the second half stopped
+being true. Onboarding still ends where it did; the objection to that
+destination is what went away.
+
+**DASH-01** replaced every literal on the most-visited screen in the product.
+Three things it now refuses to invent: a plan ceiling it does not have (the
+"of 1,000 on the Growth plan" denominator is gone), a sending-capacity section
+with no mailbox behind it, and an action rail asserting four decisions were
+required with none of the four counts computed.
+
+One fix ran across all of it rather than belonging to any of it: reference
+validation ran *before* `mutate` in twenty-seven Server Actions, so a click in
+demo mode answered "that reference isn't valid" — the ids on screen are
+fixtures, not uuids — to a user whose actual problem was that the deployment
+has no database. `mutate` already documents why it checks demo mode first; the
+reference checks now sit inside it for the same reason.
+
+---
+
 ## P0 — Before the next production deploy
 
 **Nothing in code.** `SEC-03` was the last one.
@@ -285,11 +366,19 @@ explicit base URL, run by a developer against a seeded project, not by CI.
 **Depends on:** a seeded test user in *two* orgs — the 404 test needs an org
 the user is not a member of, and `db:seed --slug other` provides it.
 
-### AI-01 · Run the four tasks against the real API once · **S**
-`research_company`, `recommend_sources`, `qualify_opportunity` and
-`explain_why_now` are unit-tested against a scripted client and have **never
+### AI-01 · Run the tasks against the real API once · **S**
+`research_company`, `recommend_sources`, `qualify_opportunity`,
+`explain_why_now`, `personalize_message`, `classify_reply`, `extract_signals`
+and `sales_agent` are unit-tested against a scripted client and have **never
 called Anthropic**. Every claim about their behaviour is a claim about the
 scripted client.
+
+The grounding constraints are the ones worth running for real: several of these
+tasks build their output schema from the evidence passed in, so that an
+ungrounded answer is unrepresentable rather than merely rejected. That property
+has been verified against a client that returns whatever it is handed, which is
+exactly the client least able to test it.
+
 **Depends on:** `ANTHROPIC_API_KEY`.
 
 ### OPS-01 · Enforce the CSP · **XS** · Phase 5
@@ -319,28 +408,24 @@ into a throwaway project once, end to end, and write down the measured RTO.
 | SEC-08 | Sanitization policy if model output is ever rendered as markup | — | 5 | Standing constraint, not a task |
 | SEO-06 | A landing page for `/` | XL | 8 | `/` redirects to `/login` today — deliberate, and the honest minimum until there is copy worth serving |
 | REPO-08 | Branch protection on `main` | XS | 1 | Needs a repo admin in the GitHub UI; checklist in CONTRIBUTING.md |
-| TEAM-01 | A `profiles` table, so a member has a name | S | 3 | Members and Assignments identify people by uuid. Names live in `auth.users`, which tenants cannot read and which needs the service-role client `apps/web` is forbidden to import. The fix is a `profiles` row per user, written by a trigger on `auth.users` and readable by co-members — a migration, not something the loaders can work around |
-| TEAM-02 | Invite a user to an organisation | M | 3 | Creating a user is `auth.admin`, so it needs a server-side path holding the service-role key. There is no such surface today, and adding one is a deployment decision rather than a button. The control on the Members screen says so rather than rendering as live |
 
 ---
 
 ## Interface review — open items
 
 The full pass is [UX-REVIEW.md](UX-REVIEW.md); six of its fourteen findings
-closed in the commit that added it. These are the rest, and `UX-05` is the one
-worth doing first — it is the only item in this backlog that changes what the
-product *is* rather than how well it behaves.
+closed in the commit that added it, and `UX-05`, `UX-07` and `UX-08` closed in
+the seventh pass above — the first of those was the one this list called the
+only item that changes what the product *is*. These are the rest, and none of
+them does: they are all about how well it behaves.
 
 | ID | Task | Effort | Note |
 |---|---|---|---|
-| **UX-05** | **A qualification can be saved, and lands on its detail page** | **M** | Analyze discards the most valuable thing the product produces. One insert plus one redirect turns four disconnected screens into a loop — and closes UX-03 by making the button real |
-| UX-07 | Onboarding lands somewhere real | S | It currently ends on the Command Center, the one screen whose figures are entirely invented |
 | UX-13 | `HoverPanel` opens on tap; fix the `pointer-events`/`overflow` contradiction | XS | Score and priority explanations are unreachable on a phone — the two places §51 and §77 P4 are discharged |
 | UX-14 | A confirmation state, with undo | S | The sixth member of the `States.tsx` family. Every write added from here needs it |
 | UX-09 | One priority control on `/opportunities`, not two | S | Four stat cards and five chips, same buckets, same counts — and the card is a link on one screen and inert on the next |
 | UX-10 | Filter state in the URL via `history.replaceState` | S | The deep link is true on arrival and wrong after the first click. No `router.push`, so the stated objection does not apply |
 | UX-11 | Promote the action rail below 1440px | S | "Needs you" sits ~2000px down on a 1280px laptop |
-| UX-08 | Give row selection a verb, or remove it | S | Its only action was `Add to campaign`, now `pending` |
 | UX-15 | A command palette | M | Optional. UX-02 removed the ⌘K affordance rather than building one; a dozen verbs have no screen of their own and a palette can host them first |
 
 ---
@@ -384,7 +469,6 @@ where it now sits behind a stated dependency rather than behind "someday".*
 | REPO-05 | No Docker | Vercel + hosted Supabase + in-process PGlite. Nothing to containerize |
 | UI-03 | Dark mode only | Deliberate; `color-scheme: dark` is set, and tokens make a second theme additive |
 | FEAT-05 | Onboarding draft in `sessionStorage` | Designed as a seam; `sessionStorage` chosen over `localStorage` on purpose |
-| FEAT-06 | `AgentPanel` has no model | Says so in the product rather than pretending |
 
 ---
 
@@ -396,7 +480,7 @@ It is now provisioned, migrated, seeded and verified, and every one of those
 items has either closed or fallen back to a credential of its own:
 
 ```
-ANTHROPIC_API_KEY ──────► AI-01     (four tasks that have never called the API)
+ANTHROPIC_API_KEY ──────► AI-01     (every task, none of which has called the API)
 
 Sentry DSN ─────────────► OPS-01    (a week of quiet CSP reports, then enforce)
 
