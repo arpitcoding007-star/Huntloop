@@ -331,3 +331,36 @@ test.describe("the Command Center", () => {
     await expect(page.getByText(/replies unread|messages need approval/i)).toHaveCount(0);
   });
 });
+
+test.describe("an opportunity's own page", () => {
+  test("both header controls act, rather than explaining why they cannot", async ({
+    page,
+  }) => {
+    /*
+     * This is "the screen the product is judged on", by its own file comment,
+     * and until now both of its buttons were labels: Assign and Draft outreach
+     * each carried a reason instead of a handler. Both reasons had stopped
+     * being true — assigning is the action the assignments board already
+     * called, and enrolling is the one the opportunity list already called for
+     * a whole selection.
+     *
+     * "Add to campaign" rather than "Draft outreach", because that is what it
+     * does: whether the first message is drafted for review or sent on its own
+     * is the campaign's autonomy level, not this button's.
+     */
+    await page.goto(`/${ORG}/opportunities`);
+    await page.locator(`a[href*="/${ORG}/opportunities/"]`).first().click();
+
+    const assign = page.getByRole("button", { name: /assign|owned by/i }).first();
+    await expect(assign).not.toHaveAttribute("aria-disabled", "true");
+    await assign.click();
+    await expect(page.getByLabel("Owner")).toBeVisible();
+
+    await page.getByRole("button", { name: /add to campaign/i }).click();
+    await expect(page.getByLabel("Campaign")).toBeVisible();
+    // §46's ladder, stated before the commit rather than discovered after it.
+    await expect(
+      page.getByText(/drafted and wait for you|without further approval/i),
+    ).toBeVisible();
+  });
+});

@@ -59,6 +59,15 @@ export interface OpportunityDetail {
   dimensions: ScoreDimension[];
   status: string;
   owner: string | null;
+  /**
+   * The raw id, alongside the label above.
+   *
+   * `owner` answers "who does this belong to" for a reader — "You", or
+   * "another member", because §21 keeps colleagues' identities out of a screen
+   * that does not need them. The control that *changes* the owner needs the id
+   * the select is bound to, and those are different questions.
+   */
+  ownerId: string | null;
   triggerDate: string;
   whyThisCompany: string | null;
   whatTheyDo: string | null;
@@ -412,6 +421,7 @@ export function mapDetail(
        surface than exposing an org's user directory to every member. */
     owner:
       r.owner_id === null ? null : r.owner_id === viewerId ? "You" : "another member",
+    ownerId: r.owner_id,
     triggerDate: triggers[0]?.event_date ?? r.first_seen_at,
     whyThisCompany: r.why_this_company,
     whatTheyDo: r.companies.description,

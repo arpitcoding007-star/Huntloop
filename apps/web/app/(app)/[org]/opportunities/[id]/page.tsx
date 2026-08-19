@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   Badge,
-  Button,
   Card,
   CardBody,
   CardHeader,
@@ -14,9 +13,13 @@ import {
   ScorePill,
   SectionLabel,
 } from "@huntloop/ui";
-import { ArrowLeft, ExternalLink, Linkedin, Mail, Send, UserPlus } from "lucide-react";
+import { ArrowLeft, ExternalLink, Linkedin, Mail } from "lucide-react";
 import { getOpportunity } from "../../../../../lib/data/opportunities";
+import { listCampaignTargets } from "../../../../../lib/data/outreach";
+import { listMembers } from "../../../../../lib/data/team";
+import { canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { AgentPanel } from "./AgentPanel";
+import { OpportunityActions } from "./OpportunityActions";
 
 /**
  * The §47 company/opportunity page — the screen the product is judged on.
@@ -45,7 +48,15 @@ export default async function OpportunityPage({
 }) {
   const { org, id } = await params;
 
-  const { data: o } = await getOpportunity(org, id);
+  const [{ data: o }, viewer, { data: members }, { data: campaigns }] = await Promise.all([
+    getOpportunity(org, id),
+    currentViewer(org),
+    /* Both loaded here rather than fetched when a control opens: whether there
+       is anybody to assign to, or any campaign to add to, is a fact about the
+       workspace that the control should know before it is pressed. */
+    listMembers(org),
+    listCampaignTargets(org),
+  ]);
 
   if (!o) notFound();
 
@@ -97,24 +108,17 @@ export default async function OpportunityPage({
             dimensions={o.dimensions}
           />
           <Badge variant="neutral">{o.status}</Badge>
-          {/* Both carry their reason rather than rendering as live controls
-              on the screen the product is judged on (audit UX-01). Ownership
-              is a membership write with no UI behind it yet; drafting is the
-              outreach half of the loop, which is not built at all. */}
-          <Button
-            variant="secondary"
-            icon={UserPlus}
-            pending="Assigning an owner isn't built yet."
-          >
-            {o.owner ? `Owned by ${o.owner}` : "Assign"}
-          </Button>
-          <Button
-            variant="primary"
-            icon={Send}
-            pending="Outreach drafting isn't built yet. The angle and its caveats are below."
-          >
-            Draft outreach
-          </Button>
+          {/* Both used to carry a reason rather than a handler, and both reasons
+              had stopped being true — see the note in `OpportunityActions`. */}
+          <OpportunityActions
+            org={org}
+            opportunityId={o.id}
+            owner={o.owner}
+            ownerId={o.ownerId}
+            members={members}
+            campaigns={campaigns}
+            canWrite={canWrite(viewer)}
+          />
         </div>
       </header>
 

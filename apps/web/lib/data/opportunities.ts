@@ -204,7 +204,10 @@ export async function getOpportunity(
     },
     () => {
       const fixture = findOpportunity(id);
-      return fixture && { ...fixture };
+      /* `ownerId` is null on every fixture, and stays a real null rather than
+         an invented uuid: the demo owner label reads "You", which is a
+         rendering choice, not a claim that a particular account owns it. */
+      return fixture && { ...fixture, ownerId: null };
     },
   );
 }
