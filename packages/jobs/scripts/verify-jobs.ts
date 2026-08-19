@@ -20,6 +20,9 @@ import { assertFetchable, FetchRefused } from "../src/fetch.ts";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
+import { sendMessage } from "../src/handlers/send-message.ts";
+import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
+import { gmail } from "../src/mailbox/gmail.ts";
 import type { JobHandler } from "../src/registry.ts";
 
 let failures = 0;
@@ -83,6 +86,9 @@ function fakeClient(responses: Record<string, unknown> = {}) {
     const chain: Record<string, unknown> = {};
     const passthrough = [
       "eq", "neq", "is", "in", "or", "order", "limit", "lt", "lte", "gt", "gte", "not",
+      /* `contains` is how `matchThread` asks whether a thread's participants
+         array holds the sender. Added when that path first got a test. */
+      "contains",
     ];
     for (const method of passthrough) {
       chain[method] = (column: string, value: unknown) => {
@@ -604,6 +610,555 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       .filter(([, handler]) => typeof handler !== "function")
       .map(([name]) => name),
     [],
+  );
+}
+
+/* ── send_message — the handler with no undo ─────────────────────────────── */
+
+/**
+ * §78 and §46, as behaviour rather than as comments.
+ *
+ * This handler had no tests, which is worth saying plainly: it is the one
+ * place in the product that puts mail in a stranger's inbox, and every guard
+ * in it — already-sent, approved, suppressed, allowance — was verified only by
+ * reading. A scan that runs twice costs a little money; a send that runs twice
+ * costs a prospect.
+ *
+ * `authorize()` and the provider are reached through the real code path rather
+ * than stubbed out: the token is genuinely encrypted with a test key and
+ * genuinely decrypted, and only the provider's `send` is replaced. What is
+ * being tested is the order of the checks, so anything that would let a check
+ * be skipped has to stay real.
+ */
+
+const MESSAGE_ID = "11111111-1111-1111-1111-111111111111";
+const MAILBOX_ID = "22222222-2222-2222-2222-222222222222";
+
+process.env.MAILBOX_ENCRYPTION_KEY = "a".repeat(64);
+const { encryptSecret } = await import("@huntloop/db");
+
+/** A message that would send, so each test can spoil exactly one thing. */
+function sendable(overrides: Record<string, unknown> = {}) {
+  return {
+    id: MESSAGE_ID,
+    enrollment_id: null,
+    mailbox_id: MAILBOX_ID,
+    thread_id: null,
+    direction: "outbound",
+    subject: "The policy layer your agents are missing",
+    body_text: "How are you gating custody today?",
+    body_html: null,
+    to_email: "dana@acme.co",
+    sent_at: null,
+    scheduled_at: new Date().toISOString(),
+    unsubscribe_token: "44444444-4444-4444-4444-444444444444",
+    provider_message_id: null,
+    ...overrides,
+  };
+}
+
+/** A connected mailbox whose token is valid for another hour. */
+function connectedMailbox() {
+  return {
+    id: MAILBOX_ID,
+    email: "founder@huntloop.test",
+    provider: "gmail",
+    status: "connected",
+    oauth_token_enc: encryptSecret("test-access-token"),
+    refresh_token_enc: encryptSecret("test-refresh-token"),
+    token_expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    sync_cursor: null,
+    daily_limit: 50,
+  };
+}
+
+function sendContext(message: Record<string, unknown>, responses: Record<string, unknown> = {}) {
+  const { client, calls } = fakeClient({
+    "select:messages": { data: message, error: null },
+    "select:mailboxes": { data: connectedMailbox(), error: null },
+    "rpc:is_suppressed": { data: false, error: null },
+    "rpc:claim_mailbox_send": { data: true, error: null },
+    "insert:threads": { data: { id: "55555555-5555-5555-5555-555555555555" }, error: null },
+    ...responses,
+  });
+  setAdminClientForTests(client);
+  return {
+    calls,
+    ctx: {
+      scope: new OrgScope(ORG_A, client),
+      payload: { messageId: MESSAGE_ID },
+      job: { id: "job-1", org_id: ORG_A, job_name: "send_message" } as never,
+      now: new Date(),
+    },
+  };
+}
+
+/** Did anything write a send time? The one question these tests keep asking. */
+function markedSent(calls: Recorded[]): boolean {
+  return calls.some(
+    (c) =>
+      c.table === "messages" &&
+      c.verb === "update" &&
+      Boolean((c.payload as { sent_at?: string })?.sent_at),
+  );
+}
+
+console.log("\nsend_message — the checks that stop a second send");
+
+{
+  /* Step 1. The queue is at-least-once by design, so this branch is the only
+     thing between a retried job and a prospect receiving the same email
+     twice. */
+  const { ctx, calls } = sendContext(
+    sendable({ sent_at: new Date().toISOString(), provider_message_id: "gmail-1" }),
+  );
+  const outcome = await sendMessage(ctx);
+
+  expect("an already-sent message is skipped rather than resent", outcome.ok);
+  expectEqual(
+    "and says so, with the provider id that proves it went",
+    (outcome as { result: Record<string, unknown> }).result.skipped,
+    "already sent",
+  );
+  expect("nothing was sent again", !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  // §46's ladder. At autonomy 0–1 a person approves; a message in the queue
+  // without `scheduled_at` means something enqueued work it should not have.
+  const { ctx, calls } = sendContext(sendable({ scheduled_at: null }));
+  const outcome = await sendMessage(ctx);
+
+  expect("an unapproved message is refused", !outcome.ok);
+  expect(
+    "permanently — retrying will not make a person approve it",
+    (outcome as { permanent?: boolean }).permanent === true,
+  );
+  expect("and it is not sent", !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable({ direction: "inbound" }));
+  const outcome = await sendMessage(ctx);
+  expect("an inbound message is never sent", !outcome.ok && !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable({ to_email: null }));
+  const outcome = await sendMessage(ctx);
+  expect("a message with no recipient is refused rather than sent nowhere", !outcome.ok);
+  expect("and not marked sent", !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — an unsubscribe that lands mid-approval still wins");
+
+{
+  /* Step 2. `advance_enrollments` already checked suppression, and it is
+     checked again here because the gap between drafting and sending can be
+     days when a human is approving. */
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:is_suppressed": { data: true, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("a suppressed recipient is not written to", outcome.ok && !markedSent(calls));
+  expectEqual(
+    "and the skip names the reason",
+    (outcome as { result: Record<string, unknown> }).result.skipped,
+    "suppressed",
+  );
+  expect(
+    "the refusal is recorded against the message, not only in the job log",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /suppression list/.test(String((c.payload as { error?: string })?.error)),
+    ),
+  );
+  expect(
+    "and a failed event goes on the timeline",
+    calls.some((c) => c.table === "message_events" && c.verb === "insert"),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — the allowance is claimed before the send, not after");
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:claim_mailbox_send": { data: false, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("a mailbox out of allowance does not send", !outcome.ok && !markedSent(calls));
+  expect(
+    "and the failure is retryable — tomorrow the allowance resets",
+    (outcome as { permanent?: boolean }).permanent !== true,
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — §78: sent means sent, and failed means failed");
+
+{
+  const original = gmail.send;
+  const { ctx, calls } = sendContext(sendable());
+  gmail.send = async () => ({
+    providerMessageId: "gmail-abc",
+    providerThreadId: "thread-abc",
+    messageIdHeader: "<abc@mail.gmail.com>",
+  });
+
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+
+  expect("a successful send reports the provider id", outcome.ok);
+
+  const written = calls.find(
+    (c) => c.table === "messages" && c.verb === "update" && (c.payload as { sent_at?: string })?.sent_at,
+  )?.payload as Record<string, unknown> | undefined;
+
+  expect("the send time is written", Boolean(written?.sent_at));
+  expectEqual(
+    "together with the provider id, because 0004's CHECK refuses one without the other",
+    written?.provider_message_id,
+    "gmail-abc",
+  );
+  expectEqual(
+    "and the Message-ID, so a reply can be matched back to it",
+    written?.message_id_header,
+    "<abc@mail.gmail.com>",
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const original = gmail.send;
+  const { ctx, calls } = sendContext(sendable());
+  gmail.send = async () => {
+    throw new Error("550 mailbox unavailable");
+  };
+
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+
+  expect("a provider failure fails the job", !outcome.ok);
+  expect(
+    "and the message is NOT marked sent — §78, the rule this handler exists for",
+    !markedSent(calls),
+  );
+  expect(
+    "the reason is on the row, where the person reading the inbox will find it",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /550 mailbox unavailable/.test(String((c.payload as { error?: string })?.error)),
+    ),
+  );
+  expect(
+    "and a failed event is recorded rather than a delivered one",
+    calls.some(
+      (c) =>
+        c.table === "message_events" &&
+        c.verb === "insert" &&
+        /* `scope.insert` normalises to a list, so the row is payload[0]. */
+        (c.payload as { kind?: string }[])?.[0]?.kind === "failed",
+    ),
+  );
+  setAdminClientForTests(null);
+}
+
+/* ── sync_mailbox — what a reply does, and what it must not do ───────────── */
+
+/**
+ * §78: "a sequence that keeps sending after a reply is the single most
+ * damaging bug this system can have." That sentence was in the file's own
+ * header and nothing tested it.
+ *
+ * Two layers here. The storage path runs through the real handler, including
+ * the real `authorize()` — with no `ANTHROPIC_API_KEY` in the test
+ * environment, classification is skipped, which is itself a behaviour worth
+ * pinning: the messages are still stored and simply unclassified. The
+ * classification consequences are driven through `applyClassification`
+ * directly, because reaching them through the handler means making a model
+ * call the suite deliberately cannot make.
+ */
+
+const THREAD_ID = "66666666-6666-6666-6666-666666666666";
+const OPPORTUNITY_ID = "77777777-7777-7777-7777-777777777777";
+const INBOUND_ID = "88888888-8888-8888-8888-888888888888";
+
+function incoming(overrides: Record<string, unknown> = {}) {
+  return {
+    providerMessageId: "gmail-in-1",
+    providerThreadId: "thread-abc",
+    messageIdHeader: "<reply@mail.acme.co>",
+    inReplyTo: "<abc@mail.gmail.com>",
+    from: "dana@acme.co",
+    to: "founder@huntloop.test",
+    subject: "Re: The policy layer your agents are missing",
+    text: "Interesting — how does it handle multisig?",
+    receivedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function syncContext(messages: Record<string, unknown>[], responses: Record<string, unknown> = {}) {
+  const { client, calls } = fakeClient({
+    "select:mailboxes": { data: connectedMailbox(), error: null },
+    // No row with this provider id yet, so the message is new.
+    "select:messages": { data: null, error: null },
+    "insert:messages": { data: { id: INBOUND_ID }, error: null },
+    "select:threads": { data: null, error: null },
+    ...responses,
+  });
+  setAdminClientForTests(client);
+
+  const original = gmail.sync;
+  gmail.sync = async () => ({ messages: messages as never, cursor: "cursor-2" });
+
+  return {
+    calls,
+    restore: () => {
+      gmail.sync = original;
+      setAdminClientForTests(null);
+    },
+    ctx: {
+      scope: new OrgScope(ORG_A, client),
+      payload: { mailboxId: MAILBOX_ID },
+      job: { id: "job-2", org_id: ORG_A, job_name: "sync_mailbox" } as never,
+      now: new Date(),
+    },
+  };
+}
+
+console.log("\nsync_mailbox — what gets stored, and what does not");
+
+{
+  const { ctx, calls, restore } = syncContext([incoming()]);
+  const outcome = await syncMailbox(ctx);
+  restore();
+
+  expect("an arriving reply is stored", outcome.ok);
+  const inserted = calls.find((c) => c.table === "messages" && c.verb === "insert")
+    ?.payload as Record<string, unknown>[] | undefined;
+  expectEqual("as inbound", inserted?.[0]?.direction, "inbound");
+  expectEqual(
+    "with the sender's own Message-ID, so our reply can thread against it",
+    inserted?.[0]?.message_id_header,
+    "<reply@mail.acme.co>",
+  );
+  expect(
+    "and the cursor is written back, so the next sync does not re-read it",
+    calls.some(
+      (c) =>
+        c.table === "mailboxes" &&
+        c.verb === "update" &&
+        (c.payload as { sync_cursor?: string })?.sync_cursor === "cursor-2",
+    ),
+  );
+}
+
+{
+  /* Our own sends come back through the sync on some providers. Storing one
+     would create a second row for a message already recorded and — worse —
+     classify our own copy as a reply from the prospect. */
+  const { ctx, calls, restore } = syncContext([
+    incoming({ from: "founder@huntloop.test" }),
+  ]);
+  await syncMailbox(ctx);
+  restore();
+
+  expect(
+    "a message from our own address is not stored as a reply",
+    !calls.some((c) => c.table === "messages" && c.verb === "insert"),
+  );
+}
+
+{
+  const { ctx, calls, restore } = syncContext([incoming()], {
+    "select:messages": { data: { id: "already-here" }, error: null },
+  });
+  await syncMailbox(ctx);
+  restore();
+
+  expect(
+    "a message already stored is not stored twice — the sync is at-least-once too",
+    !calls.some((c) => c.table === "messages" && c.verb === "insert"),
+  );
+}
+
+{
+  /* With no API key the classifier cannot run. The messages must still land:
+     an unmatched or unclassified reply is still a human being answering, and
+     dropping it would make the product look like it loses mail. */
+  const { ctx, calls, restore } = syncContext([incoming()]);
+  const outcome = await syncMailbox(ctx);
+  restore();
+
+  expect("with no model configured the message is still stored", outcome.ok);
+  expect(
+    "and it is stored, not discarded",
+    calls.some((c) => c.table === "messages" && c.verb === "insert"),
+  );
+  expect(
+    "no classification is invented for it",
+    !calls.some((c) => c.table === "threads" && c.verb === "update"),
+  );
+}
+
+console.log("\nsync_mailbox — §78: a reply stops the sequence");
+
+/** Drives the consequences of one classification and reports what was written. */
+async function classify(label: string, extra: Record<string, unknown> = {}) {
+  const { client, calls } = fakeClient({
+    "select:threads": { data: { opportunity_id: OPPORTUNITY_ID }, error: null },
+    ...extra,
+  });
+  setAdminClientForTests(client);
+
+  await applyClassification(
+    {
+      scope: new OrgScope(ORG_A, client),
+      payload: {},
+      job: { id: "job-3", org_id: ORG_A, job_name: "sync_mailbox" } as never,
+      now: new Date(),
+    },
+    {
+      messageId: INBOUND_ID,
+      threadId: THREAD_ID,
+      from: "dana@acme.co",
+      classification: {
+        label,
+        summary: "They asked how it handles multisig.",
+        confidence: "high",
+        needsHuman: label !== "out_of_office",
+      } as never,
+    },
+  );
+
+  setAdminClientForTests(null);
+  return calls;
+}
+
+/** Did anything stop the enrollment? */
+function stopped(calls: Recorded[]): boolean {
+  return calls.some(
+    (c) =>
+      c.table === "enrollments" &&
+      c.verb === "update" &&
+      (c.payload as { status?: string })?.status === "stopped",
+  );
+}
+
+{
+  const calls = await classify("positive");
+
+  expect("a positive reply stops the enrollment", stopped(calls));
+  expect(
+    "and clears its next action, so nothing is waiting to fire",
+    calls.some(
+      (c) =>
+        c.table === "enrollments" &&
+        c.verb === "update" &&
+        (c.payload as { next_action_at?: string | null })?.next_action_at === null,
+    ),
+  );
+  expect(
+    "the opportunity moves to replied",
+    calls.some(
+      (c) =>
+        c.table === "opportunities" &&
+        c.verb === "update" &&
+        (c.payload as { status?: string })?.status === "replied",
+    ),
+  );
+  expect(
+    "and a positive outcome is recorded as its own kind, not collapsed into 'reply'",
+    calls.some(
+      (c) =>
+        c.table === "outcomes" &&
+        c.verb === "insert" &&
+        (c.payload as { kind?: string }[])?.[0]?.kind === "positive",
+    ),
+  );
+}
+
+{
+  const calls = await classify("negative");
+  expect("a negative reply stops the sequence just the same", stopped(calls));
+  expect(
+    "and is recorded as a reply rather than as positive",
+    calls.some(
+      (c) =>
+        c.table === "outcomes" &&
+        c.verb === "insert" &&
+        (c.payload as { kind?: string }[])?.[0]?.kind === "reply",
+    ),
+  );
+}
+
+{
+  /* The one exception, and it has to be an exception: the person is back next
+     week and the follow-up is the entire point of the sequence. */
+  const calls = await classify("out_of_office");
+  expect("an out-of-office does NOT stop the sequence", !stopped(calls));
+  expect(
+    "and does not move the opportunity to replied",
+    !calls.some((c) => c.table === "opportunities" && c.verb === "update"),
+  );
+}
+
+{
+  const calls = await classify("bounce");
+
+  expect(
+    "a bounce marks the address undeliverable, which stops every future campaign",
+    calls.some(
+      (c) =>
+        c.table === "contact_points" &&
+        c.verb === "update" &&
+        (c.payload as { verification_status?: string })?.verification_status === "undeliverable",
+    ),
+  );
+  expect("it stops this enrollment too", stopped(calls));
+  expect(
+    "but the opportunity is NOT moved to replied — a bounce is not an answer",
+    !calls.some(
+      (c) =>
+        c.table === "opportunities" &&
+        c.verb === "update" &&
+        (c.payload as { status?: string })?.status === "replied",
+    ),
+  );
+}
+
+{
+  const calls = await classify("unsubscribe");
+
+  expect(
+    "an unsubscribe is written to the suppression list, not just to the thread",
+    calls.some((c) => c.table === "suppressions" && c.verb === "upsert"),
+  );
+  expect("and it stops the sequence", stopped(calls));
+}
+
+{
+  /* A reply on a thread with no opportunity behind it still has to be safe:
+     there is nothing to stop, and nothing should be invented to stop. */
+  const calls = await classify("positive", {
+    "select:threads": { data: { opportunity_id: null }, error: null },
+  });
+  expect("a reply with no opportunity behind it stops nothing", !stopped(calls));
+  expect(
+    "and the reply is still recorded against the thread",
+    calls.some((c) => c.table === "threads" && c.verb === "update"),
   );
 }
 

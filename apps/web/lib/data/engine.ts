@@ -134,3 +134,42 @@ export async function recentJobs(
     finishedAt: row.finished_at ?? null,
   }));
 }
+
+/**
+ * When the engine last actually did something for this org.
+ *
+ * ── Why this exists alongside `isEngineRunning()` ────────────────────────
+ *
+ * They answer different questions, and conflating them is how a screen ends up
+ * lying. `isEngineRunning()` reads `CRON_SECRET` and answers "would
+ * `/api/jobs/tick` accept a caller?". It has never answered "is anyone
+ * calling it", and that gap used to be hidden by a cron committed in
+ * `vercel.json` — set the secret, and Vercel was already scheduling the
+ * request.
+ *
+ * That cron is gone (see OPS-04: Hobby allows one run a day, and a daily tick
+ * is a queue that never drains). So "the secret is set" now routinely means
+ * "the endpoint is reachable and nothing is reaching it", and a screen that
+ * treats the two as the same would report a working engine to somebody whose
+ * sources are never scanned. §7 aimed at ourselves.
+ *
+ * This is the observed fact rather than a configuration guess: a row in
+ * `job_executions` exists because a tick created it. Null means nothing has
+ * ever run for this org.
+ *
+ * Org-scoped, which is deliberate. The sweepers carry no `org_id` — they are
+ * the cross-tenant question — so what this sees is the per-org work a sweep
+ * produced, which is exactly what "is anything scanning *my* sources" means.
+ */
+export async function lastTickAt(db: TenantClient, orgId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from("job_executions")
+    .select("created_at")
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return String(data.created_at);
+}

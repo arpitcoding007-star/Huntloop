@@ -78,6 +78,8 @@ export function SourceManager({
   sources,
   canWrite,
   engineRunning,
+  inngestDriving,
+  lastTickAt,
   now,
 }: {
   org: string;
@@ -92,9 +94,29 @@ export function SourceManager({
    * worse than a disabled one, because it reports success and the user waits.
    */
   engineRunning: boolean;
+  /**
+   * Whether Inngest is wired to drive the tick.
+   *
+   * Unlike `CRON_SECRET`, this one does imply a schedule: `/api/inngest`
+   * refuses to serve unless both keys are present, and Inngest calls it on a
+   * cadence it owns.
+   */
+  inngestDriving: boolean;
+  /**
+   * When the engine last did something for this org, or null if never.
+   *
+   * The observed fact, as opposed to the two configuration flags above. A row
+   * in `job_executions` exists because a tick created it — see `lastTickAt`.
+   */
+  lastTickAt: string | null;
   /** The server's clock, so every relative age is measured from one instant. */
   now: string;
 }) {
+  /* Configured is not the same as running, and this is the difference.
+     Inngest owns a schedule, so its presence is enough; otherwise the only
+     honest evidence that something calls the tick is that something has. */
+  const engineDriven = inngestDriving || lastTickAt !== null;
+
   const [adding, setAdding] = useState(false);
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
@@ -119,7 +141,7 @@ export function SourceManager({
               cannot. Every source is brought forward at once rather than one
               at a time: the person pressing this wants a hunt, not a source. */}
           {canWrite &&
-            (engineRunning ? (
+            (engineDriven ? (
               <Button
                 icon={RefreshCw}
                 variant="secondary"
@@ -154,7 +176,11 @@ export function SourceManager({
               <Button
                 icon={RefreshCw}
                 variant="secondary"
-                pending="Nothing is running the scanner on this deployment. CRON_SECRET is not set, so /api/jobs/tick refuses every request and a queued scan would never be picked up."
+                pending={
+                  engineRunning
+                    ? "CRON_SECRET is set, so /api/jobs/tick would accept a caller — but nothing has called it and no job has ever run here. A queued scan would sit in the queue. Connect Inngest, or point a scheduler at it."
+                    : "Nothing is running the scanner on this deployment. CRON_SECRET is not set, so /api/jobs/tick refuses every request and a queued scan would never be picked up."
+                }
               >
                 Scan now
               </Button>
@@ -171,20 +197,38 @@ export function SourceManager({
           source list rather than beside one source, because it is a property of
           the deployment: with nothing draining the queue, every source reads
           "never scanned" and no amount of looking at an individual row says
-          why. */}
-      {!engineRunning && monitored.length > 0 && (
+          why.
+
+          Two states, not one, and the second is the one that used to be
+          missing. `CRON_SECRET` being set means `/api/jobs/tick` would accept
+          a caller — it has never meant one exists. While a cron sat in
+          `vercel.json` those were the same thing in practice; that cron is
+          gone (OPS-04), so "configured and nothing is calling it" is now the
+          ordinary state and the screen has to be able to say it. */}
+      {monitored.length > 0 && !engineDriven && (
         <div className="mt-6 flex items-start gap-2.5 rounded-md border border-line bg-surface px-4 py-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-muted" strokeWidth={1.75} />
           <div>
             <p className="text-[13px] text-fg">
               Nothing is reading these sources on a timer.
             </p>
-            <p className="mt-0.5 text-[12px] text-fg-secondary">
-              The scanner runs from <code className="font-mono">/api/jobs/tick</code>,
-              which refuses every request until <code className="font-mono">CRON_SECRET</code>{" "}
-              is set on this deployment. Until then these sources are a list,
-              not a hunt.
-            </p>
+            {engineRunning ? (
+              <p className="mt-0.5 text-[12px] text-fg-secondary">
+                <code className="font-mono">CRON_SECRET</code> is set, so{" "}
+                <code className="font-mono">/api/jobs/tick</code> would accept a
+                caller — but nothing has called it, and no job has ever run for
+                this workspace. Setting the secret makes the endpoint reachable;
+                it does not schedule anything. Connect Inngest, or point a
+                scheduler at it.
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[12px] text-fg-secondary">
+                The scanner runs from <code className="font-mono">/api/jobs/tick</code>,
+                which refuses every request until <code className="font-mono">CRON_SECRET</code>{" "}
+                is set on this deployment. Until then these sources are a list,
+                not a hunt.
+              </p>
+            )}
           </div>
         </div>
       )}

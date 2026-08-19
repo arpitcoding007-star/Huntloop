@@ -217,7 +217,17 @@ async function lastOutbound(ctx: JobContext, threadId: string): Promise<string |
 
 /* ── What a classification changes ───────────────────────────────────────── */
 
-async function applyClassification(
+/**
+ * What a classified reply does to the rest of the system.
+ *
+ * Exported for the test suite, and only for it — nothing else imports this.
+ * The same reason `groundableClaims` and `citableClaims` are exported from the
+ * AI tasks: the branch that stops a sequence when somebody replies is the one
+ * §78 calls the most damaging bug this product can have, and reaching it
+ * through the whole handler means reaching it through a model call, which the
+ * test suite deliberately cannot make.
+ */
+export async function applyClassification(
   ctx: JobContext,
   input: {
     messageId: string;

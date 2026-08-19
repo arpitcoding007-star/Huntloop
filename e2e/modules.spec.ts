@@ -264,6 +264,30 @@ test.describe("sources", () => {
     await expect(scan).toHaveAttribute("aria-disabled", "true");
   });
 
+  test("the engine notice reports what is observed, not what is configured", async ({
+    page,
+  }) => {
+    /*
+     * `CRON_SECRET` being set means `/api/jobs/tick` would accept a caller. It
+     * has never meant one exists. While a cron sat in `vercel.json` those were
+     * the same thing in practice, so the screen could get away with reading an
+     * environment variable; that cron is gone (OPS-04), and "configured, and
+     * nothing is calling it" is now the ordinary state.
+     *
+     * The observed fact is whether any job has ever run — a row in
+     * `job_executions` exists because a tick created it. In demo mode there
+     * are none, so the notice must appear and must not claim a working engine.
+     */
+    await page.goto(`/${ORG}/sources`);
+
+    await expect(page.getByText(/nothing is reading these sources on a timer/i)).toBeVisible();
+    // Whichever half of the explanation applies, it names a cause the reader
+    // can act on rather than asserting the scanner is fine.
+    await expect(
+      page.getByText(/CRON_SECRET|nothing has called it|refuses every request/i).first(),
+    ).toBeVisible();
+  });
+
   test("adding a source with no database says so", async ({ page }) => {
     await page.goto(`/${ORG}/sources`);
 

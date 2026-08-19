@@ -1,5 +1,10 @@
 import { notFound } from "next/navigation";
-import { isEngineRunning } from "../../../../lib/data/engine";
+import {
+  isEngineRunning,
+  isInngestDriving,
+  lastTickAt,
+} from "../../../../lib/data/engine";
+import { getDb } from "../../../../lib/data/org";
 import { listHuntSources } from "../../../../lib/data/hunt-source";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
@@ -25,6 +30,15 @@ export default async function SourcesPage({
 
   const { data: sources, source } = await listHuntSources(org);
 
+  /* The observed half of the engine's state. `isEngineRunning()` reads an
+     environment variable and answers "would the endpoint accept a caller";
+     this answers "has anything called it", which is the question the screen is
+     actually making a claim about. Skipped in demo mode, where there is no
+     `job_executions` to read and no membership to resolve. */
+  const db = source === "live" ? await getDb() : null;
+  const lastTick =
+    db && viewer.kind === "member" ? await lastTickAt(db, viewer.orgId) : null;
+
   return (
     <>
       {source !== "live" && (
@@ -37,6 +51,8 @@ export default async function SourcesPage({
         sources={sources}
         canWrite={canWrite(viewer)}
         engineRunning={isEngineRunning()}
+        inngestDriving={isInngestDriving()}
+        lastTickAt={lastTick}
         /* Resolved once per request and passed down, so every relative age on
            the page is measured from the same instant. */
         now={new Date().toISOString()}
