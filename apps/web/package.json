@@ -13,6 +13,7 @@
   "dependencies": {
     "@huntloop/ai": "*",
     "@huntloop/db": "*",
+    "@huntloop/jobs": "*",
     "@huntloop/ui": "*",
     "@sentry/nextjs": "10.70.0",
     "lucide-react": "^0.469.0",

@@ -151,6 +151,7 @@ function check(phase, id, title, ok, sev, detail) {
     "VERCEL_ENV",
     "NEXT_PUBLIC_VERCEL_ENV",
     "VERCEL_URL",
+    "VERCEL_REGION",
     "VERCEL_PROJECT_PRODUCTION_URL",
   ]);
   const undocumented = [...referenced].filter(

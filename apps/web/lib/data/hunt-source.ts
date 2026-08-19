@@ -46,11 +46,18 @@ export interface HuntSource {
    *
    * The number this screen used to show was "22 opportunities produced",
    * invented. This is the real quantity behind that idea — `evidence.source_id`
-   * — and today it is 0 for every source, because nothing scans yet. Showing
-   * the true zero is the point: a fabricated 22 makes a source list that has
-   * never run look like one that is working.
+   * — and it is what the scanner increments as it turns documents into claims.
+   * A source that has never produced any still reads 0, which is the honest
+   * number and the one that tells you the source is not earning its slot.
    */
   evidenceCount: number;
+  /** Documents ingested from this source. Reads that produced no claim count. */
+  documentCount: number;
+  /** How often the scheduler reads it, in minutes. */
+  scanIntervalMinutes: number;
+  /** When it is next due. Null means "never scanned", which is due now. */
+  nextScanAt: string | null;
+  lastSuccessAt: string | null;
 }
 
 export interface HuntSources {
@@ -68,7 +75,8 @@ export async function listHuntSources(orgSlug: string): Promise<Loaded<HuntSourc
         .from("sources")
         .select(
           `id, name, kind, url, is_enabled, recommended_by, status,
-           failure_count, last_scanned_at, last_error`,
+           failure_count, last_scanned_at, last_success_at, last_error,
+           scan_interval_minutes, next_scan_at`,
         )
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -77,13 +85,11 @@ export async function listHuntSources(orgSlug: string): Promise<Loaded<HuntSourc
       if (error) throw new Error(`listHuntSources: ${error.message}`);
 
       const rows = data ?? [];
-      const counts = await evidenceCounts(
-        db,
-        orgId,
-        rows.map((r) => String(r.id)),
-      );
+      const ids = rows.map((r) => String(r.id));
+      const counts = await evidenceCounts(db, orgId, ids);
+      const documents = await documentCounts(db, orgId, ids);
 
-      const all = rows.map((r) => mapSource(r, counts));
+      const all = rows.map((r) => mapSource(r, counts, documents));
       return {
         monitored: all.filter((s) => s.isEnabled),
         recommended: all.filter((s) => !s.isEnabled),
@@ -125,10 +131,46 @@ async function evidenceCounts(
   return counts;
 }
 
+/**
+ * Documents per source, in one round trip.
+ *
+ * Separate from the evidence count and both are shown, because the difference
+ * between them is diagnostic. "40 documents, 0 claims" is a source that is
+ * being read and is publishing nothing this ICP cares about — a reason to drop
+ * it. "0 documents" is a source that is not being read at all, which is a
+ * reason to look at its error. One number cannot say both.
+ */
+async function documentCounts(
+  db: import("@huntloop/db").TenantClient,
+  orgId: string,
+  sourceIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (sourceIds.length === 0) return counts;
+
+  const { data, error } = await db
+    .from("source_documents")
+    .select("source_id")
+    .eq("org_id", orgId)
+    .in("source_id", sourceIds);
+
+  if (error) throw new Error(`listHuntSources documents: ${error.message}`);
+
+  for (const row of data ?? []) {
+    const id = String(row.source_id);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any --
    Supabase row types are generated from a live project's schema; see the same
    note in icp.ts. Confined to the mapper so the rest of the file is checked. */
-function mapSource(row: any, counts: Map<string, number>): HuntSource {
+function mapSource(
+  row: any,
+  counts: Map<string, number>,
+  documents: Map<string, number>,
+): HuntSource {
   const id = String(row.id);
   return {
     id,
@@ -144,6 +186,10 @@ function mapSource(row: any, counts: Map<string, number>): HuntSource {
     lastScannedAt: row.last_scanned_at ?? null,
     lastError: row.last_error ?? null,
     evidenceCount: counts.get(id) ?? 0,
+    documentCount: documents.get(id) ?? 0,
+    scanIntervalMinutes: Number(row.scan_interval_minutes ?? 1440),
+    nextScanAt: row.next_scan_at ?? null,
+    lastSuccessAt: row.last_success_at ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -171,6 +217,10 @@ const DEMO: HuntSources = {
       lastScannedAt: null,
       lastError: null,
       evidenceCount: 0,
+      documentCount: 0,
+      scanIntervalMinutes: 1440,
+      nextScanAt: null,
+      lastSuccessAt: null,
     },
     {
       id: "demo-source-2",
@@ -184,6 +234,10 @@ const DEMO: HuntSources = {
       lastScannedAt: null,
       lastError: "Rate limited — backing off, partial results this cycle.",
       evidenceCount: 0,
+      documentCount: 0,
+      scanIntervalMinutes: 1440,
+      nextScanAt: null,
+      lastSuccessAt: null,
     },
     {
       id: "demo-source-3",
@@ -197,6 +251,10 @@ const DEMO: HuntSources = {
       lastScannedAt: null,
       lastError: "HTTP 403 since 06:10. Retrying with backoff.",
       evidenceCount: 0,
+      documentCount: 0,
+      scanIntervalMinutes: 1440,
+      nextScanAt: null,
+      lastSuccessAt: null,
     },
   ],
   recommended: [
@@ -212,6 +270,10 @@ const DEMO: HuntSources = {
       lastScannedAt: null,
       lastError: null,
       evidenceCount: 0,
+      documentCount: 0,
+      scanIntervalMinutes: 1440,
+      nextScanAt: null,
+      lastSuccessAt: null,
     },
   ],
 };

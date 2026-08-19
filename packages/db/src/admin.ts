@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { supabaseSecretKey, supabaseUrl } from "./env";
+import { supabaseSecretKey, supabaseUrl } from "./env.ts";
 
 /**
  * ⚠ SERVICE-ROLE CLIENT — BYPASSES ROW LEVEL SECURITY ENTIRELY ⚠

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isEngineRunning } from "../../../../lib/data/engine";
 import { listHuntSources } from "../../../../lib/data/hunt-source";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
@@ -35,6 +36,7 @@ export default async function SourcesPage({
         org={org}
         sources={sources}
         canWrite={canWrite(viewer)}
+        engineRunning={isEngineRunning()}
         /* Resolved once per request and passed down, so every relative age on
            the page is measured from the same instant. */
         now={new Date().toISOString()}

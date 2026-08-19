@@ -21,6 +21,8 @@ import type { SourceInput } from "./actions";
 import {
   deleteSourceAction,
   saveSourceAction,
+  scanSourceNowAction,
+  setScanIntervalAction,
   setSourceEnabledAction,
   suggestSourcesAction,
 } from "./actions";
@@ -75,11 +77,21 @@ export function SourceManager({
   org,
   sources,
   canWrite,
+  engineRunning,
   now,
 }: {
   org: string;
   sources: HuntSources;
   canWrite: boolean;
+  /**
+   * Whether anything drains the queue on this deployment.
+   *
+   * Passed down rather than read here, because it comes from a server-only
+   * environment variable. It decides whether "Scan now" is a control or an
+   * explanation — a button that queues work into a queue nobody reads is
+   * worse than a disabled one, because it reports success and the user waits.
+   */
+  engineRunning: boolean;
   /** The server's clock, so every relative age is measured from one instant. */
   now: string;
 }) {
@@ -88,6 +100,7 @@ export function SourceManager({
     { ok: true; message?: string } | { ok: false; error: string } | null
   >(null);
   const [suggesting, startSuggest] = useTransition();
+  const [scanning, startScan] = useTransition();
 
   const { monitored, recommended } = sources;
   const failing = monitored.filter((s) => s.status !== "ok");
@@ -102,16 +115,50 @@ export function SourceManager({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Still honest about what does not exist: nothing reads these on a
-              timer, and a live-looking "Scan now" would promise the scheduled
-              hunt this product is built around (audit UX-01). */}
-          <Button
-            icon={RefreshCw}
-            variant="secondary"
-            pending="Scheduled scanning isn't built yet — nothing reads these sources on a timer."
-          >
-            Scan now
-          </Button>
+          {/* The scanner exists now, and this either starts it or says why it
+              cannot. Every source is brought forward at once rather than one
+              at a time: the person pressing this wants a hunt, not a source. */}
+          {canWrite &&
+            (engineRunning ? (
+              <Button
+                icon={RefreshCw}
+                variant="secondary"
+                disabled={scanning || monitored.length === 0}
+                onClick={() =>
+                  startScan(async () => {
+                    setResult(null);
+                    const outcomes = await Promise.all(
+                      monitored.map((s) => scanSourceNowAction(org, s.id)),
+                    );
+                    const failed = outcomes.find((o) => !o.ok);
+                    if (failed && !failed.ok) {
+                      setResult({ ok: false, error: failed.error });
+                      return;
+                    }
+                    const queued = outcomes.filter(
+                      (o) => o.ok && o.data.queued,
+                    ).length;
+                    setResult({
+                      ok: true,
+                      message:
+                        queued === 0
+                          ? "Everything was already queued. The next tick reads them."
+                          : `${queued} source${queued === 1 ? "" : "s"} queued. They are read on the next tick, within about five minutes.`,
+                    });
+                  })
+                }
+              >
+                {scanning ? "Queueing…" : "Scan now"}
+              </Button>
+            ) : (
+              <Button
+                icon={RefreshCw}
+                variant="secondary"
+                pending="Nothing is running the scanner on this deployment. CRON_SECRET is not set, so /api/jobs/tick refuses every request and a queued scan would never be picked up."
+              >
+                Scan now
+              </Button>
+            ))}
           {canWrite && (
             <Button icon={Plus} variant="primary" onClick={() => setAdding((a) => !a)}>
               Add a source
@@ -119,6 +166,28 @@ export function SourceManager({
           )}
         </div>
       </header>
+
+      {/* The state that explains every zero on this screen. Shown above the
+          source list rather than beside one source, because it is a property of
+          the deployment: with nothing draining the queue, every source reads
+          "never scanned" and no amount of looking at an individual row says
+          why. */}
+      {!engineRunning && monitored.length > 0 && (
+        <div className="mt-6 flex items-start gap-2.5 rounded-md border border-line bg-surface px-4 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-muted" strokeWidth={1.75} />
+          <div>
+            <p className="text-[13px] text-fg">
+              Nothing is reading these sources on a timer.
+            </p>
+            <p className="mt-0.5 text-[12px] text-fg-secondary">
+              The scanner runs from <code className="font-mono">/api/jobs/tick</code>,
+              which refuses every request until <code className="font-mono">CRON_SECRET</code>{" "}
+              is set on this deployment. Until then these sources are a list,
+              not a hunt.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* §58, stated where it changes what the numbers mean: a degraded source
           silently returning fewer results would make the hunt look complete. */}
@@ -254,6 +323,23 @@ export function SourceManager({
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
 
+/**
+ * The intervals a source can be read on.
+ *
+ * A closed list, matching `scanIntervalSchema`, because every entry is a
+ * sentence a user can reason about — and because the floor exists for
+ * somebody else's benefit. This crawler reads other people's servers, and the
+ * quickest way to be blocked by all of them is a free-text field where 1 is
+ * a valid answer.
+ */
+const SCAN_INTERVALS: [number, string][] = [
+  [15, "Every 15 min"],
+  [60, "Hourly"],
+  [360, "Every 6 hours"],
+  [1440, "Daily"],
+  [10080, "Weekly"],
+];
+
 function SourceRow({
   org,
   source,
@@ -284,9 +370,18 @@ function SourceRow({
             <span className="text-[12px] text-fg-muted">Never scanned</span>
           )}
           <span className="text-[12px] text-fg-muted">
-            {source.evidenceCount === 0
-              ? "No evidence attributed yet"
-              : `${source.evidenceCount} pieces of evidence`}
+            {/* Both numbers, because the difference between them is the
+                diagnosis. "40 documents, 0 claims" is a source being read that
+                publishes nothing this ICP cares about — a reason to drop it.
+                "0 documents" is a source that is not being read at all, which
+                is a reason to look at its error instead. */}
+            {source.documentCount === 0
+              ? "Nothing read yet"
+              : `${source.documentCount} document${source.documentCount === 1 ? "" : "s"} · ${
+                  source.evidenceCount === 0
+                    ? "no evidence yet"
+                    : `${source.evidenceCount} pieces of evidence`
+                }`}
           </span>
         </div>
         {source.lastError && (
@@ -295,6 +390,35 @@ function SourceRow({
       </div>
 
       <StatusDot variant={meta.variant} label={meta.label} />
+
+      {canWrite && (
+        <label className="flex items-center gap-2">
+          {/* The interval is per source because sources differ by an order of
+              magnitude in how often they change: a job board is worth reading
+              hourly, a regulatory register is not, and reading the register
+              hourly spends money to re-fetch the same page. */}
+          <span className="sr-only">How often to read {source.name}</span>
+          <Select
+            value={String(source.scanIntervalMinutes)}
+            disabled={pending}
+            className="mt-0 h-8 w-[130px]"
+            onChange={(e) =>
+              start(async () => {
+                const res = await setScanIntervalAction(org, source.id, Number(e.target.value));
+                onResult(
+                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                );
+              })
+            }
+          >
+            {SCAN_INTERVALS.map(([minutes, label]) => (
+              <option key={minutes} value={minutes}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </label>
+      )}
 
       {canWrite && (
         <>

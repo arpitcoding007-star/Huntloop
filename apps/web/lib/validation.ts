@@ -256,6 +256,22 @@ export const memorySchema = z.object({
   confidence: confidence.nullable().optional(),
 });
 
+/**
+ * How often a source may be re-read, in minutes.
+ *
+ * A closed set rather than a range, because it is rendered as a dropdown and
+ * every value in it is a sentence a user can reason about. The floor of 5 is
+ * also a CHECK in 0008 — this is somebody else's server, and a source polled
+ * every thirty seconds is a source whose operator blocks us.
+ */
+export const scanIntervalSchema = z.union([
+  z.literal(15),
+  z.literal(60),
+  z.literal(360),
+  z.literal(1440),
+  z.literal(10080),
+]);
+
 export const memberRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
 
 /**

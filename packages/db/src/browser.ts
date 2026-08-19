@@ -1,5 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { supabasePublishableKey, supabaseUrl } from "./env";
+import { supabasePublishableKey, supabaseUrl } from "./env.ts";
 
 /**
  * Browser client, for the handful of things that genuinely belong on the

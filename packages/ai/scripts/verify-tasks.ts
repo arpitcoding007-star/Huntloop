@@ -37,6 +37,11 @@ import {
   qualifyOpportunity,
 } from "../src/tasks/qualify-opportunity.ts";
 import { explainWhyNow, type WhyNowInput } from "../src/tasks/explain-why-now.ts";
+import {
+  MAX_SIGNALS,
+  extractSignals,
+  type SignalDocument,
+} from "../src/tasks/extract-signals.ts";
 
 let failures = 0;
 let checks = 0;
@@ -669,6 +674,19 @@ const HOT_VERDICT = {
 
 const qualifyInput = { url: "acme.co", icp: ICP };
 
+/**
+ * The same verdict with its one fact sourced somewhere else.
+ *
+ * A helper rather than three near-copies, because the thing under test is
+ * exactly one field and the fixture around it is noise.
+ */
+const HOT_VERDICT_CITING = (sourceUrl: string) => ({
+  ...HOT_VERDICT,
+  evidence: HOT_VERDICT.evidence.map((e) =>
+    e.kind === "fact" ? { ...e, sourceUrl } : e,
+  ),
+});
+
 console.log("\nqualify_opportunity — the happy path");
 {
   const { client, seen } = scriptedClient(HOT_VERDICT);
@@ -1004,6 +1022,199 @@ await expectThrows(
     }),
   /no established evidence to reason from/,
 );
+
+
+/* ── extract_signals ─────────────────────────────────────────────────────── */
+
+const DOCUMENT: SignalDocument = {
+  url: "https://news.test/alphio-series-a",
+  title: "Alphio AI raises $12M Series A",
+  publishedAt: "2026-08-09T00:00:00.000Z",
+  text: [
+    "Alphio AI has raised $12 million in a Series A led by Northgate Ventures.",
+    "The company, at alphio.ai, said the money would go to institutional onboarding.",
+    "Analysts expect the funding environment for agent startups to stay warm.",
+  ].join("\n"),
+};
+
+const signal = (overrides: Record<string, unknown> = {}) => ({
+  eventType: "funding",
+  description: "Alphio AI raised a $12M Series A led by Northgate Ventures.",
+  companyName: "Alphio AI",
+  companyDomain: "alphio.ai",
+  eventDate: "2026-08-08",
+  kind: "fact",
+  confidence: "high",
+  excerpt: "Alphio AI has raised $12 million in a Series A led by Northgate Ventures.",
+  ...overrides,
+});
+
+console.log("\nextract_signals — the happy path");
+{
+  const spy = spyRecorder();
+  const { client, seen } = scriptedClient({ events: [signal()] });
+  const result = await runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder));
+
+  expectEqual("one event, typed and attributed", result.output.length, 1);
+  expectEqual("the domain survives as the resolution key", result.output[0]?.companyDomain, "alphio.ai");
+  expect(
+    "the document is delimited as untrusted",
+    /<untrusted-[a-z0-9]+ label="document">/.test(seen[0]?.userContent ?? ""),
+    seen[0]?.userContent?.slice(0, 120),
+  );
+  expect(
+    "the highest-volume task gets no web tool",
+    seen[0]?.fetchDomains === undefined,
+    JSON.stringify(seen[0]?.fetchDomains),
+  );
+}
+
+console.log("\nextract_signals — an excerpt has to be in the document");
+{
+  const spy = spyRecorder();
+  const { client } = scriptedClient({
+    events: [
+      signal({
+        excerpt:
+          "Alphio AI confirmed it is exploring a sale to one of three strategic buyers.",
+      }),
+    ],
+  });
+  await expectThrows(
+    "an invented quotation fails the run",
+    () => runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder)),
+    /not in the document/,
+  );
+  expectEqual("and is recorded as a failed run", spy.events, ["started", "failed"]);
+}
+
+console.log("\nextract_signals — what it refuses, and what it quietly drops");
+{
+  const cases: [string, Record<string, unknown>, RegExp][] = [
+    ["an event type outside the vocabulary", { eventType: "vibes" }, /not an event type/],
+    ["an event with no description", { description: "  " }, /no description/],
+    ["an event with no excerpt", { excerpt: "" }, /carries no excerpt/],
+    ["an unknown masquerading as a kind", { kind: "unknown" }, /not fact or inference/],
+    ["a numeric confidence", { confidence: 0.9 }, /not a confidence/],
+  ];
+  for (const [name, override, pattern] of cases) {
+    const spy = spyRecorder();
+    const { client } = scriptedClient({ events: [signal(override)] });
+    await expectThrows(name, () => runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder)), pattern);
+  }
+}
+
+{
+  // Not an error: an article that names nobody is the commonest honest
+  // outcome, and failing the run for it would make general news sources look
+  // broken rather than uninformative.
+  const spy = spyRecorder();
+  const { client } = scriptedClient({
+    events: [signal({ companyName: null, companyDomain: null })],
+  });
+  const result = await runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder));
+  expectEqual("an event about nobody is dropped, not raised", result.output.length, 0);
+}
+
+{
+  // A domain must be a domain. Anything salvaged from a mangled string points
+  // at the wrong company permanently — §59's key is not a place to be helpful.
+  const spy = spyRecorder();
+  const { client } = scriptedClient({
+    events: [signal({ companyDomain: "the alphio website" })],
+  });
+  const result = await runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder));
+  expectEqual("a non-domain becomes null rather than being cleaned up", result.output[0]?.companyDomain, null);
+}
+
+{
+  const spy = spyRecorder();
+  const { client } = scriptedClient({
+    events: [signal({ eventDate: "2027-12-01" })],
+  });
+  const result = await runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder));
+  expectEqual(
+    "a future event date is dropped rather than making a trigger maximally fresh",
+    result.output[0]?.eventDate,
+    null,
+  );
+}
+
+{
+  const spy = spyRecorder();
+  const { client } = scriptedClient({
+    events: Array.from({ length: MAX_SIGNALS + 1 }, () => signal()),
+  });
+  await expectThrows(
+    "more events than were asked for fails rather than being trimmed",
+    () => runTask(extractSignals, DOCUMENT, ctx(client, spy.recorder)),
+    /more than the/,
+  );
+}
+
+
+console.log("\nqualify_opportunity — evidence a scan already gathered");
+{
+  /* The engine's verdict must not be systematically worse than the manual
+     one. Without observations the qualifier can only read the company's own
+     site, so trigger freshness is permanently unknown for exactly the
+     companies Huntloop found itself — which is the wrong way round. */
+  const observed = [
+    {
+      claim: "Alphio AI closed a $12M Series A led by Northgate Ventures.",
+      kind: "fact" as const,
+      confidence: "high" as const,
+      sourceUrl: "https://news.test/alphio-series-a",
+      excerpt: "Alphio AI has raised $12 million in a Series A.",
+      eventDate: "2026-08-08T00:00:00.000Z",
+    },
+  ];
+
+  const spy = spyRecorder();
+  const { client, seen } = scriptedClient(
+    HOT_VERDICT_CITING("https://news.test/alphio-series-a"),
+  );
+  const result = await runTask(
+    qualifyOpportunity,
+    { ...qualifyInput, observed },
+    ctx(client, spy.recorder),
+  );
+
+  expect(
+    "the observations are delimited as untrusted like everything else fetched",
+    /label="previously observed evidence"/.test(seen[0]?.userContent ?? ""),
+    seen[0]?.userContent?.slice(-400),
+  );
+  expectEqual(
+    "a fact may cite a page the scan actually read",
+    result.output.evidence[0]?.sourceUrl,
+    "https://news.test/alphio-series-a",
+  );
+
+  // …and only that page. Widening to the publication's domain would let one
+  // real article license every other claim attributed to it.
+  const spy2 = spyRecorder();
+  const { client: client2 } = scriptedClient(
+    HOT_VERDICT_CITING("https://news.test/something-else-entirely"),
+  );
+  await expectThrows(
+    "a fact citing a different page on the same publication is refused",
+    () =>
+      runTask(qualifyOpportunity, { ...qualifyInput, observed }, ctx(client2, spy2.recorder)),
+    /cannot support a fact/,
+  );
+
+  // And with no observations at all, the original rule is unchanged.
+  const spy3 = spyRecorder();
+  const { client: client3 } = scriptedClient(
+    HOT_VERDICT_CITING("https://news.test/alphio-series-a"),
+  );
+  await expectThrows(
+    "with nothing observed, a fact still has to come from the company's own site",
+    () => runTask(qualifyOpportunity, qualifyInput, ctx(client3, spy3.recorder)),
+    /cannot support a fact/,
+  );
+}
 
 console.log(
   `\n${checks - failures}/${checks} checks passed` +

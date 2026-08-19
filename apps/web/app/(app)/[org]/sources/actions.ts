@@ -1,11 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { enqueueScan, isEngineRunning } from "../../../../lib/data/engine";
 import { getActiveIcp } from "../../../../lib/data/icp";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { recommend } from "../../../../lib/ai/sources";
-import { parseForm, sourceSchema, uuidSchema } from "../../../../lib/validation";
+import {
+  parseForm,
+  scanIntervalSchema,
+  sourceSchema,
+  uuidSchema,
+} from "../../../../lib/validation";
+import { recordAudit } from "../../../../lib/data/audit";
 
 /**
  * Source writes — master context §10, §58.
@@ -244,3 +251,124 @@ const KINDS = [
   "custom",
 ] as const;
 type Kind = (typeof KINDS)[number];
+
+/**
+ * Scan now — put this source at the front of the queue.
+ *
+ * ── What "now" means, and why it is said out loud ────────────────────────
+ *
+ * It enqueues; it does not scan. The work happens in the runner, which the
+ * cron tick invokes, so a source scanned "now" is read within one tick rather
+ * than before this action returns. Fetching several pages and calling a model
+ * inline would tie the result to a Server Action's timeout and give the user a
+ * spinner that fails at 60 seconds having half-done the work.
+ *
+ * The message therefore says "queued", not "scanned". A button that claims to
+ * have done something it has only scheduled is the same class of lie as an
+ * invented figure, and the sources screen is where a user goes when they
+ * already suspect nothing is running.
+ *
+ * ── When nothing is running ──────────────────────────────────────────────
+ *
+ * With no `CRON_SECRET` the tick endpoint refuses every request, so a queued
+ * job would sit there forever. The action says so and does not enqueue, which
+ * is the difference between "nothing happened" and "nothing will happen".
+ */
+export async function scanSourceNowAction(
+  org: string,
+  sourceId: string,
+): Promise<ActionResult<{ queued: boolean }>> {
+  const parsed = uuidSchema.safeParse(sourceId);
+  if (!parsed.success) return fail("That source reference isn't valid.");
+
+  const viewer = await currentViewer(org);
+  if (!canSpend(viewer)) {
+    return fail("Your role is read-only, so you cannot start a scan.");
+  }
+
+  return mutate(org, "scanSourceNow", async ({ db, orgId }) => {
+    if (!isEngineRunning()) {
+      return fail(
+        "Nothing is running the scanner on this deployment. Set CRON_SECRET in " +
+          "the project's environment variables — the schedule at " +
+          "/api/jobs/tick refuses every request without it, so a queued scan " +
+          "would never be picked up.",
+      );
+    }
+
+    const { data: source, error } = await db
+      .from("sources")
+      .select("id, name, url, is_enabled")
+      .eq("id", parsed.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (error) return fail(`That source could not be read: ${error.message}`);
+    if (!source) return fail("That source is no longer on your list.");
+    if (!source.url) {
+      return fail("That source has no URL, so there is nothing to read.");
+    }
+    if (!source.is_enabled) {
+      return fail("That source is paused. Accept it first and it will be read.");
+    }
+
+    /* Due now, rather than enqueued directly: the sweeper is the one thing
+       that decides what gets scanned, and having two writers to the queue with
+       different ideas of "due" is how a source ends up scanned twice a tick.
+       Setting next_scan_at is the same instruction the scheduler already
+       understands. */
+    const queued = await enqueueScan(db, orgId, String(source.id));
+
+    await recordAudit(db, orgId, {
+      action: "source.scanned",
+      targetType: "source",
+      targetId: String(source.id),
+      meta: { name: source.name, manual: true },
+    });
+
+    revalidatePath(`/${org}/sources`);
+    return ok(
+      { queued },
+      queued
+        ? `${source.name} is queued. It is read on the next tick, within about five minutes.`
+        : `${source.name} was already queued.`,
+    );
+  });
+}
+
+/**
+ * How often a source is re-read.
+ *
+ * Five minutes is the floor, enforced by a CHECK in `0008` as well as here.
+ * The reason for a floor at all is that this is somebody else's server: a
+ * source polled every thirty seconds is a source whose operator blocks us, and
+ * the setting that does it is one number in a dropdown.
+ */
+export async function setScanIntervalAction(
+  org: string,
+  sourceId: string,
+  minutes: number,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(sourceId);
+  if (!id.success) return fail("That source reference isn't valid.");
+
+  const parsed = scanIntervalSchema.safeParse(minutes);
+  if (!parsed.success) {
+    return fail("That isn't one of the intervals a source can be read on.");
+  }
+
+  return mutate(org, "setScanInterval", async ({ db, orgId }) => {
+    const { error } = await db
+      .from("sources")
+      .update({ scan_interval_minutes: parsed.data })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null);
+
+    if (error) return fail(`That interval could not be saved: ${error.message}`);
+
+    revalidatePath(`/${org}/sources`);
+    return ok(undefined, "Saved. It takes effect after the next scan.");
+  });
+}

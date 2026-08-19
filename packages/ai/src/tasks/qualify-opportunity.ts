@@ -103,6 +103,46 @@ export interface QualifyInput {
   /** The company to judge. Whatever the user typed; normalised before use. */
   url: string;
   icp: IcpSummary;
+  /**
+   * Evidence Huntloop has already gathered about this company, from sources.
+   *
+   * Empty on the analyze screen, where a URL is pasted and nothing has been
+   * scanned. Populated by `score_opportunity`, which runs after a scan has
+   * produced `source_events` and `evidence` rows.
+   *
+   * ── Why this changes what the task may conclude ────────────────────────
+   *
+   * The prompt's central limit is "a trigger you cannot see on their own site
+   * is a trigger you do not know about", and it is right when the site is all
+   * there is. It is wrong once a scan has read a funding announcement, and
+   * leaving it in place would make the engine's verdict systematically worse
+   * than the manual one — trigger freshness permanently unknown for exactly
+   * the companies the product found itself.
+   *
+   * So observations widen two things and nothing else: what may be treated as
+   * established, and which URLs a fact may cite. They do not become facts by
+   * being passed in; each one carries the kind it was recorded with.
+   */
+  observed?: ObservedEvidence[];
+}
+
+/**
+ * One row from `evidence`, as the qualifier sees it.
+ *
+ * A subset of the column list on purpose. The qualifier does not need the id,
+ * the subject, or the supersession chain — it needs the claim, how sure we
+ * were, when it happened, and where it was read. Passing the whole row would
+ * put database identifiers into a prompt, where they can only be hallucinated
+ * back out.
+ */
+export interface ObservedEvidence {
+  claim: string;
+  kind: ClaimKind;
+  confidence: Confidence | null;
+  sourceUrl: string | null;
+  excerpt: string | null;
+  /** When the thing happened — not when we saw it. §81 needs the first one. */
+  eventDate: string | null;
 }
 
 /**
@@ -140,14 +180,25 @@ ${UNTRUSTED_CONTENT_RULE}
 ## What you can see, and what you cannot
 
 You may fetch this company's own website and nothing else. No news, no funding
-databases, no job boards, no social. That limit shapes what you are entitled to
-conclude:
+databases, no job boards, no social.
 
-  · A trigger you cannot see on their own site is a trigger you do not know
-    about. Trigger freshness is very often unknown here, and unknown is the
-    correct answer — not a guess from a copyright year or a blog date.
+You may also be given a block of PREVIOUSLY OBSERVED EVIDENCE — claims Huntloop
+already recorded about this company from the sources it monitors, each with the
+page it was read on and the date the event happened. When that block is
+present, it is as legitimate a basis for your verdict as the site itself, and
+you may cite its URLs. When it is absent, the site is all you have.
+
+That limit shapes what you are entitled to conclude:
+
+  · A trigger that appears neither on their site nor in the observed evidence
+    is a trigger you do not know about. Trigger freshness is very often unknown
+    here, and unknown is the correct answer — not a guess from a copyright year
+    or a blog date.
   · Do not recall facts about this company from memory and present them as
-    though you read them. If it is not on the site, you did not observe it.
+    though you read them. If it is not on the site and not in the observed
+    evidence, you did not observe it.
+  · An observed claim recorded as an inference stays an inference. Being handed
+    it does not promote it, and neither does agreeing with it.
   · If the site will not load or has almost no content, say so, mark what you
     could not establish, and classify on what little there is. Do not
     compensate by inventing a plausible company.
@@ -198,9 +249,10 @@ confidence in it as high, medium or low. Never a percentage.
 
 List what the verdict rests on, and what it does not.
 
-  fact       You read this on their site. Give the URL of the page. Every fact
-             must cite a page on this company's own domain, because that is the
-             only thing you were able to read.
+  fact       You read this on their site, or it was given to you in the
+             observed evidence. Give the URL of the page. Every fact must cite
+             either this company's own domain or one of the source URLs in the
+             observed block — those are the only pages that have been read.
   inference  You concluded it. Carries a confidence, no source needed.
   unknown    Something material you could not establish. No source, no
              confidence — state what is missing.
@@ -312,6 +364,28 @@ export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
       list(input.icp.exclusions),
     ].join("\n");
 
+    const observed = (input.observed ?? []).filter((e) => e.claim.trim());
+    const observedBlock = observed.length
+      ? [
+          "",
+          wrapUntrusted(
+            "previously observed evidence",
+            observed
+              .map((e) =>
+                [
+                  `- [${e.kind}${e.confidence ? `, ${e.confidence}` : ""}] ${e.claim}`,
+                  e.eventDate ? `  happened: ${e.eventDate.slice(0, 10)}` : null,
+                  e.sourceUrl ? `  read at: ${e.sourceUrl}` : null,
+                  e.excerpt ? `  quote: ${e.excerpt}` : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+              )
+              .join("\n"),
+          ),
+        ].join("\n")
+      : "";
+
     return [
       `Qualify this company: ${url}`,
       "",
@@ -321,6 +395,7 @@ export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
       wrapUntrusted("ideal customer profile", icp),
       "",
       wrapUntrusted("URL supplied by the user", url),
+      observedBlock,
       "",
       "The exclusions are absolute. A company matching one is ignore however " +
         "strong everything else looks.",
@@ -445,6 +520,15 @@ export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
     }
 
     // ── Evidence ────────────────────────────────────────────────────────────
+    /* Every page this run could legitimately have read, other than the
+       company's own site. Built from the input rather than from the output, so
+       the model cannot extend it by claiming to have been given something. */
+    const readUrls = new Set(
+      (input.observed ?? [])
+        .map((e) => e.sourceUrl?.trim())
+        .filter((u): u is string => Boolean(u)),
+    );
+
     if (!Array.isArray(raw.evidence)) {
       throw new Error("qualify_opportunity: response carried no evidence array.");
     }
@@ -503,11 +587,19 @@ export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
               `which is not a URL.`,
           );
         }
-        if (citedDomain !== canonicalDomain) {
+        /* The allowed set is the company's own domain plus the exact URLs of
+           the observations we supplied — not their domains. Widening to the
+           domain would let one cited article from a publication license every
+           other claim attributed to it, which is the fabrication this check
+           exists to catch, one indirection later. */
+        if (citedDomain !== canonicalDomain && !readUrls.has(entry.sourceUrl!.trim())) {
           throw new Error(
             `qualify_opportunity: a fact cites ${citedDomain}, but only ` +
-              `${canonicalDomain} was fetched. A source that was never read ` +
-              `cannot support a fact (§7).`,
+              `${canonicalDomain} was fetched` +
+              (readUrls.size
+                ? ` and ${readUrls.size} observed page(s) were supplied`
+                : "") +
+              `. A source that was never read cannot support a fact (§7).`,
           );
         }
       }

@@ -1,5 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { supabasePublishableKey, supabaseUrl } from "./env";
+import { supabasePublishableKey, supabaseUrl } from "./env.ts";
 
 /**
  * The client every request path should use.

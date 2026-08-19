@@ -74,10 +74,20 @@ export {
   type Priority,
   type Qualification,
   type QualificationEvidence,
+  type ObservedEvidence,
   type QualifyInput,
   type ScoreDimensionLabel,
   type ScoredDimension,
 } from "./tasks/qualify-opportunity.ts";
+
+export {
+  EVENT_TYPES,
+  MAX_SIGNALS,
+  extractSignals,
+  type EventType,
+  type ExtractedSignal,
+  type SignalDocument,
+} from "./tasks/extract-signals.ts";
 
 export {
   URGENCIES,

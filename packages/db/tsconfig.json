@@ -4,6 +4,11 @@
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // Relative imports here carry the `.ts` extension, for the reason given in
+    // packages/ai: @huntloop/jobs runs its suite through Node type stripping
+    // and imports this package, and Node ESM requires a real filename. Webpack
+    // and Turbopack resolve the same specifier to the same file.
+    "allowImportingTsExtensions": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
