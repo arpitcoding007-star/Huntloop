@@ -285,6 +285,62 @@ reference checks now sit inside it for the same reason.
 
 ---
 
+## Closed in the eighth pass — 2026-08-20
+
+The pass that made the loop safe to run rather than merely complete. Two of
+these were holes in what had already shipped, which is the point of writing
+them down separately: they were not on any list, and both were found by asking
+what the code claimed and then checking.
+
+| ID | Task | Effort |
+|---|---|---|
+| **TEST-03** | **`send_message` and `sync_mailbox` have behavioural tests** | **M** |
+| **OUT-04** | **The unsubscribe the emails have been advertising** | **M** |
+| **ENG-03** | **The engine notice reports what is observed, not what is configured** | **S** |
+| **TEST-04** | **A smoke pass over every route, collecting `pageerror`** | **S** |
+
+### Notes on what closed
+
+**OUT-04** is the one that mattered most and was on no list. Every message
+carries `List-Unsubscribe`, `List-Unsubscribe-Post` and a footer line, and all
+three pointed at nothing: the route was never built and `/unsubscribe` was not
+a public path, so a recipient got a redirect to a sign-in form for an account
+they do not have. `provider.ts` already wrote down the cost — a dead
+unsubscribe is a spam report, charged to the sending domain and every campaign
+on it. The database half already existed; `record_unsubscribe` in `0008` is
+SECURITY DEFINER for exactly this caller.
+
+Two addresses, because they are reached differently. The RFC 8058 POST acts
+immediately, since it only arrives when somebody pressed their mail client's
+own button. The footer GET asks first, because mail clients and security
+gateways prefetch links in messages and a GET that acted would unsubscribe
+people who never clicked.
+
+**TEST-03** covers the two handlers that can hurt somebody. `authorize()` runs
+for real against a genuinely encrypted test token and only the provider's
+`send` is replaced — what is under test is the order of the checks, so
+anything that could skip one had to stay real. `applyClassification` is
+exported for the suite, the same way `groundableClaims` is in the AI package,
+because reaching the reply branches through the handler means making a model
+call the suite deliberately cannot make.
+
+Writing it found a gap in the test double itself: `contains` was missing from
+the fake client's passthrough list, which is why `matchThread` had never been
+exercised by anything.
+
+**ENG-03** follows from OPS-04. `isEngineRunning()` reads `CRON_SECRET` and
+answers whether `/api/jobs/tick` would accept a caller; it has never answered
+whether one exists. A committed cron used to make those the same thing in
+practice. With the cron gone, a workspace with the secret set and no scheduler
+would have been told its scanner was fine, so the screen now reads
+`lastTickAt` — a row in `job_executions` exists because a tick created it.
+
+**TEST-04** is twenty-five routes, and it is the first time anything checked
+that they all render. It collects `pageerror` rather than only status codes: a
+screen that renders its heading and throws underneath still answers 200.
+
+---
+
 ## P0 — Before the next production deploy
 
 **Nothing in code.** `SEC-03` was the last one.
