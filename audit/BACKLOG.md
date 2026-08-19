@@ -326,8 +326,9 @@ never served anything.
 workspaces and *no dependencies at all*, so a root-rooted project finds no
 `next`, detects no framework, and then looks for a `public/` directory that
 does not exist either. `apps/web/package.json` declares `next`, which is why
-the other project builds. There is no `vercel.json` anywhere, so both projects
-run entirely on dashboard settings nothing in this repo can review.
+the other project builds. `apps/web/vercel.json` exists now but is read from
+the Root Directory, so it reaches `huntloop-web` and never `huntloop` — which
+still runs entirely on dashboard settings nothing in this repo can review.
 
 **Why no commit fixes it.** A root `vercel.json` pointing `outputDirectory` at
 `apps/web/.next` is the obvious move and is not a supported path for a fully

@@ -72,9 +72,14 @@ apps/web/package.json   "next": "^16.3.1"
 
 So a project rooted at the repository root sees no `next`, detects no
 framework, falls back to "Other", and then looks for a static output directory
-— `public/` by default, which does not exist here either. There is no
-`vercel.json` anywhere to correct any of that, so both projects run entirely on
-dashboard settings that nothing in this repository can see or review.
+— `public/` by default, which does not exist here either.
+
+There is an `apps/web/vercel.json` now — it declares the `/api/jobs/tick` cron —
+but it corrects none of this, and it is worth being precise about why. Vercel
+reads a `vercel.json` from the project's Root Directory, so that file is read by
+`huntloop-web` and is invisible to `huntloop`. The root-rooted project still
+runs entirely on dashboard settings that nothing in this repository can see or
+review.
 
 That is the whole failure, and it is a settings problem rather than a code one.
 Nothing in the build is broken: `npm run verify` builds all 21 routes.
