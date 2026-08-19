@@ -4,8 +4,21 @@
     {
       "name": "huntloop-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@huntloop/web"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@huntloop/web"
+      ],
       "port": 3100
+    },
+    {
+      "name": "huntloop-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/dev-demo.mjs"
+      ],
+      "port": 3101
     }
   ]
 }
