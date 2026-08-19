@@ -74,12 +74,13 @@ So a project rooted at the repository root sees no `next`, detects no
 framework, falls back to "Other", and then looks for a static output directory
 — `public/` by default, which does not exist here either.
 
-There is an `apps/web/vercel.json` now — it declares the `/api/jobs/tick` cron —
-but it corrects none of this, and it is worth being precise about why. Vercel
-reads a `vercel.json` from the project's Root Directory, so that file is read by
-`huntloop-web` and is invisible to `huntloop`. The root-rooted project still
-runs entirely on dashboard settings that nothing in this repository can see or
-review.
+There is no `vercel.json` anywhere to correct any of that, so both projects run
+entirely on dashboard settings that nothing in this repository can see or
+review. One did exist briefly, declaring the `/api/jobs/tick` cron; it was
+removed for a reason unrelated to this section, and "What drives the tick"
+below has that story. Note that it would not have helped here either way — a
+`vercel.json` is read from the project's Root Directory, so `apps/web/vercel.json`
+reaches `huntloop-web` and is invisible to `huntloop`.
 
 That is the whole failure, and it is a settings problem rather than a code one.
 Nothing in the build is broken: `npm run verify` builds all 21 routes.
@@ -124,6 +125,81 @@ workspace monorepo, `@huntloop/ui`, `@huntloop/db` and `@huntloop/ai` resolve
 only from the repository root, and Vercel already installs from the root when
 the Root Directory is a workspace package. Pinning `npm install` would make it
 run inside `apps/web` and break the build that currently works.
+
+---
+
+
+---
+
+## What drives the tick, and why no cron is committed
+
+`/api/jobs/tick` is the engine's heartbeat. Nothing in this repository
+schedules it, and that is a decision rather than an omission.
+
+### What happened
+
+`apps/web/vercel.json` did declare one:
+
+```json
+{ "crons": [{ "path": "/api/jobs/tick", "schedule": "*/5 * * * *" }] }
+```
+
+That file failed to deploy on this account:
+
+> Hobby accounts are limited to daily cron jobs. This cron expression
+> (`*/5 * * * *`) would run more than once per day.
+
+It is worth being precise that this broke `huntloop-web` — the project that
+actually serves the app — not the already-broken `huntloop`. A deployment that
+does not deploy is worse than any scheduling problem, so the cron came out.
+
+### Why it was not simply changed to daily
+
+Because a daily tick is not a slow engine, it is a stalled one, and the
+arithmetic is short enough to check.
+
+`tick()` claims `limit` jobs (5 by default). The route sets `maxDuration = 60`
+and the runner keeps a 20-second reserve, so it stops claiming with 20 seconds
+left. Every job in this system either fetches a page or calls a model, and both
+take tens of seconds. One invocation therefore completes somewhere between one
+and four jobs.
+
+Once per day, that is a handful of jobs per day against a queue fed by every
+enabled source, every connected mailbox and every active enrollment. The queue
+would grow without bound, `job_executions` would fill with work that never
+runs, and the deployment would look correctly configured the whole time.
+
+That is the same failure this document argues against for the root-directory
+project one section up: **a green build that does not work is worse than an
+honest failure.** A committed daily cron would be exactly that, and it would be
+harder to spot, because a scheduled cron in `vercel.json` reads as a working
+engine to anyone reviewing the repository.
+
+### The three things that do drive it
+
+Pick one. All three are deployment decisions, which is why none of them is a
+file here.
+
+**A — Inngest (free, and already built).** Set `INNGEST_EVENT_KEY` and
+`INNGEST_SIGNING_KEY`. `/api/inngest` serves the same `tick()` on Inngest's
+schedule and retry semantics, its free tier schedules far more often than
+daily, and `isInngestConfigured()` already gates it. This is the recommended
+route on Hobby: no plan change, no second service to write.
+
+**B — Vercel Pro.** Restore the file above. Pro removes the daily limit, and
+`*/5 * * * *` is the cadence the engine was designed around.
+
+**C — any external scheduler.** `/api/jobs/tick` authenticates with
+`Authorization: Bearer $CRON_SECRET` and is otherwise an ordinary HTTP
+endpoint. A GitHub Actions schedule, a cron box, or an uptime pinger all work.
+
+### What the product says while none of them is configured
+
+The Sources screen states that nothing is reading the sources on a timer, and
+every source reads "never scanned" rather than showing a stale count. That is
+the intended behaviour, not a gap to paper over — see §7. The one thing to be
+careful of is the inverse: `CRON_SECRET` being set means the endpoint *would*
+accept a caller, never that one exists.
 
 ---
 

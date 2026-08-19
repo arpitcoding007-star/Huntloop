@@ -326,9 +326,8 @@ never served anything.
 workspaces and *no dependencies at all*, so a root-rooted project finds no
 `next`, detects no framework, and then looks for a `public/` directory that
 does not exist either. `apps/web/package.json` declares `next`, which is why
-the other project builds. `apps/web/vercel.json` exists now but is read from
-the Root Directory, so it reaches `huntloop-web` and never `huntloop` — which
-still runs entirely on dashboard settings nothing in this repo can review.
+the other project builds. There is no `vercel.json` in the repo, so both
+projects run entirely on dashboard settings nothing here can review.
 
 **Why no commit fixes it.** A root `vercel.json` pointing `outputDirectory` at
 `apps/web/.next` is the obvious move and is not a supported path for a fully
@@ -340,6 +339,26 @@ build nobody had run. Root Directory is the mechanism Vercel provides.
 Root Directory to `apps/web`. Full reasoning in
 [docs/OPERATIONS.md](../docs/OPERATIONS.md).
 **Needs:** a Vercel dashboard login — this machine has no Vercel credentials.
+
+### OPS-04 · Nothing drives the tick on this deployment · **XS** · Phase 1
+The engine is built, tested and deployed, and no scheduler calls it. Every
+source reads "never scanned", no mailbox is synced, and no enrollment advances.
+The Sources screen says so, which is the intended behaviour rather than a gap.
+
+**How it got here.** `apps/web/vercel.json` declared `*/5 * * * *` and broke
+`huntloop-web` — the project that actually serves the app — because Hobby
+accounts allow one cron run per day. It was removed rather than slowed: one
+`tick()` invocation completes one to four jobs inside its 60-second budget, so
+a daily cron is a queue that never drains while looking correctly configured.
+Full arithmetic in [docs/OPERATIONS.md](../docs/OPERATIONS.md).
+
+**Do:** set `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. `/api/inngest`
+already serves the same `tick()`, its free tier schedules well below daily, and
+nothing in the code changes. The alternatives — Vercel Pro, or any external
+scheduler sending `Authorization: Bearer $CRON_SECRET` — are in the same
+document.
+**Needs:** an Inngest account, or a Vercel plan change. Neither is a code
+change, which is why this is an operations item and not a task.
 
 ### TEST-02c · Browser specs that need a real session · **M** · Phase 9
 The Playwright suite runs in demo mode, which is a real configuration of this
