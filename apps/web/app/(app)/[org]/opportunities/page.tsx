@@ -1,5 +1,6 @@
 import type { Priority } from "@huntloop/ui";
 import { listOpportunities } from "../../../../lib/data/opportunities";
+import { listCampaignTargets } from "../../../../lib/data/outreach";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { OpportunityTable } from "./OpportunityTable";
 
@@ -54,7 +55,13 @@ export default async function OpportunitiesPage({
 }) {
   const [{ org }, query] = await Promise.all([params, searchParams]);
 
-  const { data } = await listOpportunities(org);
+  const [{ data }, { data: campaigns }] = await Promise.all([
+    listOpportunities(org),
+    /* Loaded here rather than in the table, because whether there is anything
+       to add a selection to is a fact about the workspace and not a fact the
+       browser should go and ask for after the button is pressed. */
+    listCampaignTargets(org),
+  ]);
 
   return (
     <OpportunityTable
@@ -75,6 +82,7 @@ export default async function OpportunitiesPage({
       // component: the role is not something the browser should be asked to
       // determine, even for a rendering decision. See lib/data/membership.ts.
       canWrite={canWrite(await currentViewer(org))}
+      campaigns={campaigns}
     />
   );
 }

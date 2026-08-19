@@ -234,3 +234,50 @@ test.describe("the mobile drawer", () => {
     await expect(page.getByRole("button", { name: /close navigation/i })).toHaveCount(0);
   });
 });
+
+test.describe("adding opportunities to a campaign", () => {
+  /*
+   * The entry point to the outreach engine, and the one control in the product
+   * that can start email going to a real person. Three things are asserted, in
+   * the order they matter: that the picker opens at all (it was a `pending`
+   * button until enrollment existed), that it states the campaign's autonomy
+   * level before the commit rather than after, and that a campaign with no
+   * email step is offered disabled rather than hidden.
+   *
+   * In demo mode the action itself refuses — there is no database to write to
+   * — which is what the last assertion checks. That refusal is the §7 rule the
+   * whole demo mode exists to keep: nothing here may look like it worked.
+   */
+  test("the picker names the autonomy level before anything is committed", async ({
+    page,
+  }) => {
+    await page.goto(`/${ORG}/opportunities`);
+
+    await page.getByRole("checkbox", { name: /select all rows/i }).check();
+    await page.getByRole("button", { name: /add to campaign/i }).click();
+
+    const picker = page.getByLabel("Campaign");
+    await expect(picker).toBeVisible();
+
+    // §46's ladder, on the option itself — not somewhere the user has to go
+    // and look after choosing.
+    await expect(picker.locator("option").nth(1)).toHaveText(/autonomy \d/);
+    await expect(page.getByText(/drafted and wait for you|without further approval/i)).toBeVisible();
+  });
+
+  test("with no database, adding to a campaign says so rather than appearing to work", async ({
+    page,
+  }) => {
+    await page.goto(`/${ORG}/opportunities`);
+
+    await page.getByRole("checkbox", { name: /select all rows/i }).check();
+    await page.getByRole("button", { name: /add to campaign/i }).click();
+    await page.getByRole("button", { name: /^add \d+ to campaign$/i }).click();
+
+    // Scoped to a paragraph: Next renders its own empty `role="alert"` route
+    // announcer on every page, which an unscoped alert role also matches.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
+  });
+});

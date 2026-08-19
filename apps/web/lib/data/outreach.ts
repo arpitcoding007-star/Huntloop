@@ -239,3 +239,92 @@ const DEMO: Outreach = {
   ],
   mailboxes: [],
 };
+
+/**
+ * The campaigns a selection of opportunities could be added to.
+ *
+ * ── Why this is not `getOutreach()` ──────────────────────────────────────
+ *
+ * The Opportunities screen needs three fields and a yes/no. Reusing the full
+ * loader there would pull every sequence, every step's template body, and
+ * every mailbox into a page that renders none of them — on the one screen most
+ * likely to be holding a few hundred rows already.
+ *
+ * ── `sendable`, and why the screen is told rather than left to infer ─────
+ *
+ * A campaign with no sequence, or a sequence with no email step, accepts
+ * enrollments and then advances them into nothing: the engine reads past the
+ * last step, marks the enrollment finished, and the user watches a number go
+ * up and nothing happen. That is a worse outcome than being unable to enrol,
+ * so the picker shows those campaigns disabled with the reason rather than
+ * hiding them — hiding a campaign somebody just created reads as a bug in the
+ * thing they created, not as a missing step.
+ *
+ * Archived campaigns are excluded outright. That is a decision the user has
+ * already made about the campaign, not a state to warn them out of.
+ */
+export interface CampaignTarget {
+  id: string;
+  name: string;
+  status: string;
+  autonomyLevel: number;
+  /** False when the campaign has no email step for an enrollment to reach. */
+  sendable: boolean;
+}
+
+export async function listCampaignTargets(
+  orgSlug: string,
+): Promise<Loaded<CampaignTarget[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "listCampaignTargets");
+
+      const { data, error } = await db
+        .from("campaigns")
+        .select(
+          `id, name, status, autonomy_level,
+           sequences(id, deleted_at, sequence_steps(id, kind, deleted_at))`,
+        )
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(`listCampaignTargets: ${error.message}`);
+
+      return (data ?? []).map(mapTarget);
+    },
+    () => DEMO.campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      autonomyLevel: c.autonomyLevel,
+      sendable: c.sequences.some((s) => s.steps.some((step) => step.kind === "email")),
+    })),
+  );
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any --
+   Same reason as the mappers above: a nested select has no generated row type
+   without a live project schema. Confined to this function. */
+function mapTarget(row: any): CampaignTarget {
+  /* Soft deletes are filtered in the mapper, not the query: a top-level
+     `deleted_at is null` does not reach inside an embed, so a campaign whose
+     only sequence was deleted would otherwise still look sendable. */
+  const sendable = (Array.isArray(row.sequences) ? row.sequences : [])
+    .filter((s: any) => !s.deleted_at)
+    .some((s: any) =>
+      (Array.isArray(s.sequence_steps) ? s.sequence_steps : []).some(
+        (step: any) => !step.deleted_at && step.kind === "email",
+      ),
+    );
+
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    status: String(row.status ?? "draft"),
+    autonomyLevel: Number(row.autonomy_level ?? 0),
+    sendable,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
