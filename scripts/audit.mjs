@@ -474,14 +474,22 @@ function check(phase, id, title, ok, sev, detail) {
    * "use server" module is a public POST endpoint, so the check is that each
    * one actually parses what it is handed.
    *
-   * Matching on `parseInput`/`safeParse` rather than on the import, because an
-   * unused import satisfies a grep and validates nothing.
+   * Matching on the call rather than on the import, because an unused import
+   * satisfies a grep and validates nothing.
+   *
+   * `parseForm` joined the list when the module forms arrived. It is the
+   * same guarantee as `parseInput` — both call `safeParse` and neither
+   * returns a value the caller can use without checking `ok` — and it differs
+   * only in reporting *which field* failed, which a nine-field form needs and
+   * a single scalar does not. Leaving it out would have made every form
+   * action look unvalidated, and the usual response to a check that fails on
+   * correct code is to stop believing the check.
    */
   const actionFiles = walk("apps/web/app").filter(
     (f) => /\.ts$/.test(f) && /^["']use server["']/.test((read(f) ?? "").trimStart()),
   );
   const unvalidated = actionFiles.filter(
-    (f) => !/parseInput\(|safeParse\(/.test(read(f) ?? ""),
+    (f) => !/parseInput\(|parseForm\(|safeParse\(/.test(read(f) ?? ""),
   );
   check(
     5,

@@ -141,3 +141,161 @@ export function parseInput<T>(
   if (result.success) return { ok: true, value: result.data };
   return { ok: false, error: `That ${what} isn't something we can work with.` };
 }
+
+/* ── Module schemas ─────────────────────────────────────────────────────────
+ *
+ * Everything below backs a Server Action behind authentication. The two rules
+ * at the top of this file still apply, and the second one — bound every string
+ * and array — is the one that matters here: these endpoints write to `text`
+ * columns, and an unbounded field is a way to put a megabyte in one.
+ *
+ * `uuidSchema` is used wherever an id crosses the boundary. It is not an
+ * authorization check — RLS is — but it turns a tampered id into a sentence
+ * instead of Postgres error `22P02`, which is a 500 where a message belongs.
+ */
+
+export const uuidSchema = z.string().uuid("That reference isn't valid.");
+
+const name = z.string().trim().min(1, "This can't be empty.").max(160);
+const longText = z.string().trim().max(4000);
+const optionalUrl = z.string().trim().max(2048).optional().or(z.literal(""));
+
+export const productSchema = z.object({
+  id: uuidSchema.optional(),
+  name,
+  website: optionalUrl,
+  description: longText,
+  valueProps: stringList,
+  proofPoints: stringList,
+});
+
+export const icpFormSchema = z.object({
+  id: uuidSchema.optional(),
+  name,
+  productId: uuidSchema.optional().or(z.literal("")),
+  segments: stringList,
+  sizes: stringList,
+  regions: stringList,
+  triggers: stringList,
+  exclusions: stringList,
+  isActive: z.boolean().optional(),
+});
+
+export const personaSchema = z.object({
+  id: uuidSchema.optional(),
+  icpId: uuidSchema,
+  name,
+  titlePatterns: stringList,
+  seniority: stringList,
+  painPoints: stringList,
+});
+
+export const sourceSchema = z.object({
+  id: uuidSchema.optional(),
+  name,
+  kind: z.enum([
+    "news", "blog", "jobs", "social", "github", "funding",
+    "regulatory", "community", "podcast", "custom",
+  ]),
+  url: optionalUrl,
+  icpId: uuidSchema.optional().or(z.literal("")),
+});
+
+export const companySchema = z.object({
+  id: uuidSchema.optional(),
+  name,
+  /* A hostname, not a URL. 253 is the DNS maximum for a fully qualified name,
+     so anything longer is not a domain that could ever resolve. */
+  domain: z.string().trim().min(1, "A domain is required.").max(253),
+  industry: z.string().trim().max(120).optional().or(z.literal("")),
+  website: optionalUrl,
+  country: z.string().trim().max(80).optional().or(z.literal("")),
+  region: z.string().trim().max(80).optional().or(z.literal("")),
+  employeeCount: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  businessModel: z.string().trim().max(120).optional().or(z.literal("")),
+  description: longText.optional(),
+});
+
+/**
+ * A pasted CSV.
+ *
+ * 2 MB is roughly 20,000 company rows — past what anyone pastes into a
+ * textarea and far short of what would hurt to parse. The row cap in the
+ * importer is the real bound; this one stops the request body being the
+ * attack.
+ */
+export const csvSchema = z.string().max(2_000_000);
+
+export const campaignSchema = z.object({
+  id: uuidSchema.optional(),
+  name,
+  icpId: uuidSchema.optional().or(z.literal("")),
+  productId: uuidSchema.optional().or(z.literal("")),
+  /* §46's autonomy ladder. Bounded here as well as by the check constraint,
+     so an out-of-range value is a sentence rather than a Postgres error. */
+  autonomyLevel: z.number().int().min(0).max(5),
+  status: z.enum(["draft", "active", "paused", "archived"]),
+});
+
+export const sequenceStepSchema = z.object({
+  id: uuidSchema.optional(),
+  sequenceId: uuidSchema,
+  position: z.number().int().min(0).max(50),
+  kind: z.enum(["email", "wait", "condition"]),
+  delayHours: z.number().int().min(0).max(24 * 365),
+  subject: z.string().trim().max(400).optional(),
+  body: z.string().trim().max(20_000).optional(),
+});
+
+export const memorySchema = z.object({
+  id: uuidSchema.optional(),
+  scope: z.enum(["organization", "team", "user", "account", "opportunity"]),
+  scopeId: uuidSchema.nullable().optional(),
+  key: z.string().trim().max(160).optional().or(z.literal("")),
+  content: z.string().trim().min(1, "A memory can't be empty.").max(4000),
+  confidence: confidence.nullable().optional(),
+});
+
+export const memberRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
+
+export const orgSettingsSchema = z.object({
+  name: orgNameSchema,
+});
+
+export const opportunityStatusSchema = z.enum([
+  "discovered", "researching", "qualified", "assigned", "contacted",
+  "replied", "meeting", "proposal", "won", "lost", "archived",
+]);
+
+export const threadStatusSchema = z.enum(["open", "snoozed", "closed"]);
+
+/**
+ * Parses, and reports *which field* failed.
+ *
+ * `parseInput` above returns one sentence, which is right for a single scalar
+ * — there is only one thing it could be about. It is wrong for a nine-field
+ * form, where "that isn't something we can work with" makes the user re-read
+ * every field to find the one that is wrong.
+ *
+ * The per-field messages come from the schema, so they are written once beside
+ * the constraint rather than duplicated in each form.
+ */
+export function parseForm<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+): { ok: true; value: T } | { ok: false; error: string; fieldErrors: Record<string, string> } {
+  const result = schema.safeParse(value);
+  if (result.success) return { ok: true, value: result.data };
+
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of result.error.issues) {
+    const key = issue.path.map(String).join(".");
+    if (key && !fieldErrors[key]) fieldErrors[key] = issue.message;
+  }
+
+  return {
+    ok: false,
+    error: "Some of what you entered can't be saved. See the fields marked below.",
+    fieldErrors,
+  };
+}

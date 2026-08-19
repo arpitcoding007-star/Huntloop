@@ -76,3 +76,17 @@ export type { NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
 
 export { Avatar, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
+
+/* ── Form primitives ────────────────────────────────────────────────────── */
+
+export {
+  Field,
+  FormMessage,
+  Input,
+  ListInput,
+  Select,
+  Textarea,
+  joinList,
+  splitList,
+} from "./components/Form";
+export type { FieldProps } from "./components/Form";

@@ -84,6 +84,26 @@ export function canWrite(viewer: Viewer | null): boolean {
 }
 
 /**
+ * May this viewer change the organisation itself — its name, its members?
+ *
+ * A second tier, because the schema has one. `0001` writes `organizations`
+ * and `memberships` behind `has_org_role(..., 'admin')` while every other
+ * table in `0002`–`0004` sits behind `'member'`, so a member editing the org
+ * name is refused by RLS and by nothing before it. Without this the refusal
+ * arrives as a Postgres policy error at the bottom of a form — technically
+ * correct, and unreadable.
+ *
+ * Kept beside `canWrite` rather than derived from it so the two tiers stay
+ * visibly different things. They answer different questions and the schema
+ * treats them differently.
+ */
+export function canAdmin(viewer: Viewer | null): boolean {
+  if (!viewer) return false;
+  if (viewer.kind === "demo") return true;
+  return viewer.role === "owner" || viewer.role === "admin";
+}
+
+/**
  * May this viewer spend money — run a model, start a hunt?
  *
  * The same set as `canWrite` today, and separate on purpose. Model calls are
