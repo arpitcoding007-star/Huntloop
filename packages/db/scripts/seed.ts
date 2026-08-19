@@ -732,14 +732,31 @@ const icpPayload = {
   org_id: org.id,
   product_id: product.id,
   name: "Agent infrastructure teams",
+  /* The key names are a contract, not a convention, and this block used to
+     break it. `criteria` and `negative_criteria` are jsonb, so Postgres
+     accepts any shape — and the only reader, apps/web/lib/data/icp.ts, looks
+     for `segments` / `sizes` / `regions` / `triggers` and `exclusions`, which
+     is also `IcpSummary` in @huntloop/ai and what the onboarding steps
+     collect. This seed wrote `industries` / `employee_count` / `signals`
+     instead.
+
+     Nothing failed. `getActiveIcp` found every key missing, degraded each to
+     an empty list exactly as it is written to, and returned a fully-populated
+     ICP object with nothing in it — so on a seeded project `qualify` and
+     `why_now` were judging companies against an ICP that asserted nothing,
+     and saying so in a tone that reads as a finding. The one shape that must
+     never disagree is the one both sides call the same thing. */
   criteria: {
-    industries: ["AI infrastructure", "Fintech", "Logistics"],
-    employee_count: { min: 10, max: 500 },
-    signals: ["recent funding", "hiring integration or platform engineers"],
+    segments: ["AI infrastructure", "Fintech", "Logistics"],
+    sizes: ["11–50", "51–200", "201–1000"],
+    regions: ["North America", "Europe"],
+    triggers: ["Raised funding in the last 90 days", "Hiring integration or platform engineers"],
   },
   negative_criteria: {
-    industries: ["Consumer social"],
-    notes: "Pre-seed companies with no revenue — no budget, no procurement.",
+    exclusions: [
+      "Consumer social",
+      "Pre-seed companies with no revenue — no budget, no procurement.",
+    ],
   },
   is_active: true,
 };
