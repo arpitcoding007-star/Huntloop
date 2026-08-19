@@ -52,6 +52,12 @@ const PUBLIC_PREFIXES = [
   "/auth",
   "/kitchen-sink",
   "/api/csp-report",
+  /* Both halves of unsubscribe. The person following that link is a prospect
+     with no account, and requiring one in order to stop being emailed is not
+     something this product may do. RFC 8058 aside, a redirect to /login is a
+     dead unsubscribe, and a dead unsubscribe is a spam report. */
+  "/unsubscribe",
+  "/api/unsubscribe",
 ];
 
 /**

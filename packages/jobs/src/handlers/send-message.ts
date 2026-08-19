@@ -149,7 +149,11 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
       ...(message.body_html ? { html: String(message.body_html) } : {}),
       inReplyTo: thread?.lastMessageId ?? null,
       threadId: thread?.providerThreadId ?? null,
-      unsubscribeUrl: unsubscribeUrl(message.unsubscribe_token),
+      /* The header gets the one-click endpoint, the footer above gets the page
+         with a button. RFC 8058's POST comes from the mail client and is an
+         explicit action; the footer link is a GET that mail clients and
+         security gateways prefetch, so it must land somewhere that asks. */
+      unsubscribeUrl: oneClickUrl(message.unsubscribe_token),
     });
 
     // Step 6. Both columns in one update: the CHECK constraint refuses a
@@ -216,14 +220,31 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
 /* ── Pieces ──────────────────────────────────────────────────────────────── */
 
+/**
+ * The two unsubscribe addresses, which are deliberately different pages.
+ *
+ * `/unsubscribe/<token>` asks before acting, because it is reached by a GET
+ * and mail clients prefetch those. `/api/unsubscribe/<token>` acts on POST,
+ * because that POST is RFC 8058 one-click and only ever arrives when somebody
+ * pressed the client's own Unsubscribe button.
+ *
+ * No base URL, no link. A relative unsubscribe URL in an email is a dead link,
+ * and a dead unsubscribe link is worse than none: it converts somebody who
+ * wanted to leave quietly into somebody pressing "report spam".
+ */
 function unsubscribeUrl(token: unknown): string | null {
+  return absolute(token, "/unsubscribe/");
+}
+
+function oneClickUrl(token: unknown): string | null {
+  return absolute(token, "/api/unsubscribe/");
+}
+
+function absolute(token: unknown, prefix: string): string | null {
   if (typeof token !== "string" || !token) return null;
   const base = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  /* No base URL, no link. A relative unsubscribe URL in an email is a dead
-     link, and a dead unsubscribe link is worse than none: it converts somebody
-     who wanted to leave quietly into somebody pressing "report spam". */
   if (!base) return null;
-  return new URL(`/unsubscribe/${token}`, base).toString();
+  return new URL(`${prefix}${token}`, base).toString();
 }
 
 /**

@@ -133,3 +133,72 @@ test.describe("the 404", () => {
     }
   });
 });
+
+test.describe("unsubscribe", () => {
+  /* A structurally valid v4 uuid — the variant nibble matters, and zod checks
+     it. Real tokens come from `gen_random_uuid()`, so they always are. */
+  const TOKEN = "4a3b2c1d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+
+  test("the link in an email reaches a page, not a login redirect", async ({ page }) => {
+    /*
+     * Every message this product sends carries `List-Unsubscribe` and a footer
+     * line pointing here, and for a while both pointed at nothing: the route
+     * did not exist and `/unsubscribe` was not a public path, so a recipient
+     * got a redirect to a sign-in form for an account they do not have.
+     *
+     * A dead unsubscribe is not a broken link. It is a spam report, charged to
+     * the sending domain and to every other campaign running from it.
+     */
+    const response = await page.goto(`/unsubscribe/${TOKEN}`);
+
+    expect(response?.status(), "the page answered").toBe(200);
+    await expect(page).toHaveURL(new RegExp(`/unsubscribe/${TOKEN}$`));
+    await expect(page.getByRole("heading", { name: /unsubscribe/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /unsubscribe me/i })).toBeVisible();
+  });
+
+  test("arriving does not unsubscribe anybody — only the button does", async ({
+    page,
+  }) => {
+    // Mail clients and security gateways prefetch links in messages. A GET
+    // that acted would remove people who never clicked, triggered by the
+    // software trying to protect them.
+    await page.goto(`/unsubscribe/${TOKEN}`);
+    await expect(page.getByText(/you have been unsubscribed/i)).toHaveCount(0);
+  });
+
+  test("with no database it says so rather than reporting success", async ({ page }) => {
+    // §7 aimed at the person with the least reason to forgive it: telling
+    // somebody they will not be emailed again, and then emailing them.
+    await page.goto(`/unsubscribe/${TOKEN}`);
+    await page.getByRole("button", { name: /unsubscribe me/i }).click();
+
+    // Scoped to a paragraph: Next renders its own empty `role="alert"` route
+    // announcer on every page, which an unscoped alert role also matches.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/you have been unsubscribed/i)).toHaveCount(0);
+  });
+
+  test("the one-click endpoint refuses a token that is not one", async ({ request }) => {
+    // RFC 8058 posts to this address. A malformed token is rejected before it
+    // reaches the database rather than becoming a 500.
+    const response = await request.post("/api/unsubscribe/not-a-token");
+    expect(response.status()).toBe(400);
+  });
+
+  test("the one-click endpoint is reachable without a session", async ({ request }) => {
+    /*
+     * The check that matters for deliverability: Gmail posts here with no
+     * cookies at all. Anything other than a straight answer — a redirect to
+     * /login especially — is a failed one-click unsubscribe.
+     *
+     * 503 in demo mode is the honest answer and is not a 3xx.
+     */
+    const response = await request.post(`/api/unsubscribe/${TOKEN}`, {
+      maxRedirects: 0,
+    });
+    expect(response.status(), "must not redirect to a sign-in page").toBe(503);
+  });
+});
