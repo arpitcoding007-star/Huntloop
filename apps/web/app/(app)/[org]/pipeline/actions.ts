@@ -18,9 +18,6 @@ export async function setOpportunityStatusAction(
   opportunityId: string,
   status: string,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(opportunityId);
-  if (!id.success) return fail("That opportunity reference isn't valid.");
-
   /* Parsed against the enum rather than passed through. The column is a
      Postgres enum, so an unrecognised value is error 22P02 — a 500 where a
      sentence belongs — and this endpoint is a public POST like every other. */
@@ -28,6 +25,9 @@ export async function setOpportunityStatusAction(
   if (!parsed.success) return fail("That isn't a stage this pipeline has.");
 
   return mutate(org, "setOpportunityStatus", async ({ db, orgId }) => {
+    const id = uuidSchema.safeParse(opportunityId);
+    if (!id.success) return fail("That opportunity reference isn't valid.");
+
     const { error } = await db
       .from("opportunities")
       .update({ status: parsed.data })

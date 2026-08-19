@@ -47,9 +47,6 @@ export async function setMemberRoleAction(
   membershipId: string,
   role: string,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(membershipId);
-  if (!id.success) return fail("That member reference isn't valid.");
-
   const parsedRole = memberRoleSchema.safeParse(role);
   if (!parsedRole.success) return fail("That isn't a role this organisation has.");
 
@@ -57,6 +54,9 @@ export async function setMemberRoleAction(
     org,
     "setMemberRole",
     async ({ db, orgId }) => {
+      const id = uuidSchema.safeParse(membershipId);
+      if (!id.success) return fail("That member reference isn't valid.");
+
       /* Read first, so the two rules below can be checked against the row
          rather than assumed. Both exist to stop an organisation locking
          itself out, which RLS cannot prevent — the policy asks "are you an
@@ -120,13 +120,13 @@ export async function removeMemberAction(
   org: string,
   membershipId: string,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(membershipId);
-  if (!id.success) return fail("That member reference isn't valid.");
-
   return mutate(
     org,
     "removeMember",
     async ({ db, orgId }) => {
+      const id = uuidSchema.safeParse(membershipId);
+      if (!id.success) return fail("That member reference isn't valid.");
+
       const { data: target, error: readError } = await db
         .from("memberships")
         .select("id, role")
@@ -195,16 +195,14 @@ export async function assignOpportunityAction(
   opportunityId: string,
   ownerId: string | null,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(opportunityId);
-  if (!id.success) return fail("That opportunity reference isn't valid.");
-
-  if (ownerId !== null) {
-    const owner = uuidSchema.safeParse(ownerId);
-    if (!owner.success) return fail("That member reference isn't valid.");
-  }
-
   return mutate(org, "assignOpportunity", async ({ db, orgId }) => {
+    const id = uuidSchema.safeParse(opportunityId);
+    if (!id.success) return fail("That opportunity reference isn't valid.");
+
     if (ownerId !== null) {
+      const owner = uuidSchema.safeParse(ownerId);
+      if (!owner.success) return fail("That member reference isn't valid.");
+
       /* The owner must be a member of *this* org. `owner_id` references
          `auth.users` directly, so the foreign key would happily accept any
          real user id in the system — including one from another tenant. This
@@ -370,13 +368,13 @@ export async function revokeInvitationAction(
   org: string,
   invitationId: string,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(invitationId);
-  if (!id.success) return fail("That invitation reference isn't valid.");
-
   return mutate(
     org,
     "revokeInvitation",
     async ({ db, orgId }) => {
+      const id = uuidSchema.safeParse(invitationId);
+      if (!id.success) return fail("That invitation reference isn't valid.");
+
       const { error } = await db
         .from("invitations")
         .update({ revoked_at: new Date().toISOString() })

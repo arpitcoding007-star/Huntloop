@@ -22,31 +22,61 @@ function watchForErrors(page: import("@playwright/test").Page): string[] {
 }
 
 test.describe("team", () => {
-  test("says why members have no names instead of showing a blank", async ({ page }) => {
+  test("a member is named rather than shown as a uuid", async ({ page }) => {
     /*
-     * TEAM-01. Names live in `auth.users`, which tenants cannot read and which
-     * would need the service-role client this app is forbidden to import. A
-     * blank where a name goes reads as "this person has no name" rather than
-     * "we cannot see it", so the screen states the reason.
+     * TEAM-01. This screen used to show uuids and a sentence explaining that
+     * names live in `auth.users`, which tenants cannot read. `0007`'s
+     * `profiles` — one row per user, written by a trigger and readable only by
+     * co-members — closed that, so the explanation is gone and the name is
+     * there.
+     *
+     * What is asserted is the invariant rather than a fixture's name: no row
+     * in the member list is identified by a bare uuid. The fallback chain is
+     * name, then address, then id, and only the last of those is a failure —
+     * so finding one means the profile join stopped working.
      */
     const errors = watchForErrors(page);
     await page.goto(`/${ORG}/team`);
 
     await expect(page.getByRole("heading", { name: "Team" })).toBeVisible();
-    await expect(page.getByText(/aren.t shown because they live in/i)).toBeVisible();
     await expect(page.getByText(/what each role may do/i)).toBeVisible();
+
+    /* Read through the role control's own label rather than a test id: each
+       row labels its select "Role for <name>", so the accessible name already
+       carries the identity this test is about and no markup exists only to be
+       queried. */
+    const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const labels = await page.getByText(/^Role for /).allInnerTexts();
+    expect(labels.length, "no members rendered").toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label, "a member is identified by a bare uuid").not.toMatch(uuid);
+    }
 
     expect(errors, "the page threw while rendering").toEqual([]);
   });
 
-  test("Invite says why it cannot act", async ({ page }) => {
-    // NAV-03: creating a user is `auth.admin` and needs a server-side path
-    // that does not exist. TEAM-02 in the backlog.
+  test("with no database, inviting says so rather than appearing to work", async ({
+    page,
+  }) => {
+    /*
+     * TEAM-02, and it is built now: `0007` added `invitations`, and the button
+     * that used to be a label opens a real form. What has to stay true is the
+     * §7 rule — in demo mode there is nowhere to write an invitation to, and
+     * the screen says that instead of showing a link nobody can accept.
+     */
     await page.goto(`/${ORG}/team`);
 
-    const invite = page.getByRole("button", { name: /invite/i });
-    await expect(invite).toBeVisible();
-    await expect(invite).toHaveAttribute("aria-disabled", "true");
+    await page.getByRole("button", { name: /^invite$/i }).click();
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+
+    await page.getByLabel(/email/i).fill("dana@example.com");
+    await page.getByRole("button", { name: /create invitation/i }).click();
+
+    // Scoped to a paragraph: Next renders its own empty `role="alert"` route
+    // announcer on every page, which an unscoped alert role also matches.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
   });
 
   test("assignments separate the work nobody owns", async ({ page }) => {
@@ -107,14 +137,26 @@ test.describe("outreach", () => {
     expect(errors, "the page threw while rendering").toEqual([]);
   });
 
-  test("says a mailbox cannot be connected yet, rather than offering it", async ({
+  test("names what is missing before offering to connect a mailbox", async ({
     page,
   }) => {
+    /*
+     * Connecting is built — an OAuth flow per provider, and tokens encrypted
+     * before they are stored. Three deployment facts have to be true before it
+     * can run, though: a database, credentials for a provider, and an
+     * encryption key.
+     *
+     * In demo mode the first is missing, and the control says so rather than
+     * starting a flow that cannot finish. That is the assertion worth keeping
+     * from when this was genuinely unbuilt: the reason is on the control, not
+     * discovered after the user has granted access to their mail.
+     */
     await page.goto(`/${ORG}/outreach`);
 
     const connect = page.getByRole("button", { name: /connect a mailbox/i });
     await expect(connect).toBeVisible();
     await expect(connect).toHaveAttribute("aria-disabled", "true");
+    await expect(connect).toHaveAttribute("title", /no database connected/i);
     await expect(page.getByText(/no mailbox is connected/i)).toBeVisible();
   });
 });
@@ -145,13 +187,54 @@ test.describe("inbox", () => {
     await expect(page.getByText(/\d+ evidence/).first()).toBeVisible();
   });
 
-  test("Reply says why it cannot act", async ({ page }) => {
-    // Sending needs a connected mailbox, and there is no OAuth flow or token
-    // storage. A reply box would compose a message with nowhere to send it.
+  test("an unsent message says which of the two kinds of unsent it is", async ({
+    page,
+  }) => {
+    /*
+     * Both are "not sent" and only one is waiting on a person. Collapsing them
+     * into one badge hides the approval queue inside the send queue, so the
+     * reader cannot tell which messages are theirs to act on — which is §46's
+     * ladder made invisible at the point it applies.
+     */
     await page.goto(`/${ORG}/inbox`);
 
-    const reply = page.getByRole("button", { name: /^reply$/i }).first();
-    await expect(reply).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByText(/awaiting approval/i).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^approve$/i }).first()).toBeVisible();
+  });
+
+  test("the reply box queues rather than claiming to send", async ({ page }) => {
+    /*
+     * "Queue reply", because that is what happens: the action writes an
+     * approved message and the runner sends it on the next tick. A button
+     * labelled Send would be found out the first time somebody watched for the
+     * message to show as sent.
+     *
+     * In demo mode there is nowhere to write it, and the screen says so — the
+     * §7 rule the whole demo configuration exists to keep.
+     */
+    await page.goto(`/${ORG}/inbox`);
+
+    await page.getByRole("button", { name: /^reply$/i }).first().click();
+    await page.getByLabel(/your reply/i).fill("Thursday works — I will send an invite.");
+    await page.getByRole("button", { name: /queue reply/i }).click();
+
+    // Scoped to a paragraph: Next renders its own empty `role="alert"` route
+    // announcer on every page, which an unscoped alert role also matches.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
+  });
+
+  test("a conversation with nothing incoming says why it cannot be replied to", async ({
+    page,
+  }) => {
+    // A reply goes to whoever wrote last, so a thread that has only ever sent
+    // has no address to answer. The control says which, rather than failing
+    // after the user has written something.
+    await page.goto(`/${ORG}/inbox`);
+
+    const replies = page.getByRole("button", { name: /^reply$/i });
+    await expect(replies.nth(1)).toHaveAttribute("aria-disabled", "true");
   });
 });
 

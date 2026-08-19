@@ -535,7 +535,7 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
   expectEqual(
     "every sweeper is enqueued, and nothing else is",
     enqueued.map((row) => row.job_name).sort(),
-    ["advance_enrollments", "schedule_scans", "schedule_syncs"],
+    ["advance_enrollments", "schedule_scans", "schedule_sends", "schedule_syncs"],
   );
   expect(
     "each carries no org — a sweeper is the cross-tenant question",

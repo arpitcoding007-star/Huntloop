@@ -147,10 +147,17 @@ function mapMessage(row: any): Message {
 /**
  * Demo threads.
  *
- * One reply that needs answering and one bounce, because those are the two
- * states an inbox exists to surface. A demo of only successful sends would
- * make the failure rendering — the part §78 is about — the code path nobody
- * ever looks at.
+ * One reply that needs answering, one bounce, and one draft waiting on a
+ * person, because those are the three states an inbox exists to surface. A
+ * demo of only successful sends would make the failure rendering — the part
+ * §78 is about — and the approval queue — the part §46 is about — the two code
+ * paths nobody ever looks at.
+ *
+ * The send times are load-bearing rather than decoration. A message with a
+ * `delivered` or `opened` event has, by definition, gone; leaving `sentAt`
+ * null on one would render "awaiting approval" beside "opened", which is a
+ * demo that contradicts itself on the one screen whose whole subject is not
+ * claiming a message was sent when it was not.
  */
 const DEMO: Thread[] = [
   {
@@ -171,8 +178,8 @@ const DEMO: Thread[] = [
           "Saw you shipped an agent that moves funds last month — how are you gating it today?",
         aiGenerated: true,
         evidenceCount: 2,
-        sentAt: null,
-        scheduledAt: null,
+        sentAt: "2026-08-10T09:00:00Z",
+        scheduledAt: "2026-08-10T08:58:00Z",
         createdAt: "2026-08-10T09:00:00Z",
         latestEvent: { kind: "opened", occurredAt: "2026-08-10T11:20:00Z" },
       },
@@ -188,6 +195,21 @@ const DEMO: Thread[] = [
         createdAt: "2026-08-10T14:05:00Z",
         latestEvent: { kind: "replied", occurredAt: "2026-08-10T14:05:00Z" },
       },
+      {
+        /* Drafted and stopped for. At autonomy 0–1 this is where the engine
+           leaves a message, and it is the state the Approve control acts on. */
+        id: "demo-message-3",
+        direction: "outbound",
+        subject: "Re: The policy layer your agents are missing",
+        bodyText:
+          "A policy layer that sits in front of the call rather than inside it — happy to walk through how that changes the audit trail.",
+        aiGenerated: true,
+        evidenceCount: 1,
+        sentAt: null,
+        scheduledAt: null,
+        createdAt: "2026-08-10T15:40:00Z",
+        latestEvent: null,
+      },
     ],
   },
   {
@@ -201,14 +223,16 @@ const DEMO: Thread[] = [
     awaitingUs: false,
     messages: [
       {
-        id: "demo-message-3",
+        id: "demo-message-4",
         direction: "outbound",
         subject: "Freight partners and booking APIs",
         bodyText: "Noticed your partner network each expose their own booking APIs.",
         aiGenerated: true,
         evidenceCount: 1,
-        sentAt: null,
-        scheduledAt: null,
+        /* Sent, and then it bounced. §78: the send happened and the delivery
+           did not, and those are two different facts about one message. */
+        sentAt: "2026-08-09T08:30:00Z",
+        scheduledAt: "2026-08-09T08:29:00Z",
         createdAt: "2026-08-09T08:30:00Z",
         latestEvent: { kind: "bounced", occurredAt: "2026-08-09T08:31:00Z" },
       },

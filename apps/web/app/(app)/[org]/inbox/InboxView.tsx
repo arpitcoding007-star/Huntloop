@@ -7,14 +7,20 @@ import {
   Card,
   CardBody,
   EmptyState,
+  Field,
   FormMessage,
   Freshness,
   SectionLabel,
   Select,
+  Textarea,
 } from "@huntloop/ui";
 import { AlertTriangle, Inbox as InboxIcon, Sparkles } from "lucide-react";
 import type { Message, MessageEventKind, Thread } from "../../../../lib/data/inbox";
-import { setThreadStatusAction } from "./actions";
+import {
+  approveMessageAction,
+  replyToThreadAction,
+  setThreadStatusAction,
+} from "./actions";
 
 /**
  * The inbox — `threads` and `messages` from `0004`.
@@ -148,6 +154,13 @@ function ThreadCard({
   onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
 }) {
   const [pending, start] = useTransition();
+  const [replying, setReplying] = useState(false);
+
+  /* A reply goes to whoever wrote last, so a thread with nothing incoming has
+     no address to answer. Derived here rather than loaded: the messages are
+     already on the client, and asking the server would be asking it something
+     the page can already see. */
+  const canReply = thread.messages.some((m) => m.direction === "inbound");
 
   return (
     <Card>
@@ -196,29 +209,64 @@ function ThreadCard({
                 </Select>
               </label>
             )}
-            <Button
-              size="sm"
-              variant="secondary"
-              pending="Replying isn't built yet — it needs a connected mailbox, and there's no OAuth flow or token storage."
-            >
-              Reply
-            </Button>
+            {canWrite && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setReplying((open) => !open)}
+                pending={
+                  canReply
+                    ? undefined
+                    : "Nothing has arrived in this conversation yet, so there is no address to answer."
+                }
+              >
+                Reply
+              </Button>
+            )}
           </div>
         </div>
 
         <ol className="space-y-3">
           {thread.messages.map((m) => (
             <li key={m.id}>
-              <MessageRow message={m} now={now} />
+              <MessageRow
+                org={org}
+                message={m}
+                now={now}
+                canWrite={canWrite}
+                onResult={onResult}
+              />
             </li>
           ))}
         </ol>
+
+        {replying && canWrite && canReply && (
+          <ReplyBox
+            org={org}
+            threadId={thread.id}
+            onDone={() => setReplying(false)}
+            onResult={onResult}
+          />
+        )}
       </CardBody>
     </Card>
   );
 }
 
-function MessageRow({ message, now }: { message: Message; now: string }) {
+function MessageRow({
+  org,
+  message,
+  now,
+  canWrite,
+  onResult,
+}: {
+  org: string;
+  message: Message;
+  now: string;
+  canWrite: boolean;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
+}) {
+  const [pending, start] = useTransition();
   const failed =
     message.latestEvent && EVENT_TONE[message.latestEvent.kind] === "danger";
 
@@ -264,11 +312,42 @@ function MessageRow({ message, now }: { message: Message; now: string }) {
         )}
 
         {message.direction === "outbound" && !message.sentAt && (
-          /* Not "sent". `messages_sent_has_provider_id` in 0004 refuses a send
-             time without the provider id that proves it left, so an outbound
-             message with no `sent_at` genuinely has not gone. */
-          <Badge variant="neutral">Not sent</Badge>
+          /* Two states, not one. Both are "not sent", and only one of them is
+             waiting on a person — which is the difference between a queue you
+             have to work and a queue you have to wait for.
+
+             Neither says "sent". `messages_sent_has_provider_id` in 0004
+             refuses a send time without the provider id that proves it left,
+             so an outbound message with no `sent_at` genuinely has not gone. */
+          <Badge variant={message.scheduledAt ? "neutral" : "warning"}>
+            {message.scheduledAt ? "Queued to send" : "Awaiting approval"}
+          </Badge>
         )}
+
+        {/* §46's ladder, at the point it acts on. At autonomy 0–1 the engine
+            writes a message and stops, and this is the human step it stops
+            for — so the control lives on the message rather than on the
+            conversation. */}
+        {canWrite &&
+          message.direction === "outbound" &&
+          !message.sentAt &&
+          !message.scheduledAt && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await approveMessageAction(org, message.id);
+                  onResult(
+                    res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                  );
+                })
+              }
+            >
+              {pending ? "Approving…" : "Approve"}
+            </Button>
+          )}
 
         <span className="ml-auto">
           {message.createdAt && (
@@ -285,6 +364,74 @@ function MessageRow({ message, now }: { message: Message; now: string }) {
           {message.bodyText}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Write a reply, and say plainly what pressing send does.
+ *
+ * "Queue" rather than "Send", because that is what happens: the action writes
+ * an approved message and the runner sends it on the next tick. A button
+ * labelled Send on a screen where nothing sends synchronously would be a small
+ * lie that gets found out the first time somebody watches for the message to
+ * appear as sent — §7, on the screen where the user is most likely to be
+ * watching for exactly that.
+ */
+function ReplyBox({
+  org,
+  threadId,
+  onDone,
+  onResult,
+}: {
+  org: string;
+  threadId: string;
+  onDone: () => void;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [pending, start] = useTransition();
+
+  return (
+    <div className="rounded-md border border-line bg-canvas p-3">
+      <Field label="Your reply">
+        {(field) => (
+          <Textarea
+            {...field}
+            value={body}
+            rows={4}
+            disabled={pending}
+            placeholder="Written by you, and sent as you — not drafted by Huntloop."
+            onChange={(e) => setBody(e.target.value)}
+          />
+        )}
+      </Field>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={pending}
+          pending={body.trim() ? undefined : "Write something first."}
+          onClick={() =>
+            start(async () => {
+              const res = await replyToThreadAction(org, threadId, body);
+              onResult(
+                res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+              );
+              if (res.ok) {
+                setBody("");
+                onDone();
+              }
+            })
+          }
+        >
+          {pending ? "Queueing…" : "Queue reply"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

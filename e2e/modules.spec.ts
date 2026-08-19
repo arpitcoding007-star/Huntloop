@@ -224,17 +224,23 @@ test.describe("sources", () => {
     expect(errors, "the page threw while rendering").toEqual([]);
   });
 
-  test("says no evidence is attributed rather than inventing a count", async ({
+  test("an unrun source says nothing was read rather than inventing a count", async ({
     page,
   }) => {
     /*
-     * The number here used to be "22 opportunities produced", invented. The
-     * real quantity — evidence attributed to the source — is zero, because
-     * nothing scans yet. A fabricated 22 makes a source list that has never
-     * run look like one that is working.
+     * The number here used to be "22 opportunities produced", invented. A
+     * fabricated 22 makes a source list that has never run look like one that
+     * is working.
+     *
+     * The honest pair is documents read and evidence attributed, and the
+     * distinction between them is the diagnosis: "40 documents, no evidence"
+     * is a source being read that publishes nothing this ICP cares about,
+     * while "nothing read" is a source that is not being scanned at all. A
+     * source that has never run says the second and gives no count for the
+     * first.
      */
     await page.goto(`/${ORG}/sources`);
-    await expect(page.getByText(/no evidence attributed yet/i).first()).toBeVisible();
+    await expect(page.getByText(/nothing read yet/i).first()).toBeVisible();
     await expect(page.getByText(/never scanned/i).first()).toBeVisible();
   });
 

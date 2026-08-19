@@ -127,10 +127,10 @@ export async function deleteMemoryAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That memory reference isn't valid.");
-
   return mutate(org, "deleteMemory", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That memory reference isn't valid.");
+
     const { error } = await db
       .from("memories")
       .update({ deleted_at: new Date().toISOString() })

@@ -122,10 +122,10 @@ export async function deleteCompanyAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That company reference isn't valid.");
-
   return mutate(org, "deleteCompany", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That company reference isn't valid.");
+
     const { error } = await db
       .from("companies")
       .update({ deleted_at: new Date().toISOString() })

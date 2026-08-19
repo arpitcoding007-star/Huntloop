@@ -121,3 +121,20 @@ export async function mutate<T>(
 /** Re-exported so a module needing a raw client does not import two files. */
 export { getDb, resolveDataSource };
 export type { DataSource, TenantClient };
+
+/**
+ * The signed-in user's id, or null.
+ *
+ * Lifted here for the same reason `requireOrgId` was: it had been written
+ * privately in two modules, a third needed it, and three copies of an auth
+ * call is how one of them ends up reading the cheaper `getSession()` — which
+ * trusts the cookie without verifying it.
+ *
+ * Not an authorization check. `mutate` has already established membership by
+ * the time a caller has a `db` to pass; this answers "which person", for the
+ * rows that record one.
+ */
+export async function currentUserId(db: TenantClient): Promise<string | null> {
+  const { data } = await db.auth.getUser();
+  return data.user?.id ?? null;
+}

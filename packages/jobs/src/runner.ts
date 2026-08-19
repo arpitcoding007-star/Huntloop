@@ -171,6 +171,7 @@ const SWEEPER_ORG = "00000000-0000-0000-0000-000000000000";
 const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   "schedule_scans",
   "schedule_syncs",
+  "schedule_sends",
   "advance_enrollments",
 ]);
 

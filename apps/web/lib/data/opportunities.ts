@@ -2,6 +2,7 @@ import type { TenantClient } from "@huntloop/db";
 import type { EvidenceItem } from "@huntloop/ui";
 import { OPPORTUNITIES, findOpportunity } from "../fixtures/opportunities";
 import { currentViewer } from "./membership";
+import { currentUserId } from "./org";
 import { load, type Loaded } from "./source";
 import {
   byPriorityThenScore,
@@ -228,15 +229,6 @@ async function evidenceFor(
 
   if (error) throw new Error(`getOpportunity evidence: ${error.message}`);
   return mapEvidence((data ?? []) as unknown as EvidenceQueryRow[]);
-}
-
-/**
- * The signed-in user's id, used only to label an owner as "You". See the note
- * beside `owner` in `opportunity-map.ts` for why nothing else is looked up.
- */
-async function currentUserId(db: TenantClient): Promise<string | null> {
-  const { data } = await db.auth.getUser();
-  return data.user?.id ?? null;
 }
 
 /* ── Fixture → screen shape ──────────────────────────────────────────────── */

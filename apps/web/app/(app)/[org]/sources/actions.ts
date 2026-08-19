@@ -100,10 +100,10 @@ export async function setSourceEnabledAction(
   id: string,
   enabled: boolean,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That source reference isn't valid.");
-
   return mutate(org, "setSourceEnabled", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That source reference isn't valid.");
+
     const { error } = await db
       .from("sources")
       .update({ is_enabled: enabled })
@@ -134,10 +134,10 @@ export async function deleteSourceAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That source reference isn't valid.");
-
   return mutate(org, "deleteSource", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That source reference isn't valid.");
+
     const { error } = await db
       .from("sources")
       .update({ deleted_at: new Date().toISOString(), is_enabled: false })
@@ -278,15 +278,15 @@ export async function scanSourceNowAction(
   org: string,
   sourceId: string,
 ): Promise<ActionResult<{ queued: boolean }>> {
-  const parsed = uuidSchema.safeParse(sourceId);
-  if (!parsed.success) return fail("That source reference isn't valid.");
-
   const viewer = await currentViewer(org);
   if (!canSpend(viewer)) {
     return fail("Your role is read-only, so you cannot start a scan.");
   }
 
   return mutate(org, "scanSourceNow", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(sourceId);
+    if (!parsed.success) return fail("That source reference isn't valid.");
+
     if (!isEngineRunning()) {
       return fail(
         "Nothing is running the scanner on this deployment. Set CRON_SECRET in " +
@@ -350,15 +350,15 @@ export async function setScanIntervalAction(
   sourceId: string,
   minutes: number,
 ): Promise<ActionResult<undefined>> {
-  const id = uuidSchema.safeParse(sourceId);
-  if (!id.success) return fail("That source reference isn't valid.");
-
   const parsed = scanIntervalSchema.safeParse(minutes);
   if (!parsed.success) {
     return fail("That isn't one of the intervals a source can be read on.");
   }
 
   return mutate(org, "setScanInterval", async ({ db, orgId }) => {
+    const id = uuidSchema.safeParse(sourceId);
+    if (!id.success) return fail("That source reference isn't valid.");
+
     const { error } = await db
       .from("sources")
       .update({ scan_interval_minutes: parsed.data })

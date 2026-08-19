@@ -2,7 +2,7 @@ import "server-only";
 import type { TenantClient } from "@huntloop/db";
 import { OPPORTUNITIES } from "../fixtures/opportunities";
 import type { Role } from "./membership";
-import { requireOrgId } from "./org";
+import { currentUserId, requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
 /**
@@ -152,11 +152,6 @@ export async function listAssignments(orgSlug: string): Promise<Loaded<Assignmen
 }
 
 /** The signed-in user's id, used only to mark a row as yours. */
-async function currentUserId(db: TenantClient): Promise<string | null> {
-  const { data } = await db.auth.getUser();
-  return data.user?.id ?? null;
-}
-
 /**
  * uuid → name and email, for the ids on this page only.
  *

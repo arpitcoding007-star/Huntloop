@@ -329,3 +329,21 @@ export function parseForm<T>(
     fieldErrors,
   };
 }
+
+/**
+ * The body of a reply a person typed.
+ *
+ * Bounded at the same 4 000 characters the schema's `body_text` is comfortable
+ * with, and trimmed rather than rejected for whitespace — a reply pasted from
+ * another client arrives with a trailing newline, and refusing that would be
+ * refusing the commonest way of writing one.
+ *
+ * The lower bound is one character rather than some minimum sentence length.
+ * "Yes." is a complete reply, and a product that argued with it would be
+ * wrong about how sales conversations end.
+ */
+export const replyBodySchema = z
+  .string()
+  .trim()
+  .min(1, "A reply needs something in it.")
+  .max(4000, "That reply is longer than an email should be. Trim it to 4 000 characters.");

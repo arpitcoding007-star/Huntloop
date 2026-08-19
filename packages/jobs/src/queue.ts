@@ -41,6 +41,7 @@ export type JobName =
   | "score_opportunity"
   | "enrich_person"
   | "schedule_syncs"
+  | "schedule_sends"
   | "sync_mailbox"
   | "advance_enrollments"
   | "send_message";

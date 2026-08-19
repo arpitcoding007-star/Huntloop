@@ -112,10 +112,10 @@ export async function activateIcpAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That ICP reference isn't valid.");
-
   return mutate(org, "activateIcp", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That ICP reference isn't valid.");
+
     const { error: clearError } = await db
       .from("icps")
       .update({ is_active: false })
@@ -150,10 +150,10 @@ export async function deleteIcpAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That ICP reference isn't valid.");
-
   return mutate(org, "deleteIcp", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That ICP reference isn't valid.");
+
     const { error } = await db
       .from("icps")
       .update({ deleted_at: new Date().toISOString(), is_active: false })
@@ -229,10 +229,10 @@ export async function deletePersonaAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That persona reference isn't valid.");
-
   return mutate(org, "deletePersona", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That persona reference isn't valid.");
+
     const { error } = await db
       .from("personas")
       .update({ deleted_at: new Date().toISOString() })

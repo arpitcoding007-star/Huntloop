@@ -109,10 +109,10 @@ export async function deleteCampaignAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That campaign reference isn't valid.");
-
   return mutate(org, "deleteCampaign", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That campaign reference isn't valid.");
+
     /* Soft delete, and paused in the same statement. `enrollments` and
        `messages` reference this campaign, and a campaign that is only marked
        deleted while still `active` is a campaign a scheduler would go on
@@ -144,15 +144,15 @@ export async function createSequenceAction(
   campaignId: string,
   name: string,
 ): Promise<ActionResult<{ id: string }>> {
-  const parsed = uuidSchema.safeParse(campaignId);
-  if (!parsed.success) return fail("That campaign reference isn't valid.");
-
   const trimmed = name.trim();
   if (!trimmed || trimmed.length > 160) {
     return fail("Give the sequence a name of 160 characters or fewer.");
   }
 
   return mutate(org, "createSequence", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(campaignId);
+    if (!parsed.success) return fail("That campaign reference isn't valid.");
+
     const { data, error } = await db
       .from("sequences")
       .insert({ org_id: orgId, campaign_id: parsed.data, name: trimmed })
@@ -242,10 +242,10 @@ export async function deleteStepAction(
   org: string,
   id: string,
 ): Promise<ActionResult<undefined>> {
-  const parsed = uuidSchema.safeParse(id);
-  if (!parsed.success) return fail("That step reference isn't valid.");
-
   return mutate(org, "deleteStep", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That step reference isn't valid.");
+
     const { error } = await db
       .from("sequence_steps")
       .update({ deleted_at: new Date().toISOString() })
