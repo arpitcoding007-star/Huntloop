@@ -4,6 +4,7 @@ import {
   orgNameSchema,
   orgSlugSchema,
   parseInput,
+  qualificationSchema,
   urlInputSchema,
   whyNowRequestSchema,
 } from "./validation";
@@ -173,5 +174,93 @@ describe("parseInput", () => {
       expect(bad.error).not.toContain(secret);
       expect(bad.error).not.toContain("script");
     }
+  });
+});
+
+describe("qualificationSchema", () => {
+  /**
+   * The verdict round-trips through the browser before it is saved, so by the
+   * time `saveQualificationAction` sees it, it is a request body like any
+   * other and its types are gone. These are the bounds that stand between a
+   * crafted POST and the columns it lands in.
+   */
+  const valid = {
+    url: "https://alphio.ai/",
+    canonicalDomain: "alphio.ai",
+    companyName: "Alphio AI",
+    priority: "hot" as const,
+    priorityReason: "Strong fit and a funding trigger three days old.",
+    score: 91,
+    scoreConfidence: "medium" as const,
+    explanation: "Series A closed this week and the launch post names the problem.",
+    dimensions: [{ label: "ICP fit" as const, value: 94, note: null }],
+    summary: "They build autonomous trading agents.",
+    recommendation: "Reach out to the CTO about custody permissions.",
+    evidence: [
+      {
+        claim: "Alphio AI closed a $12M Series A.",
+        kind: "fact" as const,
+        confidence: "high" as const,
+        sourceUrl: "https://techcrunch.com/",
+        excerpt: null,
+      },
+    ],
+  };
+
+  it("accepts a verdict of the shape the qualifier produces", () => {
+    expect(qualificationSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("refuses a score outside 0–100, which the column also refuses", () => {
+    // Rejected here rather than at Postgres, so the user reads a sentence
+    // instead of a check-constraint violation.
+    expect(qualificationSchema.safeParse({ ...valid, score: 900 }).success).toBe(false);
+    expect(qualificationSchema.safeParse({ ...valid, score: -1 }).success).toBe(false);
+  });
+
+  it("refuses a priority the enum does not have", () => {
+    expect(qualificationSchema.safeParse({ ...valid, priority: "urgent" }).success).toBe(
+      false,
+    );
+  });
+
+  it("refuses a dimension label the scorer does not define", () => {
+    // §51's eight dimensions are the whole list. An invented ninth would be
+    // silently dropped by the writer, which is worse than being refused.
+    expect(
+      qualificationSchema.safeParse({
+        ...valid,
+        dimensions: [{ label: "Vibes", value: 100, note: null }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps 'unknown' as a dimension value rather than coercing it", () => {
+    // §78: unknown is a value, not a missing number. Turning it into 0 would
+    // assert a measurement nobody made.
+    const parsed = qualificationSchema.safeParse({
+      ...valid,
+      dimensions: [{ label: "Buying likelihood" as const, value: "unknown", note: null }],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.dimensions[0]!.value).toBe("unknown");
+  });
+
+  it("bounds the evidence list, because every entry becomes a row", () => {
+    expect(
+      qualificationSchema.safeParse({
+        ...valid,
+        evidence: Array.from({ length: 41 }, () => valid.evidence[0]!),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("refuses a source URL that is not a URL", () => {
+    expect(
+      qualificationSchema.safeParse({
+        ...valid,
+        evidence: [{ ...valid.evidence[0]!, sourceUrl: "javascript:alert(1)" }],
+      }).success,
+    ).toBe(false);
   });
 });

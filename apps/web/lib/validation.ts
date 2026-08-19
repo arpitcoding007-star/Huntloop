@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CLAIM_KINDS, CONFIDENCES, PRIORITIES } from "@huntloop/ai";
+import { CLAIM_KINDS, CONFIDENCES, PRIORITIES, SCORE_DIMENSIONS } from "@huntloop/ai";
 
 /**
  * Schemas for everything that crosses a Server Action boundary.
@@ -81,6 +81,33 @@ export const authModeSchema = z.enum(["login", "signup"]);
  * the point — 2048 is the conventional practical URL limit.
  */
 export const urlInputSchema = z.string().trim().min(1).max(2048);
+
+/**
+ * A URL that is safe to render as a link.
+ *
+ * `z.url()` checks that a string parses as a URL, which `javascript:alert(1)`
+ * does. That matters here and not in most places: evidence `source_url` is
+ * stored and then rendered as an `href` by `EvidenceList`, so a scheme check
+ * is what stands between a crafted save and stored XSS on the opportunity page.
+ *
+ * http and https only — not because other schemes are exotic, but because a
+ * citation is a web page. `mailto:` and `data:` are not sources anyone can
+ * click through to and check, which is the entire purpose of the field.
+ */
+export const httpUrlSchema = z
+  .string()
+  .max(2048)
+  .refine(
+    (value) => {
+      try {
+        const { protocol } = new URL(value);
+        return protocol === "http:" || protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "A source has to be an http or https address." },
+  );
 
 const shortText = z.string().max(400);
 const stringList = z.array(shortText).max(50);
@@ -347,3 +374,55 @@ export const replyBodySchema = z
   .trim()
   .min(1, "A reply needs something in it.")
   .max(4000, "That reply is longer than an email should be. Trim it to 4 000 characters.");
+
+/**
+ * A qualification, on its way back from the browser to be saved.
+ *
+ * ── Why this is validated at all ─────────────────────────────────────────
+ *
+ * Because the round trip goes through the client. `analyzeUrlAction` produces
+ * the verdict on the server, the page renders it, and "Save as an opportunity"
+ * sends it back — at which point it is a request body like any other, and the
+ * types it arrived with are gone. Nothing stops a caller posting a verdict the
+ * model never reached, so the columns it lands in are bounded here: the score
+ * is 0–100, the priority is one of four, and every dimension label is one the
+ * scorer defines.
+ *
+ * ── Why re-running the model instead would be worse ──────────────────────
+ *
+ * It is the obvious alternative — take the URL, qualify again, save what comes
+ * back — and it would mean the thing saved is not the thing the user read.
+ * Qualification is not deterministic, so the verdict on screen and the verdict
+ * in the database could disagree, and the user would have approved one and
+ * kept the other. Bounding the payload is the smaller problem.
+ */
+const dimensionSchema = z.object({
+  label: z.enum(SCORE_DIMENSIONS),
+  value: z.union([z.number().int().min(0).max(100), z.literal("unknown")]),
+  note: z.string().max(500).nullable().optional(),
+});
+
+const qualificationEvidenceSchema = z.object({
+  claim: z.string().min(1).max(2000),
+  kind: z.enum(CLAIM_KINDS),
+  confidence: z.enum(CONFIDENCES).nullable(),
+  sourceUrl: httpUrlSchema.nullable(),
+  excerpt: z.string().max(2000).nullable(),
+});
+
+export const qualificationSchema = z.object({
+  url: httpUrlSchema,
+  canonicalDomain: z.string().min(1).max(253),
+  companyName: z.string().min(1).max(200),
+  priority: z.enum(PRIORITIES),
+  priorityReason: z.string().min(1).max(2000),
+  score: z.number().int().min(0).max(100),
+  scoreConfidence: z.enum(CONFIDENCES),
+  explanation: z.string().min(1).max(4000),
+  dimensions: z.array(dimensionSchema).max(16),
+  summary: z.string().max(4000),
+  recommendation: z.string().max(4000),
+  /* Bounded, because every entry becomes a row. A verdict with two hundred
+     claims is not a verdict a model produced. */
+  evidence: z.array(qualificationEvidenceSchema).max(40),
+});

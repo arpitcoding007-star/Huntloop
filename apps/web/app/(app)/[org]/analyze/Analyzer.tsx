@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
   Badge,
@@ -9,6 +10,7 @@ import {
   CardHeader,
   ClaimBadge,
   ErrorState,
+  FormMessage,
   RateLimited,
   EvidenceList,
   LoadingSkeleton,
@@ -22,6 +24,7 @@ import { CalendarClock, Globe, Search } from "lucide-react";
 import type { Qualification, Urgency } from "@huntloop/ai";
 import {
   analyzeUrlAction,
+  saveQualificationAction,
   whyNowAction,
   type AnalyzeState,
   type WhyNowState,
@@ -90,12 +93,21 @@ export function Analyzer({ org }: { org: string }) {
   const [state, setState] = useState<AnalyzeState>({});
   const [timing, setTiming] = useState<WhyNowState | "running" | null>(null);
   const [, startTransition] = useTransition();
+  const [saving, startSaving] = useTransition();
+  /* The id comes back with the success, so "Open it" can link straight to the
+     row that was just written rather than to a list the user has to search. */
+  const [saved, setSaved] = useState<
+    { ok: true; message?: string; id?: string } | { ok: false; error: string } | null
+  >(null);
 
   function analyze(e: React.FormEvent) {
     e.preventDefault();
     setPhase("running");
     setState({});
     setTiming(null);
+    /* A previous save belongs to the previous verdict. Leaving it would put
+       "Acme saved" under a fresh analysis of somebody else. */
+    setSaved(null);
     startTransition(async () => {
       const next = await analyzeUrlAction(org, url);
       setState(next);
@@ -387,6 +399,7 @@ export function Analyzer({ org }: { org: string }) {
                 setPhase("idle");
                 setUrl("");
                 setState({});
+                setSaved(null);
               }}
             >
               Analyze another
@@ -394,30 +407,45 @@ export function Analyzer({ org }: { org: string }) {
             {q.priority !== "ignore" && (
               <>
                 {/*
-                  The reason here was "Saving needs the database — not
-                  connected yet", written when that was true. The database is
-                  now migrated and seeded, so the sentence became false without
-                  anything touching this file (audit UX-03) — the same shape as
-                  FEAT-07, and the reason a disabled state must never name a
-                  condition some other file can quietly satisfy.
+                  UX-05, closed: this is the edge that turns four screens into
+                  a loop, and until now the verdict lived on this page until you
+                  navigated away.
 
-                  What is actually missing is the writer: nothing in
-                  `lib/data/opportunities.ts` inserts. That is UX-05, and it is
-                  the edge that turns four screens into a loop.
+                  Only for a verdict that is not IGNORE. Saving one would file
+                  a row whose own recommendation is "do not contact them", which
+                  is a list entry nobody wants and a count on a dashboard that
+                  means nothing.
                 */}
                 <Button
                   variant="primary"
-                  pending="Saving a qualification isn't built yet — nothing writes opportunities."
+                  disabled={saving}
+                  onClick={() =>
+                    startSaving(async () => {
+                      const outcome = await saveQualificationAction(org, q);
+                      setSaved(
+                        outcome.ok
+                          ? { ok: true, message: outcome.message, id: outcome.data.opportunityId }
+                          : { ok: false, error: outcome.error },
+                      );
+                    })
+                  }
                 >
-                  Save as an opportunity
+                  {saving ? "Saving…" : "Save as an opportunity"}
                 </Button>
-                <span className="text-[12px] text-fg-muted">
-                  Nothing writes opportunities yet, so this verdict lives only
-                  on this page.
-                </span>
+                {saved?.ok && saved.id && (
+                  <Button
+                    variant="secondary"
+                    href={`/${org}/opportunities/${saved.id}`}
+                    linkComponent={Link}
+                  >
+                    Open it
+                  </Button>
+                )}
               </>
             )}
           </div>
+
+          {saved && <FormMessage result={saved} />}
         </div>
       )}
     </div>
