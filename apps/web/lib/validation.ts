@@ -426,3 +426,22 @@ export const qualificationSchema = z.object({
      claims is not a verdict a model produced. */
   evidence: z.array(qualificationEvidenceSchema).max(40),
 });
+
+/**
+ * A question for the per-opportunity agent (§19).
+ *
+ * Bounded at 2 000 characters, which is `MAX_QUESTION_CHARS` in the task. A
+ * question is a sentence or two; the cap is there because the field is a paste
+ * target and the text becomes part of a prompt somebody pays for.
+ *
+ * No content rules beyond that, deliberately. The question is wrapped as
+ * untrusted before it reaches the model and the answer's citations are
+ * constrained to evidence that was actually gathered, so a question trying to
+ * plant a fact cannot succeed — filtering phrasing here would be theatre on
+ * top of a control that already holds.
+ */
+export const agentQuestionSchema = z
+  .string()
+  .trim()
+  .min(1, "Ask something first.")
+  .max(2000, "That question is longer than the agent will read. Trim it to 2 000 characters.");

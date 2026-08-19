@@ -17,7 +17,8 @@ import { ArrowLeft, ExternalLink, Linkedin, Mail } from "lucide-react";
 import { getOpportunity } from "../../../../../lib/data/opportunities";
 import { listCampaignTargets } from "../../../../../lib/data/outreach";
 import { listMembers } from "../../../../../lib/data/team";
-import { canWrite, currentViewer } from "../../../../../lib/data/membership";
+import { canSpend, canWrite, currentViewer } from "../../../../../lib/data/membership";
+import { getConversation } from "../../../../../lib/data/conversation";
 import { AgentPanel } from "./AgentPanel";
 import { OpportunityActions } from "./OpportunityActions";
 
@@ -48,15 +49,23 @@ export default async function OpportunityPage({
 }) {
   const { org, id } = await params;
 
-  const [{ data: o }, viewer, { data: members }, { data: campaigns }] = await Promise.all([
-    getOpportunity(org, id),
-    currentViewer(org),
-    /* Both loaded here rather than fetched when a control opens: whether there
-       is anybody to assign to, or any campaign to add to, is a fact about the
-       workspace that the control should know before it is pressed. */
-    listMembers(org),
-    listCampaignTargets(org),
-  ]);
+  const [{ data: o }, viewer, { data: members }, { data: campaigns }, { data: conversation }] =
+    await Promise.all([
+      getOpportunity(org, id),
+      currentViewer(org),
+      /* Members and campaigns are loaded here rather than fetched when a
+         control opens: whether there is anybody to assign to, or any campaign
+         to add to, is a fact about the workspace that the control should know
+         before it is pressed.
+
+         The conversation is loaded for a different reason — §19 asks it to
+         remember, and a panel that fetched its own history would show an empty
+         window for the moment before it arrived, which reads as having
+         forgotten. */
+      listMembers(org),
+      listCampaignTargets(org),
+      getConversation(org, id),
+    ]);
 
   if (!o) notFound();
 
@@ -304,7 +313,13 @@ export default async function OpportunityPage({
             </CardBody>
           </Card>
 
-          <AgentPanel company={o.company} />
+          <AgentPanel
+            org={org}
+            opportunityId={o.id}
+            company={o.company}
+            history={conversation}
+            canAsk={canSpend(viewer)}
+          />
         </div>
       </div>
     </div>

@@ -113,3 +113,13 @@ export {
   type WhyNow,
   type WhyNowInput,
 } from "./tasks/explain-why-now.ts";
+
+export {
+  MAX_HISTORY,
+  MAX_QUESTION_CHARS,
+  citableClaims,
+  salesAgent,
+  type AgentAnswer,
+  type AgentInput,
+  type AgentTurn,
+} from "./tasks/sales-agent.ts";

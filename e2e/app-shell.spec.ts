@@ -364,3 +364,50 @@ test.describe("an opportunity's own page", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("the per-opportunity agent", () => {
+  test("the send control acts, and the panel no longer says nothing will answer", async ({
+    page,
+  }) => {
+    /*
+     * §19's discussion window. It shipped as UI with nothing behind it and
+     * said so, which was the honest thing to do at the time; what has arrived
+     * is the model, the persistence, and the grounding contract the footer was
+     * already promising.
+     *
+     * The footer is asserted here because it is the promise: an answer cites
+     * what it rests on and says what it could not establish. A panel that made
+     * that claim and then did not keep it would be the §7 failure aimed at the
+     * screen where a reader is most likely to be deciding whether this product
+     * invents things.
+     */
+    await page.goto(`/${ORG}/opportunities`);
+    await page.locator(`a[href*="/${ORG}/opportunities/"]`).first().click();
+
+    await expect(page.getByText(/not connected yet/i)).toHaveCount(0);
+    await expect(page.getByText(/rather than guess/i)).toBeVisible();
+
+    const send = page.getByRole("button", { name: /^send$/i });
+    await expect(send).toBeVisible();
+    await expect(send).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("with no database, asking says so rather than appearing to answer", async ({
+    page,
+  }) => {
+    // Demo mode has nowhere to store the conversation, and §19 asks it to
+    // remember — so the honest answer is that it cannot, not a reply that
+    // vanishes on navigation.
+    await page.goto(`/${ORG}/opportunities`);
+    await page.locator(`a[href*="/${ORG}/opportunities/"]`).first().click();
+
+    await page.getByRole("button", { name: /what do we actually know/i }).click();
+    await page.getByRole("button", { name: /^send$/i }).click();
+
+    // Scoped to a paragraph: Next renders its own empty `role="alert"` route
+    // announcer on every page, which an unscoped alert role also matches.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
+  });
+});
