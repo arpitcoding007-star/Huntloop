@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { cn } from "../utils/cn";
 import { Badge, type BadgeVariant } from "./Badge";
 import { Button } from "./Button";
+import type { LinkComponent } from "../utils/link";
 
 export interface ActionRailItemProps {
   title: string;
@@ -26,6 +27,19 @@ export interface ActionRailItemProps {
    * of demands with no way to satisfy them is worse than an empty queue.
    */
   pending?: string;
+  /**
+   * Where the primary control goes, when it goes somewhere.
+   *
+   * Added because this rail is now built from real counts on the server, and a
+   * server component has no callback to pass — `onPrimary` cannot cross that
+   * boundary. An item whose whole job is "take me to the six conversations
+   * waiting on a reply" is a navigation, so it should be an anchor: it opens
+   * in a new tab, previews its target on hover, and works without JavaScript.
+   *
+   * `href` wins over `onPrimary` when both are given.
+   */
+  href?: string;
+  linkComponent?: LinkComponent;
 }
 
 export function ActionRailItem({
@@ -39,6 +53,8 @@ export function ActionRailItem({
   onSecondary,
   onDismiss,
   pending,
+  href,
+  linkComponent,
 }: ActionRailItemProps) {
   return (
     <div className="rounded-md border border-line-subtle bg-surface p-3">
@@ -70,7 +86,9 @@ export function ActionRailItem({
         <Button
           size="sm"
           variant="primary"
-          onClick={onPrimary}
+          href={href}
+          linkComponent={linkComponent}
+          onClick={href ? undefined : onPrimary}
           pending={pending}
           className="flex-1"
         >

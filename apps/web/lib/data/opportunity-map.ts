@@ -222,7 +222,17 @@ export function statusLabel(raw: string): string {
 /** Postgres sorts enums by declaration order; this makes HOT sort first. */
 const PRIORITY_ORDER: Priority[] = ["hot", "warm", "watch", "ignore"];
 
-export function byPriorityThenScore(a: OpportunityRow, b: OpportunityRow): number {
+/**
+ * Ranked by verdict, then by score within it.
+ *
+ * Typed structurally rather than as `OpportunityRow`, because the dashboard
+ * ranks a narrower shape by exactly the same rule — and one ordering used by
+ * two screens is one ordering, not two that happen to agree today.
+ */
+export function byPriorityThenScore(
+  a: { priority: Priority; score: number },
+  b: { priority: Priority; score: number },
+): number {
   const p = PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority);
   return p !== 0 ? p : b.score - a.score;
 }

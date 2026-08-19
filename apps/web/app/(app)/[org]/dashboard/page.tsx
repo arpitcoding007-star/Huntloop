@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
-import { DemoFigures } from "../DemoFigures";
+import { getDashboard } from "../../../../lib/data/dashboard";
 import { RefreshButton } from "../RefreshButton";
 import {
   ActionRail,
@@ -10,6 +10,7 @@ import {
   Card,
   CardHeader,
   ClaimBadge,
+  EmptyState,
   EvidenceList,
   Freshness,
   PriorityBadge,
@@ -19,17 +20,16 @@ import {
   SectionLabel,
   StatCard,
   StatGrid,
-  type EvidenceItem,
-  type Priority,
 } from "@huntloop/ui";
 import {
   Binoculars,
   CalendarCheck,
-  Download,
+  CheckCircle2,
   Eye,
   Flame,
   MessageSquare,
   Plus,
+  Radar,
   Search,
   Send,
   Sparkles,
@@ -50,138 +50,55 @@ import {
  * below both. §88's rule applies here more than anywhere: this screen is the
  * one connected loop, not a wall of unrelated metrics.
  *
- * Fixtures only. Wiring to Supabase is Phase 0/1.
+ * ── Every number here now comes from a query ─────────────────────────────
+ *
+ * It did not before. Each figure was a literal in this file — `value={12}`,
+ * "9 new triggers in the last 24h", two mailboxes at `acme.co` with sending
+ * quotas — which read identically on a live deployment and an empty one. The
+ * screen carried an unconditional "these are not real" banner because that was
+ * the only honest thing it could say about itself.
+ *
+ * `lib/data/dashboard.ts` is the other half of that change, and the banner is
+ * gone: in demo mode the layout's `DataSourceBanner` already says the whole
+ * deployment is on fixtures, and there is nothing left on this screen that is
+ * invented independently of it.
+ *
+ * ── Why a section can disappear ──────────────────────────────────────────
+ *
+ * Because "nothing to show" and "nothing measured" are different, and both are
+ * different from zero. A workspace with no connected mailbox has no sending
+ * capacity to draw — not a bar at 0/0 — and an empty action rail means nothing
+ * needs a person, which is a real and good state. Rendering an empty frame in
+ * either case invents a shape for data that does not exist.
  */
-
-/* Fixed reference instant so the relative ages below don't drift with the
-   clock. Real data will pass the request time down from the server. */
-const NOW = new Date("2026-08-11T09:00:00Z");
-
-const WHY_NOW: {
-  company: string;
-  domain: string;
-  priority: Priority;
-  priorityReason: string;
-  score: number;
-  explanation: string;
-  eventDate: string;
-  trigger: string;
-  action: string;
-  evidence: EvidenceItem[];
-}[] = [
-  {
-    company: "Alphio AI",
-    domain: "alphio.ai",
-    priority: "hot",
-    priorityReason:
-      "Strong ICP fit, a stated problem in the founder's own words, and a funding trigger 3 days old.",
-    score: 91,
-    explanation:
-      "Series A closed this week, and the launch post names custody permissions as an open problem — the exact gap the product closes.",
-    eventDate: "2026-08-08",
-    trigger: "Raised $12M Series A",
-    action: "Reach out to the CTO about custody permissions",
-    evidence: [
-      {
-        claim: "Alphio AI closed a $12M Series A led by Northgate Ventures.",
-        kind: "fact",
-        confidence: "high",
-        source: "TechCrunch",
-        sourceUrl: "https://techcrunch.com/",
-        eventDate: "2026-08-08",
-        observedAt: "2026-08-09",
-        excerpt:
-          "Alphio AI has raised $12 million to scale its autonomous trading agents to institutional desks.",
-      },
-      {
-        claim:
-          "Their agents will need controlled financial permissions before institutional desks will onboard.",
-        kind: "inference",
-        confidence: "medium",
-        source: "Derived from the launch post and the funding announcement",
-        eventDate: "2026-08-08",
-        observedAt: "2026-08-09",
-      },
-      {
-        claim: "Which wallet architecture they use today — MPC, multisig, or other.",
-        kind: "unknown",
-      },
-    ],
-  },
-  {
-    company: "Northwind Logistics",
-    domain: "northwind.co",
-    priority: "warm",
-    priorityReason:
-      "Good ICP fit and a clear hiring signal, but no evidence yet that the problem is urgent for them.",
-    score: 74,
-    explanation:
-      "Hiring two integration engineers with a job spec that describes the manual process this replaces. No budget or timeline evidence.",
-    eventDate: "2026-08-01",
-    trigger: "Hiring 2 integration engineers",
-    action: "Research current approach before contacting",
-    evidence: [
-      {
-        claim: "Northwind posted two integration-engineer roles on 1 Aug.",
-        kind: "fact",
-        confidence: "high",
-        source: "Careers page",
-        sourceUrl: "https://example.com/",
-        eventDate: "2026-08-01",
-        observedAt: "2026-08-02",
-        excerpt:
-          "You will own the partner-integration pipeline, currently maintained by hand across 40+ carriers.",
-      },
-      {
-        claim: "Whether a purchase decision is funded this quarter.",
-        kind: "unknown",
-      },
-    ],
-  },
-  {
-    company: "Cormorant Health",
-    domain: "cormorant.health",
-    priority: "watch",
-    priorityReason:
-      "Plausible fit, but the only trigger on file is four months old and nothing has changed since.",
-    score: 48,
-    explanation:
-      "Regulatory approval in April is the sole signal. No hiring, no launches, no public statement of the problem since.",
-    eventDate: "2026-04-14",
-    trigger: "Received regulatory approval",
-    action: "Keep monitoring — no reason to contact today",
-    evidence: [
-      {
-        claim: "Cormorant received regulatory clearance for its remote-monitoring device.",
-        kind: "fact",
-        confidence: "high",
-        source: "Company press release",
-        sourceUrl: "https://example.com/",
-        eventDate: "2026-04-14",
-        observedAt: "2026-04-15",
-      },
-    ],
-  },
-];
-
 export default async function DashboardPage({
   params,
 }: {
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
-  const mayHunt = canSpend(await currentViewer(org));
+  const [viewer, { data }] = await Promise.all([
+    currentViewer(org),
+    getDashboard(org),
+  ]);
+  const mayHunt = canSpend(viewer);
 
+  /* Resolved once per request and passed down, so every relative age on the
+     page is measured from one instant rather than from a fresh `new Date()`
+     per component. */
+  const now = new Date();
+
+  const { counts, whyNow, loop, outcomes, capacity, attention } = data;
+  const totalOpportunities = counts.hot + counts.warm + counts.watch + counts.ignore;
+
+  /* No `DemoFigures` here any more, and its own comment is the argument for
+     removing it: a screen renders it while its numbers do not come from the
+     database, and stops on the commit that wires it up. That commit is this
+     one. In demo mode the layout's `DataSourceBanner` already says the whole
+     deployment is on fixtures, and two banners saying the same thing in
+     different words reads as one of them being about something else. */
   return (
     <>
-      {/* Unconditional, not tied to the data source. Every number below this
-          line is hard-coded, and once Supabase is connected the org layout's
-          banner correctly goes quiet — which would leave them unmarked. See
-          the component. */}
-      <div className="px-6 pt-6 lg:px-8">
-        <DemoFigures what="The Command Center's queries are not written yet." />
-      </div>
-
       <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
       {/* ── Main column ─────────────────────────────────────────────── */}
       <div className="min-w-0">
@@ -196,32 +113,35 @@ export default async function DashboardPage({
                   real — the §7 failure this screen is most exposed to. */}
             </div>
             <p className="mt-1 text-[13px] text-fg-muted">
-              {org} · autonomy L2 — Huntloop recommends, you approve
+              {org} · {totalOpportunities === 0
+                ? "no opportunities yet"
+                : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
             </p>
           </div>
-          {/* Refresh and Export are reads and stay for everyone. "New hunt"
-              starts work that costs money, so a viewer does not get a button
-              that would fail at the database (audit FEAT-04).
-
-              Two of the three carry `pending` rather than a handler: neither
-              exporting nor scheduled hunting is built, and until UX-01 they
-              rendered as live controls that did nothing when pressed. */}
+          {/* "Analyze a URL" starts work that costs money, so a viewer does not
+              get a button that would fail at the database (audit FEAT-04). It
+              is a link rather than a `pending` button, because unlike the
+              "New hunt" it replaced, its destination exists: scheduled hunting
+              is the sources screen's scan interval, and one-off qualification
+              is Analyze. There was never a third thing for that button to do. */}
           <div className="flex items-center gap-2">
             <RefreshButton />
             <Button
-              icon={Download}
+              icon={Radar}
               variant="secondary"
-              pending="Exporting isn't built yet."
+              href={`/${org}/sources`}
+              linkComponent={Link}
             >
-              Export
+              Sources
             </Button>
             {mayHunt && (
               <Button
                 icon={Plus}
                 variant="primary"
-                pending="Scheduled hunts aren't built yet. Analyze a URL to qualify one company now."
+                href={`/${org}/analyze`}
+                linkComponent={Link}
               >
-                New hunt
+                Analyze a URL
               </Button>
             )}
           </div>
@@ -233,23 +153,30 @@ export default async function DashboardPage({
           underlying fault is the FEAT-01 one, the product asserting a
           capability it doesn't have).
 
-          Two have real destinations and now point at them. The triggers chip
-          does not: there is no triggers screen, so it renders as a plain
-          status chip — no anchor, no focus ring, no "→". The arrow is the
-          part that promises navigation, so it goes with the href.
+          The counts are real now, and each chip is rendered only when its
+          count is non-zero: "0 new triggers in the last 24h" is a sentence
+          nobody needs, and a row of zeroes reads as a broken screen rather
+          than a quiet week.
         */}
         <div className="mt-6 flex flex-wrap gap-2">
-          <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
-            <Zap className="size-3.5" strokeWidth={1.75} />
-            9 new triggers in the last 24h
-          </span>
-          <Link
-            href={`/${org}/opportunities`}
-            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
-          >
-            <Sparkles className="size-3.5" strokeWidth={1.75} />
-            12 opportunities awaiting your review →
-          </Link>
+          {data.triggersLastDay > 0 && (
+            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
+              <Zap className="size-3.5" strokeWidth={1.75} />
+              {data.triggersLastDay} new{" "}
+              {data.triggersLastDay === 1 ? "trigger" : "triggers"} in the last 24h
+            </span>
+          )}
+          {data.awaitingReview > 0 && (
+            <Link
+              href={`/${org}/opportunities`}
+              className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
+            >
+              <Sparkles className="size-3.5" strokeWidth={1.75} />
+              {data.awaitingReview}{" "}
+              {data.awaitingReview === 1 ? "opportunity" : "opportunities"} awaiting your
+              review →
+            </Link>
+          )}
           <Link
             href={`/${org}/analyze`}
             className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
@@ -268,7 +195,7 @@ export default async function DashboardPage({
           <StatGrid className="mt-3">
             <StatCard
               label="Hot"
-              value={12}
+              value={counts.hot}
               icon={Flame}
               tone="hot"
               href={`/${org}/opportunities?priority=hot`}
@@ -278,7 +205,7 @@ export default async function DashboardPage({
             />
             <StatCard
               label="Warm"
-              value={34}
+              value={counts.warm}
               icon={Thermometer}
               tone="warm"
               href={`/${org}/opportunities?priority=warm`}
@@ -288,7 +215,7 @@ export default async function DashboardPage({
             />
             <StatCard
               label="Watch"
-              value={88}
+              value={counts.watch}
               icon={Eye}
               tone="watch"
               href={`/${org}/opportunities?priority=watch`}
@@ -298,7 +225,7 @@ export default async function DashboardPage({
             />
             <StatCard
               label="Ignore"
-              value={46}
+              value={counts.ignore}
               icon={Binoculars}
               tone="ignore"
               href={`/${org}/opportunities?priority=ignore`}
@@ -315,121 +242,177 @@ export default async function DashboardPage({
             users will never check. */}
         <section className="mt-10">
           <SectionLabel>Why now</SectionLabel>
-          <div className="mt-3 flex flex-col gap-3">
-            {WHY_NOW.map((o) => (
-              <Card key={o.domain} flush>
-                <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-fg">{o.company}</h3>
-                      <PriorityBadge priority={o.priority} reason={o.priorityReason} />
-                      <span className="font-mono text-[12px] text-fg-muted">
-                        {o.domain}
-                      </span>
+          {whyNow.length === 0 ? (
+            <Card className="mt-3">
+              <div className="p-5">
+                <EmptyState
+                  icon={Search}
+                  title="Nothing is waiting for a verdict"
+                  description="Why now lists the opportunities nobody has triaged yet. When a scan turns up a company that fits, it appears here with the evidence behind it."
+                />
+              </div>
+            </Card>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              {whyNow.map((o) => (
+                <Card key={o.id} flush>
+                  <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/${org}/opportunities/${o.id}`}
+                          className="hl-focusable rounded-sm text-base font-semibold text-fg"
+                        >
+                          {o.company}
+                        </Link>
+                        <PriorityBadge priority={o.priority} reason={o.priorityReason} />
+                        <span className="font-mono text-[12px] text-fg-muted">
+                          {o.domain}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {o.trigger ? (
+                          <>
+                            <span className="text-[13px] text-fg-secondary">
+                              {o.trigger}
+                            </span>
+                            {o.triggerDate && <Freshness date={o.triggerDate} now={now} />}
+                          </>
+                        ) : (
+                          /* §7: no trigger on file is a fact about the
+                             evidence, not a blank space to fill with one. */
+                          <span className="text-[13px] text-fg-muted">
+                            No trigger recorded yet
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="text-[13px] text-fg-secondary">{o.trigger}</span>
-                      <Freshness date={o.eventDate} now={NOW} />
+                    <div className="flex shrink-0 items-center gap-2">
+                      <ScorePill
+                        score={o.score}
+                        explanation={o.scoreExplanation}
+                        confidence={o.confidence}
+                        dimensions={o.dimensions}
+                      />
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <ScorePill
-                      score={o.score}
-                      explanation={o.explanation}
-                      confidence={o.priority === "watch" ? "low" : "medium"}
-                      dimensions={[
-                        { label: "ICP fit", value: o.priority === "hot" ? 94 : 71 },
-                        { label: "Problem severity", value: o.priority === "hot" ? 88 : 55 },
-                        { label: "Evidence strength", value: o.evidence.length > 2 ? 82 : 44 },
-                        { label: "Trigger strength", value: o.priority === "hot" ? 90 : 60 },
-                        {
-                          label: "Trigger freshness",
-                          value: o.priority === "watch" ? 12 : 86,
-                        },
-                        { label: "Buying likelihood", value: "unknown" },
-                        { label: "Product relevance", value: o.priority === "hot" ? 92 : 68 },
-                        { label: "Decision-maker accessibility", value: "unknown" },
-                      ]}
-                    />
-                  </div>
-                </div>
 
-                <div className="px-5 pt-3 pb-4">
-                  <details className="group">
-                    <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary">
-                      <span className="text-[11px] tracking-[0.06em] uppercase">
-                        Evidence ({o.evidence.length})
-                      </span>
-                      <span aria-hidden className="group-open:hidden">
-                        ▸
-                      </span>
-                      <span aria-hidden className="hidden group-open:inline">
-                        ▾
-                      </span>
-                    </summary>
-                    <EvidenceList items={o.evidence} now={NOW} className="mt-3" />
-                  </details>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line-subtle pt-3">
-                    <span className="text-[11px] tracking-[0.06em] text-fg-muted uppercase">
-                      Recommended
-                    </span>
-                    <span className="text-[13px] text-fg-secondary">{o.action}</span>
+                  <div className="px-5 pt-3 pb-4">
+                    <details className="group">
+                      <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary">
+                        <span className="text-[11px] tracking-[0.06em] uppercase">
+                          Evidence ({o.evidence.length})
+                        </span>
+                        <span aria-hidden className="group-open:hidden">
+                          ▸
+                        </span>
+                        <span aria-hidden className="hidden group-open:inline">
+                          ▾
+                        </span>
+                      </summary>
+                      {o.evidence.length === 0 ? (
+                        <p className="mt-3 text-[13px] text-fg-muted">
+                          Nothing is attributed to this opportunity yet, so the score
+                          above rests on the company research rather than on evidence
+                          gathered for it.
+                        </p>
+                      ) : (
+                        <EvidenceList items={o.evidence} now={now} className="mt-3" />
+                      )}
+                    </details>
                   </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* Activity, demoted below the verdict it produces.
-
-            No `href` on any of these, deliberately. Each one's natural
-            destination — companies, outreach, inbox, pipeline — is an unbuilt
-            nav entry, and `StatCard` renders "Click to view →" plus a hover
-            arrow whenever it is given one. They were all `href="#"`, so the
-            most-visited screen in the product carried eight links that
-            announced as links and went nowhere.
-
-            Give each its href in the same commit that builds its screen,
-            exactly as with the `unbuilt` nav flag. */}
+        {/* Activity, demoted below the verdict it produces. Each card now has
+            the screen its number came from, because each of those screens
+            exists — they were `href="#"` when they did not. */}
         <section className="mt-10">
           <SectionLabel>Loop this week</SectionLabel>
           <StatGrid className="mt-3">
-            <StatCard label="Discovered" value={180} icon={Search} />
-            <StatCard label="Researched" value={134} icon={Target} tone="ai" aiGenerated />
-            <StatCard label="Contacted" value={90} icon={Send} />
+            <StatCard
+              label="Discovered"
+              value={loop.discovered}
+              icon={Search}
+              href={`/${org}/opportunities`}
+              linkComponent={Link}
+            />
+            <StatCard
+              label="Researched"
+              value={loop.researched}
+              icon={Target}
+              tone="ai"
+              href={`/${org}/companies`}
+              linkComponent={Link}
+              aiGenerated
+            />
+            {/* Sent, not drafted. A message with no send time has not reached
+                anybody, and §78 is that distinction stated as a rule. */}
+            <StatCard
+              label="Contacted"
+              value={loop.contacted}
+              icon={Send}
+              href={`/${org}/outreach`}
+              linkComponent={Link}
+              hint="Messages that actually left"
+            />
             <StatCard
               label="Replied"
-              value={5}
+              value={loop.replied}
               icon={MessageSquare}
               tone="info"
-              hint="2 positive · 3 neutral"
+              href={`/${org}/inbox`}
+              linkComponent={Link}
             />
           </StatGrid>
 
           <SectionLabel className="mt-8">Outcomes</SectionLabel>
           <StatGrid className="mt-3" columns={3}>
-            <StatCard label="Meetings" value={2} icon={CalendarCheck} tone="success" />
-            <StatCard label="Opportunities" value={1} icon={Flame} tone="brand" />
             <StatCard
-              label="Total companies"
-              value={180}
+              label="Meetings"
+              value={outcomes.meetings}
+              icon={CalendarCheck}
+              tone="success"
+              href={`/${org}/pipeline`}
+              linkComponent={Link}
+            />
+            <StatCard
+              label="Won"
+              value={outcomes.won}
+              icon={CheckCircle2}
+              tone="brand"
+              href={`/${org}/pipeline`}
+              linkComponent={Link}
+            />
+            {/* No denominator. It used to read "of 1,000 on the Growth plan",
+                and there is no plan ceiling in the schema for that number to
+                have come from — an invented denominator is the same failure as
+                an invented numerator. */}
+            <StatCard
+              label="Companies known"
+              value={outcomes.companies}
               icon={Target}
-              hint="of 1,000 on the Growth plan"
+              href={`/${org}/companies`}
+              linkComponent={Link}
             />
           </StatGrid>
         </section>
 
-        <section className="mt-10">
-          <SectionLabel>Sending capacity</SectionLabel>
-          <Card className="mt-3">
-            <QuotaBarGroup>
-              <QuotaBar label="founder@acme.co" used={38} limit={50} />
-              <QuotaBar label="sales@acme.co" used={50} limit={50} />
-            </QuotaBarGroup>
-          </Card>
-        </section>
+        {capacity.length > 0 && (
+          <section className="mt-10">
+            <SectionLabel>Sending capacity</SectionLabel>
+            <Card className="mt-3">
+              <QuotaBarGroup>
+                {capacity.map((m) => (
+                  <QuotaBar key={m.label} label={m.label} used={m.used} limit={m.limit} />
+                ))}
+              </QuotaBarGroup>
+            </Card>
+          </section>
+        )}
 
         <section className="mt-10 grid gap-4 lg:grid-cols-2">
           <Card flush>
@@ -438,33 +421,29 @@ export default async function DashboardPage({
               description="What the sources actually produced this week."
             />
             <div className="p-5">
-              <BreakdownList
-                items={[
-                  { label: "Funding", value: 31 },
-                  { label: "Hiring", value: 24 },
-                  { label: "Product launch", value: 18 },
-                  { label: "Technology adoption", value: 12 },
-                  { label: "Leadership change", value: 7 },
-                ]}
-              />
+              {data.signalsByType.length === 0 ? (
+                <p className="text-[13px] text-fg-muted">
+                  No triggers were recorded this week.
+                </p>
+              ) : (
+                <BreakdownList items={data.signalsByType} />
+              )}
             </div>
           </Card>
 
           <Card flush>
             <CardHeader
               title="Source performance"
-              description="Opportunities produced, not articles scraped."
+              description="Evidence attributed, not articles scraped."
             />
             <div className="p-5">
-              <BreakdownList
-                items={[
-                  { label: "The Block", value: 22 },
-                  { label: "Company blogs", value: 17 },
-                  { label: "GitHub", value: 11 },
-                  { label: "Job boards", value: 9 },
-                  { label: "Hacker News", value: 4 },
-                ]}
-              />
+              {data.sourcePerformance.length === 0 ? (
+                <p className="text-[13px] text-fg-muted">
+                  No evidence has been attributed to a source this week.
+                </p>
+              ) : (
+                <BreakdownList items={data.sourcePerformance} />
+              )}
             </div>
           </Card>
         </section>
@@ -485,50 +464,39 @@ export default async function DashboardPage({
           Sits beside content at ≥1440px — the exact threshold plan §1.4 #9
           names. Below it the grid collapses to one column and the rail
           stacks under the main content; it is never absolutely positioned,
-          so it cannot overlay anything at any width. */}
-      {/* Every item here is a fixture describing a screen that does not exist,
-          so every button carries its reason (audit UX-01). This rail was the
-          worst instance in the app: a column headed "Needs you", asserting
-          four decisions were required, with six inert buttons under it. */}
-      <ActionRail moreCount={5}>
-        <ActionRailItem
-          title="12 replies unread"
-          source="Inbox"
-          sourceVariant="info"
-          meta="2h ago"
-          primaryLabel="Review"
-          pending="The inbox isn't built yet."
-        />
-        <ActionRailItem
-          title="5 messages need approval"
-          source="AI"
-          sourceVariant="ai"
-          meta="Autonomy L2"
-          primaryLabel="Approve"
-          secondaryLabel="Skip"
-          pending="Outreach drafting isn't built yet."
-        />
-        {/* §58: a source that fails does not fail the hunt — it is marked
-            unavailable, retried, and surfaced as something a human can see. */}
-        <ActionRailItem
-          title="Crunchbase source unavailable"
-          source="Sources"
-          sourceVariant="warning"
-          meta="Failing since 06:10 · retrying"
-          primaryLabel="View"
-          pending="Source health detail isn't built yet."
-        />
-        <ActionRailItem
-          title="7 opportunities on evidence older than 90 days"
-          source="Freshness"
-          sourceVariant="neutral"
-          meta="Re-research to re-score"
-          primaryLabel="Re-research"
-          secondaryLabel="Dismiss"
-          pending="Re-research isn't built yet."
-        />
-      </ActionRail>
+          so it cannot overlay anything at any width.
+
+          Every item is derived from a count, and an item appears only when
+          its count is non-zero. This rail was the worst instance of UX-01 in
+          the app: a column headed "Needs you", asserting four decisions were
+          required, with six inert buttons under it and not one of the four
+          counts computed. An empty rail is now a real answer. */}
+      {attention.length > 0 && (
+        <ActionRail>
+          {attention.map((item) => (
+            <ActionRailItem
+              key={item.kind}
+              title={item.title}
+              source={item.source}
+              sourceVariant={RAIL_TONE[item.kind]}
+              meta={item.meta}
+              primaryLabel="Open"
+              href={item.href ?? undefined}
+              linkComponent={Link}
+            />
+          ))}
+        </ActionRail>
+      )}
       </div>
     </>
   );
 }
+
+const RAIL_TONE = {
+  replies: "info",
+  approvals: "ai",
+  "failing-sources": "warning",
+  "stale-evidence": "neutral",
+} as const;
+
+export const metadata = { title: "Command Center" };

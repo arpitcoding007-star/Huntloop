@@ -281,3 +281,53 @@ test.describe("adding opportunities to a campaign", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("the Command Center", () => {
+  /*
+   * Every figure here used to be a literal in the page — `value={12}`, "9 new
+   * triggers in the last 24h", two mailboxes with sending quotas — which read
+   * identically on a live deployment and an empty one. These three assert the
+   * properties that stop that coming back.
+   */
+
+  test("the priority counts agree with the list they link into", async ({ page }) => {
+    /*
+     * The strongest available check without a seeded database: the four cards
+     * and the opportunity list are two renderings of the same rows, so a
+     * hard-coded count on either side shows up as a disagreement between them.
+     * It is exactly the disagreement the old dashboard had — 12 hot on the
+     * card, one hot in the list.
+     */
+    await page.goto(`/${ORG}/dashboard`);
+    const hotCard = page.getByRole("link", { name: /hot/i }).first();
+    const onCard = ((await hotCard.innerText()).match(/\d+/) ?? ["0"])[0];
+
+    await page.goto(`/${ORG}/opportunities?priority=hot`);
+    const inList = await page.locator(`a[href*="/${ORG}/opportunities/"]`).count();
+
+    expect(Number(onCard), "the card and the list disagree about how many are hot").toBe(
+      inList,
+    );
+  });
+
+  test("nothing claims a sending quota when no mailbox is connected", async ({
+    page,
+  }) => {
+    // The old version drew two bars for addresses at `acme.co` on a deployment
+    // where nothing could send. A capacity section with no mailbox behind it is
+    // an invented denominator, so the section is absent rather than empty.
+    await page.goto(`/${ORG}/dashboard`);
+    await expect(page.getByText(/sending capacity/i)).toHaveCount(0);
+  });
+
+  test("the action rail asserts nothing it has not counted", async ({ page }) => {
+    /*
+     * This rail was the sharpest instance of the problem in the app: a column
+     * headed "Needs you" asserting four decisions were required, with six inert
+     * buttons under it and not one of the four counts computed. An empty
+     * workspace now renders no rail at all, which is a real answer.
+     */
+    await page.goto(`/${ORG}/dashboard`);
+    await expect(page.getByText(/replies unread|messages need approval/i)).toHaveCount(0);
+  });
+});
