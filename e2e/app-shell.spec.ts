@@ -47,12 +47,25 @@ test.describe("navigation", () => {
   test("unbuilt destinations are labels, and stay out of the tab order", async ({
     page,
   }) => {
-    // A keyboard user landing on one would have nowhere to go, which is worse
-    // than not being able to reach it at all.
+    /*
+     * A keyboard user landing on one would have nowhere to go, which is worse
+     * than not being able to reach it at all.
+     *
+     * This used to require at least one unbuilt item, which was true while
+     * most of the §45 surface map was still a map. It is no longer: every
+     * destination is built, the count is zero, and demanding one made the test
+     * fail against an app that had got better.
+     *
+     * So the count assertion moved to `packages/ui/src/components/
+     * Sidebar.test.tsx`, where an unbuilt item can be rendered on purpose
+     * rather than waited for. What stays here is the invariant against the
+     * real app: *if* the nav renders one, it is not a link and not tabbable.
+     * Vacuous today, and meaningful again the moment the next destination is
+     * added to the map ahead of its page.
+     */
     await page.goto(`/${ORG}/dashboard`);
 
     const unbuilt = page.locator('nav[aria-label="Primary"] [aria-disabled="true"]');
-    expect(await unbuilt.count()).toBeGreaterThan(0);
 
     for (const element of await unbuilt.all()) {
       expect(await element.getAttribute("href")).toBeNull();

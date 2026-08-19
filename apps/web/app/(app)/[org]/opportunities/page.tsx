@@ -33,6 +33,18 @@ function parsePriority(raw: string | string[] | undefined): Priority | undefined
   return PRIORITIES.find((p) => p === value);
 }
 
+/**
+ * `?company=Acme` seeds the search box.
+ *
+ * Capped at 160 characters — the same bound `name` carries in `validation.ts`
+ * — because an unbounded query parameter rendered back into an input is a
+ * cheap way to put a megabyte of someone else's text on the page.
+ */
+function parseCompany(raw: string | string[] | undefined): string | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value ? value.slice(0, 160) : undefined;
+}
+
 export default async function OpportunitiesPage({
   params,
   searchParams,
@@ -54,6 +66,11 @@ export default async function OpportunitiesPage({
          the ages drift against the data they describe. */
       now={new Date().toISOString()}
       initialPriority={parsePriority(query.priority)}
+      /* `?company=` seeds the search box, which already defaults to the
+         company scope. Bounded and coerced to a single string here for the
+         same reason `parsePriority` is strict: it arrives from a URL, and the
+         only thing it may do downstream is filter rows already rendered. */
+      initialQuery={parseCompany(query.company)}
       // Resolved on the server and passed down, rather than read in the client
       // component: the role is not something the browser should be asked to
       // determine, even for a rendering decision. See lib/data/membership.ts.

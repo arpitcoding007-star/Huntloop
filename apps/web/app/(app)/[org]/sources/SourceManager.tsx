@@ -1,20 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   Badge,
   Button,
   Card,
   CardBody,
   CardHeader,
+  Field,
+  FormMessage,
   Freshness,
+  Input,
   SectionLabel,
+  Select,
   StatusDot,
 } from "@huntloop/ui";
-import { AlertTriangle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Pause, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
+import type { HuntSource, HuntSources, SourceStatus } from "../../../../lib/data/hunt-source";
+import type { SourceInput } from "./actions";
+import {
+  deleteSourceAction,
+  saveSourceAction,
+  setSourceEnabledAction,
+  suggestSourcesAction,
+} from "./actions";
 
 /**
- * Source management — master context §10.
+ * Source management — master context §10, §58.
  *
  * §10 is explicit that the user accepts, removes and adds sources, and that
  * Huntloop's role is to *recommend* based on the ICP. So recommendations sit
@@ -25,94 +37,60 @@ import { AlertTriangle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
  * The failure state is the other half. §58 says a source that fails must not
  * fail the hunt — it is marked unavailable, retried, and surfaced. A source
  * list that only ever shows green is lying by omission on the day it matters.
+ *
+ * ── What changed when this stopped being fixtures ────────────────────────
+ *
+ * The list, the statuses and the recommendations are now rows. Two numbers
+ * that used to be here are gone rather than ported: "22 opportunities
+ * produced" per source was invented, and the real quantity behind it —
+ * evidence attributed to the source — is 0 for everything, because nothing
+ * scans yet. Showing the true zero is the point. A fabricated 22 makes a
+ * source list that has never run look like one that is working, which is the
+ * §7 failure aimed at ourselves.
  */
 
-type Status = "ok" | "degraded" | "unavailable";
-
-interface Source {
-  id: string;
-  name: string;
-  kind: string;
-  url: string;
-  status: Status;
-  lastScanned: string;
-  opportunities: number;
-  failureCount: number;
-  lastError?: string;
-}
-
-const ACTIVE: Source[] = [
-  {
-    id: "the-block",
-    name: "The Block",
-    kind: "News",
-    url: "https://www.theblock.co",
-    status: "ok",
-    lastScanned: "2026-08-11",
-    opportunities: 22,
-    failureCount: 0,
-  },
-  {
-    id: "company-blogs",
-    name: "Company engineering blogs",
-    kind: "Blog",
-    url: "—",
-    status: "ok",
-    lastScanned: "2026-08-11",
-    opportunities: 17,
-    failureCount: 0,
-  },
-  {
-    id: "github",
-    name: "GitHub",
-    kind: "Code",
-    url: "https://github.com",
-    status: "ok",
-    lastScanned: "2026-08-11",
-    opportunities: 11,
-    failureCount: 0,
-  },
-  {
-    id: "job-boards",
-    name: "Job boards",
-    kind: "Jobs",
-    url: "—",
-    status: "degraded",
-    lastScanned: "2026-08-10",
-    opportunities: 9,
-    failureCount: 2,
-    lastError: "Rate limited — backing off, partial results this cycle.",
-  },
-  {
-    id: "crunchbase",
-    name: "Crunchbase",
-    kind: "Funding",
-    url: "https://www.crunchbase.com",
-    status: "unavailable",
-    lastScanned: "2026-08-10",
-    opportunities: 6,
-    failureCount: 9,
-    lastError: "HTTP 403 since 06:10. Retrying with backoff.",
-  },
-];
-
-const RECOMMENDED = [
-  { id: "blockworks", name: "Blockworks", kind: "News", why: "Covers the institutional side of your ICP's market." },
-  { id: "hn", name: "Hacker News", kind: "Community", why: "Where your ICP's engineers describe problems publicly." },
-  { id: "defillama", name: "DeFiLlama", kind: "Funding", why: "TVL and protocol changes for the Web3 half of the ICP." },
-];
-
-const STATUS_META: Record<Status, { label: string; variant: "success" | "warning" | "danger" }> = {
+const STATUS_META: Record<
+  SourceStatus,
+  { label: string; variant: "success" | "warning" | "danger" }
+> = {
   ok: { label: "Healthy", variant: "success" },
   degraded: { label: "Degraded", variant: "warning" },
   unavailable: { label: "Unavailable", variant: "danger" },
 };
 
-export function SourceManager({ org }: { org: string }) {
-  const [active, setActive] = useState(ACTIVE);
-  const [recommended, setRecommended] = useState(RECOMMENDED);
+const KIND_LABELS: Record<string, string> = {
+  news: "News",
+  blog: "Blog",
+  jobs: "Jobs",
+  social: "Social",
+  github: "Code",
+  funding: "Funding",
+  regulatory: "Regulatory",
+  community: "Community",
+  podcast: "Podcast",
+  custom: "Custom",
+};
 
-  const failing = active.filter((s) => s.status !== "ok");
+export function SourceManager({
+  org,
+  sources,
+  canWrite,
+  now,
+}: {
+  org: string;
+  sources: HuntSources;
+  canWrite: boolean;
+  /** The server's clock, so every relative age is measured from one instant. */
+  now: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [result, setResult] = useState<
+    { ok: true; message?: string } | { ok: false; error: string } | null
+  >(null);
+  const [suggesting, startSuggest] = useTransition();
+
+  const { monitored, recommended } = sources;
+  const failing = monitored.filter((s) => s.status !== "ok");
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
@@ -120,13 +98,13 @@ export function SourceManager({ org }: { org: string }) {
         <div>
           <h1 className="text-[30px] leading-9 font-semibold text-fg">Sources</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
-            {org} · {active.length} monitored · where Huntloop looks for signals
+            {org} · {monitored.length} monitored · where Huntloop looks for signals
           </p>
         </div>
-        {/* "Scan now" promises the scheduled scan this product is built
-            around, and no code reads news, jobs or GitHub yet — so it says so
-            rather than rendering as a live control (audit UX-01). */}
         <div className="flex items-center gap-2">
+          {/* Still honest about what does not exist: nothing reads these on a
+              timer, and a live-looking "Scan now" would promise the scheduled
+              hunt this product is built around (audit UX-01). */}
           <Button
             icon={RefreshCw}
             variant="secondary"
@@ -134,13 +112,11 @@ export function SourceManager({ org }: { org: string }) {
           >
             Scan now
           </Button>
-          <Button
-            icon={Plus}
-            variant="primary"
-            pending="Adding a source isn't wired to the database yet."
-          >
-            Add a source
-          </Button>
+          {canWrite && (
+            <Button icon={Plus} variant="primary" onClick={() => setAdding((a) => !a)}>
+              Add a source
+            </Button>
+          )}
         </div>
       </header>
 
@@ -151,7 +127,8 @@ export function SourceManager({ org }: { org: string }) {
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" strokeWidth={1.75} />
           <div>
             <p className="text-[13px] text-warning">
-              {failing.length} of {active.length} sources are not returning full results.
+              {failing.length} of {monitored.length} sources are not returning full
+              results.
             </p>
             <p className="mt-0.5 text-[12px] text-fg-secondary">
               The hunt continued without them and will retry. Treat this
@@ -161,45 +138,42 @@ export function SourceManager({ org }: { org: string }) {
         </div>
       )}
 
+      {adding && (
+        <div className="mt-6">
+          <SourceForm
+            org={org}
+            canWrite={canWrite}
+            onDone={() => setAdding(false)}
+          />
+        </div>
+      )}
+
+      <FormMessage result={result} className="mt-6" />
+
       <section className="mt-8">
         <SectionLabel>Monitored</SectionLabel>
         <Card flush className="mt-3">
-          <ul className="divide-y divide-line-subtle">
-            {active.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-[13px] font-medium text-fg">
-                      {s.name}
-                    </span>
-                    <Badge variant="neutral">{s.kind}</Badge>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <Freshness date={s.lastScanned} now={new Date("2026-08-11T09:00:00Z")} label="Scanned" />
-                    <span className="text-[12px] text-fg-muted">
-                      {s.opportunities} opportunities produced
-                    </span>
-                  </div>
-                  {s.lastError && (
-                    <p className="mt-1 text-[12px] text-fg-muted">{s.lastError}</p>
-                  )}
-                </div>
-
-                <StatusDot
-                  variant={STATUS_META[s.status].variant}
-                  label={STATUS_META[s.status].label}
+          {monitored.length === 0 ? (
+            <CardBody>
+              <p className="text-[13px] text-fg-muted">
+                Nothing is being monitored. Add a source, or accept one of the
+                suggestions below — until then a hunt has nowhere to look.
+              </p>
+            </CardBody>
+          ) : (
+            <ul className="divide-y divide-line-subtle">
+              {monitored.map((s) => (
+                <SourceRow
+                  key={s.id}
+                  org={org}
+                  source={s}
+                  canWrite={canWrite}
+                  now={now}
+                  onResult={setResult}
                 />
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={Trash2}
-                  aria-label={`Remove ${s.name}`}
-                  onClick={() => setActive((prev) => prev.filter((x) => x.id !== s.id))}
-                />
-              </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          )}
         </Card>
       </section>
 
@@ -213,56 +187,60 @@ export function SourceManager({ org }: { org: string }) {
               </span>
             }
             description="Suggested, not enabled. Nothing is scanned until you accept it."
+            actions={
+              canWrite ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={Sparkles}
+                  disabled={suggesting}
+                  onClick={() =>
+                    startSuggest(async () => {
+                      setResult(null);
+                      const res = await suggestSourcesAction(org);
+                      setResult(
+                        res.ok
+                          ? { ok: true, message: res.message }
+                          : { ok: false, error: res.error },
+                      );
+                    })
+                  }
+                >
+                  {suggesting ? "Asking…" : "Suggest sources"}
+                </Button>
+              ) : null
+            }
           />
           <CardBody>
             {recommended.length === 0 ? (
               <p className="text-[13px] text-fg-muted">
-                No further recommendations. Add your own with “Add a source”.
+                No suggestions waiting. Ask for some, or add your own with
+                &ldquo;Add a source&rdquo;.
               </p>
             ) : (
               <ul className="space-y-3">
                 {recommended.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[13px] font-medium text-fg">{r.name}</span>
-                        <Badge variant="neutral">{r.kind}</Badge>
+                        <Badge variant="neutral">{KIND_LABELS[r.kind] ?? r.kind}</Badge>
+                        {r.recommendedBy === "user" && (
+                          <Badge variant="neutral">Paused by you</Badge>
+                        )}
                       </div>
-                      <p className="mt-0.5 text-[12px] text-fg-muted">{r.why}</p>
+                      {r.url && (
+                        <p className="mt-0.5 truncate font-mono text-[12px] text-fg-muted">
+                          {r.url}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() =>
-                          setRecommended((prev) => prev.filter((x) => x.id !== r.id))
-                        }
-                      >
-                        Dismiss
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => {
-                          setActive((prev) => [
-                            ...prev,
-                            {
-                              id: r.id,
-                              name: r.name,
-                              kind: r.kind,
-                              url: "—",
-                              status: "ok",
-                              lastScanned: "2026-08-11",
-                              opportunities: 0,
-                              failureCount: 0,
-                            },
-                          ]);
-                          setRecommended((prev) => prev.filter((x) => x.id !== r.id));
-                        }}
-                      >
-                        Accept
-                      </Button>
-                    </div>
+                    <RecommendationActions
+                      org={org}
+                      source={r}
+                      canWrite={canWrite}
+                      onResult={setResult}
+                    />
                   </li>
                 ))}
               </ul>
@@ -271,5 +249,254 @@ export function SourceManager({ org }: { org: string }) {
         </Card>
       </section>
     </div>
+  );
+}
+
+type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
+
+function SourceRow({
+  org,
+  source,
+  canWrite,
+  now,
+  onResult,
+}: {
+  org: string;
+  source: HuntSource;
+  canWrite: boolean;
+  now: string;
+  onResult: (r: Result) => void;
+}) {
+  const [pending, start] = useTransition();
+  const meta = STATUS_META[source.status];
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-[13px] font-medium text-fg">{source.name}</span>
+          <Badge variant="neutral">{KIND_LABELS[source.kind] ?? source.kind}</Badge>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {source.lastScannedAt ? (
+            <Freshness date={source.lastScannedAt} now={new Date(now)} label="Scanned" />
+          ) : (
+            <span className="text-[12px] text-fg-muted">Never scanned</span>
+          )}
+          <span className="text-[12px] text-fg-muted">
+            {source.evidenceCount === 0
+              ? "No evidence attributed yet"
+              : `${source.evidenceCount} pieces of evidence`}
+          </span>
+        </div>
+        {source.lastError && (
+          <p className="mt-1 text-[12px] text-fg-muted">{source.lastError}</p>
+        )}
+      </div>
+
+      <StatusDot variant={meta.variant} label={meta.label} />
+
+      {canWrite && (
+        <>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Pause}
+            aria-label={`Pause ${source.name}`}
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const res = await setSourceEnabledAction(org, source.id, false);
+                onResult(
+                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                );
+              })
+            }
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Trash2}
+            aria-label={`Remove ${source.name}`}
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const res = await deleteSourceAction(org, source.id);
+                onResult(
+                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                );
+              })
+            }
+          />
+        </>
+      )}
+    </li>
+  );
+}
+
+function RecommendationActions({
+  org,
+  source,
+  canWrite,
+  onResult,
+}: {
+  org: string;
+  source: HuntSource;
+  canWrite: boolean;
+  onResult: (r: Result) => void;
+}) {
+  const [pending, start] = useTransition();
+  if (!canWrite) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await deleteSourceAction(org, source.id);
+            onResult(
+              res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+            );
+          })
+        }
+      >
+        Dismiss
+      </Button>
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await setSourceEnabledAction(org, source.id, true);
+            onResult(
+              res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+            );
+          })
+        }
+      >
+        Accept
+      </Button>
+    </div>
+  );
+}
+
+const KINDS: SourceInput["kind"][] = [
+  "news",
+  "blog",
+  "jobs",
+  "social",
+  "github",
+  "funding",
+  "regulatory",
+  "community",
+  "podcast",
+  "custom",
+];
+
+function SourceForm({
+  org,
+  canWrite,
+  onDone,
+}: {
+  org: string;
+  canWrite: boolean;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<SourceInput["kind"]>("news");
+  const [url, setUrl] = useState("");
+
+  const [result, setResult] = useState<Result>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pending, start] = useTransition();
+
+  return (
+    <Card>
+      <CardHeader
+        title="Add a source"
+        description="Something you want read on every hunt. It is enabled straight away — you asked for it, so there is nothing to accept."
+      />
+      <CardBody className="space-y-5">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Name" required error={fieldErrors.name}>
+            {(a) => (
+              <Input
+                {...a}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={!canWrite || pending}
+                placeholder="The Block"
+              />
+            )}
+          </Field>
+
+          <Field label="Kind" error={fieldErrors.kind}>
+            {(a) => (
+              <Select
+                {...a}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as SourceInput["kind"])}
+                disabled={!canWrite || pending}
+              >
+                {KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_LABELS[k]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+
+        <Field
+          label="URL"
+          hint="Where to read it. Leave blank for a source that has no single address."
+          error={fieldErrors.url}
+        >
+          {(a) => (
+            <Input
+              {...a}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              disabled={!canWrite || pending}
+              placeholder="https://www.theblock.co"
+            />
+          )}
+        </Field>
+
+        <FormMessage result={result} />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            icon={Save}
+            disabled={pending}
+            onClick={() => {
+              setResult(null);
+              setFieldErrors({});
+              start(async () => {
+                const res = await saveSourceAction(org, { name, kind, url, icpId: "" });
+                if (res.ok) {
+                  setResult({ ok: true, message: res.message });
+                  onDone();
+                } else {
+                  setResult({ ok: false, error: res.error });
+                  setFieldErrors(res.fieldErrors ?? {});
+                }
+              });
+            }}
+          >
+            {pending ? "Adding…" : "Add source"}
+          </Button>
+          <Button variant="ghost" onClick={onDone} disabled={pending}>
+            Cancel
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
   );
 }

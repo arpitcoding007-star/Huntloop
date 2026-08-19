@@ -161,6 +161,70 @@ of that phase is genuinely N/A today, and will not be then.
 
 ---
 
+## R6 — Build the surface map · **Done**
+
+**Goal:** the sidebar stops being a map of intentions. Every destination is a
+screen that reads real rows and writes real ones.
+
+Twelve modules, each following the shape the Product screen established: a
+loader in `apps/web/lib/data/` with a live branch and a demo branch, a zod
+schema, server actions co-located with the page, and a client form. The
+`unbuilt` flag came off each nav entry in the change that added its page —
+seventeen of seventeen are now gone.
+
+| Module | Backed by |
+|---|---|
+| Settings · Organisation | `organizations` |
+| Settings · ICP + personas | `icps`, `personas` |
+| Companies | `companies`, with `opportunities` and `people` counts |
+| Imports | CSV → `companies`, `people`, `contact_points` |
+| Sources | `sources` — replaced the last fixture-backed screen |
+| Members · Assignments | `memberships`, `opportunities.owner_id` |
+| Pipeline | `opportunities.status` |
+| Outreach | `campaigns`, `sequences`, `sequence_steps`, `mailboxes` |
+| Inbox | `threads`, `messages`, `message_events` |
+| Intelligence | `evidence`, `company_triggers`, `ai_decisions` |
+| Memory | `memories`, respecting the §37 scope constraint |
+
+**Four defects that only building found**, none of which a type or a build
+would have caught:
+
+- **`ICP-01`** — the seed wrote `criteria` as `{industries, employee_count,
+  signals}` while the only reader looked for `{segments, sizes, regions,
+  triggers}`. jsonb accepted both, the reader degraded every missing key to an
+  empty list exactly as designed, and so on a seeded project `qualify` and
+  `why_now` judged every company against an ICP asserting *nothing* — in a tone
+  that reads as a finding. The one shape that must never disagree is the one
+  both sides call the same thing.
+- **`ROLE-01`** — `0001` guards `organizations` and `memberships` at `admin`
+  while everything else sits at `member`, and nothing above the database knew.
+  A member renaming the org got a Postgres policy error where a sentence
+  belongs. `mutate()` grew a `minRole`.
+- **`UI-08`** — the pipeline board let the whole document scroll sideways,
+  dragging the sidebar with it. `overflow-x: auto` only clips what it is the
+  containing block for, and the `sr-only` spans inside it were positioned
+  against an ancestor further up. Invisible in every direction you would
+  normally look: nothing renders on screen, every computed style reads
+  correctly, and the offenders are 1px wide. The mobile Playwright project
+  caught it.
+- **`FEAT-08`** — the Sources screen reported "22 opportunities produced" per
+  source, invented. The real quantity is evidence attributed to the source, and
+  it is zero for every one of them, because nothing scans yet. It says zero.
+
+**What is deliberately not built**, and says so rather than rendering a control
+that cannot work: scheduled scanning, sending an email, connecting a mailbox,
+and inviting a user. Each needs something outside the app — a scheduler, an
+OAuth flow, or the service-role key `apps/web` may not import.
+
+**Exit:** `npm run verify` clean — 38 audit checks, 0 failing, 0 warning; 100
+unit tests; 128 Playwright tests across desktop and mobile. Plus
+`scripts/check-queries.mjs`, which runs all 19 loader SELECTs against the live
+project: the roadmap's own record of R2 is that three of one loader's joins
+were wrong in ways only running them revealed, and that is not a mistake worth
+making twice across twelve more.
+
+---
+
 ## R5 — What only provisioning unblocks
 
 Nothing in this release is engineering-limited. Every item is waiting on a

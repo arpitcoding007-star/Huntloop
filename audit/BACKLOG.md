@@ -319,6 +319,8 @@ into a throwaway project once, end to end, and write down the measured RTO.
 | SEC-08 | Sanitization policy if model output is ever rendered as markup | — | 5 | Standing constraint, not a task |
 | SEO-06 | A landing page for `/` | XL | 8 | `/` redirects to `/login` today — deliberate, and the honest minimum until there is copy worth serving |
 | REPO-08 | Branch protection on `main` | XS | 1 | Needs a repo admin in the GitHub UI; checklist in CONTRIBUTING.md |
+| TEAM-01 | A `profiles` table, so a member has a name | S | 3 | Members and Assignments identify people by uuid. Names live in `auth.users`, which tenants cannot read and which needs the service-role client `apps/web` is forbidden to import. The fix is a `profiles` row per user, written by a trigger on `auth.users` and readable by co-members — a migration, not something the loaders can work around |
+| TEAM-02 | Invite a user to an organisation | M | 3 | Creating a user is `auth.admin`, so it needs a server-side path holding the service-role key. There is no such surface today, and adding one is a deployment decision rather than a button. The control on the Members screen says so rather than rendering as live |
 
 ---
 

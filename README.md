@@ -23,8 +23,15 @@ rules follow from that and are load-bearing everywhere in this repo:
 3. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — build plan, architecture decisions, design system. See §0.0 for the precedence rule and §0.0.1 for the reconciliation between (1) and (2).
 
 The code always outranks all three on the question of what exists. A requirement
-described in a document is not evidence that it is implemented — see plan §11 for what
-is actually built today (short version: the design system and a fixture-backed dashboard).
+described in a document is not evidence that it is implemented.
+
+What is built today: every destination in the sidebar. All seventeen read
+through `apps/web/lib/data/*`, so each one is either showing rows from your
+database or rendering `DemoFigures` to say it is not — there is no third state
+where invented numbers are presented as real. What is *not* built is the part
+that needs something outside the app: nothing scans a source on a timer,
+nothing sends an email, and nobody can be invited. Each of those says so where
+it would otherwise be a button. See [audit/BACKLOG.md](audit/BACKLOG.md).
 
 ## Stack
 

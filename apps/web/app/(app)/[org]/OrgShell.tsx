@@ -62,31 +62,31 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
    *  · Analyze a URL gets its own entry (§17), because "is this actually a
    *    good lead?" is a top-level job, not a filter on a list.
    *
-   * Most of these routes are not built yet; they are the §45 surface map and
-   * exist here so the shape of the product is visible while it is built.
+   * Every destination here is now built. It was not always: this list is the
+   * §45 surface map, and for most of the project's life two thirds of it were
+   * ordinary links onto a 404 — the app asserting a capability it did not
+   * have, which is the §7 failure pointed at ourselves.
    *
-   * Those carry `unbuilt`, which renders them as labels rather than links.
-   * Five of seventeen destinations exist today, and until this flag was added
-   * the other twelve were ordinary links onto a 404 — the app asserting a
-   * capability it does not have, which is the §7 failure pointed at ourselves.
-   * Delete the flag in the same commit that adds the page.
+   * The fix was the `unbuilt` flag, which renders an item as a label rather
+   * than a link, and the rule that it comes off in the same commit that adds
+   * the page. Seventeen of seventeen have now had it removed, so no item
+   * carries it today.
+   *
+   * Keep the flag and the rule. The next destination added to this map will
+   * need both, and `audit.mjs` NAV-01 fails the build for a nav item pointing
+   * at a route that does not exist — which is what makes "add the label, not
+   * the link" the cheaper option rather than a discipline to remember.
    */
   const groups: NavGroup[] = [
     {
       label: "Company",
       items: [
-        {
-          label: "Product",
-          href: `/${org}/settings/product`,
-          icon: Building2,
-          unbuilt: true,
-        },
+        { label: "Product", href: `/${org}/settings/product`, icon: Building2 },
         {
           label: "ICP",
           href: `/${org}/settings/icp`,
           icon: Target,
           badge: { label: "AI", variant: "ai" },
-          unbuilt: true,
         },
         { label: "Sources", href: `/${org}/sources`, icon: Radar },
       ],
@@ -96,41 +96,26 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       items: [
         { label: "Command Center", href: `/${org}/dashboard`, icon: Zap, dot: true },
         { label: "Opportunities", href: `/${org}/opportunities`, icon: Flame },
-        {
-          label: "Companies",
-          href: `/${org}/companies`,
-          icon: Building2,
-          unbuilt: true,
-        },
+        { label: "Companies", href: `/${org}/companies`, icon: Building2 },
         { label: "Analyze a URL", href: `/${org}/analyze`, icon: Globe },
-        { label: "Imports", href: `/${org}/imports`, icon: Upload, unbuilt: true },
+        { label: "Imports", href: `/${org}/imports`, icon: Upload },
       ],
     },
     {
       label: "Engage",
       items: [
-        { label: "Outreach", href: `/${org}/outreach`, icon: Send, unbuilt: true },
+        { label: "Outreach", href: `/${org}/outreach`, icon: Send },
         // The count goes with the flag: "12" was a fixture, and an unread
         // badge on a screen that does not exist is a notification about nothing.
-        { label: "Inbox", href: `/${org}/inbox`, icon: InboxIcon, unbuilt: true },
-        {
-          label: "Pipeline",
-          href: `/${org}/pipeline`,
-          icon: KanbanSquare,
-          unbuilt: true,
-        },
+        { label: "Inbox", href: `/${org}/inbox`, icon: InboxIcon },
+        { label: "Pipeline", href: `/${org}/pipeline`, icon: KanbanSquare },
       ],
     },
     {
       label: "Team",
       items: [
-        { label: "Members", href: `/${org}/team`, icon: Users, unbuilt: true },
-        {
-          label: "Assignments",
-          href: `/${org}/team/assignments`,
-          icon: UserCheck,
-          unbuilt: true,
-        },
+        { label: "Members", href: `/${org}/team`, icon: Users },
+        { label: "Assignments", href: `/${org}/team/assignments`, icon: UserCheck },
       ],
     },
     {
@@ -143,15 +128,14 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           href: `/${org}/intelligence`,
           icon: Lightbulb,
           badge: { label: "AI", variant: "ai" },
-          unbuilt: true,
         },
-        { label: "Memory", href: `/${org}/memory`, icon: Brain, unbuilt: true },
+        { label: "Memory", href: `/${org}/memory`, icon: Brain },
       ],
     },
     {
       label: "Settings",
       items: [
-        { label: "Settings", href: `/${org}/settings`, icon: Settings, unbuilt: true },
+        { label: "Settings", href: `/${org}/settings`, icon: Settings },
       ],
     },
   ];

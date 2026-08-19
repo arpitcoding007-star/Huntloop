@@ -50,6 +50,7 @@ export function OpportunityTable({
   rows: all,
   now,
   initialPriority,
+  initialQuery,
   canWrite,
 }: {
   org: string;
@@ -63,13 +64,21 @@ export function OpportunityTable({
   /** Seeded from `?priority=` by the server component. See page.tsx. */
   initialPriority?: Priority;
   /**
+   * Seeded from `?company=`, for the same reason `initialPriority` exists.
+   * The Companies screen shows how many live opportunities each company has,
+   * and that number needs somewhere to go — without this it would either be
+   * inert text or a link to an unfiltered list, which is a link that lies
+   * about where it lands.
+   */
+  initialQuery?: string;
+  /**
    * Whether to render the write affordances. Resolved on the server — this is
    * a rendering decision, not an authorization one; RLS is the boundary and
    * refuses the write regardless. See lib/data/membership.ts.
    */
   canWrite: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [scope, setScope] = useState("company");
   /* Initial value only — clicking a filter does not rewrite the URL. Keeping
      them in sync would mean a router push per click, which re-runs the server

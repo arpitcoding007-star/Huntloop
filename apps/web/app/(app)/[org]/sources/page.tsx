@@ -1,18 +1,16 @@
+import { notFound } from "next/navigation";
+import { listHuntSources } from "../../../../lib/data/hunt-source";
+import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
 import { SourceManager } from "./SourceManager";
 
 /**
  * Source management (§10).
  *
- * Still fixtures — the `sources` table, its status enum and failure_count all
- * exist in packages/db/migrations, so this becomes a select plus two mutations
- * once Supabase is migrated. `npm run db:seed` already writes four rows to
- * that table; this screen does not read them yet.
- *
- * It used to rely on the org layout's banner to say so. That banner answers a
- * different question — "is this deployment connected?" — and goes quiet once
- * it is, which left these example sources looking like the org's real ones.
- * Hence the unconditional notice.
+ * This screen was the last fixture-backed one. It now reads `sources` through
+ * `lib/data/hunt-source`, so the unconditional demo notice it used to carry is
+ * conditional again — the banner appears exactly when the loader fell back,
+ * which is the distinction FEAT-DEMO exists to preserve.
  */
 export default async function SourcesPage({
   params,
@@ -20,12 +18,27 @@ export default async function SourcesPage({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
+
+  const viewer = await currentViewer(org);
+  if (!viewer) notFound();
+
+  const { data: sources, source } = await listHuntSources(org);
+
   return (
     <>
-      <div className="px-6 pt-6 lg:px-8">
-        <DemoFigures what="These are example sources, not the ones on your account." />
-      </div>
-      <SourceManager org={org} />
+      {source !== "live" && (
+        <div className="px-6 pt-6 lg:px-8">
+          <DemoFigures what="These are example sources, not the ones on your account." />
+        </div>
+      )}
+      <SourceManager
+        org={org}
+        sources={sources}
+        canWrite={canWrite(viewer)}
+        /* Resolved once per request and passed down, so every relative age on
+           the page is measured from the same instant. */
+        now={new Date().toISOString()}
+      />
     </>
   );
 }
