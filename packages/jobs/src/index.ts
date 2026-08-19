@@ -41,7 +41,7 @@ export {
 } from "./queue.ts";
 
 export { HANDLERS, type JobContext, type JobHandler, type JobOutcome } from "./registry.ts";
-export { tick, type TickOptions, type TickReport } from "./runner.ts";
+export { sweep, tick, type TickOptions, type TickReport } from "./runner.ts";
 
 export {
   FetchRefused,
@@ -98,3 +98,15 @@ export function isInngestConfigured(): boolean {
 export function cronSecret(): string | null {
   return process.env.CRON_SECRET?.trim() || null;
 }
+
+export {
+  MailboxUnavailable,
+  authorize,
+  configuredProviders,
+  isProviderConfigured,
+  pickMailbox,
+  providerFor,
+  type AuthorizedMailbox,
+  type OAuthTokens,
+  type ProviderId,
+} from "./mailbox/index.ts";

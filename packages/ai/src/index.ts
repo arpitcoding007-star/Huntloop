@@ -81,6 +81,22 @@ export {
 } from "./tasks/qualify-opportunity.ts";
 
 export {
+  REPLY_CLASSES,
+  classifyReply,
+  type ReplyClass,
+  type ReplyClassification,
+  type ReplyInput,
+} from "./tasks/classify-reply.ts";
+
+export {
+  MAX_BODY_CHARS,
+  personalizeMessage,
+  type MessageEvidence,
+  type PersonalizeInput,
+  type PersonalizedMessage,
+} from "./tasks/personalize-message.ts";
+
+export {
   EVENT_TYPES,
   MAX_SIGNALS,
   extractSignals,

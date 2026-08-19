@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { cronSecret, enqueue, tick } from "@huntloop/jobs";
+import { cronSecret, sweep, tick } from "@huntloop/jobs";
 
 /**
  * The heartbeat.
@@ -66,16 +66,11 @@ async function run(request: NextRequest) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  /* The sweeper, enqueued rather than called. It is a job like any other, so
-     it is claimed, timed, retried and recorded in `job_executions` — and the
-     idempotency key means a sweep still running from the last tick is not
-     started again. */
-  await enqueue({
-    orgId: null,
-    name: "schedule_scans",
-    idempotencyKey: "schedule_scans",
-    maxAttempts: 1,
-  });
+  /* The sweepers, enqueued rather than called. They are jobs like any other,
+     so they are claimed, timed, retried and recorded in `job_executions` — and
+     the idempotency keys mean a sweep still running from the last tick is not
+     started again. See `sweep()` for why this is not inside `tick()`. */
+  await sweep();
 
   const report = await tick({
     limit: Number(request.nextUrl.searchParams.get("limit") ?? 5),

@@ -18,7 +18,7 @@
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { assertFetchable, FetchRefused } from "../src/fetch.ts";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
-import { tick } from "../src/runner.ts";
+import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
 import type { JobHandler } from "../src/registry.ts";
 
@@ -516,6 +516,95 @@ console.log("\ntick — claim, dispatch, record, and stop before being killed");
     "no org_id",
   );
   setAdminClientForTests(null);
+}
+
+/* ── The sweep ───────────────────────────────────────────────────────────── */
+
+console.log("\nsweep — the heartbeat that puts periodic work into the queue");
+
+{
+  const { client, calls } = fakeClient();
+  setAdminClientForTests(client);
+
+  await sweep();
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => c.payload as Record<string, unknown>);
+
+  expectEqual(
+    "every sweeper is enqueued, and nothing else is",
+    enqueued.map((row) => row.job_name).sort(),
+    ["advance_enrollments", "schedule_scans", "schedule_syncs"],
+  );
+  expect(
+    "each carries no org — a sweeper is the cross-tenant question",
+    enqueued.every((row) => row.org_id === null),
+    JSON.stringify(enqueued.map((row) => row.org_id)),
+  );
+  expect(
+    "each is idempotent on its own name, so a slow sweep is not started twice",
+    enqueued.every((row) => row.idempotency_key === row.job_name),
+    JSON.stringify(enqueued.map((row) => row.idempotency_key)),
+  );
+  expect(
+    "and none is retried — the next tick asks the same question of fresher rows",
+    enqueued.every((row) => row.max_attempts === 1),
+    JSON.stringify(enqueued.map((row) => row.max_attempts)),
+  );
+
+  setAdminClientForTests(null);
+}
+
+{
+  /* The complement of "a job with no org is refused": the sweepers are the
+     jobs for which that is not a bug, and the runner has to tell them apart by
+     name. A regression here is silent in both directions — either the engine
+     stops sweeping, or an ordinary job starts running unscoped. */
+  const original = { ...HANDLERS };
+  let sawOrg: string | null = null;
+
+  const { client } = fakeClient({
+    "rpc:claim_job_executions": {
+      data: [
+        { id: "j1", org_id: null, job_name: "schedule_syncs", status: "running", attempts: 1, max_attempts: 1, payload: {}, run_at: new Date().toISOString(), error: null },
+      ],
+      error: null,
+    },
+    "rpc:requeue_stalled_jobs": { data: 0, error: null },
+  });
+  setAdminClientForTests(client);
+
+  (HANDLERS as Record<string, JobHandler>).schedule_syncs = async (ctx) => {
+    sawOrg = ctx.scope.orgId;
+    return { ok: true, result: {} };
+  };
+
+  const report = await tick({ limit: 1 });
+
+  expectEqual("a sweeper runs without an org id", report.succeeded, 1);
+  expectEqual(
+    "under the nil uuid, which matches no row — so a scoped read returns nothing",
+    sawOrg,
+    "00000000-0000-0000-0000-000000000000",
+  );
+
+  Object.assign(HANDLERS, original);
+  setAdminClientForTests(null);
+}
+
+{
+  /* Totality is enforced by the type of `HANDLERS`, which is exactly why this
+     check is here: a `Record<JobName, JobHandler>` satisfied by a cast, or by
+     a stale build, compiles and then fails at runtime as "no handler" — three
+     retries after the work was queued. */
+  expectEqual(
+    "every job name that can be enqueued has a handler",
+    Object.entries(HANDLERS)
+      .filter(([, handler]) => typeof handler !== "function")
+      .map(([name]) => name),
+    [],
+  );
 }
 
 console.log(

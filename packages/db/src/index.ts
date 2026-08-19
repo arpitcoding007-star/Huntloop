@@ -13,4 +13,11 @@ export type { CookieStore, TenantClient } from "./server.ts";
 export { createClientSideClient } from "./browser.ts";
 export type { ClientSideClient } from "./browser.ts";
 
+export {
+  EncryptionUnavailable,
+  decryptSecret,
+  encryptSecret,
+  isEncryptionConfigured,
+} from "./crypto.ts";
+
 export * from "./types.ts";

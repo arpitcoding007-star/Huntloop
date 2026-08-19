@@ -39,7 +39,11 @@ export type JobName =
   | "scan_source"
   | "research_company"
   | "score_opportunity"
-  | "enrich_person";
+  | "enrich_person"
+  | "schedule_syncs"
+  | "sync_mailbox"
+  | "advance_enrollments"
+  | "send_message";
 
 export interface JobRow {
   id: string;

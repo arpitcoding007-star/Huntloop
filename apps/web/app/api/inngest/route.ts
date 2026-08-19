@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isInngestConfigured, tick } from "@huntloop/jobs";
+import { isInngestConfigured, sweep, tick } from "@huntloop/jobs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
@@ -51,6 +51,11 @@ export async function POST(request: NextRequest) {
   if (!verdict.ok) {
     return NextResponse.json({ error: verdict.reason }, { status: 401 });
   }
+
+  /* The same sweep the cron route does, for the same reason: these are the
+     only jobs that put periodic work into the queue, and a driver that ticks
+     without sweeping runs an engine that never notices anything is due. */
+  await sweep();
 
   const report = await tick({
     limit: 5,

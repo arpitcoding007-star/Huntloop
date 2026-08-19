@@ -42,6 +42,10 @@ import { scheduleScans } from "./handlers/schedule-scans.ts";
 import { researchCompanyJob } from "./handlers/research-company.ts";
 import { scoreOpportunity } from "./handlers/score-opportunity.ts";
 import { enrichPerson } from "./handlers/enrich-person.ts";
+import { scheduleSyncs } from "./handlers/schedule-syncs.ts";
+import { syncMailbox } from "./handlers/sync-mailbox.ts";
+import { advanceEnrollments } from "./handlers/advance-enrollments.ts";
+import { sendMessage } from "./handlers/send-message.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -49,4 +53,8 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   research_company: researchCompanyJob,
   score_opportunity: scoreOpportunity,
   enrich_person: enrichPerson,
+  schedule_syncs: scheduleSyncs,
+  sync_mailbox: syncMailbox,
+  advance_enrollments: advanceEnrollments,
+  send_message: sendMessage,
 };

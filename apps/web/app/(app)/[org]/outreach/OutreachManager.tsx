@@ -17,6 +17,7 @@ import {
   Textarea,
 } from "@huntloop/ui";
 import { Mail, Plus, Save, Send, Trash2 } from "lucide-react";
+import type { ProviderId } from "@huntloop/jobs";
 import type { Campaign, Mailbox, Outreach, Sequence, SequenceStep } from "../../../../lib/data/outreach";
 import {
   createSequenceAction,
@@ -58,13 +59,24 @@ export function OutreachManager({
   org,
   outreach,
   canWrite,
+  providers,
+  connectUnavailable,
+  notice,
 }: {
   org: string;
   outreach: Outreach;
   canWrite: boolean;
+  /** Which providers this deployment can actually offer. Possibly none. */
+  providers: ProviderId[];
+  /** Why connecting is not possible, when it is not. Null when it is. */
+  connectUnavailable: string | null;
+  /** What the OAuth redirect came back saying, if this is that navigation. */
+  notice: Result;
 }) {
   const [creating, setCreating] = useState(false);
-  const [result, setResult] = useState<Result>(null);
+  /* Seeded from the URL, so the outcome of an OAuth round trip lands in the
+     same place every other outcome on this screen does. */
+  const [result, setResult] = useState<Result>(notice);
 
   const { campaigns, mailboxes } = outreach;
   const live = campaigns.filter((c) => c.status === "active");
@@ -138,18 +150,20 @@ export function OutreachManager({
             title="Where mail goes out from"
             description="A campaign cannot send without one."
             actions={
-              /* Connecting a mailbox is an OAuth flow against Gmail or
-                 Outlook, plus somewhere to encrypt the tokens. None of that
-                 exists, so the control says so rather than rendering live
-                 (NAV-03). */
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={Mail}
-                pending="Connecting a mailbox isn't built yet — it needs an OAuth flow and somewhere to encrypt the tokens."
-              >
-                Connect a mailbox
-              </Button>
+              /* One control per provider this deployment can actually offer,
+                 rather than one "Connect a mailbox" that then asks which. The
+                 choice is between two names the user already recognises, and
+                 putting them in the button skips a dialog that would only ever
+                 have those two options in it.
+
+                 A plain link, not a form: the flow is a redirect to somebody
+                 else's consent screen, and there is nothing to submit. */
+              <ConnectControls
+                org={org}
+                providers={providers}
+                unavailable={connectUnavailable}
+                canWrite={canWrite}
+              />
             }
           />
           <CardBody>
@@ -179,6 +193,57 @@ function Figure({ label, value }: { label: string; value: number }) {
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * Connect a mailbox — one button per provider this deployment can offer.
+ *
+ * The `pending` variant carries the reason rather than a generic "unavailable",
+ * because the three reasons have three different fixes and only one of them is
+ * something the person reading it can do. Saying which is missing is the
+ * difference between "this is broken" and "an environment variable is unset".
+ */
+function ConnectControls({
+  org,
+  providers,
+  unavailable,
+  canWrite,
+}: {
+  org: string;
+  providers: ProviderId[];
+  unavailable: string | null;
+  canWrite: boolean;
+}) {
+  if (!canWrite) return null;
+
+  if (unavailable || providers.length === 0) {
+    return (
+      <Button
+        size="sm"
+        variant="secondary"
+        icon={Mail}
+        pending={unavailable ?? "No mailbox provider is configured on this deployment."}
+      >
+        Connect a mailbox
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {providers.map((provider) => (
+        <Button
+          key={provider}
+          size="sm"
+          variant="secondary"
+          icon={Mail}
+          href={`/api/mailboxes/${provider}/start?org=${encodeURIComponent(org)}`}
+        >
+          Connect {provider === "gmail" ? "Gmail" : "Outlook"}
+        </Button>
+      ))}
     </div>
   );
 }

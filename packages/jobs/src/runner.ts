@@ -22,7 +22,15 @@
  */
 import { OrgScope, adminClient } from "./scope.ts";
 import { HANDLERS } from "./registry.ts";
-import { claim, markFailed, requeueStalled, succeed, type JobRow } from "./queue.ts";
+import {
+  claim,
+  enqueue,
+  markFailed,
+  requeueStalled,
+  succeed,
+  type JobName,
+  type JobRow,
+} from "./queue.ts";
 
 export interface TickOptions {
   /** Upper bound on jobs claimed in this invocation. */
@@ -102,11 +110,12 @@ async function runOne(job: JobRow): Promise<{ ok: boolean; detail: string }> {
     return { ok: false, detail: `no handler for ${job.job_name}` };
   }
 
-  /* `schedule_scans` is the only job with no org — it is the cross-tenant
-     sweeper. Everything else gets a scope bound to its own org id, and a job
-     row that lost its org is a bug rather than a global-permission grant. */
+  /* The sweepers are the jobs with no org — they ask a cross-tenant question
+     and fan the answer out into per-org work. Everything else gets a scope
+     bound to its own org id, and a job row that lost its org is a bug rather
+     than a global-permission grant. */
   const orgId = job.org_id ?? SWEEPER_ORG;
-  if (!job.org_id && job.job_name !== "schedule_scans") {
+  if (!job.org_id && !SWEEPERS.has(job.job_name)) {
     await markFailed(job, `${job.job_name} has no org_id.`, { permanent: true });
     return { ok: false, detail: "no org_id" };
   }
@@ -148,3 +157,50 @@ async function runOne(job: JobRow): Promise<{ ok: boolean; detail: string }> {
  * everything.
  */
 const SWEEPER_ORG = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * The jobs allowed to run without an org.
+ *
+ * A closed set rather than a flag on the row, because "may read across every
+ * tenant" is the most consequential property a job can have and it should be
+ * stated in one place that a reviewer can read in full. Everything not listed
+ * here fails permanently when its `org_id` is null — a job row that lost its
+ * org is a bug, and the safe reading of that bug is "refuse", not "run this
+ * against all of them".
+ */
+const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
+  "schedule_scans",
+  "schedule_syncs",
+  "advance_enrollments",
+]);
+
+/**
+ * Enqueue the sweepers, once per tick.
+ *
+ * ── Why the driver calls this rather than `tick()` doing it ──────────────
+ *
+ * Because `tick()` is also how a test, a script, or an operator drains the
+ * queue, and a drain that keeps adding work to the queue never finishes. The
+ * sweep is the *heartbeat*; the tick is the *work*. Keeping them separate is
+ * what lets `tick()` be called safely from anywhere.
+ *
+ * ── Why every driver must call it ────────────────────────────────────────
+ *
+ * These three jobs are the only things that put periodic work into the queue.
+ * A driver that ticks without sweeping runs an engine that processes whatever
+ * it is handed and never notices that a source is overdue, a reply is
+ * unread, or a sequence is due to advance — an engine that looks healthy in
+ * every log line and does nothing. That is exactly what the Inngest route did
+ * before this function existed, which is the argument for it living here
+ * rather than being repeated in each route.
+ *
+ * Each is idempotent on its own name, so a sweep still running from the last
+ * tick is not started again, and `maxAttempts: 1` because a sweep that fails
+ * is not worth retrying — the next tick is thirty seconds away and will ask
+ * the same question against fresher rows.
+ */
+export async function sweep(): Promise<void> {
+  for (const name of SWEEPERS) {
+    await enqueue({ orgId: null, name, idempotencyKey: name, maxAttempts: 1 });
+  }
+}
