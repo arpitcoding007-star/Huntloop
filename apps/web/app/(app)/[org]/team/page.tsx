@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { canAdmin, currentViewer } from "../../../../lib/data/membership";
-import { listMembers } from "../../../../lib/data/team";
+import { listInvitations, listMembers } from "../../../../lib/data/team";
 import { DemoFigures } from "../DemoFigures";
 import { MemberList } from "./MemberList";
 import { TeamNav } from "./TeamNav";
@@ -24,6 +24,7 @@ export default async function TeamPage({
   if (!viewer) notFound();
 
   const { data: members, source } = await listMembers(org);
+  const { data: invitations } = await listInvitations(org);
 
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
@@ -48,6 +49,7 @@ export default async function TeamPage({
         <MemberList
           org={org}
           members={members}
+          invitations={invitations}
           canAdmin={canAdmin(viewer)}
           now={new Date().toISOString()}
         />

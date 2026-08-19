@@ -31,9 +31,11 @@ import { assignOpportunityAction } from "../actions";
  * opportunity list, so unassigned work is triaged in the order it would be
  * worked rather than in insertion order.
  *
- * Members are identified by user id here for the same reason as on the Members
- * screen: there is no `profiles` table yet, so there is no name to show. See
- * the note in `lib/data/team.ts`.
+ * Members are named through `profiles` (0007), which is what makes the owner
+ * dropdown usable: handing work to a colleague means recognising them in a
+ * list, and a list of uuids is a list you cannot choose from. Where a person
+ * has supplied no name the address stands in, and the uuid is the last
+ * fallback — see `memberLabel` below.
  */
 export function AssignmentBoard({
   org,
@@ -171,8 +173,10 @@ function AssignmentRow({
           <Badge variant="neutral">{assignment.status}</Badge>
         </div>
         {assignment.ownerId && (
-          <p className="mt-1 truncate font-mono text-[12px] text-fg-muted">
-            {assignment.ownerIsYou ? "You" : assignment.ownerId}
+          <p className="mt-1 truncate text-[12px] text-fg-muted">
+            {assignment.ownerIsYou
+              ? "You"
+              : (assignment.ownerName ?? assignment.ownerId)}
           </p>
         )}
       </div>
@@ -202,7 +206,7 @@ function AssignmentRow({
             <option value="">Unassigned</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
-                {m.isYou ? "You" : m.userId}
+                {memberLabel(m)}
               </option>
             ))}
           </Select>
@@ -214,4 +218,18 @@ function AssignmentRow({
       )}
     </li>
   );
+}
+
+/**
+ * How a member reads in the owner dropdown.
+ *
+ * "You" first, because the most common assignment is to yourself and reading
+ * your own name in a list of colleagues is slower than reading the word. Then
+ * the name, then the address, then the id — each step down is a fact the row
+ * genuinely has, and nothing is synthesised from the one below it.
+ */
+function memberLabel(member: Member): string {
+  if (member.isYou) return "You";
+  if (member.name && member.email) return `${member.name} · ${member.email}`;
+  return member.name ?? member.email ?? member.userId;
 }

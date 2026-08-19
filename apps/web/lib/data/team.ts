@@ -8,23 +8,22 @@ import { load, type Loaded } from "./source";
 /**
  * The team — master context §38, and the role enum from `0001`.
  *
- * ── Why a member has no name here ────────────────────────────────────────
+ * ── Where the names come from ────────────────────────────────────────────
  *
- * Because there is nowhere to read one from. `memberships` holds `user_id`,
- * `role` and the invite trail; the name and email live in `auth.users`, which
- * Supabase does not expose through PostgREST, and reaching them would need the
- * service-role client that `apps/web` is forbidden to import (there is a CI
- * check for exactly that: `packages/db/scripts/check-admin-imports.ts`).
+ * `memberships` holds `user_id`, `role` and the invite trail. Names and email
+ * addresses live in `auth.users`, which Supabase does not expose through
+ * PostgREST and which would need the service-role client `apps/web` is
+ * forbidden to import.
  *
- * There is no `profiles` table yet. The usual pattern — a public row per user,
- * populated by a trigger on `auth.users`, readable by co-members — is the fix,
- * and it is a migration rather than something this loader can work around.
- * It is recorded as `TEAM-01` in the backlog.
+ * `0007` closes that with `profiles`: one row per user, written by a trigger
+ * on `auth.users`, readable only by people who share an org with you. So this
+ * loader joins on a uuid it already has and gets back a name.
  *
- * So the screen shows what is true: roles, when each member joined, and which
- * one is you. Inventing a display name from a uuid would be the §7 failure
- * this codebase is built to avoid, and showing a blank where a name goes
- * would read as "this person has no name" rather than "we cannot see it".
+ * The fallback is still the uuid, and that is deliberate. A profile row can
+ * legitimately have no name — a magic-link signup supplies an address and
+ * nothing else — and showing the address, or failing that the id, is true.
+ * Inventing a display name from a uuid would be the §7 failure aimed at our
+ * own interface.
  */
 
 export interface Member {
@@ -32,7 +31,10 @@ export interface Member {
   userId: string;
   role: Role;
   joinedAt: string | null;
-  /** True for the signed-in user. The only identity this screen can resolve. */
+  /** From `profiles`. Null when the user has never supplied one. */
+  name: string | null;
+  email: string | null;
+  /** True for the signed-in user. */
   isYou: boolean;
 }
 
@@ -51,13 +53,28 @@ export async function listMembers(orgSlug: string): Promise<Loaded<Member[]>> {
 
       if (error) throw new Error(`listMembers: ${error.message}`);
 
-      return (data ?? []).map((row) => ({
-        id: String(row.id),
-        userId: String(row.user_id),
-        role: ROLES.includes(row.role as Role) ? (row.role as Role) : "viewer",
-        joinedAt: row.created_at ?? null,
-        isYou: String(row.user_id) === viewerId,
-      }));
+      const rows = data ?? [];
+      /* A second query rather than an embed. `memberships.user_id` and
+         `profiles.id` both reference `auth.users`; neither references the
+         other, so there is no foreign key for PostgREST to embed through and
+         asking for one returns an error rather than a join. */
+      const profiles = await loadProfiles(
+        db,
+        rows.map((r) => String(r.user_id)),
+      );
+
+      return rows.map((row) => {
+        const profile = profiles.get(String(row.user_id));
+        return {
+          id: String(row.id),
+          userId: String(row.user_id),
+          role: ROLES.includes(row.role as Role) ? (row.role as Role) : "viewer",
+          joinedAt: row.created_at ?? null,
+          name: profile?.name ?? null,
+          email: profile?.email ?? null,
+          isYou: String(row.user_id) === viewerId,
+        };
+      });
     },
     () => DEMO_MEMBERS,
   );
@@ -70,11 +87,10 @@ const ROLES: readonly Role[] = ["owner", "admin", "member", "viewer"];
 /**
  * An opportunity and who owns it.
  *
- * `opportunities.owner_id` references `auth.users`, so the same identity
- * problem applies: an owner can be recognised as *you* or as "another member",
- * and nothing finer until `TEAM-01` lands. What the screen can do fully is the
- * part that matters — assign, reassign and unassign — because that writes a
- * uuid it already has from the members list.
+ * `opportunities.owner_id` references `auth.users`, and `profiles` resolves
+ * it to a person for the same reason it does on the members list: an
+ * assignment screen that can only distinguish "you" from "somebody" cannot be
+ * used to hand work to a named colleague, which is the entire task.
  */
 export interface Assignment {
   id: string;
@@ -83,6 +99,7 @@ export interface Assignment {
   priorityReason: string;
   status: string;
   ownerId: string | null;
+  ownerName: string | null;
   ownerIsYou: boolean;
 }
 
@@ -105,11 +122,18 @@ export async function listAssignments(orgSlug: string): Promise<Loaded<Assignmen
 
       if (error) throw new Error(`listAssignments: ${error.message}`);
 
+      const rows = data ?? [];
+      const profiles = await loadProfiles(
+        db,
+        rows.map((r) => r.owner_id).filter(Boolean) as string[],
+      );
+
       /* eslint-disable @typescript-eslint/no-explicit-any --
          The row type for a nested select is generated from a live project's
          schema. Confined to this mapping. */
-      return (data ?? []).map((row: any) => {
+      return rows.map((row: any) => {
         const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+        const owner = row.owner_id ? profiles.get(String(row.owner_id)) : undefined;
         return {
           id: String(row.id),
           company: String(company?.name ?? "Unknown company"),
@@ -117,6 +141,7 @@ export async function listAssignments(orgSlug: string): Promise<Loaded<Assignmen
           priorityReason: String(row.priority_reason ?? ""),
           status: String(row.status ?? "discovered"),
           ownerId: row.owner_id ?? null,
+          ownerName: owner?.name ?? owner?.email ?? null,
           ownerIsYou: Boolean(row.owner_id) && String(row.owner_id) === viewerId,
         };
       });
@@ -132,6 +157,107 @@ async function currentUserId(db: TenantClient): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+/**
+ * uuid → name and email, for the ids on this page only.
+ *
+ * The `in` filter matters as much as the RLS policy behind it. `profiles` is
+ * readable for every user who shares *any* org with you, so an unfiltered
+ * select on a screen scoped to one org would also return your colleagues from
+ * the others — correct by policy, wrong by page.
+ *
+ * A read failure yields an empty map rather than throwing: names are a display
+ * concern, and losing the whole members screen because one lookup failed is a
+ * worse outcome than showing uuids for a render.
+ */
+async function loadProfiles(
+  db: TenantClient,
+  userIds: string[],
+): Promise<Map<string, { name: string | null; email: string | null }>> {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+
+  const { data, error } = await db
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", ids);
+
+  if (error) return new Map();
+
+  return new Map(
+    (data ?? []).map((row) => [
+      String(row.id),
+      {
+        name: ((row.full_name as string | null) ?? "").trim() || null,
+        email: ((row.email as string | null) ?? "").trim() || null,
+      },
+    ]),
+  );
+}
+
+/* ── Invitations (0007) ──────────────────────────────────────────────────── */
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  invitedByName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  /**
+   * True once past `expires_at`. Shown rather than filtered out: an
+   * invitation that lapsed is usually the answer to "why has nobody joined?",
+   * and hiding it turns that into a mystery.
+   */
+  expired: boolean;
+}
+
+/**
+ * Invitations still awaiting an answer.
+ *
+ * Admin-only by policy, not by this query — `invitation_admin` in `0007` is
+ * `has_org_role(org_id, 'admin')`, so a member calling it gets zero rows
+ * rather than a refusal. The screen renders that as the section not being
+ * there, which is the truthful reading of the row count it was given.
+ */
+export async function listInvitations(orgSlug: string): Promise<Loaded<Invitation[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "listInvitations");
+
+      const { data, error } = await db
+        .from("invitations")
+        .select("id, email, role, invited_by, created_at, expires_at")
+        .eq("org_id", orgId)
+        .is("accepted_at", null)
+        .is("revoked_at", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(`listInvitations: ${error.message}`);
+
+      const rows = data ?? [];
+      const profiles = await loadProfiles(
+        db,
+        rows.map((r) => r.invited_by).filter(Boolean) as string[],
+      );
+      const now = Date.now();
+
+      return rows.map((row) => {
+        const by = row.invited_by ? profiles.get(String(row.invited_by)) : undefined;
+        return {
+          id: String(row.id),
+          email: String(row.email),
+          role: ROLES.includes(row.role as Role) ? (row.role as Role) : "member",
+          invitedByName: by?.name ?? by?.email ?? null,
+          createdAt: String(row.created_at),
+          expiresAt: String(row.expires_at),
+          expired: new Date(String(row.expires_at)).getTime() < now,
+        };
+      });
+    },
+    () => [],
+  );
+}
+
 /* ── Demo ────────────────────────────────────────────────────────────────── */
 
 const DEMO_MEMBERS: Member[] = [
@@ -140,6 +266,8 @@ const DEMO_MEMBERS: Member[] = [
     userId: "00000000-0000-4000-8000-000000000001",
     role: "owner",
     joinedAt: null,
+    name: "Dana Whitfield",
+    email: "dana@example.com",
     isYou: true,
   },
   {
@@ -147,13 +275,21 @@ const DEMO_MEMBERS: Member[] = [
     userId: "00000000-0000-4000-8000-000000000002",
     role: "member",
     joinedAt: null,
+    name: "Rafi Osman",
+    email: "rafi@example.com",
     isYou: false,
   },
   {
+    /* No name, on purpose. A magic-link signup supplies an address and nothing
+       else, so "an account with an email and no name" is a state the members
+       screen has to render — and the demo is the only place it can be seen
+       without creating one. */
     id: "demo-member-3",
     userId: "00000000-0000-4000-8000-000000000003",
     role: "viewer",
     joinedAt: null,
+    name: null,
+    email: "viewer@example.com",
     isYou: false,
   },
 ];
@@ -171,5 +307,6 @@ const DEMO_ASSIGNMENTS: Assignment[] = OPPORTUNITIES.map((o, i) => ({
   priorityReason: o.priorityReason,
   status: o.status,
   ownerId: i === 0 ? "00000000-0000-4000-8000-000000000001" : null,
+  ownerName: i === 0 ? "Dana Whitfield" : null,
   ownerIsYou: i === 0,
 }));

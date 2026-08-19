@@ -258,6 +258,20 @@ export const memorySchema = z.object({
 
 export const memberRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
 
+/**
+ * An invitation.
+ *
+ * `owner` is deliberately not offerable here. Promoting somebody to owner is
+ * a deliberate act performed on a member who has already arrived and been
+ * recognised — doing it by typing an address into a box means a typo grants
+ * the highest privilege in the organisation to whoever happens to control
+ * that mailbox.
+ */
+export const inviteSchema = z.object({
+  email: emailSchema,
+  role: z.enum(["admin", "member", "viewer"]),
+});
+
 export const orgSettingsSchema = z.object({
   name: orgNameSchema,
 });

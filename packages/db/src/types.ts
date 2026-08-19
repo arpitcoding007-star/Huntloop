@@ -48,6 +48,26 @@ export interface Membership {
   role: OrgRole;
 }
 
+export interface Profile {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface Invitation {
+  id: string;
+  org_id: string;
+  email: string;
+  role: OrgRole;
+  token: string;
+  invited_by: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
 export interface Company {
   id: string;
   org_id: string;
