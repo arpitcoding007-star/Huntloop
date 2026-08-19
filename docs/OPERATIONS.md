@@ -1,12 +1,13 @@
 # Operations
 
-Backup, recovery, schema drift, and the API-surface decision. Written because
-each of these is cheap to decide now and expensive to discover later.
+Deployment, backup, recovery, schema drift, and the API-surface decision.
+Written because each of these is cheap to decide now and expensive to discover
+later.
 
-Nothing here can be verified from this repository — it all describes a hosted
-Supabase project that only its owner can see. Every claim below is therefore
-marked with whether it has been **checked** or is **assumed**, and the assumed
-ones are the work, not the document.
+Most of this describes hosted services — a Supabase project and two Vercel
+projects — that only their owner can change from a dashboard. Every claim below
+is therefore marked with whether it has been **checked** or is **assumed**, and
+the assumed ones are the work, not the document.
 
 ---
 
@@ -41,6 +42,83 @@ confirmed — the test suite runs against PGlite, which has no `pg_cron` at all.
 **Before pointing this repo at a different project**, run `db:doctor` against
 it first. It lists what is already there, which is the check `SETUP.md` step 1
 asks for in prose.
+
+---
+
+## OPS-03 · Vercel projects, and the one that has never built
+
+**Two Vercel projects deploy this repository.** Both fire on every push to
+`main`, both are named "Production", and they have behaved differently since
+the first commit:
+
+| Project | Root Directory | Every deployment since | State |
+|---|---|---|---|
+| `huntloop-web` | `apps/web` (inferred) | `df679d6`, 2026-08-12 | **succeeds** |
+| `huntloop` | repository root (inferred) | `e55c196`, the initial scaffold | **fails, every time** |
+
+`huntloop` has never produced a successful deployment. Not a regression — it
+has never worked, and the failures were invisible because the project that
+serves the app is the other one.
+
+### Why the root-rooted project cannot build
+
+Vercel detects a framework by reading `package.json` **in the project's Root
+Directory**. In this repository those two files are deliberately different:
+
+```
+package.json            workspaces + scripts, and NO dependencies at all
+apps/web/package.json   "next": "^16.3.1"
+```
+
+So a project rooted at the repository root sees no `next`, detects no
+framework, falls back to "Other", and then looks for a static output directory
+— `public/` by default, which does not exist here either. There is no
+`vercel.json` anywhere to correct any of that, so both projects run entirely on
+dashboard settings that nothing in this repository can see or review.
+
+That is the whole failure, and it is a settings problem rather than a code one.
+Nothing in the build is broken: `npm run verify` builds all 21 routes.
+
+### The fix
+
+Pick one. Both are dashboard actions; neither can be done from this repository.
+
+**A — delete `huntloop` (recommended).** It is a duplicate that has never
+served anything. Before deleting, check on that project's settings page:
+
+- **Domains.** If a custom domain is attached to `huntloop` rather than to
+  `huntloop-web`, move it first — deleting takes the domain with it.
+- **Environment variables.** `huntloop-web` needs its own copy of every
+  variable; do not assume they were set on both.
+
+**B — repoint it.** Project Settings → General → **Root Directory** →
+`apps/web` → Save. It will then build, and you will have two production
+projects deploying the same commit to two URLs, which is worth wanting only if
+one of them is a staging target.
+
+### Why there is no `vercel.json` fixing this
+
+Tempting, and deliberately not done. A root-level `vercel.json` with a
+`buildCommand` and `outputDirectory` pointing into `apps/web` is the obvious
+move, and it is not a supported path for a fully dynamic Next.js app: every
+route here is server-rendered on demand and there is a proxy, and Vercel's
+Next.js builder expects to run against the app's own directory. The plausible
+outcome is not a fixed deployment but a **green build that serves a broken
+app**, which is worse than the honest failure — and it would be committed
+against a build nobody had run.
+
+Root Directory is the mechanism Vercel provides for this. Use it.
+
+### If you set the Root Directory, pin the rest
+
+Once a project is rooted at `apps/web`, its build config can move into the
+repository as `apps/web/vercel.json` — which is where it belongs, given that
+two dashboards silently disagreeing is what produced this. One caution that
+must not be got wrong: **do not pin `installCommand`.** This is an npm
+workspace monorepo, `@huntloop/ui`, `@huntloop/db` and `@huntloop/ai` resolve
+only from the repository root, and Vercel already installs from the root when
+the Root Directory is a workspace package. Pinning `npm install` would make it
+run inside `apps/web` and break the build that currently works.
 
 ---
 

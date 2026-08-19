@@ -235,6 +235,30 @@ editor is the only check there is, and it has not been run.
 `rate_limits` grows forever — a slow leak, not an outage, which is why it needs
 a deliberate check rather than a wait-and-see.
 
+### OPS-03 · The second Vercel project has never built · **XS** · Phase 1
+Two Vercel projects deploy this repo on every push. `huntloop-web` succeeds;
+**`huntloop` has failed on every commit since the initial scaffold** and has
+never served anything.
+
+**Cause, and it is not code.** Vercel detects a framework from the
+`package.json` in the project's Root Directory. The repo root declares
+workspaces and *no dependencies at all*, so a root-rooted project finds no
+`next`, detects no framework, and then looks for a `public/` directory that
+does not exist either. `apps/web/package.json` declares `next`, which is why
+the other project builds. There is no `vercel.json` anywhere, so both projects
+run entirely on dashboard settings nothing in this repo can review.
+
+**Why no commit fixes it.** A root `vercel.json` pointing `outputDirectory` at
+`apps/web/.next` is the obvious move and is not a supported path for a fully
+dynamic Next.js app — the likely result is a green build serving a broken app,
+which is worse than the honest failure, and it would be committed against a
+build nobody had run. Root Directory is the mechanism Vercel provides.
+
+**Do:** delete `huntloop` (check its domains and env vars first), or set its
+Root Directory to `apps/web`. Full reasoning in
+[docs/OPERATIONS.md](../docs/OPERATIONS.md).
+**Needs:** a Vercel dashboard login — this machine has no Vercel credentials.
+
 ### TEST-02c · Browser specs that need a real session · **M** · Phase 9
 The Playwright suite runs in demo mode, which is a real configuration of this
 app and the one CI builds — but it cannot reach:
