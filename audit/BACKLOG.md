@@ -341,6 +341,65 @@ screen that renders its heading and throws underneath still answers 200.
 
 ---
 
+
+---
+
+## Closed in the ninth pass — 2026-08-20
+
+The interface backlog, and the one accounting hole underneath it.
+
+| ID | Task | Effort |
+|---|---|---|
+| **UX-13** | **`HoverPanel` opens on tap, and the pinned panel takes the pointer** | **S** |
+| **UX-09** | **One priority control on `/opportunities`, not two** | **S** |
+| **UX-10** | **Filter state in the URL via `history.replaceState`** | **S** |
+| **UX-11** | **The action rail is promoted below 1440px** | **S** |
+| **UX-14** | **A confirmation state, with a real undo behind it** | **S** |
+| **ANL-04** | **Per-org AI budgets, enforced on the request path** | **M** |
+| **LINT-01** | **Zero warnings: four suppressions that suppressed nothing** | **XS** |
+
+### Notes on what closed
+
+**ANL-04** was worse than the entry described. It read "the spend screen shows
+the bill; nothing acts on it", and the truth was that the request path neither
+checked the monthly quota nor incremented the counter — so the usage screen
+was reporting a figure that excluded every run started from the UI. The bill
+and the meter disagreed, and the meter was the one on screen. The engine had
+been doing both correctly since it was written; this makes the two paths agree.
+
+Wiring it found a second thing. `spendPaths` in `scripts/audit.mjs` was a
+hard-coded list of four, and the `agent` wrapper added in the seventh pass was
+not on it — so `SEC-SPEND` and `SEC-RATELIMIT` had both been passing without
+ever reading the newest file that spends money. It is read from the directory
+now. A gate that is not pointed at a file passes loudly and says nothing.
+
+**UX-13** was two bugs in one finding, and writing the tests found a third:
+Escape was self-cancelling, because closing the panel and returning focus to
+the trigger — the correct thing to do — fired `onFocus` and re-opened it.
+
+**LINT-01** is not in FINDINGS and is recorded because the shape is worth
+remembering. `eslint-disable-next-line` covers one line; the expression above
+it spanned three, so one `any` was suppressed and two warned, in two files.
+The fix was not two more disable comments — a suppression that has to be
+repeated per line is a suppression hiding a duplicated expression, and it was:
+`embedded()` now says once that PostgREST returns a to-one embed as either an
+object or a single-element array.
+
+### Left open deliberately
+
+`UI-07` and `PERF-05` are both recorded in FINDINGS as decisions rather than
+tasks, and they stay that way. UI-07's own entry says the fix is worth more
+scrutiny than the defect — removing the loading boundaries trades the
+skeletons that make the app feel instant for a status code no crawler sees,
+and scoping them with route groups shapes the routing tree around one. PERF-05
+is an accuracy note about serverless cold starts, not a defect: the caches are
+correct, and a shared one would need a second stateful service to save one
+HEAD request per instance.
+
+`UX-15`, the command palette, is marked optional in its own entry and is the
+only interface item left. It is a feature rather than a fix.
+---
+
 ## P0 — Before the next production deploy
 
 **Nothing in code.** `SEC-03` was the last one.
@@ -477,9 +536,8 @@ into a throwaway project once, end to end, and write down the measured RTO.
 |---|---|---|---|---|
 | DB-03 | Generated Supabase types in CI | S | 4 | Design recorded in docs/OPERATIONS.md; needs a project ref and the first CI secret |
 | PERF-04 | `EXPLAIN ANALYZE` the live list queries | S | 6 | Now measurable — the queries run against seeded rows. Needs `DATABASE_URL`; PostgREST cannot return a plan |
-| UI-07 | A missing opportunity answers 200, not 404 | S | 2 | Streaming commits the status before `notFound()` runs. Fixing it costs the loading skeletons or a routing tree shaped around a status code — see FINDINGS.md |
-| ANL-04 | Per-org AI budgets and alerting | M | 10 | The spend screen shows the bill; nothing acts on it. `rate_limits` bounds rate, not total |
-| PERF-05 | Revisit per-worker schema-probe caches | XS | 6 | One extra round trip per cold start |
+| UI-07 | A missing opportunity answers 200, not 404 | S | 2 | Examined in the ninth pass and deliberately not taken. Streaming commits the status before `notFound()` runs; removing the loading boundaries trades the skeletons that make the app feel instant for a status code no crawler sees, and scoping them with route groups shapes the routing tree around one. FINDINGS.md records it as a product decision |
+| PERF-05 | Revisit per-worker schema-probe caches | XS | 6 | Examined in the ninth pass: an accuracy note rather than a defect. The caches are correct; serverless just means per-instance, and a shared one would need a second stateful service to save one HEAD request per cold start |
 | API-03 | Build the versioned surface *when* an integration needs it | S | 4 | Decision recorded in docs/OPERATIONS.md; the work is deferred, not the decision |
 | SEC-08 | Sanitization policy if model output is ever rendered as markup | — | 5 | Standing constraint, not a task |
 | SEO-06 | A landing page for `/` | XL | 8 | `/` redirects to `/login` today — deliberate, and the honest minimum until there is copy worth serving |
@@ -489,20 +547,20 @@ into a throwaway project once, end to end, and write down the measured RTO.
 
 ## Interface review — open items
 
-The full pass is [UX-REVIEW.md](UX-REVIEW.md); six of its fourteen findings
-closed in the commit that added it, and `UX-05`, `UX-07` and `UX-08` closed in
-the seventh pass above — the first of those was the one this list called the
-only item that changes what the product *is*. These are the rest, and none of
-them does: they are all about how well it behaves.
+The full pass is [UX-REVIEW.md](UX-REVIEW.md). Six of its fourteen findings
+closed in the commit that added it; `UX-05`, `UX-07` and `UX-08` closed in the
+seventh pass; and `UX-09` through `UX-14` closed in the ninth.
+
+**One is left, and it is a feature rather than a fix.**
 
 | ID | Task | Effort | Note |
 |---|---|---|---|
-| UX-13 | `HoverPanel` opens on tap; fix the `pointer-events`/`overflow` contradiction | XS | Score and priority explanations are unreachable on a phone — the two places §51 and §77 P4 are discharged |
-| UX-14 | A confirmation state, with undo | S | The sixth member of the `States.tsx` family. Every write added from here needs it |
-| UX-09 | One priority control on `/opportunities`, not two | S | Four stat cards and five chips, same buckets, same counts — and the card is a link on one screen and inert on the next |
-| UX-10 | Filter state in the URL via `history.replaceState` | S | The deep link is true on arrival and wrong after the first click. No `router.push`, so the stated objection does not apply |
-| UX-11 | Promote the action rail below 1440px | S | "Needs you" sits ~2000px down on a 1280px laptop |
-| UX-15 | A command palette | M | Optional. UX-02 removed the ⌘K affordance rather than building one; a dozen verbs have no screen of their own and a palette can host them first |
+| UX-15 | A command palette | M | Optional in its own right. UX-02 removed the ⌘K affordance rather than building one; a dozen verbs have no screen of their own and a palette can host them first |
+
+Worth stating plainly rather than leaving as an empty table: the interface
+backlog is not a constraint on this product any more. What remains is one
+optional feature, and the two items below that were examined and deliberately
+not taken.
 
 ---
 
