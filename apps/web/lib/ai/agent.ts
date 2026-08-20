@@ -15,6 +15,7 @@ import {
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
+import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
 import type { AiFailure } from "./outcome";
 
 /**
@@ -57,7 +58,7 @@ export interface AgentRequest {
 export async function ask(orgSlug: string, request: AgentRequest): Promise<AgentOutcome> {
   const resolved = await resolveRecorder(orgSlug);
   if (!resolved.ok) return { ok: false, error: resolved.error };
-  const { recorder, orgId, recorded } = resolved;
+  const { recorder, orgId, recorded, db } = resolved;
 
   const { data: icp } = await getActiveIcp(orgId);
   if (!icp) {
@@ -86,11 +87,24 @@ export async function ask(orgSlug: string, request: AgentRequest): Promise<Agent
     };
   }
 
+  /* ANL-04. The monthly ceiling, checked before the rate limit: reading it
+     costs nothing, and consuming a rate-limit unit for a request that is
+     over quota charges somebody for being refused. Skipped in demo mode,
+     where there is no counter to read and nothing is metered. */
+  if (db) {
+    const allowance = await withinAiBudget(db, orgId);
+    if (!allowance.allowed) return budgetRefusal(allowance);
+  }
+
   const budget = await consumeRateLimit(orgId, "sales_agent");
   if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(salesAgent, input, { orgId, recorder });
+
+    /* Counted after the fact. A refused or crashed call has not produced
+       anything the org asked for, and its cost is already in `ai_runs`. */
+    if (db) await countAiRun(db, orgId);
     return { ok: true, result: { source: "live", metered: recorded, answer: output } };
   } catch (error) {
     if (error instanceof ModelRefusalError) {

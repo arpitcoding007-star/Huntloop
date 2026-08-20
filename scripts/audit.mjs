@@ -422,7 +422,13 @@ function check(phase, id, title, ok, sev, detail) {
    * paid model must resolve the caller's org first and refuse when it cannot —
    * RLS protects rows, and the Anthropic bill is not a row.
    */
-  const spendPaths = ["research", "sources", "qualify", "why-now"];
+  /* `agent` was missing until the quota check went in, which meant SEC-SPEND
+     and SEC-RATELIMIT had never looked at it — a gate passes loudly and says
+     nothing about the file it was not pointed at. Derived from the directory
+     now, so the next wrapper is covered by existing. */
+  const spendPaths = readdirSync(new URL("../apps/web/lib/ai", import.meta.url))
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((f) => f.replace(/\.ts$/, ""));
   const unguarded = spendPaths.filter((name) => {
     const src = read(`apps/web/lib/ai/${name}.ts`) ?? "";
     if (!src.includes("runTask")) return false;
@@ -455,6 +461,34 @@ function check(phase, id, title, ok, sev, detail) {
     unlimited.length === 0,
     "fail",
     unlimited.length ? `Unlimited: ${unlimited.join(", ")}` : null,
+  );
+
+  /**
+   * ANL-04. The rate limit bounds how *fast*; this bounds how *much*.
+   *
+   * They are different questions and the app enforced only the first, so
+   * somebody clicking Analyze once a minute stayed inside every limit for a
+   * month and spent without bound. Worse, nothing on this path incremented
+   * `usage_counters`, so the usage screen reported a figure that excluded
+   * every run started from the UI — the bill and the meter disagreed, and the
+   * meter was the one on screen.
+   *
+   * `fail`, like its rate-limit sibling, and for the same reason: a wrapper
+   * that quietly loses its ceiling looks exactly like one that never had it,
+   * and the symptom arrives a month later as an invoice.
+   */
+  const uncapped = spendPaths.filter((name) => {
+    const src = read(`apps/web/lib/ai/${name}.ts`) ?? "";
+    if (!src.includes("runTask")) return false;
+    return !(src.includes("withinAiBudget") && src.includes("countAiRun"));
+  });
+  check(
+    5,
+    "SEC-QUOTA",
+    "Every model-calling wrapper checks the monthly quota and counts the run",
+    uncapped.length === 0,
+    "fail",
+    uncapped.length ? `Uncapped: ${uncapped.join(", ")}` : null,
   );
 
   // The counters must be unwritable by the party they constrain.

@@ -9,6 +9,7 @@ import {
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
+import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
 import type { AiFailure } from "./outcome";
 
 /**
@@ -67,15 +68,28 @@ export async function research(
   // Refused before the call, not after: a run that cannot be attributed to an
   // org the caller belongs to is not a run we pay for. See recorder.ts.
   if (!resolved.ok) return { ok: false, error: resolved.error };
-  const { recorder, orgId, recorded } = resolved;
+  const { recorder, orgId, recorded, db } = resolved;
 
   // The most expensive task in the product: ~8 page fetches plus Opus at high
   // effort. Consumed before the call for the reason given in rate-limit.ts.
+  /* ANL-04. The monthly ceiling, checked before the rate limit: reading it
+     costs nothing, and consuming a rate-limit unit for a request that is
+     over quota charges somebody for being refused. Skipped in demo mode,
+     where there is no counter to read and nothing is metered. */
+  if (db) {
+    const allowance = await withinAiBudget(db, orgId);
+    if (!allowance.allowed) return budgetRefusal(allowance);
+  }
+
   const budget = await consumeRateLimit(orgId, "research_company");
   if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(researchCompany, { url }, { orgId, recorder });
+
+    /* Counted after the fact. A refused or crashed call has not produced
+       anything the org asked for, and its cost is already in `ai_runs`. */
+    if (db) await countAiRun(db, orgId);
     return {
       ok: true,
       result: { source: "live", metered: recorded, understanding: output },

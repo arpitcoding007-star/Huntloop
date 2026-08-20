@@ -11,6 +11,7 @@ import {
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
+import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
 import type { AiFailure } from "./outcome";
 
 /**
@@ -57,7 +58,7 @@ export async function whyNow(
    */
   const resolved = await resolveRecorder(orgSlug);
   if (!resolved.ok) return { ok: false, error: resolved.error };
-  const { recorder, orgId, recorded } = resolved;
+  const { recorder, orgId, recorded, db } = resolved;
 
   const { data: icp } = await getActiveIcp(orgId);
   if (!icp) {
@@ -102,11 +103,24 @@ export async function whyNow(
 
   // Below the two early returns above, both of which answer without a model
   // call — neither should consume budget.
+  /* ANL-04. The monthly ceiling, checked before the rate limit: reading it
+     costs nothing, and consuming a rate-limit unit for a request that is
+     over quota charges somebody for being refused. Skipped in demo mode,
+     where there is no counter to read and nothing is metered. */
+  if (db) {
+    const allowance = await withinAiBudget(db, orgId);
+    if (!allowance.allowed) return budgetRefusal(allowance);
+  }
+
   const budget = await consumeRateLimit(orgId, "explain_why_now");
   if (!budget.allowed) return refusal(budget);
 
   try {
     const { output } = await runTask(explainWhyNow, input, { orgId, recorder });
+
+    /* Counted after the fact. A refused or crashed call has not produced
+       anything the org asked for, and its cost is already in `ai_runs`. */
+    if (db) await countAiRun(db, orgId);
     return { ok: true, result: { source: "live", metered: recorded, whyNow: output } };
   } catch (error) {
     if (error instanceof ModelRefusalError) {

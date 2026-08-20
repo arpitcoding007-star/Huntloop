@@ -10,6 +10,7 @@ import {
 import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
+import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
 import type { AiFailure } from "./outcome";
 
 /**
@@ -74,7 +75,7 @@ export async function qualify(
 
   const resolved = await resolveRecorder(orgSlug);
   if (!resolved.ok) return { ok: false, error: resolved.error };
-  const { recorder, orgId, recorded } = resolved;
+  const { recorder, orgId, recorded, db } = resolved;
 
   const { data: icp } = await getActiveIcp(orgId);
   if (!icp) {
@@ -91,6 +92,15 @@ export async function qualify(
 
   // After the ICP check: a caller with no ICP gets an explanation rather than
   // silently burning a unit of budget on a request that cannot be answered.
+  /* ANL-04. The monthly ceiling, checked before the rate limit: reading it
+     costs nothing, and consuming a rate-limit unit for a request that is
+     over quota charges somebody for being refused. Skipped in demo mode,
+     where there is no counter to read and nothing is metered. */
+  if (db) {
+    const allowance = await withinAiBudget(db, orgId);
+    if (!allowance.allowed) return budgetRefusal(allowance);
+  }
+
   const budget = await consumeRateLimit(orgId, "qualify_opportunity");
   if (!budget.allowed) return refusal(budget);
 
@@ -100,6 +110,10 @@ export async function qualify(
       { url, icp },
       { orgId, recorder },
     );
+
+    /* Counted after the fact. A refused or crashed call has not produced
+       anything the org asked for, and its cost is already in `ai_runs`. */
+    if (db) await countAiRun(db, orgId);
     return {
       ok: true,
       result: {

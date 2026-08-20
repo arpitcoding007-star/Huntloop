@@ -1,5 +1,6 @@
 import { nullRecorder, type RunFinish, type RunRecorder, type RunStart } from "@huntloop/ai";
 import { resolveDataSource } from "../data/source";
+import type { TenantClient } from "@huntloop/db";
 
 /**
  * `ai_runs`, written through the caller's own session.
@@ -16,6 +17,16 @@ export interface ResolvedRecorder {
   orgId: string;
   /** False when the run is happening but nothing is being metered. */
   recorded: boolean;
+  /**
+   * The client this org was resolved through, or null in demo mode.
+   *
+   * Handed back so a caller can check the monthly quota and count the run
+   * against it without resolving the org a second time — see
+   * `lib/ai/budget.ts`. Null exactly when `recorded` is false, and the two are
+   * kept separate because one is about metering and the other is about who to
+   * ask.
+   */
+  db: TenantClient | null;
 }
 
 /**
@@ -57,7 +68,7 @@ export type RecorderOutcome =
 export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome> {
   const { db } = await resolveDataSource();
   if (!db) {
-    return { ok: true, recorder: nullRecorder, orgId: orgSlug, recorded: false };
+    return { ok: true, recorder: nullRecorder, orgId: orgSlug, recorded: false, db: null };
   }
 
   const { data: org } = await db
@@ -132,5 +143,5 @@ export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome>
     },
   };
 
-  return { ok: true, recorder, orgId, recorded: true };
+  return { ok: true, recorder, orgId, recorded: true, db };
 }
