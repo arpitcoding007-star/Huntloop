@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import {
   AlertTriangle,
+  Check,
   Inbox,
   Lock,
   RefreshCw,
@@ -10,7 +11,7 @@ import { cn } from "../utils/cn";
 import { Button } from "./Button";
 
 /**
- * The five states spec Part 25 requires of every feature, built once here
+ * The six states spec Part 25 requires of every feature, built once here
  * rather than improvised per page — plan §1.4 #14. A page that has to
  * hand-roll its own permission-denied screen will eventually ship without
  * one.
@@ -244,6 +245,82 @@ export function LoadingSkeleton({
           )}
         />
       ))}
+    </div>
+  );
+}
+
+export interface ConfirmedProps {
+  /** What happened, in the past tense. "Source removed", not "Removing…". */
+  title: ReactNode;
+  description?: ReactNode;
+  /**
+   * Reverses it. Omit when the write genuinely cannot be reversed — an offer
+   * to undo that then cannot is worse than no offer.
+   */
+  onUndo?: () => void;
+  undoLabel?: string;
+  /** Disables the undo while it is running. */
+  pending?: boolean;
+  className?: string;
+}
+
+/**
+ * The sixth state: it worked, and here is how to take it back.
+ *
+ * ── Why this is a state rather than a message ────────────────────────────
+ *
+ * The other five are conditions a screen can be in, and so is this one. A
+ * write that reports "Source removed." through the ordinary result banner is
+ * indistinguishable from a save, which is fine for a save and wrong for a
+ * removal: the two need different amounts of the reader's attention, and only
+ * one of them has an action attached.
+ *
+ * ── Why undo rather than a confirmation dialog ───────────────────────────
+ *
+ * A dialog asks everybody to confirm in order to protect the few who pressed
+ * by mistake, and people learn to dismiss it without reading — which removes
+ * the protection and keeps the cost. Undo charges nothing to the person who
+ * meant it and gives the person who did not a way back.
+ *
+ * It is offered only where it is real. Every destructive write in this schema
+ * is a soft delete, so reversing one is setting `deleted_at` back to null; a
+ * write that could not be reversed must not pass `onUndo`, because an undo
+ * button that fails is a worse outcome than never having offered one.
+ */
+export function Confirmed({
+  title,
+  description,
+  onUndo,
+  undoLabel = "Undo",
+  pending,
+  className,
+}: ConfirmedProps) {
+  return (
+    <div
+      /* `status`, not `alert`. This is a success, and an assertive live region
+         interrupts a screen-reader user mid-sentence to tell them something
+         went right. */
+      role="status"
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border",
+        "border-success-border bg-success-surface px-3 py-2.5",
+        className,
+      )}
+    >
+      <Check className="size-4 shrink-0 text-success" strokeWidth={1.75} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] text-success">{title}</p>
+        {description && (
+          <p className="mt-0.5 text-[12px] leading-[1.5] text-fg-secondary">
+            {description}
+          </p>
+        )}
+      </div>
+      {onUndo && (
+        <Button size="sm" variant="secondary" onClick={onUndo} disabled={pending}>
+          {pending ? "Undoing…" : undoLabel}
+        </Button>
+      )}
     </div>
   );
 }

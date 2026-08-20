@@ -288,6 +288,38 @@ test.describe("sources", () => {
     ).toBeVisible();
   });
 
+
+  test("removing a source offers an undo rather than a bare success line", async ({
+    page,
+  }) => {
+    /*
+     * UX-14, the sixth state. A removal reported through the ordinary result
+     * banner is indistinguishable from a save, which is fine for a save and
+     * wrong for a removal — the two need different amounts of attention and
+     * only one has an action attached.
+     *
+     * Undo rather than a confirmation dialog: a dialog asks everybody to
+     * confirm in order to protect the few who pressed by mistake, and people
+     * learn to dismiss it without reading. Undo charges nothing to the person
+     * who meant it.
+     *
+     * In demo mode the write itself refuses, which is what the second half
+     * checks — the offer must not appear over something that did not happen.
+     */
+    await page.goto(`/${ORG}/sources`);
+
+    const remove = page.getByRole("button", { name: /^remove /i }).first();
+    await expect(remove).toBeVisible();
+    await remove.click();
+
+    // No database, so the removal failed and there is nothing to undo. The
+    // screen says so instead of confirming.
+    await expect(
+      page.locator("p[role=alert]").filter({ hasText: /no database connected/i }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^undo$/i })).toHaveCount(0);
+  });
+
   test("adding a source with no database says so", async ({ page }) => {
     await page.goto(`/${ORG}/sources`);
 

@@ -42,6 +42,7 @@ export type { HoverPanelProps } from "./components/HoverPanel";
 /* ── Every UI state (spec Part 25) ──────────────────────────────────────── */
 
 export {
+  Confirmed,
   EmptyState,
   ErrorState,
   LoadingSkeleton,
@@ -49,6 +50,7 @@ export {
   RateLimited,
 } from "./components/States";
 export type {
+  ConfirmedProps,
   EmptyStateProps,
   ErrorStateProps,
   LoadingSkeletonProps,

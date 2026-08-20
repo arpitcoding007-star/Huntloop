@@ -8,6 +8,7 @@ import {
   CardBody,
   CardHeader,
   Field,
+  Confirmed,
   FormMessage,
   Freshness,
   Input,
@@ -20,6 +21,7 @@ import type { HuntSource, HuntSources, SourceStatus } from "../../../../lib/data
 import type { SourceInput } from "./actions";
 import {
   deleteSourceAction,
+  restoreSourceAction,
   saveSourceAction,
   scanSourceNowAction,
   setScanIntervalAction,
@@ -118,6 +120,12 @@ export function SourceManager({
   const engineDriven = inngestDriving || lastTickAt !== null;
 
   const [adding, setAdding] = useState(false);
+  /* The last removal, kept so it can be undone. One at a time: a stack of
+     undos is a thing nobody reads, and the offer only makes sense for the
+     action just taken. */
+  const [removed, setRemoved] = useState<{ id: string; name: string } | null>(null);
+  const [undoing, startUndo] = useTransition();
+
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
   >(null);
@@ -261,6 +269,22 @@ export function SourceManager({
         </div>
       )}
 
+      {removed && (
+        <Confirmed
+          className="mt-6"
+          title={`${removed.name} removed.`}
+          description="It stops being scanned, and the evidence it already produced stays where it is."
+          pending={undoing}
+          onUndo={() =>
+            startUndo(async () => {
+              const res = await restoreSourceAction(org, removed.id);
+              setRemoved(null);
+              if (!res.ok) setResult({ ok: false, error: res.error });
+            })
+          }
+        />
+      )}
+
       <FormMessage result={result} className="mt-6" />
 
       <section className="mt-8">
@@ -283,6 +307,10 @@ export function SourceManager({
                   canWrite={canWrite}
                   now={now}
                   onResult={setResult}
+                  onRemoved={(id, name) => {
+                    setResult(null);
+                    setRemoved({ id, name });
+                  }}
                 />
               ))}
             </ul>
@@ -390,12 +418,15 @@ function SourceRow({
   canWrite,
   now,
   onResult,
+  onRemoved,
 }: {
   org: string;
   source: HuntSource;
   canWrite: boolean;
   now: string;
   onResult: (r: Result) => void;
+  /** Removal is reported separately, because it is the one with an undo. */
+  onRemoved: (id: string, name: string) => void;
 }) {
   const [pending, start] = useTransition();
   const meta = STATUS_META[source.status];
@@ -490,9 +521,14 @@ function SourceRow({
             onClick={() =>
               start(async () => {
                 const res = await deleteSourceAction(org, source.id);
-                onResult(
-                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
-                );
+                if (res.ok) {
+                  /* UX-14: reported as a confirmation with an undo rather than
+                     through the ordinary result banner. Removal and a save are
+                     not the same event and should not read the same. */
+                  onRemoved(source.id, source.name);
+                } else {
+                  onResult({ ok: false, error: res.error });
+                }
               })
             }
           />

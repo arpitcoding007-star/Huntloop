@@ -372,3 +372,54 @@ export async function setScanIntervalAction(
     return ok(undefined, "Saved. It takes effect after the next scan.");
   });
 }
+
+/**
+ * Put a removed source back — the undo behind `Confirmed`.
+ *
+ * ── Why this can exist at all ────────────────────────────────────────────
+ *
+ * Because removal is a soft delete. `deleteSourceAction` sets `deleted_at` and
+ * `is_enabled = false`; nothing is destroyed, so reversing it is setting both
+ * back. An undo offered over a hard delete would be a button that cannot keep
+ * its promise, which is worse than never offering one.
+ *
+ * ── What it deliberately does not restore ────────────────────────────────
+ *
+ * `next_scan_at`. A source that has been away for a week should not come back
+ * with a scan time a week in the past and jump the queue ahead of everything
+ * legitimately due — `schedule_scans` orders by exactly that column, and the
+ * fairness it is trying to keep is per-org. Cleared, so the sweeper treats it
+ * as never scanned, which is the truthful reading of a source nothing has read
+ * since it came back.
+ *
+ * ── Why it re-enables rather than restoring the previous flag ────────────
+ *
+ * The previous value is gone — `deleteSourceAction` overwrites `is_enabled`
+ * rather than remembering it — and inventing "it was probably enabled" would
+ * be a guess. Enabled is the honest choice because it is what undo means here:
+ * the user is taking back a removal they just made, and a source that came
+ * back silently disabled would look like the undo had half-worked.
+ */
+export async function restoreSourceAction(
+  org: string,
+  id: string,
+): Promise<ActionResult<undefined>> {
+  return mutate(org, "restoreSource", async ({ db, orgId }) => {
+    const parsed = uuidSchema.safeParse(id);
+    if (!parsed.success) return fail("That source reference isn't valid.");
+
+    const { error } = await db
+      .from("sources")
+      .update({ deleted_at: null, is_enabled: true, next_scan_at: null })
+      .eq("id", parsed.data)
+      .eq("org_id", orgId)
+      /* Only a removed one. Without this the undo would silently re-enable a
+         source somebody had deliberately paused, if they pressed it twice. */
+      .not("deleted_at", "is", null);
+
+    if (error) return fail(`That source could not be restored: ${error.message}`);
+
+    revalidatePath(`/${org}/sources`);
+    return ok(undefined, "Source restored.");
+  });
+}
