@@ -155,3 +155,23 @@ export class OrgScope {
     return adminClient();
   }
 }
+
+/**
+ * The one row of a to-one embed.
+ *
+ * PostgREST returns an embedded relation as an object when it can prove the
+ * relationship is to-one and as a single-element array when it cannot, and
+ * which of those you get depends on the foreign keys rather than on anything
+ * visible in the query. Every handler that reads `companies!inner(...)` or
+ * `products(...)` has to cope with both.
+ *
+ * Written once, here, beside the `Query` note that explains why none of this
+ * has a generated type. It replaces four copies of the same ternary, each
+ * carrying its own `eslint-disable-next-line` that covered the first line of a
+ * three-line expression and left the other two warning — which is how a
+ * suppression comment ends up suppressing nothing.
+ */
+export function embedded<T = Record<string, unknown>>(value: unknown): T | null {
+  if (Array.isArray(value)) return (value[0] as T) ?? null;
+  return (value as T) ?? null;
+}

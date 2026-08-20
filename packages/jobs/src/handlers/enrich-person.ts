@@ -25,6 +25,7 @@
  * string with no evidence behind it, and §7 does not have an exception for
  * "everybody does it".
  */
+import { embedded } from "../scope.ts";
 import { verifyEmail, findContacts, enrichmentProvider } from "../providers.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -47,11 +48,7 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
   if (error) return { ok: false, error: `enrich_person: ${error.message}` };
   if (!person) return { ok: true, result: { skipped: "the person no longer exists" } };
 
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-     Embedded-row typing comes from a generated schema this package lacks. */
-  const company = Array.isArray((person as any).companies)
-    ? (person as any).companies[0]
-    : (person as any).companies;
+  const company = embedded(person.companies);
   const domain = String(company?.canonical_domain ?? "");
   if (!domain) {
     return { ok: false, permanent: true, error: "enrich_person: the company has no domain." };

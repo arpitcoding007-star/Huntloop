@@ -27,6 +27,7 @@
  * product gets for free.
  */
 import { qualifyOpportunity, type ObservedEvidence } from "@huntloop/ai";
+import { embedded } from "../scope.ts";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -226,12 +227,7 @@ async function loadIcp(
 
   const criteria = (data.criteria ?? {}) as Record<string, unknown>;
   const negative = (data.negative_criteria ?? {}) as Record<string, unknown>;
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-     The embedded row's type comes from a generated schema this package does
-     not have; confined to this one read. */
-  const product = Array.isArray((data as any).products)
-    ? (data as any).products[0]
-    : (data as any).products;
+  const product = embedded(data.products);
 
   return {
     id: String(data.id),
