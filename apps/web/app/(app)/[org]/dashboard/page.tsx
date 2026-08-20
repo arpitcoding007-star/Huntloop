@@ -462,17 +462,26 @@ export default async function DashboardPage({
 
       {/* ── Action rail ───────────────────────────────────────────────
           Sits beside content at ≥1440px — the exact threshold plan §1.4 #9
-          names. Below it the grid collapses to one column and the rail
-          stacks under the main content; it is never absolutely positioned,
-          so it cannot overlay anything at any width.
+          names. It is never absolutely positioned, so it cannot overlay
+          anything at any width.
 
-          Every item is derived from a count, and an item appears only when
-          its count is non-zero. This rail was the worst instance of UX-01 in
-          the app: a column headed "Needs you", asserting four decisions were
-          required, with six inert buttons under it and not one of the four
-          counts computed. An empty rail is now a real answer. */}
+          UX-11: below that threshold the grid collapses to one column, and
+          the rail used to stack *under* the main content — which put "Needs
+          you" roughly two thousand pixels down on a 1280px laptop, past the
+          verdict, the why-now cards, the weekly counts and two breakdowns.
+          A queue of things needing a person, reachable only by scrolling past
+          everything that does not, is a queue nobody works.
+
+          So it comes first when the layout is stacked and returns to the
+          right-hand column when there is room for one. `order` rather than a
+          second copy of the markup: two rails in the DOM would be two rails
+          for a screen reader, and the one that is visually hidden is the one
+          it would read.
+
+          It renders at all only when something is actually waiting, so this
+          cannot push the page down for a workspace with nothing to do. */}
       {attention.length > 0 && (
-        <ActionRail>
+        <ActionRail className="order-first min-[1440px]:order-none">
           {attention.map((item) => (
             <ActionRailItem
               key={item.kind}

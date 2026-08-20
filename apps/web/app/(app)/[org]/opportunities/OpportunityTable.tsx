@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   Badge,
   Button,
@@ -13,10 +13,7 @@ import {
   Freshness,
   PriorityBadge,
   ScorePill,
-  SectionLabel,
   Select,
-  StatCard,
-  StatGrid,
   type Column,
   type Priority,
 } from "@huntloop/ui";
@@ -95,12 +92,36 @@ export function OpportunityTable({
 }) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [scope, setScope] = useState("company");
-  /* Initial value only — clicking a filter does not rewrite the URL. Keeping
-     them in sync would mean a router push per click, which re-runs the server
-     component to change a `useState` the client already owns. The deep link is
-     for arriving here from elsewhere; once you are here, the buttons are the
-     control. */
-  const [priority, setPriority] = useState<Priority | "all">(initialPriority ?? "all");
+  const [priorityValue, setPriorityValue] = useState<Priority | "all">(
+    initialPriority ?? "all",
+  );
+  const priority = priorityValue;
+
+  /**
+   * UX-10. Keep the address bar honest without re-running the server.
+   *
+   * The objection this replaces was to `router.push`, and it was right: a push
+   * re-runs the server component to change a `useState` the client already
+   * owns, so every filter click would round-trip the whole page. What it
+   * concluded from that was that the URL simply would not track the filter —
+   * which left the deep link true on arrival and wrong from the first click,
+   * so copying the address after filtering to Hot handed somebody a link to
+   * All.
+   *
+   * `history.replaceState` has neither problem. It does not notify the router,
+   * does not re-render, and does not add a history entry — which is the right
+   * choice for a filter: Back should leave this screen, not walk back through
+   * five chip presses.
+   */
+  const setPriority = useCallback((next: Priority | "all") => {
+    setPriorityValue(next);
+
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("priority");
+    else url.searchParams.set("priority", next);
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
+
   const [selected, setSelected] = useState<string[]>([]);
   const [enrolling, setEnrolling] = useState(false);
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
@@ -238,17 +259,15 @@ export function OpportunityTable({
         </div>
       </header>
 
-      <section className="mt-6">
-        <SectionLabel>Priority</SectionLabel>
-        <StatGrid className="mt-3">
-          <StatCard label="Hot" value={counts.hot} icon={Flame} tone="hot" aiGenerated />
-          <StatCard label="Warm" value={counts.warm} icon={Thermometer} tone="warm" aiGenerated />
-          <StatCard label="Watch" value={counts.watch} icon={Eye} tone="watch" aiGenerated />
-          <StatCard label="Ignore" value={counts.ignore} icon={Binoculars} tone="ignore" aiGenerated />
-        </StatGrid>
-      </section>
+      {/* UX-09: one priority control, not two. Four stat cards used to sit
+          directly above these chips — same four buckets, same four counts,
+          rendered twice — and the cards were inert here while being links on
+          the dashboard, so the same component taught two different lessons
+          about whether a priority is clickable.
 
-      <div className="mt-8 flex flex-wrap gap-1.5" role="group" aria-label="Filter by priority">
+          The chips are the survivor because they are the control: they carry
+          `aria-pressed`, they filter, and they already show the counts. */}
+      <div className="mt-6 flex flex-wrap gap-1.5" role="group" aria-label="Filter by priority">
         {FILTERS.map((f) => (
           <button
             key={f.value}

@@ -466,3 +466,73 @@ test.describe("score and priority explanations on a phone", () => {
     await expect(page.getByRole("tooltip")).toHaveCount(0);
   });
 });
+
+test.describe("the priority filter is one control", () => {
+  test("the buckets are offered once, not twice", async ({ page }) => {
+    /*
+     * UX-09. Four stat cards used to sit directly above the filter chips —
+     * same four buckets, same four counts, rendered twice — and the cards were
+     * inert here while being links on the dashboard, so the same component
+     * taught two different lessons about whether a priority is clickable.
+     *
+     * Asserted as a count rather than by looking for the cards: what matters
+     * is that "Hot" appears once as a control, however the duplicate might
+     * come back.
+     */
+    await page.goto(`/${ORG}/opportunities`);
+
+    /* Scoped to the filter group. A loose "hot" also matches each row's
+       PriorityBadge, which is a per-row explanation rather than a second
+       control — the duplicate this is about was a summary above the chips. */
+    const group = page.getByRole("group", { name: /filter by priority/i });
+    await expect(group.getByRole("button", { name: /^hot/i })).toHaveCount(1);
+
+    /* Five: All, plus the four buckets. The duplicate that was removed was a
+       second set of the same four counts sitting above these, so pinning the
+       group's size is what says "offered once" without depending on how a
+       future duplicate might be built. */
+    await expect(group.getByRole("button")).toHaveCount(5);
+  });
+
+  test("filtering updates the address, so a copied link still means what it shows", async ({
+    page,
+  }) => {
+    /*
+     * UX-10. `?priority=` seeded the filter on arrival and nothing kept it in
+     * step, so the deep link was true when you got here and wrong from the
+     * first click — copying the address after filtering to Hot handed somebody
+     * a link to All.
+     */
+    await page.goto(`/${ORG}/opportunities`);
+    await expect(page).not.toHaveURL(/priority=/);
+
+    await page.getByRole("group", { name: /filter by priority/i })
+      .getByRole("button", { name: /^hot/i })
+      .click();
+
+    await expect(page).toHaveURL(/[?&]priority=hot/);
+
+    // And back to All clears it rather than leaving `priority=all` behind,
+    // which is a parameter the page would have to be taught to ignore.
+    await page.getByRole("group", { name: /filter by priority/i })
+      .getByRole("button", { name: /^all$/i })
+      .click();
+
+    await expect(page).not.toHaveURL(/priority=/);
+  });
+
+  test("the filter does not stack history entries", async ({ page }) => {
+    // `replaceState`, not `pushState`. Back should leave this screen, not walk
+    // back through five chip presses.
+    await page.goto(`/${ORG}/dashboard`);
+    await page.goto(`/${ORG}/opportunities`);
+
+    const group = page.getByRole("group", { name: /filter by priority/i });
+    await group.getByRole("button", { name: /^hot/i }).click();
+    await group.getByRole("button", { name: /^warm/i }).click();
+    await group.getByRole("button", { name: /^watch/i }).click();
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/${ORG}/dashboard`));
+  });
+});
