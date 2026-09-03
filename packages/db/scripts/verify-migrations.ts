@@ -1084,6 +1084,354 @@ console.log("\nDeduplication — §60, on both of the keys a page has");
   );
 }
 
+// ── 0010 — scoring rules have an effect the database can check ─────────────
+//
+// The CHECK constraints here are what make "a rule that looks configured and
+// does nothing" unrepresentable. The evaluator refuses the same shapes with
+// better messages (`verify-rules.ts`); these are what hold when a row arrives
+// by any other route.
+console.log("\n0010 — a scoring rule's effect and its arguments must agree");
+{
+  await expectReject(
+    db,
+    "an adjusting rule with no weight is rejected",
+    `insert into scoring_rules (org_id, name, expression, effect)
+     values ($1, 'No weight', '{}'::jsonb, 'adjust')`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "a floor rule with nothing to floor to is rejected",
+    `insert into scoring_rules (org_id, name, expression, effect)
+     values ($1, 'No floor', '{}'::jsonb, 'floor')`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "a veto carrying a weight is rejected",
+    `insert into scoring_rules (org_id, name, expression, effect, weight)
+     values ($1, 'Confused', '{}'::jsonb, 'veto', 10)`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "a weight past ±40 is rejected rather than clamped",
+    `insert into scoring_rules (org_id, name, expression, effect, weight)
+     values ($1, 'Runaway', '{}'::jsonb, 'adjust', 500)`,
+    [ORG_A],
+  );
+  await expectAccept(
+    db,
+    "a coherent adjusting rule is accepted",
+    `insert into scoring_rules (org_id, name, expression, effect, weight, intent)
+     values ($1, 'Fintech', '{"field":"company.industry","op":"equals","value":"fintech"}'::jsonb,
+             'adjust', 12, 'boost')`,
+    [ORG_A],
+  );
+  await expectAccept(
+    db,
+    "and so is a veto with neither",
+    `insert into scoring_rules (org_id, name, expression, effect, intent)
+     values ($1, 'Too small', '{"field":"company.employee_count","op":"lte","value":9}'::jsonb,
+             'veto', 'reject')`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "an origin outside user/drafted/learned is rejected",
+    `insert into scoring_rules (org_id, name, expression, effect, weight, origin)
+     values ($1, 'Mystery', '{}'::jsonb, 'adjust', 5, 'somewhere')`,
+    [ORG_A],
+  );
+}
+
+// ── 0010 — the learning loop ───────────────────────────────────────────────
+console.log("\n0010 — learning runs and findings");
+{
+  await expectReject(
+    db,
+    "a run whose window ends before it starts is rejected",
+    `insert into learning_runs (org_id, window_start, window_end)
+     values ($1, now(), now() - interval '1 day')`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "a status outside the five the app knows is rejected",
+    `insert into learning_runs (org_id, status, window_start, window_end)
+     values ($1, 'thinking', now() - interval '90 days', now())`,
+    [ORG_A],
+  );
+  await expectAccept(
+    db,
+    "a requested run is accepted",
+    `insert into learning_runs (id, org_id, window_start, window_end)
+     values ('11110000-0000-0000-0000-00000000000a', $1, now() - interval '90 days', now())`,
+    [ORG_A],
+  );
+
+  /* The rate limit that actually matters for this feature. Two clicks a second
+     apart both pass any read-then-write guard, and each one costs an Opus call
+     over a few hundred records. */
+  await expectReject(
+    db,
+    "a second open run for the same org is refused — one analysis at a time",
+    `insert into learning_runs (org_id, window_start, window_end)
+     values ($1, now() - interval '90 days', now())`,
+    [ORG_A],
+  );
+  await expectAccept(
+    db,
+    "but another org may have its own",
+    `insert into learning_runs (org_id, window_start, window_end)
+     values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', now() - interval '90 days', now())`,
+  );
+  await db.exec(
+    `update learning_runs set status = 'ready'
+       where id = '11110000-0000-0000-0000-00000000000a'`,
+  );
+  await expectAccept(
+    db,
+    "and a finished run does not block the next one",
+    `insert into learning_runs (org_id, window_start, window_end)
+     values ($1, now() - interval '90 days', now())`,
+    [ORG_A],
+  );
+
+  await expectAccept(
+    db,
+    "a pending finding is accepted with no decider",
+    `insert into learning_findings
+       (id, org_id, run_id, kind, headline, detail, recommendation, cited_opportunity_ids)
+     values ('22220000-0000-0000-0000-00000000000a', $1,
+             '11110000-0000-0000-0000-00000000000a', 'scoring_adjustment',
+             'Fresh triggers reply', 'Nine of eleven.', 'Contact sooner.',
+             array['0bbbbbbb-0000-0000-0000-00000000000a']::uuid[])`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "an approved finding with no decision time is rejected — an approval names when",
+    `update learning_findings set status = 'approved'
+       where id = '22220000-0000-0000-0000-00000000000a'`,
+  );
+  await expectReject(
+    db,
+    "and a pending one carrying a decision time is rejected too",
+    `update learning_findings set decided_at = now()
+       where id = '22220000-0000-0000-0000-00000000000a'`,
+  );
+  await expectAccept(
+    db,
+    "deciding sets both together",
+    `update learning_findings set status = 'approved', decided_at = now()
+       where id = '22220000-0000-0000-0000-00000000000a'`,
+  );
+  await expectReject(
+    db,
+    "a finding kind outside the four is rejected",
+    `insert into learning_findings (org_id, run_id, kind, headline, detail, recommendation)
+     values ($1, '11110000-0000-0000-0000-00000000000a', 'vibes', 'h', 'd', 'r')`,
+    [ORG_A],
+  );
+
+  /* Cascade rather than orphan. A finding whose run is gone has no window, no
+     counts and no context — it is a sentence with nothing behind it, which is
+     the one thing this feature must not produce. */
+  await db.exec(`delete from learning_runs where id = '11110000-0000-0000-0000-00000000000a'`);
+  const orphans = await db.query<{ n: number }>(
+    `select count(*)::int as n from learning_findings
+      where run_id = '11110000-0000-0000-0000-00000000000a'`,
+  );
+  if (orphans.rows[0]?.n === 0) ok("deleting a run takes its findings with it");
+  else fail("deleting a run takes its findings with it", `${orphans.rows[0]?.n} left behind`);
+}
+
+// ── 0010 — the backlog cap ─────────────────────────────────────────────────
+//
+// `usage_counters` caps spend per month, which is a flow. This caps standing
+// un-worked inventory, which is a level, and the two cannot substitute for
+// each other.
+console.log("\n0010 — discovery pauses when the backlog is full, per org");
+{
+  const count = async (org: string) =>
+    (
+      await db.query<{ n: number }>(`select public.open_opportunity_count($1)::int as n`, [org])
+    ).rows[0]?.n ?? -1;
+
+  const before = await count(ORG_A);
+  if (before === 1) ok("an un-worked opportunity counts toward the backlog");
+  else fail("an un-worked opportunity counts toward the backlog", `got ${before}`);
+
+  await db.exec(
+    `update opportunities set status = 'contacted'
+       where id = '0bbbbbbb-0000-0000-0000-00000000000a'`,
+  );
+  const worked = await count(ORG_A);
+  if (worked === 0) ok("one somebody is working does not — that is a pipeline, not a backlog");
+  else fail("one somebody is working does not", `got ${worked}`);
+
+  /* `ignore` is un-actioned and is still excluded. It is a *decided* verdict —
+     the qualifier looked and said no — so counting it would pause discovery
+     precisely because discovery was correctly filtering. */
+  await db.exec(
+    `update opportunities set status = 'discovered', priority = 'ignore'
+       where id = '0bbbbbbb-0000-0000-0000-00000000000a'`,
+  );
+  const ignored = await count(ORG_A);
+  if (ignored === 0) ok("nor does one the qualifier decided against");
+  else fail("nor does one the qualifier decided against", `got ${ignored}`);
+
+  await db.exec(
+    `update opportunities set priority = 'warm'
+       where id = '0bbbbbbb-0000-0000-0000-00000000000a'`,
+  );
+
+  const cap = async (org: string) =>
+    (await db.query<{ n: number }>(`select public.backlog_cap($1)::int as n`, [org])).rows[0]?.n;
+
+  if ((await cap(ORG_A)) === 250) ok("an org that has set nothing gets the default of 250");
+  else fail("an org that has set nothing gets the default of 250", await cap(ORG_A));
+
+  await db.query(
+    `update organizations set settings = '{"engine":{"backlogCap":1}}'::jsonb where id = $1`,
+    [ORG_A],
+  );
+  if ((await cap(ORG_A)) === 1) ok("and a configured one gets its own");
+  else fail("and a configured one gets its own", await cap(ORG_A));
+
+  const saturated = await db.query<{ id: string }>(`select public.saturated_org_ids() as id`);
+  const ids = saturated.rows.map((r) => r.id);
+  if (ids.includes(ORG_A)) ok("an org at its cap is reported saturated");
+  else fail("an org at its cap is reported saturated", JSON.stringify(ids));
+  if (!ids.includes("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))
+    ok("and one below its own is not — the cap is per tenant");
+  else fail("and one below its own is not", JSON.stringify(ids));
+
+  /* Zero is unlimited, and it has to be distinguishable from "not set". `->>`
+     returns SQL NULL for a missing key and for a JSON null alike, which is why
+     `serializeOrgProfile` omits the key rather than writing null. */
+  await db.query(
+    `update organizations set settings = '{"engine":{"backlogCap":0}}'::jsonb where id = $1`,
+    [ORG_A],
+  );
+  const unlimited = await db.query<{ id: string }>(`select public.saturated_org_ids() as id`);
+  if (!unlimited.rows.map((r) => r.id).includes(ORG_A))
+    ok("a cap of zero means unlimited, not 'stop everything'");
+  else fail("a cap of zero means unlimited", "still saturated");
+
+  await db.query(`update organizations set settings = '{}'::jsonb where id = $1`, [ORG_A]);
+}
+
+// ── 0010 — memory ingestion metadata ───────────────────────────────────────
+console.log("\n0010 — a memory says what it was before it was a memory");
+{
+  await expectAccept(
+    db,
+    "an existing memory defaults to text, untruncated, untagged",
+    `insert into memories (org_id, scope, content) values ($1, 'organization', 'Never open with a compliment.')`,
+    [ORG_A],
+  );
+  const row = await db.query<{ source_type: string; truncated: boolean; tags: string[] }>(
+    `select source_type, truncated, tags from memories where org_id = $1 limit 1`,
+    [ORG_A],
+  );
+  if (row.rows[0]?.source_type === "text" && row.rows[0]?.truncated === false)
+    ok("so nothing written before this migration changes meaning");
+  else fail("so nothing written before this migration changes meaning", JSON.stringify(row.rows[0]));
+
+  await expectReject(
+    db,
+    "a source type outside the four is rejected",
+    `insert into memories (org_id, scope, content, source_type)
+     values ($1, 'organization', 'x', 'telepathy')`,
+    [ORG_A],
+  );
+  await expectAccept(
+    db,
+    "an ingested document records where it came from and that it is an excerpt",
+    `insert into memories (org_id, scope, content, source_type, source_url, source_label, tags, truncated)
+     values ($1, 'organization', 'Positioning…', 'url', 'https://example.test/p',
+             'Positioning one-pager', array['positioning'], true)`,
+    [ORG_A],
+  );
+}
+
+// ── 0010 — a rating is not an override ─────────────────────────────────────
+console.log("\n0010 — rating an AI decision leaves the override alone");
+{
+  await expectAccept(
+    db,
+    "a decision can be rated without being corrected",
+    `insert into ai_decisions (id, org_id, decision_type, output, quality_rating, rated_at)
+     values ('33330000-0000-0000-0000-00000000000a', $1, 'qualify_opportunity',
+             '{"score":70}'::jsonb, 'poor', now())`,
+    [ORG_A],
+  );
+  const rated = await db.query<{ human_override: unknown }>(
+    `select human_override from ai_decisions where id = '33330000-0000-0000-0000-00000000000a'`,
+  );
+  if (rated.rows[0]?.human_override === null)
+    ok("and `human_override` stays null — the two mean different things");
+  else fail("and `human_override` stays null", JSON.stringify(rated.rows[0]));
+
+  await expectReject(
+    db,
+    "a rating outside the four is rejected",
+    `insert into ai_decisions (org_id, decision_type, output, quality_rating)
+     values ($1, 'qualify_opportunity', '{}'::jsonb, 'meh')`,
+    [ORG_A],
+  );
+}
+
+// ── 0010 — the score keeps the model's own number ──────────────────────────
+console.log("\n0010 — a customer's rule does not overwrite what the model said");
+{
+  await expectAccept(
+    db,
+    "a score records the model's number alongside the final one",
+    `insert into opportunity_scores
+       (org_id, opportunity_id, model_version, score, model_score, explanation, rule_trace)
+     values ($1, '0bbbbbbb-0000-0000-0000-00000000000a', 'qualify@2026-06-01', 82, 70,
+             'Strong trigger, unclear budget.',
+             '[{"ruleId":"r1","name":"Fintech","effect":"adjust","weight":12}]'::jsonb)`,
+    [ORG_A],
+  );
+  await expectReject(
+    db,
+    "and a model score outside 0–100 is rejected like any other",
+    `insert into opportunity_scores (org_id, opportunity_id, model_version, score, model_score, explanation)
+     values ($1, '0bbbbbbb-0000-0000-0000-00000000000a', 'v', 50, 500, 'x')`,
+    [ORG_A],
+  );
+}
+
+// ── 0010 — tenant isolation on the new tables ──────────────────────────────
+//
+// The structural check below asserts RLS is *enabled* with *a* policy. This
+// asserts the policy actually separates tenants, which is a different claim: a
+// policy of `using (true)` would pass the first and fail this.
+console.log("\n0010 — one org cannot read another's findings");
+{
+  await db.exec("begin");
+  await db.exec(`set local role authenticated`).catch(() => {});
+  await db.exec(
+    `set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333'`,
+  );
+
+  const seen = await db.query<{ n: number }>(
+    `select count(*)::int as n from learning_findings`,
+  );
+  if (seen.rows[0]?.n === 0) ok("org B sees none of org A's findings");
+  else fail("org B sees none of org A's findings", `${seen.rows[0]?.n} visible`);
+
+  const runs = await db.query<{ n: number }>(`select count(*)::int as n from learning_runs`);
+  if (runs.rows[0]?.n === 1) ok("and sees exactly its own run");
+  else fail("and sees exactly its own run", `${runs.rows[0]?.n} visible`);
+
+  await db.exec("rollback");
+}
+
 // ── Every tenant table actually has RLS on ─────────────────────────────────
 // A table added later without `enable row level security` is readable by any
 // authenticated user in any tenant. That is the leak D2 exists to prevent, so

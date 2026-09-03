@@ -7,15 +7,18 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./admin": "./src/admin.ts"
+    "./admin": "./src/admin.ts",
+    "./rules": "./src/rules.ts",
+    "./org-profile": "./src/org-profile.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "seed": "node --experimental-strip-types scripts/seed.ts",
     "doctor": "node --experimental-strip-types scripts/doctor.ts",
-    "test": "npm run test:migrations && npm run check:admin-imports",
+    "test": "npm run test:migrations && npm run test:rules && npm run check:admin-imports",
     "test:migrations": "node --experimental-strip-types scripts/verify-migrations.ts",
-    "check:admin-imports": "node --experimental-strip-types scripts/check-admin-imports.ts"
+    "check:admin-imports": "node --experimental-strip-types scripts/check-admin-imports.ts",
+    "test:rules": "node --experimental-strip-types scripts/verify-rules.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -523,6 +523,142 @@ const SOURCES: { kind: string; name: string; url: string; recommended_by: string
   { kind: "regulatory", name: "FDA device clearances", url: "https://www.fda.gov/", recommended_by: "user" },
 ];
 
+/**
+ * What happened afterwards.
+ *
+ * ── Why the seed carries outcomes at all ─────────────────────────────────
+ *
+ * `analyze_performance` refuses below `MIN_LEARNING_SIGNALS`, and it refuses
+ * before spending anything — which is the correct behaviour and makes the Learn
+ * screen untestable on a fresh install without weeks of real outreach. These
+ * rows are what make the whole loop exercisable in one command.
+ *
+ * They are a plausible quarter rather than a flattering one: one deal won, one
+ * lost, one still in play, and a rejection recorded against a company the
+ * qualifier rated highly. A fixture where everything worked would teach the
+ * screen nothing, because the analysis's job is to find what did not.
+ *
+ * Dates are relative to the run so they always land inside the default
+ * ninety-day window — a fixture with hardcoded dates silently stops producing
+ * findings a quarter after it is written, and looks like a broken feature.
+ */
+const OUTCOMES: { company: string; kind: string; daysAgo: number; value_cents?: number }[] = [
+  { company: "alphio.ai", kind: "reply", daysAgo: 62 },
+  { company: "alphio.ai", kind: "positive", daysAgo: 60 },
+  { company: "alphio.ai", kind: "meeting", daysAgo: 54 },
+  { company: "alphio.ai", kind: "proposal", daysAgo: 40 },
+  { company: "alphio.ai", kind: "won", daysAgo: 18, value_cents: 4_800_000 },
+  { company: "northwind.co", kind: "reply", daysAgo: 45 },
+  { company: "northwind.co", kind: "meeting", daysAgo: 38 },
+  { company: "northwind.co", kind: "lost", daysAgo: 12 },
+  { company: "cormorant.health", kind: "reply", daysAgo: 21 },
+];
+
+/**
+ * Where a person disagreed with the product, or said what they thought of it.
+ *
+ * The second half of the learning input, and the half that is otherwise
+ * impossible to generate locally: `human_override` is only written when
+ * somebody corrects an output, and `quality_rating` only when somebody rates
+ * one. Both seeded here so the analysis has something to say about the
+ * qualifier rather than only about outcomes.
+ */
+const DECISIONS: {
+  company: string;
+  rating: "excellent" | "good" | "average" | "poor" | null;
+  note: string | null;
+  override: Record<string, unknown> | null;
+  daysAgo: number;
+}[] = [
+  {
+    company: "cormorant.health",
+    rating: "poor",
+    note: "Rated hot on a trigger that turned out to be a press release about a partner, not them.",
+    override: null,
+    daysAgo: 30,
+  },
+  {
+    company: "northwind.co",
+    rating: "average",
+    note: "Fit was right, timing was months off.",
+    override: null,
+    daysAgo: 26,
+  },
+  {
+    company: "alphio.ai",
+    rating: "excellent",
+    note: null,
+    override: null,
+    daysAgo: 58,
+  },
+  {
+    company: "cormorant.health",
+    rating: null,
+    note: null,
+    /* An override, not a rating: somebody replaced the verdict rather than
+       scoring it. `0004`'s comment calls this the only labelled data the
+       product gets for free, and it has never had a reader until now. */
+    override: { priority: "watch", priority_reason: "Corrected by hand — the trigger was a partner's announcement." },
+    daysAgo: 29,
+  },
+];
+
+/**
+ * A starting scoring policy.
+ *
+ * One running and one waiting, because the difference is the whole design of
+ * the scoring screen: nothing activates itself, and a seed where every rule was
+ * already live would demonstrate the opposite of what the product does.
+ */
+const RULES: {
+  name: string;
+  expression: Record<string, unknown>;
+  effect: "adjust" | "veto" | "floor";
+  weight: number | null;
+  floor_priority: string | null;
+  intent: string;
+  rationale: string;
+  origin: string;
+  is_active: boolean;
+}[] = [
+  {
+    name: "Too small to have a budget",
+    expression: { field: "company.employee_count", op: "lte", value: 9 },
+    effect: "veto",
+    weight: null,
+    floor_priority: null,
+    intent: "reject",
+    rationale:
+      "Nobody under ten people has a budget line for this. Excluded outright rather than scored down, so a strong trigger cannot outvote it.",
+    origin: "user",
+    is_active: true,
+  },
+  {
+    name: "Fresh funding",
+    expression: { field: "signals.event_types", op: "includes", value: "Funding" },
+    effect: "floor",
+    weight: null,
+    floor_priority: "warm",
+    intent: "prioritize",
+    rationale: "A round closing is the one moment budget is genuinely unallocated.",
+    origin: "user",
+    is_active: true,
+  },
+  {
+    name: "Says they move funds",
+    expression: { field: "company.description", op: "includes", value: "on-chain" },
+    effect: "adjust",
+    weight: 12,
+    floor_priority: null,
+    intent: "boost",
+    rationale:
+      "A company that describes itself this way has the problem in its own words, which beats an analyst having filed it under the right segment.",
+    origin: "drafted",
+    // Waiting, on purpose. See the note above.
+    is_active: false,
+  },
+];
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 const db = createAdminClient();
@@ -819,6 +955,8 @@ fail("clearing companies", companyDeleteError);
 
 let opportunityCount = 0;
 let evidenceCount = 0;
+/** Domain → opportunity id, so outcomes and decisions can point at real rows. */
+const opportunityByDomain = new Map<string, string>();
 
 for (const c of COMPANIES) {
   const company = must(
@@ -978,11 +1116,83 @@ for (const c of COMPANIES) {
     fail(`creating trigger for ${c.name}`, error);
   }
 
+  opportunityByDomain.set(c.canonical_domain, opportunity.id);
+
   console.log(
     `company       ${c.name.padEnd(20)} ${o.priority.padEnd(6)} ` +
       `${c.evidence.length} evidence · ${c.triggers.length} triggers · ${c.people.length} people`,
   );
 }
+
+/* ── The Learn stage's raw material ──────────────────────────────────────── */
+
+const daysAgo = (n: number) =>
+  new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+
+for (const rule of RULES) {
+  const { error } = await db.from("scoring_rules").insert({
+    org_id: org.id,
+    icp_id: icp.id,
+    name: rule.name,
+    expression: rule.expression,
+    effect: rule.effect,
+    weight: rule.weight,
+    floor_priority: rule.floor_priority,
+    intent: rule.intent,
+    rationale: rule.rationale,
+    origin: rule.origin,
+    is_active: rule.is_active,
+    proposed_at: rule.is_active ? null : daysAgo(2),
+  });
+  fail(`creating scoring rule ${rule.name}`, error);
+}
+console.log(
+  `scoring       ${RULES.filter((r) => r.is_active).length} running · ` +
+    `${RULES.filter((r) => !r.is_active).length} waiting for review`,
+);
+
+let outcomeCount = 0;
+for (const o of OUTCOMES) {
+  const opportunityId = opportunityByDomain.get(o.company);
+  if (!opportunityId) continue;
+
+  const { error } = await db.from("outcomes").insert({
+    org_id: org.id,
+    opportunity_id: opportunityId,
+    kind: o.kind,
+    value_cents: o.value_cents ?? null,
+    occurred_at: daysAgo(o.daysAgo),
+  });
+  fail(`creating outcome ${o.kind} for ${o.company}`, error);
+  outcomeCount++;
+}
+
+let decisionCount = 0;
+for (const d of DECISIONS) {
+  const opportunityId = opportunityByDomain.get(d.company);
+  if (!opportunityId) continue;
+
+  const { error } = await db.from("ai_decisions").insert({
+    org_id: org.id,
+    decision_type: "qualify_opportunity",
+    output: { seeded: true },
+    entity_type: "opportunity",
+    entity_id: opportunityId,
+    quality_rating: d.rating,
+    quality_note: d.note,
+    rated_at: d.rating ? daysAgo(d.daysAgo) : null,
+    human_override: d.override,
+    overridden_at: d.override ? daysAgo(d.daysAgo) : null,
+    created_at: daysAgo(d.daysAgo),
+  });
+  fail(`creating decision for ${d.company}`, error);
+  decisionCount++;
+}
+
+console.log(
+  `learning      ${outcomeCount} outcomes · ${decisionCount} human judgements ` +
+    `— enough for an analysis to have something to say`,
+);
 
 console.log(
   `\nSeeded ${COMPANIES.length} companies, ${opportunityCount} opportunities, ` +
