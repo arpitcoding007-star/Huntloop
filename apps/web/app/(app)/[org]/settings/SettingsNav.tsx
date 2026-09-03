@@ -16,6 +16,7 @@ const TABS = [
   { slug: "", label: "Organisation" },
   { slug: "/product", label: "Product" },
   { slug: "/icp", label: "ICP" },
+  { slug: "/scoring", label: "Scoring" },
 ];
 
 export function SettingsNav({ org }: { org: string }) {

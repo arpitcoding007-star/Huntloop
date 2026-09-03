@@ -44,17 +44,25 @@ test.describe("settings", () => {
     expect(errors, "the page threw while rendering").toEqual([]);
   });
 
-  test("the three settings tabs all lead somewhere real", async ({ page }) => {
+  test("every settings tab leads somewhere real", async ({ page }) => {
     /*
      * `audit.mjs` NAV-01 only inspects OrgShell, so it never saw this tab bar
-     * — and for a while two of its three tabs 404'd. A dead tab is the same
-     * defect as a dead nav item; it just lives in a component the static
-     * check does not read.
+     * — and for a while two of its tabs 404'd. A dead tab is the same defect
+     * as a dead nav item; it just lives in a component the static check does
+     * not read.
+     *
+     * Counted rather than fixed at a number: the count used to be asserted as
+     * three, which made adding a fourth tab fail this test for the one reason
+     * it is not about. What matters is that each one answers.
      */
     await page.goto(`/${ORG}/settings`);
 
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(3);
+    /* `not.toHaveCount(0)` rather than reading `.count()` into a plain
+       expectation: only the matcher form retries, and a bare count resolves
+       before the client component has rendered — which fails for the one
+       reason this test is not about. */
+    await expect(tabs, "the tab bar renders at all").not.toHaveCount(0);
 
     for (const tab of await tabs.all()) {
       const href = await tab.getAttribute("href");
@@ -88,6 +96,59 @@ test.describe("settings", () => {
     await expect(page.getByText(/buying triggers/i)).toBeVisible();
 
     expect(errors, "the page threw while rendering").toEqual([]);
+  });
+
+  test("the scoring screen keeps waiting rules apart from running ones", async ({
+    page,
+  }) => {
+    const errors = watchForErrors(page);
+    await page.goto(`/${ORG}/settings/scoring`);
+
+    await expect(page.getByRole("heading", { name: /scoring rules/i })).toBeVisible();
+
+    /* The two sections are the whole design: a proposal is inactive until
+       somebody activates it, one at a time. A screen that listed them
+       together would make "what is actually affecting my scores?"
+       unanswerable, which is the question this page exists for. */
+    await expect(page.getByText("Waiting for you")).toBeVisible();
+    await expect(page.getByText("Running", { exact: true })).toBeVisible();
+
+    // Every rule reads back as a sentence generated from its stored shape, so
+    // the screen cannot show something the engine will not do.
+    await expect(page.getByText(/never consider a company where/i)).toBeVisible();
+
+    expect(errors, "the page threw while rendering").toEqual([]);
+  });
+});
+
+test.describe("learn", () => {
+  test("the learn screen shows the working, not just the conclusion", async ({
+    page,
+  }) => {
+    const errors = watchForErrors(page);
+    await page.goto(`/${ORG}/learn`);
+
+    await expect(page.getByRole("heading", { name: "Learn" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /analyse what happened/i })).toBeVisible();
+
+    /* A finding renders its detail and BOTH counts. Showing only the
+       supporting number is how a nine-for-eight-against coin flip reads as a
+       pattern, and it is the specific thing this screen is built not to do. */
+    await expect(page.getByText(/triggers older than three weeks/i)).toBeVisible();
+    await expect(page.getByText(/22 records support this, 3 contradict it/i)).toBeVisible();
+
+    expect(errors, "the page threw while rendering").toEqual([]);
+  });
+
+  test("a finding with nothing to automate says so rather than offering a button", async ({
+    page,
+  }) => {
+    await page.goto(`/${ORG}/learn`);
+
+    /* The task is told to propose nothing where the honest recommendation is
+       "look at this", so this is a common state and not a broken one. The
+       screen has to make accepting it feel complete. */
+    await expect(page.getByText(/nothing to apply automatically/i).first()).toBeVisible();
   });
 });
 

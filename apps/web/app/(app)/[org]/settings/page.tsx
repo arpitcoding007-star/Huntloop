@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { canAdmin, currentViewer } from "../../../../lib/data/membership";
 import { getOrganization } from "../../../../lib/data/organization";
+import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { DemoFigures } from "../DemoFigures";
 import { OrgSettingsForm } from "./OrgSettingsForm";
+import { OrgVoiceForm } from "./OrgVoiceForm";
 
 /**
  * Settings root — the organisation itself.
@@ -32,6 +34,15 @@ export default async function SettingsPage({
       <OrgSettingsForm
         org={org}
         organization={organization}
+        canAdmin={canAdmin(viewer)}
+      />
+      {/* Parsed here rather than in the loader, because `organizations.settings`
+          is deliberately carried through as an opaque object — see the note in
+          `lib/data/organization.ts`. This screen is the one that knows what the
+          keys mean, and `parseOrgProfile` is the shared definition of that. */}
+      <OrgVoiceForm
+        org={org}
+        profile={parseOrgProfile(organization?.settings)}
         canAdmin={canAdmin(viewer)}
       />
     </div>

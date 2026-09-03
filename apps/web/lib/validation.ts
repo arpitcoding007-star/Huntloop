@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CLAIM_KINDS, CONFIDENCES, PRIORITIES, SCORE_DIMENSIONS } from "@huntloop/ai";
+import { ORG_TONES } from "@huntloop/db/org-profile";
 
 /**
  * Schemas for everything that crosses a Server Action boundary.
@@ -317,6 +318,73 @@ export const inviteSchema = z.object({
 
 export const orgSettingsSchema = z.object({
   name: orgNameSchema,
+});
+
+/**
+ * The organisation's voice and engine settings — `organizations.settings`.
+ *
+ * `ORG_TONES` comes from `@huntloop/db/org-profile` for the same reason the
+ * enums above come from `@huntloop/ai`: a literal union retyped here drifts
+ * silently the first time a tone is added, and it drifts in the direction where
+ * the new value is rejected as invalid input.
+ *
+ * `backlogCap` allows 0, which means unlimited rather than "stop everything" —
+ * see `0010`'s `backlog_cap()`. The upper bound is generous because the number
+ * is a safety valve on runaway discovery, and a cap somebody has to raise
+ * every month is a cap they will eventually set to the maximum and forget.
+ */
+export const orgProfileSchema = z.object({
+  tone: z.enum(ORG_TONES).nullable(),
+  competitors: z.array(z.string().trim().min(1).max(120)).max(20),
+  targetRegions: z.array(z.string().trim().min(1).max(120)).max(20),
+  backlogCap: z.number().int().min(0).max(100_000).nullable(),
+});
+
+/**
+ * One scoring rule, as a form submits it.
+ *
+ * The expression is `unknown` here on purpose. `validateExpression` in
+ * `@huntloop/db/rules` is the check, it is the same function the drafting task
+ * and the engine both use, and its errors name the offending field in the
+ * language a person authoring a rule is thinking in. Re-encoding the recursive
+ * shape as a Zod schema would give two definitions of "a valid rule" that can
+ * disagree, and the one that decides whether the rule *fires* is not this one.
+ */
+export const scoringRuleSchema = z.object({
+  id: uuidSchema.optional(),
+  name: z.string().trim().min(1, "A rule needs a name.").max(120),
+  effect: z.enum(["adjust", "veto", "floor"]),
+  weight: z.number().int().min(-40).max(40).nullable(),
+  floorPriority: z.enum(["hot", "warm", "watch"]).nullable(),
+  intent: z.enum(["prioritize", "reject", "boost", "penalty"]).nullable(),
+  rationale: z.string().trim().max(600).optional().or(z.literal("")),
+  expression: z.unknown(),
+});
+
+/** A rating on one AI decision. See `0010`'s `ai_decisions.quality_rating`. */
+export const qualityRatingSchema = z.object({
+  decisionId: uuidSchema,
+  rating: z.enum(["excellent", "good", "average", "poor"]),
+  note: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+/**
+ * A memory ingested from somewhere rather than typed.
+ *
+ * `content` is deliberately absent: it is extracted from the URL or the file,
+ * not supplied by the caller. Accepting it here would let a caller claim a
+ * document said something it did not — and the whole reason `source_type` and
+ * `source_url` exist is so a reader can tell where a memory came from.
+ */
+export const memoryIngestSchema = z.object({
+  sourceType: z.enum(["url", "file"]),
+  /** Present for `url`. Checked again by `assertFetchable` for SSRF. */
+  url: httpUrlSchema.optional(),
+  /** Present for `file`. Bounded well below what a prompt can hold. */
+  filename: z.string().trim().max(255).optional(),
+  text: z.string().max(400_000).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(12),
+  key: z.string().trim().max(160).optional().or(z.literal("")),
 });
 
 export const opportunityStatusSchema = z.enum([

@@ -10,6 +10,7 @@ import {
   Building2,
   Flame,
   Globe,
+  GraduationCap,
   Inbox as InboxIcon,
   KanbanSquare,
   Lightbulb,
@@ -127,6 +128,16 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           label: "Intelligence",
           href: `/${org}/intelligence`,
           icon: Lightbulb,
+          badge: { label: "AI", variant: "ai" },
+        },
+        /* The Learn stage of §4, which had no destination until the analysis
+           behind it existed. Same rule as everything else in this list: the
+           entry and the route arrive together, and `audit.mjs` NAV-01 fails
+           the build if they ever do not. */
+        {
+          label: "What we've learned",
+          href: `/${org}/learn`,
+          icon: GraduationCap,
           badge: { label: "AI", variant: "ai" },
         },
         { label: "Memory", href: `/${org}/memory`, icon: Brain },

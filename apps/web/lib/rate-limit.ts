@@ -112,6 +112,17 @@ const LIMITS: Partial<Record<TaskName, Limit>> = {
   explain_why_now: { perUser: 60, perOrg: 300, windowSeconds: 3600 },
   // Onboarding. Run once or twice per org, ever.
   recommend_sources: { perUser: 20, perOrg: 60, windowSeconds: 3600 },
+  /* Setup, like `recommend_sources`, and tighter: a scoring policy is drafted
+     once and then edited by hand. Opus at high effort with no fetching, so the
+     cost per call is moderate — the reason for the low ceiling is that twenty
+     drafts in an hour is not a person reviewing rules, it is a loop. */
+  draft_scoring_rules: { perUser: 10, perOrg: 30, windowSeconds: 3600 },
+  /* Reads a few hundred records and reasons over all of them — the single most
+     expensive call the product makes. The real bound is
+     `learning_runs_one_open_per_org`, which allows one outstanding analysis
+     per org at a time; this is the belt to that constraint's braces, and it is
+     per-org rather than per-user because the cost lands on the org. */
+  analyze_performance: { perUser: 6, perOrg: 12, windowSeconds: 3600 },
 };
 
 /**

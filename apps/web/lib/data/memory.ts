@@ -28,6 +28,8 @@ import { load, type Loaded } from "./source";
 
 export type MemoryScope = "organization" | "team" | "user" | "account" | "opportunity";
 
+export type MemorySourceType = "text" | "url" | "file" | "image";
+
 export interface Memory {
   id: string;
   scope: MemoryScope;
@@ -40,6 +42,21 @@ export interface Memory {
   createdBy: string | null;
   expiresAt: string | null;
   createdAt: string | null;
+  /**
+   * Where the text came from — `0010`.
+   *
+   * `source` and `sourceType` answer different questions and both matter.
+   * `source` is *who concluded it*: a person, or the product. `sourceType` is
+   * *what it was before it was a memory*: a sentence somebody typed, or a page,
+   * or a file. A derived memory is always `text`, because a conclusion is not
+   * a document.
+   */
+  sourceType: MemorySourceType;
+  sourceUrl: string | null;
+  sourceLabel: string | null;
+  tags: string[];
+  /** True when `content` is an excerpt. Rendered, never inferred. */
+  truncated: boolean;
 }
 
 export const MEMORY_SCOPES: readonly MemoryScope[] = [
@@ -68,7 +85,8 @@ export async function listMemories(orgSlug: string): Promise<Loaded<Memory[]>> {
       const { data, error } = await db
         .from("memories")
         .select(
-          "id, scope, scope_id, kind, key, content, source, confidence, created_by, expires_at, created_at",
+          "id, scope, scope_id, kind, key, content, source, confidence, created_by, " +
+            "expires_at, created_at, source_type, source_url, source_label, tags, truncated",
         )
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -97,6 +115,13 @@ function mapMemory(row: any): Memory {
     createdBy: row.created_by ?? null,
     expiresAt: row.expires_at ?? null,
     createdAt: row.created_at ?? null,
+    sourceType: ["text", "url", "file", "image"].includes(row.source_type)
+      ? row.source_type
+      : "text",
+    sourceUrl: row.source_url ?? null,
+    sourceLabel: row.source_label ?? null,
+    tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+    truncated: Boolean(row.truncated),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -104,10 +129,11 @@ function mapMemory(row: any): Memory {
 /**
  * Demo memories.
  *
- * One org-scoped and one derived, because the difference between something a
- * person wrote down and something the product concluded is exactly what §7
- * says must stay visible — including when the subject is the user's own
- * preferences.
+ * One typed, one ingested, one derived — because those are the three ways a
+ * memory gets here and the screen renders each differently. §7 again: the
+ * difference between something a person wrote down, something a person handed
+ * over, and something the product concluded is exactly what must stay visible,
+ * including when the subject is the user's own preferences.
  */
 const DEMO: Memory[] = [
   {
@@ -122,6 +148,32 @@ const DEMO: Memory[] = [
     createdBy: null,
     expiresAt: null,
     createdAt: null,
+    sourceType: "text",
+    sourceUrl: null,
+    sourceLabel: null,
+    tags: [],
+    truncated: false,
+  },
+  {
+    id: "demo-memory-3",
+    scope: "organization",
+    scopeId: null,
+    kind: "durable",
+    key: "positioning",
+    content:
+      "We are the policy layer, not the wallet. Every comparison a prospect makes is against building it themselves, not against another vendor.\n\n[This is an excerpt. The rest of the document was not stored.]",
+    source: "user",
+    confidence: null,
+    createdBy: null,
+    expiresAt: null,
+    createdAt: null,
+    sourceType: "url",
+    sourceUrl: "https://example.test/positioning",
+    sourceLabel: "Positioning one-pager",
+    tags: ["positioning"],
+    // Deliberately true in the fixture: a truncation badge that only ever
+    // appears against real data is a badge nobody has looked at.
+    truncated: true,
   },
   {
     id: "demo-memory-2",
@@ -136,5 +188,11 @@ const DEMO: Memory[] = [
     createdBy: null,
     expiresAt: null,
     createdAt: null,
+    // A conclusion is not a document, so a derived memory is always `text`.
+    sourceType: "text",
+    sourceUrl: null,
+    sourceLabel: null,
+    tags: [],
+    truncated: false,
   },
 ];

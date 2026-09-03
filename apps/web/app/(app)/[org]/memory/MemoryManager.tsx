@@ -16,9 +16,9 @@ import {
   Select,
   Textarea,
 } from "@huntloop/ui";
-import { Brain, Plus, Save, Trash2 } from "lucide-react";
+import { Brain, FileUp, Link2, Plus, Save, Trash2 } from "lucide-react";
 import type { Memory, MemoryScope } from "../../../../lib/data/memory";
-import { deleteMemoryAction, saveMemoryAction } from "./actions";
+import { deleteMemoryAction, ingestMemoryAction, saveMemoryAction } from "./actions";
 
 /**
  * The scopes, and what each one means, as client constants.
@@ -80,6 +80,7 @@ export function MemoryManager({
   canWrite: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
@@ -100,12 +101,36 @@ export function MemoryManager({
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionLabel>What you have told Huntloop</SectionLabel>
-          {canWrite && !adding && (
-            <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(true)}>
-              Add a memory
-            </Button>
+          {canWrite && (
+            <span className="flex flex-wrap items-center gap-2">
+              {!ingesting && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={FileUp}
+                  onClick={() => setIngesting(true)}
+                >
+                  Add a document
+                </Button>
+              )}
+              {!adding && (
+                <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(true)}>
+                  Add a memory
+                </Button>
+              )}
+            </span>
           )}
         </div>
+
+        {ingesting && (
+          <div className="mt-3">
+            <IngestForm
+              org={org}
+              onDone={() => setIngesting(false)}
+              onResult={setResult}
+            />
+          </div>
+        )}
 
         {adding && (
           <div className="mt-3">
@@ -216,6 +241,22 @@ function MemoryCard({
           {memory.source === "derived" && (
             <ClaimBadge kind="inference" confidence={memory.confidence ?? undefined} />
           )}
+          {/* Where the text came from, when it did not come from this form.
+              `source` says who concluded it; this says what it was before it
+              was a memory, and both matter to somebody deciding whether to
+              trust it. */}
+          {memory.sourceType !== "text" && (
+            <Badge variant="neutral">{memory.sourceType}</Badge>
+          )}
+          {/* Stated, never inferred. The reference system truncated fetched
+              pages at ten thousand characters and told nobody, which made "the
+              whole document" and "the first two pages" the same claim. */}
+          {memory.truncated && <Badge variant="warning">excerpt</Badge>}
+          {memory.tags.map((tag) => (
+            <Badge key={tag} variant="neutral">
+              {tag}
+            </Badge>
+          ))}
           {memory.expiresAt && <Badge variant="warning">expires</Badge>}
 
           {canWrite && (
@@ -247,6 +288,201 @@ function MemoryCard({
         </div>
 
         <p className="text-[13px] whitespace-pre-wrap text-fg">{memory.content}</p>
+
+        {(memory.sourceUrl || memory.sourceLabel) && (
+          <p className="text-[12px] text-fg-muted">
+            From{" "}
+            {memory.sourceUrl ? (
+              <a
+                href={memory.sourceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="hl-focusable rounded text-brand underline underline-offset-2"
+              >
+                {memory.sourceLabel ?? memory.sourceUrl}
+              </a>
+            ) : (
+              memory.sourceLabel
+            )}
+          </p>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Ingesting a document instead of typing a sentence.
+ *
+ * ── Why the URL and the file take different paths ────────────────────────
+ *
+ * A URL is fetched server-side by `fetchPage`, which is SSRF-checked — private
+ * ranges, link-local addresses and non-HTTP schemes are refused, and the check
+ * re-runs after every redirect. This form is a public POST endpoint that takes
+ * an address from the caller and makes the server request it, which is the
+ * textbook shape of that vulnerability, so it reuses the hardened fetcher the
+ * scanner already uses rather than a second softer one.
+ *
+ * A file is read in the browser and its text is posted. A browser cannot hand
+ * a server a file any other way, and the consequence is stated honestly in the
+ * row: `source_type = 'file'` means "somebody uploaded this", which is a
+ * weaker provenance claim than "we fetched this from that address" and is
+ * labelled as the weaker one.
+ *
+ * Plain text only, deliberately. A PDF or a .docx read as text is mostly
+ * binary noise, and silently storing that as an organisation memory would put
+ * it in front of every prompt this org ever runs. The accept list refuses them
+ * rather than producing something unusable that looks like it worked.
+ */
+function IngestForm({
+  org,
+  onDone,
+  onResult,
+}: {
+  org: string;
+  onDone: () => void;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
+}) {
+  const [mode, setMode] = useState<"url" | "file">("url");
+  const [url, setUrl] = useState("");
+  const [filename, setFilename] = useState("");
+  const [text, setText] = useState("");
+  const [key, setKey] = useState("");
+  const [tags, setTags] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pending, start] = useTransition();
+
+  return (
+    <Card>
+      <CardHeader
+        title="Add a document"
+        description="A page or a text file becomes organisation context — read by every qualification and every message Huntloop writes from now on."
+      />
+      <CardBody className="space-y-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={mode === "url" ? "secondary" : "ghost"}
+            icon={Link2}
+            onClick={() => setMode("url")}
+            disabled={pending}
+          >
+            From a link
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "file" ? "secondary" : "ghost"}
+            icon={FileUp}
+            onClick={() => setMode("file")}
+            disabled={pending}
+          >
+            From a file
+          </Button>
+        </div>
+
+        {mode === "url" ? (
+          <Field
+            label="Address"
+            required
+            hint="Huntloop fetches it and stores the readable text. Pages that render in the browser often have none."
+            error={fieldErrors.url}
+          >
+            {(a) => (
+              <Input
+                {...a}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                disabled={pending}
+                placeholder="https://example.com/positioning"
+              />
+            )}
+          </Field>
+        ) : (
+          <Field
+            label="File"
+            required
+            hint="Plain text or markdown. Read in your browser — the file itself is not uploaded or stored."
+            error={fieldErrors.text}
+          >
+            {(a) => (
+              <input
+                {...a}
+                type="file"
+                accept=".txt,.md,.markdown,.csv,text/plain,text/markdown"
+                disabled={pending}
+                className="hl-focusable block w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg file:mr-3 file:rounded file:border-0 file:bg-surface-active file:px-3 file:py-1 file:text-[12px] file:text-fg"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setFilename(file.name);
+                  setText(await file.text());
+                }}
+              />
+            )}
+          </Field>
+        )}
+
+        <Field
+          label="Label"
+          hint="Optional. A short name, so a later document can replace this one rather than sit beside it."
+          error={fieldErrors.key}
+        >
+          {(a) => (
+            <Input
+              {...a}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              disabled={pending}
+              placeholder="positioning"
+            />
+          )}
+        </Field>
+
+        <Field label="Tags" hint="Optional. Comma separated." error={fieldErrors.tags}>
+          {(a) => (
+            <Input
+              {...a}
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              disabled={pending}
+              placeholder="positioning, pricing"
+            />
+          )}
+        </Field>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            icon={Save}
+            disabled={pending || (mode === "url" ? !url.trim() : !text.trim())}
+            onClick={() =>
+              start(async () => {
+                setFieldErrors({});
+                const res = await ingestMemoryAction(org, {
+                  sourceType: mode,
+                  url: mode === "url" ? url.trim() : undefined,
+                  filename: mode === "file" ? filename : undefined,
+                  text: mode === "file" ? text : undefined,
+                  tags: tags
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                  key,
+                });
+                onResult(
+                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                );
+                if (res.ok) onDone();
+                else setFieldErrors(res.fieldErrors ?? {});
+              })
+            }
+          >
+            {pending ? "Reading…" : "Store it"}
+          </Button>
+          <Button variant="ghost" onClick={onDone} disabled={pending}>
+            Cancel
+          </Button>
+        </div>
       </CardBody>
     </Card>
   );
