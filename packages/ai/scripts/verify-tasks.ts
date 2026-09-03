@@ -43,6 +43,18 @@ import {
   extractSignals,
   type SignalDocument,
 } from "../src/tasks/extract-signals.ts";
+import { draftScoringRules } from "../src/tasks/draft-scoring-rules.ts";
+import {
+  MIN_LEARNING_SIGNALS,
+  analyzePerformance,
+  countSignals,
+  type AnalyzeInput,
+} from "../src/tasks/analyze-performance.ts";
+import {
+  findBannedPhrase,
+  personalizeMessage,
+  type PersonalizeInput,
+} from "../src/tasks/personalize-message.ts";
 
 let failures = 0;
 let checks = 0;
@@ -104,6 +116,28 @@ function scriptedClient(json: unknown | (() => never)) {
     },
   };
   return { client, seen };
+}
+
+/**
+ * Walks into a generated JSON Schema by key path.
+ *
+ * A helper rather than a cast, because the interesting assertions here are
+ * about deeply nested enum members and `schema.properties.x.items.properties.y`
+ * typed as `any` stops checking anything at the first step — including a typo
+ * in the path, which would silently make the assertion read `undefined` and
+ * still pass or fail for the wrong reason. This returns `undefined` for a path
+ * that does not exist and the assertion says so.
+ */
+function schemaNode(
+  schema: Record<string, unknown> | undefined,
+  path: string[],
+): Record<string, unknown> | undefined {
+  let node: unknown = schema;
+  for (const key of path) {
+    if (!node || typeof node !== "object") return undefined;
+    node = (node as Record<string, unknown>)[key];
+  }
+  return node && typeof node === "object" ? (node as Record<string, unknown>) : undefined;
 }
 
 /** A recorder that remembers the order it was called in. */
@@ -1361,6 +1395,485 @@ console.log("\nsales_agent — an empty answer is a failed run");
     () => runTask(salesAgent, agentInput, ctx(client, spy.recorder)),
     /answer is empty/,
   );
+}
+
+/* ── draft_scoring_rules ─────────────────────────────────────────────────── */
+
+const RULES_INPUT = { icp: ICP, existing: [] };
+
+const GOOD_RULE = {
+  name: "Too small to buy",
+  intent: "reject",
+  effect: "veto",
+  weight: null,
+  floorPriority: null,
+  expression: { field: "company.employee_count", op: "lte", value: 9 },
+  rationale: "Nobody under ten people has a budget line for this.",
+  basis: ICP.sizes[0],
+};
+
+const withRules = (rules: unknown[]) => ({ rules });
+
+console.log("\ndraft_scoring_rules — a rule must be traceable to the profile");
+{
+  const { client } = scriptedClient(withRules([GOOD_RULE]));
+  const spy = spyRecorder();
+  const result = await runTask(draftScoringRules, RULES_INPUT, ctx(client, spy.recorder));
+  expectEqual("a well-formed rule is kept", result.output.length, 1);
+  expectEqual("its basis is the ICP element verbatim", result.output[0]!.basis, ICP.sizes[0]);
+  expect(
+    "the summary is generated from the shape, not taken from the model",
+    result.output[0]!.summary.includes("Never consider"),
+    result.output[0]!.summary,
+  );
+}
+{
+  const { client } = scriptedClient(
+    withRules([{ ...GOOD_RULE, basis: "Companies that seem promising" }]),
+  );
+  const spy = spyRecorder();
+  await expectThrows(
+    "a rule justified by something the user never wrote is refused",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spy.recorder)),
+    /not in this ICP/,
+  );
+  expectEqual("and the run is recorded as failed", spy.events, ["started", "failed"]);
+}
+{
+  const { client, seen } = scriptedClient(withRules([GOOD_RULE]));
+  const spy = spyRecorder();
+  await runTask(draftScoringRules, RULES_INPUT, ctx(client, spy.recorder));
+  const basis = schemaNode(seen[0]!.schema, ["properties", "rules", "items", "properties", "basis"]);
+  expect(
+    "the schema closes `basis` to the ICP elements sent",
+    Array.isArray(basis?.enum) && (basis.enum as string[]).includes(ICP.sizes[0]!),
+    JSON.stringify(basis),
+  );
+  expect("and this task gets no web tool at all", seen[0]!.fetchDomains === undefined);
+}
+
+console.log("\ndraft_scoring_rules — a weight is validated, not coerced");
+{
+  const { client } = scriptedClient(
+    withRules([
+      {
+        ...GOOD_RULE,
+        effect: "adjust",
+        weight: 500,
+        expression: { field: "company.industry", op: "equals", value: "fintech" },
+      },
+    ]),
+  );
+  await expectThrows(
+    "an out-of-range weight fails the run rather than being clamped",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder)),
+    /outside ±40/,
+  );
+}
+{
+  const { client } = scriptedClient(
+    withRules([{ ...GOOD_RULE, effect: "adjust", weight: 0 }]),
+  );
+  await expectThrows(
+    "a zero weight is refused — a rule that does nothing while looking like it does",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder)),
+    /adjusts by zero/,
+  );
+}
+{
+  const { client } = scriptedClient(
+    withRules([{ ...GOOD_RULE, expression: { field: "company.vibes", op: "equals", value: "good" } }]),
+  );
+  await expectThrows(
+    "a condition on a field nothing supplies is refused",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder)),
+    /not something a rule can ask about/,
+  );
+}
+{
+  const { client } = scriptedClient(withRules([{ ...GOOD_RULE, rationale: "  " }]));
+  await expectThrows(
+    "a rule with no stated reason is refused — it would decide verdicts unreviewed",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder)),
+    /carries no reason/,
+  );
+}
+{
+  const { client } = scriptedClient(withRules([GOOD_RULE, { ...GOOD_RULE }]));
+  await expectThrows(
+    "two rules with the same name are refused",
+    () => runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder)),
+    /both called/,
+  );
+}
+{
+  const { client } = scriptedClient(withRules([]));
+  const result = await runTask(draftScoringRules, RULES_INPUT, ctx(client, spyRecorder().recorder));
+  expectEqual("an empty draft is a valid answer, not a failure", result.output, []);
+}
+{
+  const empty = {
+    icp: { sells: "", segments: [], sizes: [], regions: [], triggers: [], exclusions: [] },
+    existing: [],
+  };
+  await expectThrows(
+    "an empty ICP refuses before the call rather than producing generic rules",
+    () => runTask(draftScoringRules, empty, ctx(scriptedClient(withRules([])).client, spyRecorder().recorder)),
+    /ICP is empty/,
+  );
+}
+
+/* ── analyze_performance ─────────────────────────────────────────────────── */
+
+const OUTCOME = {
+  opportunityId: "11111111-1111-1111-1111-111111111111",
+  companyId: "22222222-2222-2222-2222-222222222222",
+  companyName: "Northwind",
+  sourceId: "33333333-3333-3333-3333-333333333333",
+  sourceName: "Funding tracker",
+  kind: "reply" as const,
+  occurredAt: "2026-06-01T00:00:00.000Z",
+  priority: "hot",
+  modelScore: 82,
+  triggerAgeDays: 6,
+  industry: "fintech",
+  employeeCount: 120,
+};
+
+const ANALYZE_INPUT: AnalyzeInput = {
+  windowStart: "2026-03-01T00:00:00.000Z",
+  windowEnd: "2026-06-01T00:00:00.000Z",
+  outcomes: [OUTCOME],
+  decisions: [],
+  sources: [
+    {
+      sourceId: OUTCOME.sourceId!,
+      name: "Funding tracker",
+      kind: "funding",
+      companiesFound: 12,
+      opportunitiesCreated: 9,
+      outcomes: 4,
+      wins: 1,
+    },
+  ],
+  existingRules: [],
+  existingGuidance: [],
+};
+
+const GOOD_FINDING = {
+  kind: "scoring_adjustment",
+  headline: "Fresh triggers reply, stale ones do not",
+  detail: "Nine of eleven replies came from triggers under three weeks old.",
+  recommendation: "Contact sooner, or weight freshness harder.",
+  confidence: "medium",
+  citedOpportunityIds: [OUTCOME.opportunityId],
+  citedCompanyIds: [],
+  citedSourceIds: [],
+  supportingCount: 11,
+  contradictingCount: 2,
+  proposal: null,
+};
+
+const analysis = (findings: unknown[], summary = "Thirty-four outcomes.") => ({
+  summary,
+  findings,
+});
+
+console.log("\nanalyze_performance — a finding cites real records or it is not a finding");
+{
+  const { client } = scriptedClient(analysis([GOOD_FINDING]));
+  const spy = spyRecorder();
+  const result = await runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spy.recorder));
+  expectEqual("a well-formed finding is kept", result.output.findings.length, 1);
+  expectEqual(
+    "its citation is the id it was given",
+    result.output.findings[0]!.citedOpportunityIds,
+    [OUTCOME.opportunityId],
+  );
+}
+{
+  /* The single most important test in this file. A cross-tenant id in a
+     learning finding would be laundered into a human decision — somebody reads
+     it, believes it, and changes a rule — before anything downstream had a
+     chance to catch it. */
+  const foreign = "99999999-9999-9999-9999-999999999999";
+  const { client } = scriptedClient(
+    analysis([{ ...GOOD_FINDING, citedOpportunityIds: [foreign] }]),
+  );
+  const spy = spyRecorder();
+  await expectThrows(
+    "an id from outside this org's records fails the run",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spy.recorder)),
+    /not in the records for this organisation/,
+  );
+  expectEqual("recorded as a failed run, attributable to a prompt version", spy.events, [
+    "started",
+    "failed",
+  ]);
+}
+{
+  const { client, seen } = scriptedClient(analysis([GOOD_FINDING]));
+  await runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder));
+  const cited = schemaNode(seen[0]!.schema, [
+    "properties", "findings", "items", "properties", "citedOpportunityIds",
+  ]);
+  expectEqual(
+    "the schema closes citations to the ids actually sent",
+    (cited?.items as Record<string, unknown> | undefined)?.enum,
+    [OUTCOME.opportunityId],
+  );
+}
+{
+  const { client } = scriptedClient(
+    analysis([
+      {
+        ...GOOD_FINDING,
+        citedOpportunityIds: [],
+        citedCompanyIds: [],
+        citedSourceIds: [],
+      },
+    ]),
+  );
+  await expectThrows(
+    "a finding citing nothing is refused — it is a plausible sentence",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /cites nothing/,
+  );
+}
+{
+  const { client } = scriptedClient(analysis([{ ...GOOD_FINDING, supportingCount: 0 }]));
+  await expectThrows(
+    "a finding supported by zero records is refused",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /supported by zero records/,
+  );
+}
+{
+  const { client } = scriptedClient(analysis([{ ...GOOD_FINDING, detail: "" }]));
+  await expectThrows(
+    "a conclusion with no working is refused — it can only be believed",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /no working/,
+  );
+}
+{
+  const { client } = scriptedClient(analysis([], ""));
+  await expectThrows(
+    "a run with no summary is refused, even with no findings",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /no summary/,
+  );
+}
+{
+  const { client } = scriptedClient(analysis([]));
+  const result = await runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder));
+  expectEqual("finding nothing is a valid answer", result.output.findings.length, 0);
+  expect("and it still has to say so", result.output.summary.length > 0);
+}
+
+console.log("\nanalyze_performance — a proposal is what accepting will actually do");
+{
+  const { client } = scriptedClient(
+    analysis([
+      {
+        ...GOOD_FINDING,
+        proposal: {
+          type: "scoring_rule",
+          name: "Fresh funding",
+          intent: "prioritize",
+          effect: "floor",
+          weight: null,
+          floorPriority: "warm",
+          expression: { field: "signals.event_types", op: "equals", value: "funding" },
+        },
+      },
+    ]),
+  );
+  const result = await runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder));
+  const proposal = result.output.findings[0]!.proposal;
+  expect("a rule proposal survives", proposal?.type === "scoring_rule");
+  expect(
+    "and carries a summary generated from its own shape",
+    proposal?.type === "scoring_rule" && proposal.summary.includes("at least warm"),
+    proposal?.type === "scoring_rule" ? proposal.summary : "no proposal",
+  );
+}
+{
+  const { client } = scriptedClient(
+    analysis([
+      {
+        ...GOOD_FINDING,
+        proposal: {
+          type: "scoring_rule",
+          name: "Everything",
+          intent: "boost",
+          effect: "adjust",
+          weight: 90,
+          floorPriority: null,
+          expression: { field: "company.industry", op: "equals", value: "fintech" },
+        },
+      },
+    ]),
+  );
+  await expectThrows(
+    "a proposal that would decide every verdict on its own is refused",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /outside ±40/,
+  );
+}
+{
+  const input = { ...ANALYZE_INPUT, existingRules: [{ name: "Fresh funding", description: "" }] };
+  const { client } = scriptedClient(
+    analysis([
+      {
+        ...GOOD_FINDING,
+        proposal: {
+          type: "scoring_rule",
+          name: "Fresh funding",
+          intent: "prioritize",
+          effect: "veto",
+          weight: null,
+          floorPriority: null,
+          expression: { field: "company.industry", op: "equals", value: "fintech" },
+        },
+      },
+    ]),
+  );
+  await expectThrows(
+    "a proposal duplicating a rule that already exists is refused",
+    () => runTask(analyzePerformance, input, ctx(client, spyRecorder().recorder)),
+    /already exists/,
+  );
+}
+{
+  const { client } = scriptedClient(
+    analysis([
+      {
+        ...GOOD_FINDING,
+        kind: "style_guidance",
+        proposal: { type: "memory", key: "timing", content: "x".repeat(1200) },
+      },
+    ]),
+  );
+  await expectThrows(
+    "a memory proposal long enough to bloat every future prompt is refused",
+    () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+    /characters of/,
+  );
+}
+
+console.log("\nanalyze_performance — it refuses before spending, not after");
+{
+  expectEqual(
+    "a signal is an outcome, an override, or a rating",
+    countSignals({
+      outcomes: [1, 2, 3],
+      decisions: [
+        { decisionType: "q", opportunityId: null, companyId: null, overridden: true, rating: null, note: null, occurredAt: "" },
+        { decisionType: "q", opportunityId: null, companyId: null, overridden: false, rating: "poor", note: null, occurredAt: "" },
+        /* Neither overridden nor rated: an AI decision nobody has touched
+           carries no human judgement, and counting it would let volume look
+           like agreement. */
+        { decisionType: "q", opportunityId: null, companyId: null, overridden: false, rating: null, note: null, occurredAt: "" },
+      ],
+    }),
+    5,
+  );
+  expect(
+    "and the floor is high enough that a handful of replies is not a pattern",
+    MIN_LEARNING_SIGNALS >= 5,
+    String(MIN_LEARNING_SIGNALS),
+  );
+}
+
+/* ── personalize_message's deterministic style check ─────────────────────── */
+
+console.log("\npersonalize_message — a banned phrase fails the run, in every field");
+{
+  const evidence = [
+    {
+      id: "ev_1",
+      claim: "They are hiring platform engineers.",
+      kind: "fact" as const,
+      sourceUrl: "https://acme.co/jobs",
+      eventDate: "2026-05-01",
+    },
+  ];
+  const input: PersonalizeInput = {
+    companyName: "Acme",
+    recipientName: "Sam",
+    recipientTitle: "Head of Platform",
+    weSell: "Policy infrastructure for agents that move funds.",
+    angle: "They are rebuilding the platform team.",
+    step: 0,
+    template: { subject: null, body: null },
+    evidence,
+    guidance: [],
+  };
+
+  const clean = {
+    subject: "platform hiring",
+    body: "Saw the platform engineer roles. When that team is being rebuilt is usually when signing policy gets decided — is that on your list this quarter?",
+    citedEvidenceIds: ["ev_1"],
+    omitted: [],
+  };
+
+  {
+    const { client } = scriptedClient(clean);
+    const spy = spyRecorder();
+    const result = await runTask(personalizeMessage, input, ctx(client, spy.recorder));
+    expectEqual("a clean message is unaffected", result.output.subject, "platform hiring");
+  }
+
+  {
+    const { client } = scriptedClient({
+      ...clean,
+      body: "I hope this email finds you well. " + clean.body,
+    });
+    await expectThrows(
+      "a banned phrase in the body fails the run",
+      () => runTask(personalizeMessage, input, ctx(client, spyRecorder().recorder)),
+      /hope this email finds you well/,
+    );
+  }
+
+  {
+    /* The gap the reference system's version had: it checked three of seven
+       generated fields and never looked at the subject — the field that
+       decides whether the body is read at all. */
+    const { client } = scriptedClient({ ...clean, subject: "quick question for you" });
+    await expectThrows(
+      "and a banned phrase in the SUBJECT fails it too",
+      () => runTask(personalizeMessage, input, ctx(client, spyRecorder().recorder)),
+      /the subject contains/,
+    );
+  }
+
+  {
+    const { client } = scriptedClient({ ...clean, body: "Let's Circle Back on this." });
+    await expectThrows(
+      "matching is case-insensitive",
+      () => runTask(personalizeMessage, input, ctx(client, spyRecorder().recorder)),
+      /circle back/,
+    );
+  }
+
+  {
+    const spy = spyRecorder();
+    const { client } = scriptedClient({ ...clean, body: "Let's touch base soon." });
+    await expectThrows(
+      "a violation is a recorded failure, not a silent retry",
+      () => runTask(personalizeMessage, input, ctx(client, spy.recorder)),
+      /touch base/,
+    );
+    expectEqual(
+      "which is the whole difference from the reference implementation",
+      spy.events,
+      ["started", "failed"],
+    );
+  }
+
+  expectEqual("`findBannedPhrase` returns null on clean text", findBannedPhrase(clean.body), null);
 }
 
 console.log(

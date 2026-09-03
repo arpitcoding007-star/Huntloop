@@ -89,12 +89,39 @@ export {
 } from "./tasks/classify-reply.ts";
 
 export {
+  BANNED_PHRASES,
   MAX_BODY_CHARS,
+  findBannedPhrase,
   personalizeMessage,
   type MessageEvidence,
   type PersonalizeInput,
   type PersonalizedMessage,
 } from "./tasks/personalize-message.ts";
+
+export {
+  MAX_DRAFTED_RULES,
+  draftScoringRules,
+  type DraftRulesInput,
+  type DraftedRule,
+} from "./tasks/draft-scoring-rules.ts";
+
+export {
+  FINDING_KINDS,
+  MAX_FINDINGS,
+  MIN_LEARNING_SIGNALS,
+  analyzePerformance,
+  countSignals,
+  type AnalyzeInput,
+  type DecisionRecord,
+  type Finding,
+  type FindingKind,
+  type FindingProposal,
+  type MemoryProposal,
+  type OutcomeRecord,
+  type PerformanceAnalysis,
+  type RuleProposal,
+  type SourcePerformance,
+} from "./tasks/analyze-performance.ts";
 
 export {
   EVENT_TYPES,

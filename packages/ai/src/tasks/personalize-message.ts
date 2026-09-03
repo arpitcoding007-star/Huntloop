@@ -80,6 +80,78 @@ export interface PersonalizedMessage {
  */
 export const MAX_BODY_CHARS = 900;
 
+/**
+ * Phrases that fail the message rather than being asked about again.
+ *
+ * ── Why a deterministic check and not more prompt ────────────────────────
+ *
+ * The prompt below already says not to write most of these, and it mostly
+ * works. "Mostly" is the problem: prompt compliance has no failure signal, so
+ * the calls where it did not comply are indistinguishable from the calls where
+ * there was nothing to comply about. Nobody finds out, because the output is
+ * fluent and the phrase is only obviously wrong to the person receiving it.
+ *
+ * The reference system Huntloop is a second draft of had this check and got
+ * three things wrong, each worth naming because the fix is the opposite of
+ * each:
+ *
+ *   · It checked three of seven generated fields. The subject line — the part
+ *     that decides whether anything is read — was never checked at all.
+ *   · On a hit it silently re-ran the model once and returned whatever came
+ *     back **without re-checking it**. A stubborn model shipped the phrase
+ *     anyway, and the retry left no trace of having happened.
+ *   · The retry cost a second Opus call that appeared in no accounting.
+ *
+ * So this one throws. A violation becomes a failed `ai_runs` row with the
+ * offending phrase in `error`, attributable to a prompt version — which is
+ * what makes the list tunable: an operator can see that "circle back" fires
+ * twice a week and decide whether the prompt or the list is wrong. A silent
+ * retry produces no such number, and the question never gets asked.
+ *
+ * ── Why the list is short and literal ────────────────────────────────────
+ *
+ * Every entry is a phrase whose presence is decisive on its own — nobody
+ * writes "I hope this email finds you well" and means something else by it.
+ * Substring matching, case-insensitive, no stemming and no fuzzy distance:
+ * "touching base" is not caught by "touch base" and that is the correct
+ * trade. A false positive here costs a real message and a confusing failure;
+ * the cost of a miss is one mediocre email.
+ */
+export const BANNED_PHRASES: readonly string[] = [
+  "hope this email finds you well",
+  "hope this finds you well",
+  "i wanted to reach out",
+  "i'm reaching out",
+  "just reaching out",
+  "in today's fast-paced",
+  "circle back",
+  "touch base",
+  "synergy",
+  "game-changer",
+  "game changer",
+  "revolutionize",
+  "revolutionise",
+  "quick question for you",
+  "picking your brain",
+  "bumping this to the top",
+  "just following up",
+  "per my last email",
+  "low-hanging fruit",
+  "move the needle",
+];
+
+/**
+ * The first banned phrase in a piece of text, or null.
+ *
+ * Exported so the same list can be applied to a human-edited draft on the
+ * approval screen. One list, checked in both places — a second copy is how the
+ * screen ends up permitting what the task refuses.
+ */
+export function findBannedPhrase(value: string): string | null {
+  const haystack = value.toLowerCase();
+  return BANNED_PHRASES.find((phrase) => haystack.includes(phrase)) ?? null;
+}
+
 const PROMPT = definePrompt(
   "personalize_message",
   `
@@ -241,6 +313,25 @@ export const personalizeMessage: LLMTask<PersonalizeInput, PersonalizedMessage> 
           `limit is ${MAX_BODY_CHARS}, and a long cold email is not a ` +
           `stylistic preference — it is the reason it is not read.`,
       );
+    }
+
+    /* Every generated field, not just the body. The subject is what decides
+       whether the body is read, and it was the field the reference system's
+       version never looked at. Checked before the citation rules because a
+       message that opens "I hope this email finds you well" is not worth
+       validating the citations of. */
+    for (const [field, value] of [
+      ["subject", subject],
+      ["body", body],
+    ] as const) {
+      const phrase = findBannedPhrase(value);
+      if (phrase) {
+        throw new Error(
+          `personalize_message: the ${field} contains “${phrase}”. That phrase ` +
+            `is the reason cold email is deleted unread, and it is the one part ` +
+            `of the message the recipient is certain to have seen before.`,
+        );
+      }
     }
 
     if (!Array.isArray(raw.citedEvidenceIds)) {

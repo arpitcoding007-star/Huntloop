@@ -41,6 +41,7 @@ export type TaskName =
   | "personalize_message"
   | "classify_reply"
   | "sales_agent"
+  | "draft_scoring_rules"
   | "analyze_performance";
 
 export const ROUTES: Record<TaskName, Route> = {
@@ -57,6 +58,11 @@ export const ROUTES: Record<TaskName, Route> = {
   // Short input, fixed label set, high volume.
   classify_reply: { model: MODELS.haiku, effort: "low" },
   sales_agent: { model: MODELS.opus, effort: "medium" },
+  // Writes executable policy. A rule a customer approves runs against every
+  // company thereafter, so a plausible-but-wrong proposal is more expensive
+  // than a wrong answer about one opportunity — and the review screen only
+  // catches it if the proposal is coherent enough to be read.
+  draft_scoring_rules: { model: MODELS.opus, effort: "high" },
   analyze_performance: { model: MODELS.opus, effort: "high" },
 };
 
