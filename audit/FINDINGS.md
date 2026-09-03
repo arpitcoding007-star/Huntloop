@@ -1105,3 +1105,146 @@ Not verified, and stated plainly: the nav "Soon" rendering and the 404 page
 were confirmed by typecheck and production build, **not visually**. Both sit
 behind the auth guard on this machine and signing in would have required
 handling the developer's credentials.
+
+---
+
+# Tenth pass — 2026-08-26 · the Learn stage
+
+`Migrate.md` compared Huntloop against Huntloop-old capability by capability.
+Its headline finding is worth repeating here because it is the opposite of what
+a migration audit usually concludes: **Huntloop is not behind that system. It
+is its second draft, and generally better.** Twenty-three of forty compared
+capabilities needed nothing at all — discovery, qualification, contacts,
+outreach, reply handling, RLS, roles and cost accounting are all stronger here.
+
+What follows is the remainder, as findings.
+
+### LEARN-01 · The loop's last stage had no implementation — **Fixed** (High)
+
+§4's loop is Discover → Understand → Qualify → Prioritize → Act → Track →
+**Learn**. `outcomes` and `ai_decisions.human_override` have been written since
+`0004` and read by nothing. `0004`'s own comment calls the override "the only
+labelled data the learning loop ever gets for free", and nothing had ever
+spent it.
+
+A loop that only writes is not a loop. `analyze_performance` reads it back:
+outcomes joined to the opportunity they happened to, the qualifier's own score
+from before any customer rule touched it, the source each company came from,
+and every place a person corrected or rated the product — into findings that
+each cite real rows and are accepted or declined one at a time.
+
+### RULE-01 · `scoring_rules` had a column nothing evaluated — **Fixed** (High)
+
+Found while building LEARN-02, and it changed that item's scope.
+`scoring_rules` shipped in `0003` with `expression jsonb` and no reader
+anywhere in the repository. A table that stores policy asserts a capability;
+so does a screen that lists it. Neither was true.
+
+That is a worse state than not having the table, and it is the §7 failure
+pointed at ourselves — the same failure `FEAT-01` fixed for nav links, one
+layer down. It is also precisely the defect the reference system had at scale:
+six rule types with signed weights that were never once used in arithmetic,
+"rules" being sentences pasted into a prompt and re-interpreted from scratch on
+every call.
+
+Letting an analysis *propose* rules into that column would have industrialised
+it. So the language exists (`packages/db/src/rules.ts` — six operators, three
+combinators, a closed field list, no I/O), `score_opportunity` runs it, and
+`opportunity_scores` now keeps `model_score` beside `score` with a `rule_trace`.
+
+### RULE-03 · A taxonomy is only safe when it is provably inert — **Fixed** (Low)
+
+`scoring_rules.intent` groups rules by why they exist, which is genuinely
+useful when reviewing them, and is exactly the shape of the reference system's
+central defect. The column is kept and the difference is a test: five rules
+with identical effects and different intents produce identical scores,
+priorities and descriptions. If `intent` should affect scoring, it has to be
+expressed in `expression`, explicitly, where a reader can see it.
+
+### OUT-01 · Style enforcement had no failure signal — **Fixed** (Medium)
+
+`personalize_message` relied entirely on prompt compliance to avoid the phrases
+that make cold email deletable. Prompt compliance has no failure signal: the
+calls where it did not comply are indistinguishable from the calls where there
+was nothing to comply about, and the output is fluent enough that nobody finds
+out.
+
+Now a deterministic check in `parse()`, which throws — so a violation is a
+recorded `ai_runs` failure with the offending phrase in `error`, attributable
+to a prompt version, and therefore *tunable*. The version this replaces checked
+three of seven fields (never the subject), silently retried once without
+re-checking the result, and paid for a second Opus call that appeared in no
+accounting.
+
+### ENG-02 · Nothing capped standing inventory — **Fixed** (Medium)
+
+`usage_counters` caps what an org may spend in a month. Spend is a flow;
+un-worked inventory is a level, and a customer can be well inside budget while
+accumulating opportunities nobody will ever read. The reference system had this
+control as a hardcoded `UNWORKED_LEAD_CAP = 40` with a comment recording that
+the constant was a first-tenant simplification — the one place its author said
+they would have done it differently. Per-org, configurable, default 250.
+
+### MEM-01 · Memory could hold a sentence but not a document — **Fixed** (Low)
+
+`memories` took `content` and nothing else, so "here is our positioning deck,
+use it" had no way in. URL ingestion goes through `fetchPage` — the same
+SSRF-checked fetcher the scanner uses, because this is a public POST endpoint
+that takes an address from the caller and makes the server request it.
+`truncated` is stored and rendered: "this is the whole document" and "this is
+the first two pages" are different claims. The reference system truncated at
+ten thousand characters and told nobody.
+
+### FB-01 · Ratings and overrides were the same column — **Fixed** (Low)
+
+`human_override` means "the corrected value" and is only produced when somebody
+cared enough to fix an output. Most outputs are neither corrected nor perfect,
+and "this was reasonable" / "this was nonsense but I moved on" left no trace —
+which are the judgements a synthesis pass most needs, since an override tells
+you the model was wrong about one company and a corpus of ratings tells you
+which *kind* of company it is wrong about. A separate column, so the two stay
+distinguishable to every reader including the analysis.
+
+### MIGRATE-01 · The audit's P0 adapter already existed — **Not a finding**
+
+`Migrate.md` lists an enrichment provider adapter as one of two P0 items, on
+the basis that `providers.ts` was "a complete, correct contract with nothing
+behind it". It has had working Hunter and Apollo adapters and ZeroBounce
+verification since it was written. Recorded so the discrepancy is not
+rediscovered as a regression.
+
+### DB-06 · `db:doctor` reported a schema it had not checked — **Fixed** (High)
+
+Found by running the tool after adding `0010`, and it is the most consequential
+thing in this pass.
+
+`MIGRATIONS` in `packages/db/scripts/doctor.ts` was a hard-coded list of five
+entries. Five more migrations had landed since it was written. The script
+iterated its own list, found everything on it, and printed **"All 5 migrations
+applied"** — a confident green result about a database missing `0007`, `0008`,
+`0009` and `0010`.
+
+The live project is in exactly that state today. Which means:
+
+- `claim_job_executions` does not exist, so **the background engine has never
+  been able to claim a job.** A tick would requeue nothing, claim nothing, and
+  report a clean run.
+- `invitations` does not exist, so inviting a teammate fails.
+- `check_quota_internal` does not exist, so the engine's own metering falls
+  back to unlimited — `withinBudget` fails open by design, which is right when
+  a query fails and wrong when the function was never created.
+
+None of that was visible, because the one tool whose entire job is to answer
+"is the schema complete?" was answering a different question: "is the schema as
+complete as this list happens to say?"
+
+This is the same defect as `FEAT-01` (nav items asserting screens that did not
+exist) and `ANL-04`'s second half (`spendPaths` hard-coded to four files while
+a fifth spent money) — a gate not pointed at the thing it claims to cover
+passes loudly and says nothing. The fix is the same one those took: read the
+directory, and **fail when a file on disk has no entry**, rather than trusting
+a list to be maintained.
+
+Applying the four outstanding migrations needs `DATABASE_URL` or the Supabase
+SQL editor, so it is a manual step. `SETUP.md` step 3 now leads with the true
+state rather than with a stale reassurance.

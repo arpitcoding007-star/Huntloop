@@ -204,6 +204,91 @@ phrasing used across these documents was only ever true of a deployment that
 
 ---
 
+## Closed in the tenth pass — 2026-08-26
+
+The **Learn** stage of §4, which had never had an implementation, and the two
+things underneath it that turned out to be prerequisites.
+
+Driven by a migration audit against Huntloop-old (`Migrate.md`), whose headline
+finding was that Huntloop is not behind that system — it is its second draft,
+and generally better. Of forty capabilities compared, twenty-three needed
+nothing. What follows is the rest.
+
+| ID | Task | Effort |
+|---|---|---|
+| **LEARN-01** | **`analyze_performance`: outcomes and overrides read back as reviewable findings** | **L** |
+| **LEARN-02** | **Per-finding accept/reject, landing in `scoring_rules` or `memories`** | **M** |
+| **LEARN-03** | **`schedule_learning`, once the manual path was proven** | **S** |
+| **RULE-01** | **A scoring-rule language, and the evaluator `scoring_rules` never had** | **L** |
+| **RULE-02** | **`draft_scoring_rules`: a starting policy from the ICP, nothing active** | **M** |
+| **RULE-03** | **`scoring_rules.intent` as inert metadata, with the negative test that keeps it inert** | **XS** |
+| **OUT-01** | **A deterministic banned-phrase check inside `personalize_message`'s `parse()`** | **XS** |
+| **ORG-01** | **Tone, competitors and regions in `organizations.settings`, fed into outreach** | **S** |
+| **ENG-02** | **A per-org backlog cap, so Discover cannot outrun Qualify** | **S** |
+| **MEM-01** | **Ingest a URL or a document into `memories`, with its provenance** | **S** |
+| **FB-01** | **Rate one AI decision without overwriting the override beside it** | **XS** |
+| **DB-06** | **`db:doctor` reads the migrations directory instead of a hard-coded list** | **XS** |
+
+### Notes on what closed
+
+**RULE-01 was not on the original list, and closing LEARN-02 without it would
+have been the defect it was meant to fix.** `scoring_rules` shipped in `0003`
+with an `expression jsonb` column and nothing anywhere that read it — a table,
+and later a screen, both asserting a capability the product did not have. That
+is worse than not having the table, and it is exactly the §7 failure aimed at
+ourselves. Letting an analysis *propose* rules into a column nothing evaluates
+would have industrialised it.
+
+So the language exists now (`packages/db/src/rules.ts`), `score_opportunity`
+runs it, and `opportunity_scores` keeps `model_score` beside `score` plus a
+`rule_trace` naming every rule that fired. The separation is load-bearing:
+the learning loop reads `model_score`, because a rule the customer wrote being
+wrong says nothing about whether the qualifier was right.
+
+**RULE-03 is one column and one test.** The reference system's central defect
+was a six-type rule taxonomy with signed weights that were never once used in
+arithmetic — configuration-shaped decoration. `intent` is that taxonomy, kept
+because grouping rules by why they exist is genuinely useful on a review
+screen, and made safe by being provably inert: `verify-rules.ts` asserts five
+rules with identical effects and different intents produce identical scores,
+identical priorities, and identical descriptions.
+
+**LEARN-02's design is a deliberate inversion of the system it came from.**
+That one stored an analysis as a single row of free-text arrays with one
+Approve button that bulk-inserted every proposed rule as immediately active —
+so a report with one good idea and four bad ones offered a choice between all
+five and none, and the answer was reliably all five. Findings are rows here,
+decided one at a time, and approving one produces a rule that is still
+inactive. Approving a *finding* means "this conclusion is sound"; activating a
+*rule* means "apply this to every company", and they are different decisions
+made on different screens.
+
+**ENG-02 is the one item the reference system's own author flagged.**
+`UNWORKED_LEAD_CAP = 40` carried a comment saying the constant was a
+first-tenant simplification. `usage_counters` caps spend per month, which is a
+flow; this caps standing un-worked inventory, which is a level, and neither
+substitutes for the other. Per-org and configurable, defaulting to 250.
+
+**OUT-01 fixes the version it replaces in three ways.** The original checked
+three of seven generated fields — never the subject, the field that decides
+whether the body is read — silently re-ran the model once on a hit and
+returned the result *without re-checking it*, and paid for a second Opus call
+that appeared in no accounting. This one throws, so a violation is a recorded
+`ai_runs` failure an operator can see and tune the list against.
+
+**What was deliberately not migrated**, recorded so it is not re-litigated:
+multi-provider AI routing (it would undermine the schema-validation guarantees
+`LLMTask` depends on), the reference system's discovery and qualification
+implementations (both superseded), and its LinkedIn-search-link-as-contact
+heuristic. `Migrate.md` §15 has the full list with reasons.
+
+**M-22 (an enrichment adapter) was on the audit's P0 list and was already
+done** — `providers.ts` has had working Hunter and Apollo adapters plus
+ZeroBounce verification since it was written. The audit was reading a stale
+snapshot.
+
+---
+
 ## Closed in the seventh pass — 2026-08-20
 
 Worth a section of its own because what changed is *what the product is*

@@ -2,13 +2,22 @@
 
 **Date:** 2026-08-13 · **Baseline commit:** `4e1309a` · **Branch:** `main`
 
-> **Five further passes are appended at the end.** The tables immediately
-> below describe the first pass only.
+> **Nine further passes are appended at the end.** The tables immediately
+> below describe the first pass only, and **the totals in this header are
+> superseded by the tenth pass** at the bottom of this file.
 >
-> **Current totals (sixth pass, 2026-08-15):** 42 database checks · 75
+> **Totals as of the sixth pass, 2026-08-15:** 42 database checks · 75
 > `apps/web` and `packages/ui` unit tests · 111 prompt-contract checks · 68
 > browser tests · 37 audit checks, 0 failing, **0 warnings** · 0 dependency
 > advisories. **All 5 migrations applied. No P0 items remain.**
+>
+> ⚠ **That migration claim was true when written and is now the most
+> misleading line in this repository.** Ten migrations exist; the live project
+> has five. `db:doctor` was itself hard-coded to the first five, so it reported
+> success against a database missing `0007`–`0010` — the engine's job queue,
+> the invitation and quota functions, and everything the tenth pass added. The
+> tool now reads the directory and fails on any file it has no probe for. See
+> the tenth pass, and SETUP.md step 3.
 >
 > The fifth pass is the first run against a live database. It closed
 > `FEAT-02` — the last warning — and found three things no amount of reading
@@ -803,3 +812,77 @@ unchanged; the two about `0005` are discharged, and one is narrower.
   exercises the refusal branch, because a script cannot hold an `auth.uid()`.
   That a member is granted quota, that the counter increments, and that the
   window rolls over are proven by the 22 PGlite tests and by nothing else.
+
+---
+
+# Tenth pass — 2026-08-26
+
+The **Learn** stage, built. Driven by `Migrate.md`, a capability-by-capability
+audit against Huntloop-old whose conclusion was that twenty-three of forty
+compared capabilities needed nothing at all.
+
+## Toolchain
+
+| Gate | Command | Result |
+|---|---|---|
+| Types | `npm run typecheck` | **Clean**, 5 workspaces |
+| Lint | `npm run lint` | **Clean**, 0 warnings |
+| Schema + tenant isolation | `npm run test:migrations` | **121/121** (was 83) |
+| Rule language | `npm run test:rules` | **59/59** (new) |
+| Prompt contracts | `npm test -w @huntloop/ai` | **181/181** (was 142) |
+| Engine | `npm test -w @huntloop/jobs` | **122/122** (was 100) |
+| Web + UI units | `npm test -w @huntloop/web` | **96 + 22** |
+| Browser | `npx playwright test` | **230 passed, 4 skipped** |
+| Audit | `npm run audit:site` | **39 checks · 0 failing · 0 warning** |
+| Bundle | `npm run audit:bundle` | **245.0 kB of 275 kB** |
+| Build | `npm run build` | **23 routes** |
+
+Two new routes: `/[org]/learn` and `/[org]/settings/scoring`. One new
+migration, `0010_learning_loop.sql`.
+
+## The checks worth naming
+
+Three of the new tests exist because the thing they assert would keep *looking*
+correct if it were removed, which is the standard the rest of this suite is
+held to.
+
+- **A cross-tenant citation fails the run.** `analyze_performance` constrains
+  every citation to a closed enum built from the ids it was sent, and
+  re-checks in `parse()`. This is the single most important test added in this
+  pass: a learning finding is written to be read and acted on by a person, so
+  an id from another tenant would be laundered into a human decision before
+  anything downstream had a chance to catch it. The loader resolves citations
+  under RLS as an independent second mechanism — a foreign id renders as
+  nothing rather than as somebody else's company name.
+
+- **`intent` is provably inert.** Five rules with identical effects and
+  different intents produce identical scores, identical priorities, and
+  identical descriptions. The column is only safe to have because of this.
+
+- **Every field a rule may name is actually supplied.** `RULE_FIELDS` is
+  compared against what `ruleFacts` produces, in both directions. A field
+  declared and not supplied is a rule that never fires: it does not error, it
+  is invisible, and the customer who wrote it believes it is running. That
+  check cannot be written against the handler, because reaching it needs a
+  model call — which is why `ruleFacts` is exported.
+
+## Still not verified, and why
+
+Everything in the ninth pass's list stands. Two additions specific to this
+pass, both the same shape as "no AI key has ever been used":
+
+- **`analyze_performance` has never run against a real model.** Its refusals,
+  its citation constraint and its proposal validation are all exercised
+  against a scripted client. Whether an actual analysis produces findings a
+  salesperson finds *useful* is a qualitative judgement no test can make, and
+  the acceptance criterion in `Migrate.md` says so explicitly.
+
+- **The scheduled sweep has never fired.** `schedule_learning` is unit-tested
+  and is wired into `sweep()` behind an hourly idempotency key, but no
+  deployment in this repo's history has run a tick on a schedule. This is
+  `DB-05b`'s neighbour and has the same blocker.
+
+One thing that *was* verified and is worth stating because the reference system
+got it wrong: the refusal path spends nothing. `analyze_performance` counts its
+signals and returns before `runForOrg` is reached, and the test asserts no
+`ai_runs` row is written.
