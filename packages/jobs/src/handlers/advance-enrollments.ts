@@ -30,6 +30,7 @@
  * queue of drafts a person has to dismiss.
  */
 import { personalizeMessage, type MessageEvidence } from "@huntloop/ai";
+import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
 import { enqueue } from "../queue.ts";
@@ -473,7 +474,22 @@ async function loadGuidance(scope: OrgScope): Promise<string[]> {
     .is("deleted_at", null)
     .limit(10);
 
-  return (data ?? []).map((row: Record<string, unknown>) => String(row.content)).filter(Boolean);
+  const memories = (data ?? [])
+    .map((row: Record<string, unknown>) => String(row.content))
+    .filter(Boolean);
+
+  /* The org's voice profile goes *first*, so a memory somebody wrote can
+     contradict it and win — the task treats later guidance as overriding, and
+     a hand-written instruction should always beat a dropdown. `settings` is
+     read here rather than passed in because a step that cannot read it should
+     write in the default voice rather than fail to send. */
+  const { data: org } = await scope
+    .select("organizations", "settings")
+    .eq("id", scope.orgId)
+    .maybeSingle();
+
+  const voice = voiceGuidance(parseOrgProfile(org?.settings).voice);
+  return [...voice, ...memories];
 }
 
 async function stop(scope: OrgScope, id: string, reason: string): Promise<void> {

@@ -23,6 +23,8 @@ import { HANDLERS } from "../src/registry.ts";
 import { sendMessage } from "../src/handlers/send-message.ts";
 import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
 import { gmail } from "../src/mailbox/gmail.ts";
+import { ruleFacts } from "../src/handlers/score-opportunity.ts";
+import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
 
 let failures = 0;
@@ -541,16 +543,40 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
   expectEqual(
     "every sweeper is enqueued, and nothing else is",
     enqueued.map((row) => row.job_name).sort(),
-    ["advance_enrollments", "schedule_scans", "schedule_sends", "schedule_syncs"],
+    [
+      "advance_enrollments",
+      "schedule_learning",
+      "schedule_scans",
+      "schedule_sends",
+      "schedule_syncs",
+    ],
   );
   expect(
     "each carries no org — a sweeper is the cross-tenant question",
     enqueued.every((row) => row.org_id === null),
     JSON.stringify(enqueued.map((row) => row.org_id)),
   );
+  /* The per-tick sweepers key on their own name, so a slow sweep is not
+     started twice. `schedule_learning` keys on name-plus-hour instead, which
+     is the same guarantee with a coarser clock: its answer changes weekly, and
+     asking it twice a minute is two cross-tenant queries a minute forever for
+     the same result. Asserted as two separate rules rather than one loose one,
+     because "the key contains the name" would pass for a sweeper that had
+     silently stopped collapsing at all. */
   expect(
-    "each is idempotent on its own name, so a slow sweep is not started twice",
-    enqueued.every((row) => row.idempotency_key === row.job_name),
+    "a per-tick sweeper is idempotent on its own name",
+    enqueued
+      .filter((row) => row.job_name !== "schedule_learning")
+      .every((row) => row.idempotency_key === row.job_name),
+    JSON.stringify(enqueued.map((row) => row.idempotency_key)),
+  );
+  expect(
+    "the learning sweep collapses to one an hour rather than one a tick",
+    enqueued
+      .filter((row) => row.job_name === "schedule_learning")
+      .every((row) =>
+        /^schedule_learning:\d{4}-\d{2}-\d{2}T\d{2}$/.test(String(row.idempotency_key)),
+      ),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
   );
   expect(
@@ -1159,6 +1185,315 @@ function stopped(calls: Recorded[]): boolean {
   expect(
     "and the reply is still recorded against the thread",
     calls.some((c) => c.table === "threads" && c.verb === "update"),
+  );
+}
+
+/* ── The backlog cap ─────────────────────────────────────────────────────── */
+
+console.log("\nschedule_scans — an org drowning in unworked opportunities is not given more");
+{
+  const due = [
+    { id: "src_a", org_id: ORG_A, next_scan_at: null },
+    { id: "src_b", org_id: ORG_B, next_scan_at: null },
+  ];
+
+  const { client, calls } = fakeClient({
+    "select:sources": { data: due, error: null },
+    /* PostgREST returns a `setof uuid` as bare scalars. The handler reads both
+       shapes on purpose — a future change from one to the other must not
+       silently produce an empty set, which would disable the cap while every
+       log line still said it was running. */
+    "rpc:saturated_org_ids": { data: [ORG_A], error: null },
+    "insert:job_executions": { data: { id: "job_1" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_scans({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => c.payload as Record<string, unknown>);
+
+  expectEqual(
+    "only the org below its cap is enqueued",
+    enqueued.map((row) => row.org_id),
+    [ORG_B],
+  );
+  expect(
+    "and the skip is reported rather than silent",
+    outcome.ok && outcome.result.skipped_backlog_full === 1,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "the saturated source's schedule is NOT pushed forward",
+    !calls.some((c) => c.table === "sources" && c.verb === "update"),
+    "a source pushed an interval into the future for being behind would drift out of schedule permanently",
+  );
+
+  setAdminClientForTests(null);
+}
+
+console.log("\nschedule_scans — a cap that cannot be read does not stop the engine");
+{
+  const { client, calls } = fakeClient({
+    "select:sources": { data: [{ id: "src_a", org_id: ORG_A, next_scan_at: null }], error: null },
+    "rpc:saturated_org_ids": { data: null, error: { message: "function does not exist" } },
+    "insert:job_executions": { data: { id: "job_1" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_scans({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "backpressure fails open — the cost of that is a reconciliation, and it is ours",
+    outcome.ok && outcome.result.enqueued === 1,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "and a scan is still enqueued",
+    calls.some((c) => c.table === "job_executions" && c.verb === "insert"),
+  );
+
+  setAdminClientForTests(null);
+}
+
+/* ── The learning sweeper ────────────────────────────────────────────────── */
+
+console.log("\nschedule_learning — a request beats the schedule");
+{
+  const { client, calls } = fakeClient({
+    "select:learning_runs": {
+      data: [
+        {
+          id: "run_1",
+          org_id: ORG_A,
+          window_start: "2026-03-01T00:00:00.000Z",
+          window_end: "2026-06-01T00:00:00.000Z",
+        },
+      ],
+      error: null,
+    },
+    "select:outcomes": { data: [], error: null },
+    "insert:job_executions": { data: { id: "job_1" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_learning({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date("2026-06-01T00:00:00.000Z"),
+  });
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => c.payload as Record<string, unknown>);
+
+  expectEqual("the requested run is turned into a job", enqueued.length, 1);
+  expectEqual(
+    "carrying the run row's own id, so the screen can show it running",
+    (enqueued[0]!.payload as Record<string, unknown>).runId,
+    "run_1",
+  );
+  expectEqual(
+    "keyed on the run, so an overlapping tick does not start it twice",
+    enqueued[0]!.idempotency_key,
+    "learn-run:run_1",
+  );
+  expectEqual(
+    "and never retried — an Opus call retried on an unwatched schedule is an unexplained bill",
+    enqueued[0]!.max_attempts,
+    1,
+  );
+  expect(
+    "the request bypasses the six-day interval entirely",
+    outcome.ok && outcome.result.requested === 1,
+    JSON.stringify(outcome),
+  );
+
+  setAdminClientForTests(null);
+}
+
+console.log("\nschedule_learning — an idle org is never enqueued");
+{
+  /* The mirror-image of the bug the reference system's weekly cron had: it
+     selected orgs with any feedback in the last seven days, then called an
+     analysis that refused unless the org had three rows in total — so it
+     reliably enqueued work it had already decided to refuse. */
+  const { client, calls } = fakeClient({
+    "select:learning_runs": { data: [], error: null },
+    "select:outcomes": {
+      data: [
+        { org_id: ORG_A, occurred_at: "2026-05-01" },
+        { org_id: ORG_A, occurred_at: "2026-05-02" },
+      ],
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_learning({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date("2026-06-01T00:00:00.000Z"),
+  });
+
+  expect(
+    "two outcomes is not enough to be worth asking about",
+    outcome.ok && outcome.result.candidates === 0,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "so nothing is queued",
+    !calls.some((c) => c.table === "job_executions" && c.verb === "insert"),
+  );
+
+  setAdminClientForTests(null);
+}
+
+/* ── analyze_performance ─────────────────────────────────────────────────── */
+
+console.log("\nanalyze_performance — it refuses before spending, and says why");
+{
+  const { client, calls } = fakeClient({
+    "select:outcomes": { data: [], error: null },
+    "select:ai_decisions": { data: [], error: null },
+    "select:sources": { data: [], error: null },
+    "select:scoring_rules": { data: [], error: null },
+    "select:memories": { data: [], error: null },
+    "update:learning_runs": { data: { id: "run_1" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.analyze_performance({
+    scope: new OrgScope(ORG_A, client),
+    payload: { runId: "run_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "an org with nothing recorded is skipped, not failed",
+    outcome.ok && typeof outcome.result.skipped === "string",
+    JSON.stringify(outcome),
+  );
+  expect(
+    "with an instruction rather than an error",
+    outcome.ok && /Record outcomes on opportunities/.test(String(outcome.result.skipped)),
+    JSON.stringify(outcome),
+  );
+
+  const closed = calls.find((c) => c.table === "learning_runs" && c.verb === "update");
+  expectEqual(
+    "and the run somebody asked for is closed as `insufficient`, not `failed`",
+    (closed?.payload as Record<string, unknown>)?.status,
+    "insufficient",
+  );
+  expect(
+    "no model call was made — the refusal is before the spend, not after it",
+    !calls.some((c) => c.table === "ai_runs"),
+  );
+
+  setAdminClientForTests(null);
+}
+
+console.log("\nanalyze_performance — a scheduled sweep leaves no row when there is nothing to say");
+{
+  const { client, calls } = fakeClient({
+    "select:outcomes": { data: [], error: null },
+    "select:ai_decisions": { data: [], error: null },
+    "select:sources": { data: [], error: null },
+    "select:scoring_rules": { data: [], error: null },
+    "select:memories": { data: [], error: null },
+  });
+  setAdminClientForTests(client);
+
+  await HANDLERS.analyze_performance({
+    scope: new OrgScope(ORG_A, client),
+    payload: { scheduled: true },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "a weekly job noting 'still nothing' is history nobody wants",
+    !calls.some((c) => c.table === "learning_runs"),
+  );
+
+  setAdminClientForTests(null);
+}
+
+/* ── The rule facts ──────────────────────────────────────────────────────── */
+
+console.log("\nscore_opportunity — every field a rule may name is actually supplied");
+{
+  /* The check that matters most about the rules engine, and the one that
+     cannot be written against the handler: reaching it needs a model call.
+
+     A field in `RULE_FIELDS` that `ruleFacts` does not produce is a rule that
+     never fires. It does not error and it is not visible anywhere — the
+     customer writes it, activates it, and believes it is running, while it
+     quietly matches nothing forever. That is the failure the closed list
+     exists to prevent, and this is what keeps the list and its one supplier in
+     agreement. */
+  const supplied = ruleFacts(
+    {
+      name: "Northwind",
+      canonical_domain: "northwind.co",
+      industry: "Fintech",
+      country: "US",
+      region: "North America",
+      business_model: "SaaS",
+      description: "Payments infrastructure.",
+      employee_count: 120,
+      tech_stack: ["Go"],
+    },
+    [
+      {
+        claim: "They are hiring platform engineers.",
+        kind: "fact",
+        confidence: "high",
+        sourceUrl: "https://northwind.co/jobs",
+        excerpt: null,
+        eventDate: "2026-05-01",
+      },
+    ],
+    ["funding"],
+    { score: 70, priority: "warm" },
+  );
+
+  const missing = RULE_FIELDS.filter((field) => !(field in supplied));
+  expectEqual("no declared field is left unsupplied", missing, []);
+
+  const unknown = Object.keys(supplied).filter(
+    (key) => !(RULE_FIELDS as readonly string[]).includes(key),
+  );
+  expectEqual("and nothing is supplied that no rule can name", unknown, []);
+
+  /* A company with nothing filled in produces nulls and empty lists rather
+     than absent keys, so a rule using `missing` behaves the same whether the
+     column is null or the row is sparse. */
+  const sparse = ruleFacts({}, [], [], { score: 0, priority: "ignore" });
+  expectEqual(
+    "a company with nothing known still supplies every key",
+    RULE_FIELDS.filter((field) => !(field in sparse)),
+    [],
+  );
+  expectEqual(
+    "with an unknown headcount as null, never as a zero",
+    sparse["company.employee_count"],
+    null,
   );
 }
 

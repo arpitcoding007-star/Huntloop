@@ -173,7 +173,24 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   "schedule_syncs",
   "schedule_sends",
   "advance_enrollments",
+  "schedule_learning",
 ]);
+
+/**
+ * Sweepers that do not need asking every tick.
+ *
+ * `schedule_learning` decides whether an org's last analysis was more than six
+ * days ago. That answer changes once a week, and asking it every thirty
+ * seconds is two cross-tenant queries a minute, forever, to produce the same
+ * result — the kind of load that is invisible until the day it is not.
+ *
+ * Implemented through the idempotency key rather than through a schedule
+ * column, so it is the same mechanism as everything else here: the key carries
+ * the hour, so the first tick of each hour enqueues and the rest collapse into
+ * it. A missed hour costs nothing, because being due is decided from
+ * `learning_runs` inside the handler rather than from having been enqueued.
+ */
+const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning"]);
 
 /**
  * Enqueue the sweepers, once per tick.
@@ -201,7 +218,13 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
  * the same question against fresher rows.
  */
 export async function sweep(): Promise<void> {
+  const hour = new Date().toISOString().slice(0, 13);
   for (const name of SWEEPERS) {
-    await enqueue({ orgId: null, name, idempotencyKey: name, maxAttempts: 1 });
+    await enqueue({
+      orgId: null,
+      name,
+      idempotencyKey: HOURLY.has(name) ? `${name}:${hour}` : name,
+      maxAttempts: 1,
+    });
   }
 }

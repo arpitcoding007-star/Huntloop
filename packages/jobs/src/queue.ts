@@ -44,7 +44,9 @@ export type JobName =
   | "schedule_sends"
   | "sync_mailbox"
   | "advance_enrollments"
-  | "send_message";
+  | "send_message"
+  | "schedule_learning"
+  | "analyze_performance";
 
 export interface JobRow {
   id: string;
