@@ -136,31 +136,53 @@ The same warning applies: never paste it anywhere.
 
 ## Step 3 — Create the tables
 
-**Done — all five are applied.** Kept below because it is how you would set up
-a second project, and because the last check in it is still outstanding.
+> **Not done. `0007`, `0008`, `0009` and `0010` have never been applied to the
+> live project.**
+>
+> This section said "all five are applied" for most of this project's life, and
+> it was true when written. It stopped being true four migrations ago and
+> nobody noticed, because `db:doctor` was itself hard-coded to five files — so
+> it printed *All 5 migrations applied* against a database missing half its
+> schema. A green tick asserting something nobody had checked, which is exactly
+> the failure this tool exists to catch in others.
+>
+> `db:doctor` now reads the directory and fails if a file on disk has no probe,
+> so this cannot recur. **Run it before believing anything in this file.**
 
-Confirm any time:
+Check the real state any time:
 
 ```bash
 npm run db:doctor
 ```
 
-It prints one line per migration and names any that are missing. It now reports
-all five, and `consume_rate_limit()` has been driven against the live project:
-it exists, it refuses a caller it cannot identify, `prune_rate_limits()` runs,
-and the refused call wrote no counter row. So the deployed function is this
-repo's function, not just a name PostgREST exposes.
+It prints one line per migration and names any that are missing.
 
-For a fresh project, in the Supabase dashboard:
+To apply what is missing, in the Supabase dashboard:
 
 1. Click **SQL Editor** in the left sidebar.
 2. Click **New query**.
-3. Open `packages/db/migrations/0005_rate_limits.sql` in your code editor.
+3. Open the first missing file under `packages/db/migrations/` in your editor.
 4. Select all of it, copy, paste into the SQL Editor, click **Run**.
 5. It should say *Success*.
-6. Repeat for `0006_prune_schedule.sql`.
+6. Repeat for each remaining file, **in numerical order**.
 
-Then re-run `npm run db:doctor`. It should report all five applied.
+Then re-run `npm run db:doctor`. It should report every migration applied.
+
+What each of the outstanding ones adds, so the order is obviously not
+arbitrary:
+
+| File | What it adds | What does not work without it |
+|---|---|---|
+| `0007` | `profiles`, `invitations`, usage counters and quota functions | Inviting a teammate; every quota check falls back to unlimited |
+| `0008` | Engine columns, the claimable job queue, unsubscribe and suppression | The whole background engine — `claim_job_executions` does not exist, so the tick claims nothing |
+| `0009` | Service-role halves of the accounting functions | The engine cannot meter itself: it has no session, so the public functions refuse it |
+| `0010` | Scoring-rule effects, learning runs and findings, the backlog cap | Scoring rules, the Learn screen, and memory ingestion |
+
+`0005` and `consume_rate_limit()` *have* been driven against the live project:
+it exists, it refuses a caller it cannot identify, `prune_rate_limits()` runs,
+and the refused call wrote no counter row. So the deployed function is this
+repo's function, not just a name PostgREST exposes. That claim is about `0005`
+alone and does not extend to the four above.
 
 > **`0005` is not optional.** It creates the counters that cap how many AI
 > calls an organisation can make per hour, and the `consume_rate_limit()`
