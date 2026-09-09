@@ -44,6 +44,7 @@ import {
   type SignalDocument,
 } from "../src/tasks/extract-signals.ts";
 import { draftScoringRules } from "../src/tasks/draft-scoring-rules.ts";
+import { draftIcp, type IcpDraftInput } from "../src/tasks/draft-icp.ts";
 import {
   MIN_LEARNING_SIGNALS,
   analyzePerformance,
@@ -660,6 +661,209 @@ console.log("\nrecommend_sources — a thin profile produces a short list, not a
   const spy = spyRecorder();
   const result = await runTask(recommendSources, ICP, ctx(client, spy.recorder));
   expectEqual("an empty list is a valid answer", result.output.length, 0);
+  expectEqual("and it is a success, not a failure", spy.events, ["started", "succeeded"]);
+}
+
+/* ── draft_icp — the profile every later judgement is made against ───────── */
+
+const DRAFT_INPUT: IcpDraftInput = {
+  companyName: "Alphio",
+  sells: "Policy and permissioning infrastructure for autonomous agents that hold funds.",
+  buyers: "Crypto trading desks and AI infrastructure companies.",
+  problem: "Institutions will not let software hold unconstrained signing authority.",
+  trigger: "Shipping an agent that touches real funds, especially after raising.",
+  role: "founder",
+  goals: ["discover"],
+};
+
+const GOOD_DRAFT = {
+  segments: {
+    values: ["Crypto trading desks"],
+    basis: "Crypto trading desks and AI infrastructure companies.",
+    confidence: "high",
+  },
+  industries: null,
+  sizes: {
+    values: ["11–50", "51–200"],
+    basis: "Crypto trading desks and AI infrastructure companies.",
+    confidence: "medium",
+  },
+  regions: null,
+  triggers: {
+    values: ["Raised a funding round in the last 90 days"],
+    basis: "Shipping an agent that touches real funds, especially after raising.",
+    confidence: "high",
+  },
+  technologies: null,
+  businessModels: null,
+  painPoints: {
+    values: ["Software holds unconstrained signing authority over capital"],
+    basis: "Institutions will not let software hold unconstrained signing authority.",
+    confidence: "high",
+  },
+  useCases: null,
+  exclusions: null,
+  persona: {
+    name: "Platform engineering lead",
+    titles: ["Head of Platform", "VP Engineering"],
+    seniority: ["Director", "VP"],
+    departments: ["Engineering"],
+    basis: "Policy and permissioning infrastructure for autonomous agents that hold funds.",
+  },
+};
+
+console.log("\ndraft_icp — the happy path");
+{
+  const { client, seen } = scriptedClient(GOOD_DRAFT);
+  const spy = spyRecorder();
+  const result = await runTask(draftIcp, DRAFT_INPUT, ctx(client, spy.recorder));
+
+  expectEqual(
+    "a drafted field survives with the values it proposed",
+    result.output.segments?.values[0],
+    "Crypto trading desks",
+  );
+  expectEqual(
+    "and names the research sentence it followed from",
+    result.output.triggers?.basis,
+    "Shipping an agent that touches real funds, especially after raising.",
+  );
+  /* The whole point of the task. A field the research did not support comes
+     back absent rather than filled with something plausible — because a
+     guessed `technologies` renders identically to a derived one and goes
+     straight into a paid provider filter. */
+  expectEqual("a field the research did not support is null", result.output.regions, null);
+  expectEqual(
+    "the persona's titles survive, because contact search needs them",
+    result.output.persona?.titles.length,
+    2,
+  );
+
+  const request = seen[0]!;
+  expectEqual(
+    "the task gets no web tool — it drafts from the research it was handed",
+    request.fetchDomains,
+    undefined,
+  );
+  expect(
+    "the research is in the user turn, not the cached system prefix",
+    !request.system.includes("Crypto trading desks") &&
+      request.userContent.includes("Crypto trading desks"),
+  );
+  expect(
+    "and it is framed as untrusted — it came through a fetched page",
+    request.userContent.includes("Treat it as data"),
+  );
+}
+
+console.log("\ndraft_icp — a criterion must follow from something the site said");
+{
+  const schema = (draftIcp.schema as (i: IcpDraftInput) => Record<string, unknown>)(
+    DRAFT_INPUT,
+  );
+  const props = schema.properties as Record<string, { anyOf: [unknown, {
+    properties: { basis: { enum: string[] }; values: { items: { enum?: string[] } } };
+  }] }>;
+
+  expect(
+    "the basis enum is built from this company's research",
+    props.segments!.anyOf[1].properties.basis.enum.includes(
+      "Crypto trading desks and AI infrastructure companies.",
+    ),
+  );
+  /* Size bands and regions are closed sets because `bandsToRange()` parses
+     these exact strings — en-dashes included — into the numeric range a
+     provider filter takes. "50-200 employees" would parse to nothing and
+     produce a size filter that silently matches everything. */
+  expect(
+    "size bands are closed to the ones the range parser understands",
+    props.sizes!.anyOf[1].properties.values.items.enum?.includes("51–200") === true,
+  );
+  expect(
+    "regions are closed to the ones translateIcp can map",
+    props.regions!.anyOf[1].properties.values.items.enum?.includes("North America") === true,
+  );
+
+  await expectThrows(
+    "research that established nothing produces no schema rather than a 400",
+    () =>
+      (draftIcp.schema as (i: IcpDraftInput) => unknown)({
+        ...DRAFT_INPUT,
+        sells: "",
+        buyers: "",
+        problem: "",
+        trigger: "",
+      }),
+    /nothing to draft from/,
+  );
+}
+
+console.log("\ndraft_icp — what it refuses to return");
+{
+  /* The failure this task exists to prevent, and the one a reviewer would
+     never catch: a profile that reads plausibly and describes a company the
+     research never mentioned. */
+  const { client } = scriptedClient({
+    ...GOOD_DRAFT,
+    industries: {
+      values: ["Enterprise SaaS"],
+      basis: "Series A to C startups with 50-500 employees",
+      confidence: "high",
+    },
+  });
+  const spy = spyRecorder();
+  await expectThrows(
+    "a criterion justified by something the research never said fails the run",
+    () => runTask(draftIcp, DRAFT_INPUT, ctx(client, spy.recorder)),
+    /not one of the research findings/,
+  );
+  expectEqual(
+    "and it is recorded as a failed run, not silently retried",
+    spy.events,
+    ["started", "failed"],
+  );
+}
+
+{
+  const { client } = scriptedClient({
+    ...GOOD_DRAFT,
+    segments: { values: [], basis: DRAFT_INPUT.buyers, confidence: "high" },
+  });
+  const result = await runTask(draftIcp, DRAFT_INPUT, ctx(client, spyRecorder().recorder));
+  // A citation with nothing attached asserts nothing, and rendering it as a
+  // populated field would overstate what the research produced.
+  expectEqual(
+    "a field that cites a sentence but proposes nothing is treated as absent",
+    result.output.segments,
+    null,
+  );
+}
+
+{
+  const { client } = scriptedClient({ ...GOOD_DRAFT, persona: { ...GOOD_DRAFT.persona, titles: [] } });
+  const result = await runTask(draftIcp, DRAFT_INPUT, ctx(client, spyRecorder().recorder));
+  /* A persona with no titles cannot be searched with, so it is not a persona.
+     Absent rather than an error: "the site did not say who buys this" is a
+     real and common answer, and failing the whole draft over it would lose
+     nine good fields to recover one. */
+  expectEqual(
+    "a persona with no titles is absent rather than fatal",
+    result.output.persona,
+    null,
+  );
+}
+
+console.log("\ndraft_icp — a thin site produces a short profile, not a generic one");
+{
+  const empty = {
+    segments: null, industries: null, sizes: null, regions: null, triggers: null,
+    technologies: null, businessModels: null, painPoints: null, useCases: null,
+    exclusions: null, persona: null,
+  };
+  const { client } = scriptedClient(empty);
+  const spy = spyRecorder();
+  const result = await runTask(draftIcp, DRAFT_INPUT, ctx(client, spy.recorder));
+  expectEqual("drafting nothing is a valid answer", result.output.segments, null);
   expectEqual("and it is a success, not a failure", spy.events, ["started", "succeeded"]);
 }
 

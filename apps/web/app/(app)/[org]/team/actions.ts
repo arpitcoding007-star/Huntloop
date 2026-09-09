@@ -5,7 +5,8 @@ import { recordAudit } from "../../../../lib/data/audit";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { checkQuota, quotaMessage } from "../../../../lib/data/usage";
 import { siteUrl } from "../../../../lib/site-url";
-import { inviteSchema, memberRoleSchema, parseForm, uuidSchema } from "../../../../lib/validation";
+import { inviteSchema, memberRoleSchema, parseForm, parseInput, uuidSchema } from "../../../../lib/validation";
+import { approveJoinRequest, declineJoinRequest } from "../../../../lib/data/directory";
 
 /**
  * Membership writes — master context §38, and the role enum from `0001`.
@@ -395,4 +396,41 @@ export async function revokeInvitationAction(
     },
     { minRole: "admin" },
   );
+}
+
+/* ── Join requests (0027) ────────────────────────────────────────────────── */
+
+/**
+ * Let somebody in, or don't.
+ *
+ * Both are thin wrappers: `lib/data/directory.ts` holds the writes and asks
+ * `mutate` for `minRole: "admin"`, which matches `0027`'s `join_request_admin`
+ * policy. Deciding who may see the pipeline is an administrative act, and a
+ * member reaching these gets a sentence rather than a silent no-op.
+ *
+ * The id is bounded here for the same reason every id crossing this boundary
+ * is: a tampered value becomes a message instead of Postgres error `22P02`.
+ */
+export async function approveJoinAction(
+  org: string,
+  requestId: string,
+): Promise<ActionResult<undefined>> {
+  const parsed = parseInput(uuidSchema, requestId, "request");
+  if (!parsed.ok) return fail(parsed.error);
+
+  const result = await approveJoinRequest(org, parsed.value);
+  if (result.ok) revalidatePath(`/${org}/team`);
+  return result;
+}
+
+export async function declineJoinAction(
+  org: string,
+  requestId: string,
+): Promise<ActionResult<undefined>> {
+  const parsed = parseInput(uuidSchema, requestId, "request");
+  if (!parsed.ok) return fail(parsed.error);
+
+  const result = await declineJoinRequest(org, parsed.value);
+  if (result.ok) revalidatePath(`/${org}/team`);
+  return result;
 }

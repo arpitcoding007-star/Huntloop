@@ -145,6 +145,23 @@ describe("a model call that cannot be attributed to the caller's org", () => {
     expect(runTask).not.toHaveBeenCalled();
   });
 
+  it("is refused by draft()", async () => {
+    const { draft } = await import("./icp-draft");
+    const outcome = await draft("not-my-org", {
+      companyName: "Alphio AI",
+      sells: "Custody permissioning for autonomous financial agents.",
+      buyers: "Crypto trading desks.",
+      problem: "Software holds unconstrained signing authority.",
+      trigger: "Shipping an agent that touches real funds.",
+      role: "founder",
+      goals: ["discover"],
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(REFUSAL);
+    expect(runTask).not.toHaveBeenCalled();
+  });
+
   it("says the same thing whether the org is missing or merely not yours", () => {
     /*
      * Not a behavioural assertion so much as a guard on the copy.

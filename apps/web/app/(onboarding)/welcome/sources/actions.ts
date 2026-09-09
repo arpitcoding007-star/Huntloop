@@ -1,28 +1,32 @@
 "use server";
 
-import type { IcpSummary } from "@huntloop/ai";
 import { recommend } from "../../../../lib/ai/sources";
 import type { SourcesResult } from "../../../../lib/ai/sources";
 import { toFailureState } from "../../../../lib/ai/outcome";
-import { icpSchema, orgSlugSchema, parseInput } from "../../../../lib/validation";
+import { orgSlugSchema, parseInput } from "../../../../lib/validation";
 import { captureForViewer } from "../../../../lib/analytics";
+import { getActiveIcp } from "../../../../lib/data/icp";
+import { requireOrgId } from "../../../../lib/data/org";
+import { resolveDataSource } from "../../../../lib/data/source";
 
 /**
- * The sources step's one server action.
+ * §10 — source discovery.
  *
- * The ICP arrives from the client because that is where it currently lives —
- * see `lib/onboarding/draft.ts`. It is treated as input to be validated, not as
- * something to trust: `recommend_sources` constrains every recommendation's
- * basis to the elements of whatever profile it is handed, so a tampered ICP
- * produces recommendations traceable to that ICP and nothing more. There is
- * nothing here to escalate with, which is why passing it from the client is
- * acceptable rather than merely convenient.
+ * ── What changed, and why it matters more than it looks ──────────────────
  *
- * "Treated as input to be validated" is now literally true rather than an
- * argument about downstream behaviour: the schema below checks the shape and,
- * more to the point, bounds the size. Fifty segments of four hundred
- * characters is generous for a real ICP and a hard ceiling on what a caller
- * can make us tokenize.
+ * The ICP used to arrive **from the client**, out of `sessionStorage`. The
+ * comment defending that was careful and its reasoning was sound at the time:
+ * `recommend_sources` constrains every recommendation's basis to the elements
+ * of whatever profile it is handed, so a tampered ICP produces recommendations
+ * traceable to that ICP and nothing more — there was nothing to escalate with.
+ *
+ * It is still true, and it is no longer the point. The ICP is now a row
+ * (`0024`'s flow writes it in the previous step), and reading it from the
+ * database rather than from the browser means the recommendations are
+ * justified by *the profile this workspace actually has* — not by a copy that
+ * a refresh, a second tab, or a device change could have made stale. The two
+ * were the same object only for as long as the flow was one uninterrupted
+ * sitting, which is not a property a setup flow should depend on.
  */
 
 export interface SourcesState {
@@ -30,23 +34,45 @@ export interface SourcesState {
   error?: string;
   /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
   rateLimited?: { retryAt: string | null };
+  /** True when there is no profile to recommend from — a state, not a failure. */
+  noIcp?: boolean;
 }
 
-export async function recommendSourcesAction(
-  org: string,
-  icp: IcpSummary,
-): Promise<SourcesState> {
+export async function recommendSourcesAction(org: string): Promise<SourcesState> {
   const slug = parseInput(orgSlugSchema, org, "organisation");
   if (!slug.ok) return { error: slug.error };
 
-  const profile = parseInput(icpSchema, icp, "customer profile");
-  if (!profile.ok) return { error: profile.error };
+  /*
+   * Demo mode has no membership to resolve, and `requireOrgId` is right to
+   * refuse one — it exists to make a live request that slipped past the
+   * layout's 404 fail loudly rather than return an empty list.
+   *
+   * So it is only asked when there is a database. `getActiveIcp` ignores the
+   * id and returns its fixture when there is none, which is what lets the last
+   * step of onboarding be walked through on a fresh checkout. Passing a
+   * placeholder is safe precisely because nothing reads it in that branch.
+   */
+  const { db } = await resolveDataSource();
 
-  const outcome = await recommend(slug.value, profile.value);
+  let orgId = "demo";
+  if (db) {
+    /* Caught rather than propagated: this is a setup screen, and a 500 on the
+       last step loses everything the user has done, where a message does not. */
+    try {
+      orgId = await requireOrgId(slug.value, "recommendSources");
+    } catch {
+      return { error: "You are not a member of this workspace." };
+    }
+  }
 
-  // The last step of the funnel. No part of the ICP is sent — it is the
-  // customer's description of who they sell to, which is close to the most
-  // commercially sensitive thing they will type into this product.
+  const { data: icp } = await getActiveIcp(orgId);
+  if (!icp) return { noIcp: true };
+
+  const outcome = await recommend(slug.value, icp);
+
+  // No part of the ICP is sent to analytics. It is the customer's description
+  // of who they sell to, which is close to the most commercially sensitive
+  // thing they will type into this product.
   await captureForViewer(
     outcome.ok ? "onboarding_step_completed" : "onboarding_step_failed",
     {

@@ -49,7 +49,11 @@ export default async function InvitePage({
     // Belt and braces: the proxy sends anonymous visitors to /login already,
     // but it passes everything through when the schema probe says the
     // migrations have not run, and this page can then be reached signed out.
-    redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
+    /* Signup, not login: an invitee usually has no account, and `/login`
+       sends a magic link with `shouldCreateUser: false` — so it refuses for
+       exactly the person the link was written for, with the deliberately
+       vague enumeration-safe message. */
+    redirect(`/signup?next=${encodeURIComponent(`/invite/${token}`)}`);
   }
 
   return (

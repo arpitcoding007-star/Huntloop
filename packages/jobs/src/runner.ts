@@ -174,6 +174,26 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   "schedule_sends",
   "advance_enrollments",
   "schedule_learning",
+  /* `schedule_discovery` is the first sweeper that can spend money, and it is
+     listed here for the same reason as the others: a driver that ticks
+     without sweeping runs an engine that never notices a scheduled search is
+     due. Its own guards — `claim_due_discovery_queries` advancing
+     `next_run_at` as part of the claim, and a per-query credit budget — are
+     what make that safe, and they are in the handler rather than here so
+     `sweep()` stays a list of names a reviewer can read in full. */
+  "schedule_discovery",
+  /* Retention. Cross-tenant for the same reason as the rest — "which orgs
+     have a policy" is not a question inside one org — and the safest sweeper
+     here by some distance: it deletes nothing at all unless a customer set a
+     number, and `prune_stale_contacts` refuses to touch anybody who has been
+     messaged or is a live opportunity's contact. */
+  "enforce_retention",
+  /* `0023`'s request seam. Cross-tenant for the usual reason — "who has asked
+     for a recomputation" is not a question inside one org — and it spends
+     money, like `schedule_discovery`, with the same answer: the guards are in
+     the claim (`for update skip locked`, one live request per profile) and in
+     the per-org AI budget every child score asks for itself. */
+  "schedule_recomputes",
 ]);
 
 /**
@@ -191,6 +211,22 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
  * `learning_runs` inside the handler rather than from having been enqueued.
  */
 const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning"]);
+
+/**
+ * Sweepers that only need asking once a day.
+ *
+ * Retention is measured in days — the shortest period `0017` will accept is
+ * thirty — so the answer to "is anything past its retention window" changes at
+ * most once per day per org. Asking hourly would be twenty-four cross-tenant
+ * scans a day to produce twenty-three identical answers.
+ *
+ * Same mechanism as `HOURLY`, one field shorter on the timestamp: the key
+ * carries the date, the first tick of each day enqueues, and the rest collapse
+ * into it. A missed day costs nothing — retention is a floor on how long data
+ * is kept, not a deadline for deleting it, and the next day's sweep removes
+ * exactly the same rows plus one day's worth.
+ */
+const DAILY: ReadonlySet<JobName> = new Set<JobName>(["enforce_retention"]);
 
 /**
  * Enqueue the sweepers, once per tick.
@@ -218,13 +254,15 @@ const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning"]);
  * the same question against fresher rows.
  */
 export async function sweep(): Promise<void> {
-  const hour = new Date().toISOString().slice(0, 13);
+  const stamp = new Date().toISOString();
+  const hour = stamp.slice(0, 13);
+  const day = stamp.slice(0, 10);
   for (const name of SWEEPERS) {
-    await enqueue({
-      orgId: null,
-      name,
-      idempotencyKey: HOURLY.has(name) ? `${name}:${hour}` : name,
-      maxAttempts: 1,
-    });
+    const key = HOURLY.has(name)
+      ? `${name}:${hour}`
+      : DAILY.has(name)
+        ? `${name}:${day}`
+        : name;
+    await enqueue({ orgId: null, name, idempotencyKey: key, maxAttempts: 1 });
   }
 }

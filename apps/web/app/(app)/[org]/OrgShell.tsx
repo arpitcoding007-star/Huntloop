@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, Sidebar, TopBar, type NavGroup } from "@huntloop/ui";
 import {
+  Activity,
   BarChart3,
   Brain,
   Building2,
@@ -147,6 +148,10 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       label: "Settings",
       items: [
         { label: "Settings", href: `/${org}/settings`, icon: Settings },
+        /* `JOB-01`. Under Settings rather than as a top-level destination:
+           it answers "why has nothing happened", which is a question asked
+           occasionally and urgently, not a workflow of its own. */
+        { label: "Engine", href: `/${org}/ops`, icon: Activity },
       ],
     },
   ];

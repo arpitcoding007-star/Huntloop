@@ -4,6 +4,8 @@ import { resolveDataSource } from "../../../lib/data/source";
 import { currentViewer } from "../../../lib/data/membership";
 import { DataSourceBanner } from "./DataSourceBanner";
 import { OrgShell } from "./OrgShell";
+import { SetupCard } from "./SetupCard";
+import { getOnboardingState } from "../../../lib/data/onboarding";
 
 /**
  * Resolves `params` (async in Next 15) and enforces membership of the org in
@@ -42,12 +44,18 @@ export default async function OrgLayout({
   // would make "you have one migration left to run" look like "the app is
   // broken". The DataSourceBanner on every page says which state this is.
 
-  /* The banner lives here rather than on each page: rendered once, it cannot
-     be forgotten on a new route, and forgetting it is precisely the failure
-     it exists to prevent — a screen of demo data with nothing saying so. */
+  /* Same reasoning as the banner: rendered once in the layout, the setup card
+     cannot be forgotten on a new route. It matters more here than it looks —
+     a half-configured workspace behaves differently on *every* screen, not
+     just the dashboard, and a user who lands on Opportunities wondering why it
+     is empty needs the same explanation as one who lands on the Command
+     Center. It returns null once there is nothing left to finish. */
+  const onboarding = await getOnboardingState(org);
+
   return (
     <OrgShell org={org}>
       <DataSourceBanner source={source} />
+      {onboarding && <SetupCard state={onboarding} />}
       {children}
     </OrgShell>
   );

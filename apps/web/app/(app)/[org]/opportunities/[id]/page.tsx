@@ -19,6 +19,8 @@ import { listCampaignTargets } from "../../../../../lib/data/outreach";
 import { listMembers } from "../../../../../lib/data/team";
 import { canSpend, canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { getConversation } from "../../../../../lib/data/conversation";
+import { getNudge } from "../../../../../lib/data/nudges";
+import { LearningNudge } from "../../dashboard/LearningNudge";
 import { AgentPanel } from "./AgentPanel";
 import { OpportunityActions } from "./OpportunityActions";
 
@@ -66,6 +68,22 @@ export default async function OpportunityPage({
       listCampaignTargets(org),
       getConversation(org, id),
     ]);
+
+  /*
+   * The one nudge that belongs on *this* screen rather than the dashboard.
+   *
+   * A rejection streak is a question about verdicts, and this is the page where
+   * a verdict gets overruled — asking it here reaches somebody in the act,
+   * where the dashboard reaches them a day later with the context gone. The
+   * other two kinds are deliberately filtered out: "you have taken on ten
+   * companies" is a milestone about the pipeline, and putting it beside one
+   * company would be a non-sequitur.
+   *
+   * Dismissal is shared with the dashboard by key, so somebody who closed this
+   * question there is not asked it again here. It is the same question.
+   */
+  const nudge = await getNudge(org);
+  const streakNudge = nudge?.kind === "rejection-streak" ? nudge : null;
 
   if (!o) notFound();
 
@@ -124,6 +142,7 @@ export default async function OpportunityPage({
             opportunityId={o.id}
             owner={o.owner}
             ownerId={o.ownerId}
+            priority={o.priority}
             members={members}
             campaigns={campaigns}
             canWrite={canWrite(viewer)}
@@ -138,6 +157,8 @@ export default async function OpportunityPage({
         <span className="text-[14px] text-fg">{o.recommendedAction}</span>
         <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
       </div>
+
+      {streakNudge && <LearningNudge org={org} nudge={streakNudge} />}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* ── Main column ──────────────────────────────────────────────── */}

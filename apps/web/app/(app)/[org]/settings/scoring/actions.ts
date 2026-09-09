@@ -5,6 +5,7 @@ import { InvalidRuleError, applyRules, validateExpression } from "@huntloop/db/r
 import type { RuleExpression, RulePriority } from "@huntloop/db/rules";
 import type { IcpSummary } from "@huntloop/ai";
 import { draft } from "../../../../../lib/ai/rules";
+import { isEngineRunning, requestRecompute } from "../../../../../lib/data/engine";
 import {
   currentUserId,
   fail,
@@ -246,8 +247,56 @@ export async function setRuleActiveAction(
     return ok(
       undefined,
       active
-        ? "Rule activated. It applies from the next time a company is scored."
+        ? "Rule activated. It applies from the next time a company is scored — " +
+          "use Rescore all to apply it to opportunities you already have."
         : "Rule deactivated. Existing scores are unchanged.",
+    );
+  });
+}
+
+/**
+ * Rescore every opportunity against the rules and profile as they stand now.
+ *
+ * ── Why this is a button rather than something a rule edit does ──────────
+ *
+ * §11 keeps a person in front of anything that moves opportunities between
+ * bands, and this moves all of them. Firing it automatically on every rule
+ * change would also make editing three rules cost three full recomputations —
+ * one model call per opportunity, each — when the customer meant to make one
+ * change and see the result.
+ *
+ * The honest cost is stated on the screen. What is deliberately NOT offered is
+ * a preview of how many opportunities would change band, because computing it
+ * means running the model over every one of them, which *is* the
+ * recomputation. A deterministic preview over the stored model scores is
+ * possible for a pure rule change and is the natural next step; presenting one
+ * that quietly ignored the model half would be a number nobody measured.
+ */
+export async function recomputeScoresAction(org: string): Promise<ActionResult<undefined>> {
+  return mutate(org, "recomputeScores", async ({ db, orgId }) => {
+    if (!isEngineRunning()) {
+      /* The same refusal `scanNowAction` makes, for the same reason: queueing
+         into a queue nobody drains reports success and leaves the user
+         waiting. */
+      return fail(
+        "Nothing is running the queue on this deployment, so a rescore would " +
+          "be queued and never picked up.",
+      );
+    }
+
+    const id = await requestRecompute(db, orgId, "rule_change");
+    revalidatePath(`/${org}/settings/scoring`);
+
+    if (!id) {
+      /* `0023`'s partial unique index refused it because one is already live.
+         Not a failure — it is the answer to "is it running?". */
+      return ok(undefined, "A rescore is already running. This one was not started twice.");
+    }
+
+    return ok(
+      undefined,
+      "Rescoring started. It runs in batches and every opportunity keeps its " +
+        "current score until its new one is computed.",
     );
   });
 }

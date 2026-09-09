@@ -95,6 +95,78 @@ export async function requestResearch(
 }
 
 /**
+ * Ask for this org's opportunities to be rescored.
+ *
+ * The same seam as `enqueueScan` and `requestResearch`: a request written
+ * through RLS, which `schedule_recomputes` turns into jobs on the next tick.
+ * The Server Action never touches `job_executions`.
+ *
+ * Returns the request id, or null when one is already running — which is an
+ * answer rather than a failure. `0023`'s partial unique index makes "one live
+ * recomputation per profile" a property of the database rather than of the
+ * screen remembering to disable a button.
+ */
+export async function requestRecompute(
+  db: TenantClient,
+  orgId: string,
+  reason: "rule_change" | "icp_change" | "manual",
+  icpId: string | null = null,
+): Promise<string | null> {
+  const { data, error } = await db.rpc("request_score_recompute", {
+    p_org: orgId,
+    p_icp: icpId,
+    p_reason: reason,
+  });
+
+  if (error) return null;
+  return data ? String(data) : null;
+}
+
+/**
+ * How a recomputation is going, for the screen that asked for one.
+ *
+ * Null when this org has never asked. The counts come from the row rather than
+ * from counting jobs, because the jobs are consumed and gone — see `0023`'s
+ * note on why these are accumulated rather than derived.
+ */
+export interface RecomputeStatus {
+  id: string;
+  status: string;
+  reason: string;
+  companiesSeen: number;
+  scoresEnqueued: number;
+  requestedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+export async function latestRecompute(
+  db: TenantClient,
+  orgId: string,
+): Promise<RecomputeStatus | null> {
+  const { data } = await db
+    .from("score_recompute_requests")
+    .select("id, status, reason, companies_seen, scores_enqueued, requested_at, finished_at, error")
+    .eq("org_id", orgId)
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    id: String(data.id),
+    status: String(data.status),
+    reason: String(data.reason),
+    companiesSeen: Number(data.companies_seen ?? 0),
+    scoresEnqueued: Number(data.scores_enqueued ?? 0),
+    requestedAt: String(data.requested_at),
+    finishedAt: data.finished_at ? String(data.finished_at) : null,
+    error: data.error ? String(data.error) : null,
+  };
+}
+
+/**
  * What the engine has been doing, for the screens that report on it.
  *
  * Reads `job_executions` through RLS — the rows are tenant data and carry an

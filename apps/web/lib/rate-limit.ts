@@ -112,6 +112,12 @@ const LIMITS: Partial<Record<TaskName, Limit>> = {
   explain_why_now: { perUser: 60, perOrg: 300, windowSeconds: 3600 },
   // Onboarding. Run once or twice per org, ever.
   recommend_sources: { perUser: 20, perOrg: 60, windowSeconds: 3600 },
+  /* Onboarding, and the same shape as `recommend_sources` — no fetching, one
+     bounded object out. Slightly looser per user because re-drafting after
+     correcting the research is a legitimate thing to do twice in a sitting,
+     and a user who hits a wall on the screen that builds their ICP has hit it
+     on the screen it costs most to abandon. */
+  draft_icp: { perUser: 25, perOrg: 60, windowSeconds: 3600 },
   /* Setup, like `recommend_sources`, and tighter: a scoring policy is drafted
      once and then edited by hand. Opus at high effort with no fetching, so the
      cost per call is moderate — the reason for the low ceiling is that twenty

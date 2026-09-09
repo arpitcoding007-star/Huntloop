@@ -15,13 +15,14 @@ import {
   Select,
   Textarea,
 } from "@huntloop/ui";
-import { FlaskConical, Plus, Save, Scale, Sparkles, Trash2 } from "lucide-react";
+import { FlaskConical, Plus, RefreshCw, Save, Scale, Sparkles, Trash2 } from "lucide-react";
 import type { RuleField, RuleOperator } from "@huntloop/db/rules";
 import type { Rule, RuleSet } from "../../../../../lib/data/scoring";
 import {
   deleteRuleAction,
   draftRulesAction,
   previewRuleAction,
+  recomputeScoresAction,
   saveRuleAction,
   setRuleActiveAction,
   type RuleInput,
@@ -72,6 +73,7 @@ export function ScoringRules({
     { ok: true; message?: string } | { ok: false; error: string } | null
   >(null);
   const [drafting, startDraft] = useTransition();
+  const [rescoring, startRescore] = useTransition();
 
   return (
     <div className="space-y-8">
@@ -112,7 +114,35 @@ export function ScoringRules({
             {drafting ? "Drafting…" : "Draft from my ICP"}
           </Button>
         )}
+        {canWrite && (
+          /* Rules apply from the next time a company is scored, which for an
+             existing pipeline is "whenever something happens to it". Without
+             this button a rule edit silently produces a list mixing verdicts
+             from before and after the change, ranked together. */
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={RefreshCw}
+            disabled={rescoring}
+            onClick={() =>
+              startRescore(async () => {
+                const res = await recomputeScoresAction(org);
+                setResult(
+                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+                );
+              })
+            }
+          >
+            {rescoring ? "Starting…" : "Rescore all opportunities"}
+          </Button>
+        )}
       </div>
+      {canWrite && (
+        <p className="max-w-[60ch] text-[12px] text-fg-muted">
+          Rescoring runs one model call per opportunity, in batches, and each
+          opportunity keeps the score it has until its new one is ready.
+        </p>
+      )}
 
       {adding && (
         <RuleForm

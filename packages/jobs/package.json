@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@huntloop/ai": "*",
-    "@huntloop/db": "*"
+    "@huntloop/db": "*",
+    "@huntloop/providers": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

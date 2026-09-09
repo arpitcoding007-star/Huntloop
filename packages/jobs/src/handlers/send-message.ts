@@ -90,19 +90,46 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, permanent: true, error: "send_message: that message has no recipient." };
   }
 
-  // Step 2.
-  const { data: suppressed } = await scope.rpc("is_suppressed", {
+  /* Step 2. One question, asked once.
+     `0017` built `can_contact` to be *the* gate — suppression, the erasure
+     residue hash, the per-contact cadence, the 30-day cap and the org's daily
+     ceiling — and said so in its own comment: two guards means one of them
+     eventually gets skipped. This used to call `is_suppressed`, which is the
+     first of those five checks and therefore skipped the other four. A
+     deployment with a two-day cadence would happily send twice in an hour.
+
+     It also missed the case erasure exists for: after `erase_contact` there is
+     no plaintext address left to compare, only a hash, so `is_suppressed`
+     finds nothing and concludes the person is contactable. */
+  const { data: verdictRows } = await scope.rpc("can_contact", {
     p_org: scope.orgId,
     p_email: message.to_email,
   });
-  if (suppressed === true) {
-    await scope
-      .update("messages", {
-        error: "Not sent: the recipient is on this organisation's suppression list.",
-      })
+  const verdict = (Array.isArray(verdictRows) ? verdictRows[0] : verdictRows) as
+    | { allowed?: boolean; reason?: string; detail?: Record<string, unknown> }
+    | null
+    | undefined;
+
+  /* A gate that cannot be read does NOT fail open. Everywhere else in this
+     codebase an unreadable quota fails open, because the cost of being wrong
+     is a reconciliation and it is ours. Here the cost is an email that a
+     person asked us never to send, to somebody who is not our customer, and
+     it cannot be taken back. */
+  if (!verdict || verdict.allowed !== true) {
+    const reason = verdict?.reason ?? "unavailable";
+    await scope.update("messages", { error: refusalMessage(reason, verdict?.detail) })
       .eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason: "suppressed" });
-    return { ok: true, result: { skipped: "suppressed", to: message.to_email } };
+    await recordEvent(ctx, messageId, "failed", { reason });
+
+    /* Suppression and erasure are permanent; a cadence cap is not. The first
+       group is closed out as a skip so it stops occupying the queue. The
+       second stays a retryable failure, because "too soon" becomes "fine" by
+       itself, and re-queueing a message somebody approved is what the sender
+       expects. */
+    if (reason === "suppressed" || reason === "invalid_address" || reason === "unknown_org") {
+      return { ok: true, result: { skipped: reason, to: message.to_email } };
+    }
+    return { ok: false, error: refusalMessage(reason, verdict?.detail) };
   }
 
   const mailboxId = message.mailbox_id ?? (await pickMailbox(scope));
@@ -189,6 +216,16 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
       p_amount: 1,
     });
 
+    /* The counter `can_contact` reads, rolled after the provider accepted and
+       never before. Recording it earlier would decrement a customer's
+       allowance for a message that failed to send; recording it later than
+       this — in a sweep — would leave the cadence cap wrong for the whole
+       window between, which is the window in which a sequence sends again. */
+    await scope.rpc("record_contact_send", {
+      p_org: scope.orgId,
+      p_email: message.to_email,
+    });
+
     /* The opportunity has now been contacted, which the pipeline should say.
        Only forward — a reply that already moved it past `contacted` must not
        be dragged back by a later step of the same sequence. */
@@ -219,6 +256,51 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 }
 
 /* ── Pieces ──────────────────────────────────────────────────────────────── */
+
+/**
+ * `can_contact`'s reason code as a sentence somebody can act on.
+ *
+ * The reason lands in `messages.error`, which is rendered on the outreach
+ * screen beside the message that did not go. "frequency_cap" there is a
+ * support ticket; "we have already sent 3 in 30 days, and the cap is 3" is an
+ * answer, and it names the setting the reader has to change.
+ *
+ * An unrecognised code still produces a sentence rather than an empty string —
+ * a new refusal added to `can_contact` later must degrade to something
+ * readable rather than to a blank cell.
+ */
+export function refusalMessage(reason: string, detail?: Record<string, unknown>): string {
+  switch (reason) {
+    case "suppressed":
+      return "Not sent: the recipient is on this organisation's suppression list.";
+    case "too_soon": {
+      const days = detail?.minDays;
+      return (
+        "Not sent: this address was contacted too recently. " +
+        (days ? `This organisation allows one message every ${days} days.` : "")
+      ).trim();
+    }
+    case "frequency_cap":
+      return (
+        `Not sent: this address has had ${detail?.sends30d ?? "several"} messages in the ` +
+        `last 30 days, and the cap is ${detail?.cap ?? "lower"}.`
+      );
+    case "org_daily_cap":
+      return (
+        `Not sent: this organisation has sent ${detail?.sentToday ?? "its"} messages today, ` +
+        `which is its daily ceiling of ${detail?.cap ?? "sends"}. It resumes tomorrow.`
+      );
+    case "invalid_address":
+      return "Not sent: the recipient address is empty or malformed.";
+    case "unknown_org":
+      return "Not sent: the sending organisation could not be read.";
+    default:
+      /* Including the `unavailable` case, where the check itself failed. The
+         message says what happened rather than inventing a reason it did not
+         establish. */
+      return `Not sent: the contact-safety check did not pass (${reason}).`;
+  }
+}
 
 /**
  * The two unsubscribe addresses, which are deliberately different pages.

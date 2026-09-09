@@ -42,7 +42,9 @@ export type TaskName =
   | "classify_reply"
   | "sales_agent"
   | "draft_scoring_rules"
-  | "analyze_performance";
+  | "analyze_performance"
+  | "research_competitor"
+  | "draft_icp";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -64,6 +66,22 @@ export const ROUTES: Record<TaskName, Route> = {
   // catches it if the proposal is coherent enough to be read.
   draft_scoring_rules: { model: MODELS.opus, effort: "high" },
   analyze_performance: { model: MODELS.opus, effort: "high" },
+  // Reads a third party's site, and its output becomes sentences a
+  // salesperson repeats out loud about a company that is not present to
+  // correct them. High effort for the same reason `qualify_opportunity` has
+  // it: the cost of a confident wrong answer is paid by somebody else.
+  research_competitor: { model: MODELS.opus, effort: "high" },
+  /* The profile every later judgement is made against. High effort for the
+     same reason `draft_scoring_rules` has it: this output is not an answer
+     about one company, it is the *policy* that decides which companies are
+     ever looked at — and the review screen only catches a wrong draft if the
+     draft is coherent enough to be read carefully.
+
+     The specific failure high effort buys protection against is the generic
+     answer. A model at low effort asked to draft a B2B ICP produces "Series A
+     to C, 50–500 employees, North America" for everyone, and that answer is
+     never obviously wrong enough for a user to reject it. */
+  draft_icp: { model: MODELS.opus, effort: "high" },
 };
 
 /**

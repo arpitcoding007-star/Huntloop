@@ -10,7 +10,7 @@ import {
   ok,
   type ActionResult,
 } from "../../../../../lib/data/org";
-import { agentQuestionSchema, uuidSchema } from "../../../../../lib/validation";
+import { agentQuestionSchema, priorityBandSchema, uuidSchema } from "../../../../../lib/validation";
 
 /**
  * Ask the per-opportunity agent something — master context §19.
@@ -193,5 +193,105 @@ export async function askAgentAction(
       citedClaims: answer.citedClaims,
       unresolved: answer.unresolved,
     });
+  });
+}
+
+/**
+ * A person disagreeing with the verdict — SCO-02.
+ *
+ * ── Why this is the most valuable write on the page ──────────────────────
+ *
+ * When a salesperson looks at a `hot` opportunity and marks it `ignore`, they
+ * have just supplied a labelled training example for free, about their own
+ * market, with a reason attached. `0016` built `human_overrides` to keep those
+ * and `record_override` to write them; until now the product had nowhere for a
+ * person to disagree at all, so the highest-quality signal it can receive was
+ * one it never collected.
+ *
+ * ── Why the override is recorded by the database, not by this action ─────
+ *
+ * `record_override` is a function precisely so the change and the record of it
+ * cannot diverge. It also refuses a no-op — setting a value to what it already
+ * was is somebody re-saving a form, not a correction, and counting it would
+ * pollute the one clean signal with noise.
+ *
+ * ── Why the column is written too, rather than only the override ─────────
+ *
+ * Because the person means it now. A correction that only feeds a weekly
+ * analysis and leaves the wrong band on the screen is a product telling its
+ * user it has heard them while visibly not having done so. The score history
+ * is untouched — `opportunity_scores` is append-only, and the model's verdict
+ * remains readable beside the human's.
+ */
+export async function overridePriorityAction(
+  org: string,
+  opportunityId: string,
+  priority: string,
+  reason: string | null,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(opportunityId);
+  if (!id.success) return fail("That opportunity reference isn't valid.");
+
+  const parsed = priorityBandSchema.safeParse(priority);
+  if (!parsed.success) return fail("That isn't a priority this product has.");
+
+  return mutate(org, "overridePriority", async ({ db, orgId }) => {
+    /* Read first, because the override needs what the system said. Taking the
+       previous value from the client would let a caller record a disagreement
+       that never happened — and the learning loop reads these as facts. */
+    const { data: current } = await db
+      .from("opportunities")
+      .select("id, priority")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (!current) return fail("That opportunity no longer exists.");
+
+    const previous = String(current.priority ?? "");
+    if (previous === parsed.data) {
+      /* Not an error, and not recorded. The screen says nothing changed
+         rather than claiming a correction was filed. */
+      return ok(undefined, `This opportunity is already ${parsed.data}.`);
+    }
+
+    const { error } = await db
+      .from("opportunities")
+      .update({ priority: parsed.data })
+      .eq("id", id.data)
+      .eq("org_id", orgId);
+
+    if (error) return fail(`That priority could not be changed: ${error.message}`);
+
+    /* The correction. A failure here does not undo the change the user asked
+       for — losing a training signal is a reporting problem, and refusing the
+       edit over it would be the product punishing them for disagreeing. */
+    const { error: overrideError } = await db.rpc("record_override", {
+      p_org: orgId,
+      p_subject: "opportunity_priority",
+      p_entity_type: "opportunity",
+      p_entity_id: id.data,
+      p_system: previous,
+      p_human: parsed.data,
+      p_reason: reason?.trim() || null,
+    });
+
+    revalidatePath(`/${org}/opportunities/${id.data}`);
+    revalidatePath(`/${org}/opportunities`);
+
+    if (overrideError) {
+      return ok(
+        undefined,
+        `Set to ${parsed.data}. The correction itself could not be recorded, ` +
+          `so it will not reach the learning loop.`,
+      );
+    }
+
+    return ok(
+      undefined,
+      `Set to ${parsed.data}. Your correction is kept, and the weekly analysis ` +
+        `reads it alongside the outcomes.`,
+    );
   });
 }

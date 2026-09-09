@@ -58,6 +58,17 @@ const PUBLIC_PREFIXES = [
      dead unsubscribe, and a dead unsubscribe is a spam report. */
   "/unsubscribe",
   "/api/unsubscribe",
+  /* The top of the funnel. A visitor who has typed their domain into the
+     landing page has not signed in yet by construction — bouncing them to
+     /login here would put the sign-up wall back in front of the value, which
+     is precisely what the domain-first funnel exists to move. */
+  "/discover",
+  /* The use-case pages. Marketing content, submitted in the sitemap, and
+     therefore reached by people and crawlers with no session — a guard here
+     would answer every one of them with a 307 to /login and make the pages
+     invisible to exactly the audience they were written for. */
+  "/for",
+  "/compare",
 ];
 
 /**
@@ -187,7 +198,17 @@ export async function proxy(request: NextRequest) {
 
   if (!user && !isPublic && path !== "/") {
     const login = request.nextUrl.clone();
-    login.pathname = "/login";
+    /*
+     * An invitee is sent to *sign up*, not to sign in.
+     *
+     * They were invited by email address and, in the common case, have no
+     * account at all. `/login` sends a magic link with `shouldCreateUser:
+     * false`, so it refuses for exactly the person the link was written for —
+     * and refuses with the deliberately vague enumeration-safe message, which
+     * makes it unexplainable. `/signup` creates the account if it is needed
+     * and signs in the address if it is not.
+     */
+    login.pathname = path.startsWith("/invite/") ? "/signup" : "/login";
     // Send them back where they were headed after signing in — but only the
     // path, never the full URL, so this cannot be turned into an open redirect.
     // `lib/safe-next.ts` is the other half, where the value is consumed.

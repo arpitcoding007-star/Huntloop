@@ -286,6 +286,20 @@ export async function applyClassification(
      from a human does stop it. */
   if (label === "out_of_office") return;
 
+  /* `0017`'s cadence rule: a reply lifts the minimum gap between messages.
+     Recorded here rather than in the enrollment branch below, because a person
+     who answers is a person we may answer back whether or not the thread ever
+     resolved to an opportunity — and the caps exist to stop cold outreach, not
+     conversation.
+
+     Deliberately after the `out_of_office` return and skipping bounces: an
+     autoresponder and a mail server are not somebody replying, and letting
+     either lift the cap would make the machine's answer the reason we sent
+     again sooner. */
+  if (label !== "bounce" && label !== "unsubscribe") {
+    await scope.rpc("record_contact_reply", { p_org: scope.orgId, p_email: input.from });
+  }
+
   const opportunityId = input.threadId ? await opportunityFor(ctx, input.threadId) : null;
   if (!opportunityId) return;
 

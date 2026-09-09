@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { canAdmin, currentViewer } from "../../../../lib/data/membership";
 import { listInvitations, listMembers } from "../../../../lib/data/team";
+import { listPendingJoinRequests } from "../../../../lib/data/directory";
 import { DemoFigures } from "../DemoFigures";
 import { MemberList } from "./MemberList";
 import { TeamNav } from "./TeamNav";
+import { JoinRequests } from "./JoinRequests";
 
 /**
  * Members — master context §38.
@@ -26,6 +28,11 @@ export default async function TeamPage({
   const { data: members, source } = await listMembers(org);
   const { data: invitations } = await listInvitations(org);
 
+  /* Admins only, enforced by RLS rather than by this line: a member's select
+     on `join_requests` finds nothing, so the panel renders itself away. The
+     check here is what stops the query running at all for the common case. */
+  const joinRequests = canAdmin(viewer) ? await listPendingJoinRequests(org) : [];
+
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
       <header>
@@ -44,6 +51,10 @@ export default async function TeamPage({
           <DemoFigures what="These are example members, not the ones on your account." />
         </div>
       )}
+
+      {/* Above the member list: a request is something waiting on a person,
+          and the list of people who are already in is not. */}
+      <JoinRequests org={org} requests={joinRequests} />
 
       <div className="mt-6">
         <MemberList

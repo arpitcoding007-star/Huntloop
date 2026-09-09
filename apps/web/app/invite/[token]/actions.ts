@@ -59,8 +59,31 @@ export async function acceptInvitationAction(
     return fail("That invitation was accepted, but the organisation could not be resolved.");
   }
 
+  /*
+   * An invitee still needs step one, and only step one.
+   *
+   * The workspace they have just joined already has a product, an ICP and
+   * sources — somebody else built it. Walking them through company research
+   * would let them create a second, contradictory profile for a company that
+   * already has one, which is `ICP-01` re-committed through the front door.
+   *
+   * What they do need is their own name and role, because those live on
+   * `profiles` and lay out *their* dashboard. An SDR joining on Tuesday must
+   * not inherit the founder's layout. `/welcome` asks exactly those two
+   * questions and then forwards them into the workspace, because
+   * `listMemberships` now returns one.
+   *
+   * Somebody who already has a role — a second invitation, or a returning
+   * user — skips it entirely.
+   */
+  const { data: profile } = await db
+    .from("profiles")
+    .select("role")
+    .eq("id", user.user.id)
+    .maybeSingle();
+
   /* `redirect` throws, so nothing after it runs and the `ok` below is only
      reachable if Next changes that. Kept for the type. */
-  redirect(`/${slug}/dashboard`);
+  redirect(profile?.role ? `/${slug}/dashboard` : "/welcome");
   return ok(undefined);
 }

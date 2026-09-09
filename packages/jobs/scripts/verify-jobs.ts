@@ -24,6 +24,8 @@ import { sendMessage } from "../src/handlers/send-message.ts";
 import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
 import { gmail } from "../src/mailbox/gmail.ts";
 import { ruleFacts } from "../src/handlers/score-opportunity.ts";
+import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
+import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
 
@@ -545,7 +547,16 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
     enqueued.map((row) => row.job_name).sort(),
     [
       "advance_enrollments",
+      /* Retention, added with the compliance jobs. Keyed daily rather than
+         per-tick — see `DAILY` in the runner. */
+      "enforce_retention",
+      /* Added with `0014`. Listed explicitly rather than derived from
+         `SWEEPERS`, so adding a cross-tenant job is a deliberate two-line
+         change — the set is the most consequential list in the engine, and a
+         test that read it from the source would assert nothing about it. */
+      "schedule_discovery",
       "schedule_learning",
+      "schedule_recomputes",
       "schedule_scans",
       "schedule_sends",
       "schedule_syncs",
@@ -566,7 +577,7 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
   expect(
     "a per-tick sweeper is idempotent on its own name",
     enqueued
-      .filter((row) => row.job_name !== "schedule_learning")
+      .filter((row) => row.job_name !== "schedule_learning" && row.job_name !== "enforce_retention")
       .every((row) => row.idempotency_key === row.job_name),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
   );
@@ -576,6 +587,15 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       .filter((row) => row.job_name === "schedule_learning")
       .every((row) =>
         /^schedule_learning:\d{4}-\d{2}-\d{2}T\d{2}$/.test(String(row.idempotency_key)),
+      ),
+    JSON.stringify(enqueued.map((row) => row.idempotency_key)),
+  );
+  expect(
+    "the retention sweep collapses to one a day — its answer changes daily at most",
+    enqueued
+      .filter((row) => row.job_name === "enforce_retention")
+      .every((row) =>
+        /^enforce_retention:\d{4}-\d{2}-\d{2}$/.test(String(row.idempotency_key)),
       ),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
   );
@@ -702,7 +722,11 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
   const { client, calls } = fakeClient({
     "select:messages": { data: message, error: null },
     "select:mailboxes": { data: connectedMailbox(), error: null },
-    "rpc:is_suppressed": { data: false, error: null },
+    /* `0017`'s single gate. Returned as a one-row array because it is a
+       `returns table`, which is what PostgREST hands back — and the handler
+       reading only the first element of an object would be a bug this stub
+       must be able to catch. */
+    "rpc:can_contact": { data: [{ allowed: true, reason: "ok", detail: {} }], error: null },
     "rpc:claim_mailbox_send": { data: true, error: null },
     "insert:threads": { data: { id: "55555555-5555-5555-5555-555555555555" }, error: null },
     ...responses,
@@ -787,7 +811,7 @@ console.log("\nsend_message — an unsubscribe that lands mid-approval still win
      checked again here because the gap between drafting and sending can be
      days when a human is approving. */
   const { ctx, calls } = sendContext(sendable(), {
-    "rpc:is_suppressed": { data: true, error: null },
+    "rpc:can_contact": { data: [{ allowed: false, reason: "suppressed", detail: {} }], error: null },
   });
   const outcome = await sendMessage(ctx);
 
@@ -809,6 +833,94 @@ console.log("\nsend_message — an unsubscribe that lands mid-approval still win
   expect(
     "and a failed event goes on the timeline",
     calls.some((c) => c.table === "message_events" && c.verb === "insert"),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — OUT-01: the cap that existed and was never asked");
+{
+  /* The gap this closes. `can_contact` covers five refusals; the handler used
+     to call `is_suppressed`, which is one of them. A two-day cadence was
+     configurable, documented, tested in SQL — and unenforced by the only code
+     that sends mail. */
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:can_contact": {
+      data: [{ allowed: false, reason: "too_soon", detail: { minDays: 2 } }],
+      error: null,
+    },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("a contact inside the cadence window is not written to", !markedSent(calls));
+  expect(
+    "and it stays retryable — 'too soon' becomes 'fine' on its own",
+    !outcome.ok,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "the reason on the message names the setting rather than a code",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /every 2 days/.test(String((c.payload as { error?: string })?.error)),
+    ),
+    JSON.stringify(calls.filter((c) => c.table === "messages").map((c) => c.payload)),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  // Erasure's whole point: the plaintext address is gone, only the hash
+  // remains, and `is_suppressed` therefore finds nothing.
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:can_contact": {
+      data: [{ allowed: false, reason: "org_daily_cap", detail: { sentToday: 200, cap: 200 } }],
+      error: null,
+    },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an org at its daily ceiling sends nothing further", !markedSent(calls) && !outcome.ok);
+  setAdminClientForTests(null);
+}
+
+{
+  /* Every other quota in this codebase fails open, and is right to. This one
+     must not: the cost of being wrong is an email to somebody who asked never
+     to hear from us, and it cannot be recalled. */
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:can_contact": { data: null, error: { message: "function does not exist" } },
+  });
+  const outcome = await sendMessage(ctx);
+  expect(
+    "a safety check that cannot be read fails CLOSED, unlike every budget in this codebase",
+    !markedSent(calls) && !outcome.ok,
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* Order matters as much as presence. The safety check has to come before the
+     mailbox allowance is claimed, or a refused message still consumes one of
+     the day's sends from a limit somebody is paying for.
+
+     The send itself needs a provider and a token, so these tests stop at the
+     mailbox; `record_contact_send` after a successful send is covered by
+     `0017`'s own suite, which can run the counter for real. */
+  const { ctx, calls } = sendContext(sendable(), {
+    /* Stopped at the allowance on purpose. Letting this run on would reach
+       `provider.send`, which is a real HTTP request to a mail API — a test
+       that tries to send mail is not a test. */
+    "rpc:claim_mailbox_send": { data: false, error: null },
+  });
+  await sendMessage(ctx);
+  const rpcs = calls.filter((c) => c.verb === "rpc").map((c) => c.table);
+  expect(
+    "the contact-safety check runs before the mailbox allowance is claimed",
+    rpcs.indexOf("can_contact") >= 0 &&
+      rpcs.indexOf("can_contact") < rpcs.indexOf("claim_mailbox_send"),
+    JSON.stringify(rpcs),
   );
   setAdminClientForTests(null);
 }
@@ -1494,6 +1606,658 @@ console.log("\nscore_opportunity — every field a rule may name is actually sup
     "with an unknown headcount as null, never as a zero",
     sparse["company.employee_count"],
     null,
+  );
+}
+
+console.log("\nschedule_recomputes — the request seam, resumed rather than restarted");
+{
+  const { client, calls } = fakeClient({
+    "rpc:claim_due_recomputes": {
+      data: [
+        { id: "req_1", org_id: ORG_A, icp_id: null, reason: "rule_change", cursor: "co_399" },
+        { id: "req_2", org_id: ORG_B, icp_id: "icp_9", reason: "icp_change", cursor: null },
+      ],
+      error: null,
+    },
+    "insert:job_executions": { data: { id: "job_s" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_recomputes({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => c.payload as Record<string, unknown>);
+
+  expectEqual(
+    "each claimed request becomes one job carrying its own org",
+    enqueued.map((row) => row.org_id),
+    [ORG_A, ORG_B],
+  );
+  expectEqual(
+    "a request with a cursor resumes there rather than re-scoring what it already paid for",
+    (enqueued[0]?.payload as Record<string, unknown>)?.after,
+    "co_399",
+  );
+  expect(
+    "a fresh request carries no cursor at all",
+    !("after" in ((enqueued[1]?.payload ?? {}) as Record<string, unknown>)),
+    JSON.stringify(enqueued[1]?.payload),
+  );
+  expect(
+    "and the key is the request, so a racing claim collapses instead of forking it",
+    enqueued.every((row) => /^recompute:req_\d$/.test(String(row.idempotency_key))),
+    JSON.stringify(enqueued.map((row) => row.idempotency_key)),
+  );
+  expect("the sweep reports what it claimed", outcome.ok && outcome.result.claimed === 2, JSON.stringify(outcome));
+  setAdminClientForTests(null);
+}
+
+console.log("\nrecompute_scores — SCO-03: rescoring what a rule change invalidated");
+{
+  const rows = Array.from({ length: 200 }, (_, i) => ({
+    id: `opp_${i}`,
+    company_id: `co_${String(i).padStart(3, "0")}`,
+  }));
+  const { client, calls } = fakeClient({
+    "select:opportunities": { data: rows, error: null },
+    "insert:job_executions": { data: { id: "job_r" }, error: null },
+    "rpc:advance_recompute": { data: "running", error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.recompute_scores({
+    scope: new OrgScope(ORG_A, client),
+    payload: { reason: "rule_change" },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => c.payload as Record<string, unknown>);
+
+  const scores = enqueued.filter((row) => row.job_name === "score_opportunity");
+  expect("one scoring job per company, not one giant job", scores.length === 200, String(scores.length));
+  expect(
+    "each carries the reason, so a score history can tell a rule change from a market change",
+    scores.every((row) => (row.payload as Record<string, unknown>).reason === "rule_change"),
+    JSON.stringify(scores[0]?.payload),
+  );
+  expect(
+    "and reuses the scan's idempotency key, so a rescore during a scan is paid for once",
+    scores.every((row) =>
+      /^score:co_\d{3}$/.test(String(row.idempotency_key)),
+    ),
+    JSON.stringify(scores[0]?.idempotency_key),
+  );
+
+  const continuation = enqueued.filter((row) => row.job_name === "recompute_scores");
+  expect(
+    "a full page continues from a cursor rather than looping inside one claim",
+    continuation.length === 1 &&
+      (continuation[0]!.payload as Record<string, unknown>).after === "co_199",
+    JSON.stringify(continuation.map((row) => row.payload)),
+  );
+  expect(
+    "and the run reports itself unfinished",
+    outcome.ok && outcome.result.done === false,
+    JSON.stringify(outcome),
+  );
+
+  /* The cursor is over `company_id`, which this job does not write. Ordering
+     by `last_scored_at` would reorder rows as the job rescored them, so a
+     cursor over it would skip and repeat companies unpredictably. */
+  expect(
+    "the page is ordered by the column the job does not modify",
+    calls.some(
+      (c) =>
+        c.table === "opportunities" &&
+        c.filters.some(([k]) => k === "order:company_id"),
+    ),
+    JSON.stringify(calls.find((c) => c.table === "opportunities")?.filters),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const { client, calls } = fakeClient({
+    "select:opportunities": {
+      data: [{ id: "opp_1", company_id: "co_1" }],
+      error: null,
+    },
+    "insert:job_executions": { data: { id: "job_r" }, error: null },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.recompute_scores({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a short page is the end, and does not enqueue a continuation forever",
+    outcome.ok &&
+      outcome.result.done === true &&
+      !calls.some(
+        (c) =>
+          c.verb === "insert" &&
+          (c.payload as Record<string, unknown>)?.job_name === "recompute_scores",
+      ),
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* Cancellation reaches a pass that is already running as the answer to the
+     progress call it was going to make anyway — there is no other signal that
+     survives a job already in flight. */
+  const rows = Array.from({ length: 200 }, (_, i) => ({
+    id: `opp_${i}`,
+    company_id: `co_${String(i).padStart(3, "0")}`,
+  }));
+  const { client, calls } = fakeClient({
+    "select:opportunities": { data: rows, error: null },
+    "insert:job_executions": { data: { id: "job_r" }, error: null },
+    "rpc:advance_recompute": { data: "cancelled", error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.recompute_scores({
+    scope: new OrgScope(ORG_A, client),
+    payload: { requestId: "req_1", reason: "manual" },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "a cancelled recomputation stops after the batch in flight",
+    outcome.ok &&
+      outcome.result.cancelled === true &&
+      !calls.some(
+        (c) =>
+          c.verb === "insert" &&
+          (c.payload as Record<string, unknown>)?.job_name === "recompute_scores",
+      ),
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+/* ── Compliance ──────────────────────────────────────────────────────────
+   `0017` shipped erasure and retention as SQL that nothing called. These are
+   the jobs that call it, and the properties below are the ones that make an
+   automatic delete safe to turn on. */
+
+console.log("\nenforce_retention — deletes only what somebody asked to be deleted");
+{
+  const { client, calls } = fakeClient({ "select:organizations": { data: [], error: null } });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.enforce_retention({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "an estate where nobody set a retention period deletes nothing",
+    outcome.ok && outcome.result.removed === 0,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "and nothing is pruned to establish that",
+    !calls.some((c) => c.table === "prune_stale_contacts"),
+    JSON.stringify(calls.map((c) => c.table)),
+  );
+  /* The filter is the whole safety property. Reading every org and asking the
+     function to decide would work, but it would also mean one bad `p_org`
+     away from a delete against a tenant with no policy at all. */
+  expect(
+    "the sweep asks only for orgs that configured one",
+    calls.some(
+      (c) =>
+        c.table === "organizations" &&
+        c.filters.some(([k]) => String(k).includes("contact_retention_days")),
+    ),
+    JSON.stringify(calls[0]?.filters),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const { client, calls } = fakeClient({
+    "select:organizations": {
+      data: [{ id: ORG_B, contact_retention_days: 90 }],
+      error: null,
+    },
+    "rpc:prune_stale_contacts": { data: 4, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.enforce_retention({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect("a configured org is pruned", outcome.ok && outcome.result.removed === 4, JSON.stringify(outcome));
+
+  const audit = calls.find((c) => c.table === "write_audit_log_internal");
+  expect(
+    "and the deletion is recorded — CMPL-02 requires it be verifiable afterwards",
+    Boolean(audit) &&
+      (audit?.payload as Record<string, unknown>)?.p_action === "contact_data.retention_pruned",
+    JSON.stringify(audit?.payload),
+  );
+  expect(
+    "against the org whose rows went, not the org the sweep happens to run as",
+    (audit?.payload as Record<string, unknown>)?.p_org === ORG_B,
+    JSON.stringify(audit?.payload),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  // An audit log that is mostly "nothing happened" is one nobody reads on the
+  // day it matters.
+  const { client, calls } = fakeClient({
+    "select:organizations": { data: [{ id: ORG_B, contact_retention_days: 90 }], error: null },
+    "rpc:prune_stale_contacts": { data: 0, error: null },
+  });
+  setAdminClientForTests(client);
+  await HANDLERS.enforce_retention({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a prune that removed nothing writes no audit row",
+    !calls.some((c) => c.table === "write_audit_log_internal"),
+    JSON.stringify(calls.map((c) => c.table)),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* One tenant's broken prune must not suspend retention for every other
+     tenant — and the failure direction is safe: their data is still there. */
+  const { client } = fakeClient({
+    "select:organizations": {
+      data: [
+        { id: ORG_A, contact_retention_days: 30 },
+        { id: ORG_B, contact_retention_days: 30 },
+      ],
+      error: null,
+    },
+    "rpc:prune_stale_contacts": { data: null, error: { message: "deadlock detected" } },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.enforce_retention({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a failing tenant is reported, and the sweep still visits the rest",
+    outcome.ok && Array.isArray(outcome.result.failures) && outcome.result.failures.length === 2,
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\npurge_contact_data — a verifiable deletion, or a loud refusal");
+{
+  const { client, calls } = fakeClient({
+    "rpc:erase_contact": {
+      data: { contact_points: 2, messages_redacted: 5, people: 1 },
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.purge_contact_data({
+    scope: new OrgScope(ORG_A, client),
+    payload: { email: "  Erase.Me@Example.com " },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  expect(
+    "the erasure reports what it actually removed, per table",
+    outcome.ok && outcome.result.messagesRedacted === 5 && outcome.result.contactPoints === 2,
+    JSON.stringify(outcome),
+  );
+  expect(
+    "and normalisation is left to the function, so one implementation decides what an address is",
+    (calls.find((c) => c.table === "erase_contact")?.payload as Record<string, unknown>)
+      ?.p_email === "Erase.Me@Example.com",
+    JSON.stringify(calls.find((c) => c.table === "erase_contact")?.payload),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const { client } = fakeClient();
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.purge_contact_data({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "an erasure with no address fails permanently rather than erasing something else",
+    !outcome.ok && outcome.permanent === true,
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+/* ── Competitor mentions ─────────────────────────────────────────────────
+   `detectMentions` is the entire judgement of `resolve_competitor_mentions`,
+   and its output becomes a badge that changes what a salesperson says out
+   loud. The tests below are mostly about the *wrong* answers: a mention that
+   is not there, and a partnership read as a displacement opportunity. */
+
+const COMPETITORS = [
+  { id: "c_gong", name: "Gong", domain: "gong.io" },
+  { id: "c_sl", name: "Salesloft", domain: "salesloft.com" },
+  { id: "c_close", name: "Close", domain: "close.com" },
+];
+
+console.log("\ndetectMentions — a name is not a relationship");
+{
+  expectEqual(
+    "a bare name is a mention and claims nothing more",
+    detectMentions("Their VP wrote a post referencing Salesloft.", COMPETITORS),
+    [{ competitorId: "c_sl", relationship: "mentions", matched: "Salesloft" }],
+  );
+
+  expectEqual(
+    "leaving is the strongest buying signal there is, and it is not 'uses'",
+    detectMentions("They are migrating away from Salesloft this quarter.", COMPETITORS).map(
+      (m) => m.relationship,
+    ),
+    ["former"],
+  );
+
+  expectEqual(
+    "an integration is a partnership, not a displacement opportunity",
+    detectMentions("The platform integrates with Gong for call recording.", COMPETITORS).map(
+      (m) => m.relationship,
+    ),
+    ["partner"],
+  );
+
+  expectEqual(
+    "a stated deployment is 'uses'",
+    detectMentions("Their revenue team runs on Salesloft today.", COMPETITORS).map(
+      (m) => m.relationship,
+    ),
+    ["uses"],
+  );
+
+  expectEqual(
+    "a comparison in progress is 'evaluating'",
+    detectMentions("They are comparing Gong and two alternatives.", COMPETITORS).map(
+      (m) => m.relationship,
+    ),
+    ["evaluating"],
+  );
+
+  expectEqual(
+    "a competitor nobody named produces nothing",
+    detectMentions("They just raised a Series B led by Acme Ventures.", COMPETITORS),
+    [],
+  );
+}
+
+console.log("\ndetectMentions — the false positive is worse than the miss");
+{
+  expectEqual(
+    "an ambiguous name in ordinary prose is not a mention",
+    detectMentions("Please close the loop with their VP before Friday.", COMPETITORS),
+    [],
+  );
+
+  expectEqual(
+    "the same name as a product name is",
+    detectMentions("Their SDRs work out of Close all day.", COMPETITORS).map(
+      (m) => m.competitorId,
+    ),
+    ["c_close"],
+  );
+
+  expectEqual(
+    "a longer word containing the name does not match it",
+    detectMentions("The gongs rang out across the office.", COMPETITORS),
+    [],
+  );
+
+  expectEqual(
+    "a domain matches regardless of case, which is why resolving one is worth doing",
+    detectMentions("Docs at GONG.IO describe the integration.", COMPETITORS).map(
+      (m) => m.competitorId,
+    ),
+    ["c_gong"],
+  );
+
+  expectEqual(
+    "and a hostname it is only a prefix of is not it",
+    detectMentions("Their status page is at gong.iosomething.net.", COMPETITORS),
+    [],
+  );
+}
+
+console.log("\nresolve_competitor_mentions — what it writes, and what it refuses to");
+{
+  const { client, calls } = fakeClient({
+    "select:competitors": { data: COMPETITORS, error: null },
+    "select:evidence": {
+      data: [
+        {
+          id: "ev_1",
+          claim: "They are moving off Salesloft.",
+          excerpt: "we are moving off Salesloft in Q3",
+          observed_at: "2026-09-01T00:00:00Z",
+          event_date: "2026-08-01T00:00:00Z",
+        },
+        {
+          id: "ev_2",
+          claim: "A blog post mentions Gong.",
+          excerpt: null,
+          observed_at: "2026-08-20T00:00:00Z",
+          event_date: null,
+        },
+      ],
+      error: null,
+    },
+    "insert:job_executions": { data: { id: "job_c" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.resolve_competitor_mentions({
+    scope: new OrgScope(ORG_A, client),
+    payload: { companyId: "co_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+
+  const written = (calls.find(
+    (c) => c.table === "company_competitor_signals" && c.verb === "upsert",
+  )?.payload ?? []) as Record<string, unknown>[];
+
+  expectEqual(
+    "one signal per relationship, strongest phrasing kept",
+    written.map((row) => [row.competitor_id, row.relationship]),
+    [
+      ["c_sl", "former"],
+      ["c_gong", "mentions"],
+    ],
+  );
+  expect(
+    "every signal is an inference — a phrase match is evidence about the text",
+    written.every((row) => row.claim_kind === "inference"),
+    JSON.stringify(written),
+  );
+  expectEqual(
+    "a bare mention is weaker than a stated relationship, and says so",
+    written.map((row) => row.confidence),
+    ["medium", "low"],
+  );
+  expectEqual(
+    "the signal cites the evidence that produced it, so it can be checked",
+    written.map((row) => row.evidence_id),
+    ["ev_1", "ev_2"],
+  );
+  expectEqual(
+    "and is dated when the thing happened, not when we read about it",
+    written[0]?.observed_at,
+    "2026-08-01T00:00:00Z",
+  );
+  expect(
+    "the verdict is stale once a prospect is known to use a competitor",
+    calls.some(
+      (c) =>
+        c.table === "job_executions" &&
+        c.verb === "insert" &&
+        (c.payload as Record<string, unknown>).job_name === "score_opportunity",
+    ),
+    JSON.stringify(calls.map((c) => c.table)),
+  );
+  expect("and the run reports what it scanned", outcome.ok && outcome.result.signals === 2, JSON.stringify(outcome));
+
+  setAdminClientForTests(null);
+}
+
+{
+  // Day one for every org, and it is a success with nothing to do.
+  const { client, calls } = fakeClient({ "select:competitors": { data: [], error: null } });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.resolve_competitor_mentions({
+    scope: new OrgScope(ORG_A, client),
+    payload: { companyId: "co_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "an org with no competitors is not a failure",
+    outcome.ok && typeof outcome.result.skipped === "string",
+    JSON.stringify(outcome),
+  );
+  expect(
+    "and no evidence is read to prove it",
+    !calls.some((c) => c.table === "evidence"),
+    JSON.stringify(calls.map((c) => c.table)),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nresearch_competitor — what it will not spend a model call on");
+{
+  const { client } = fakeClient({
+    "select:competitors": {
+      data: { id: "c_1", name: "Gong", domain: "gong.io", status: "dismissed" },
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.research_competitor({
+    scope: new OrgScope(ORG_A, client),
+    payload: { competitorId: "c_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a competitor a person dismissed is not researched at their expense",
+    outcome.ok && String(outcome.result.skipped).includes("dismissed"),
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const { client } = fakeClient({
+    "select:competitors": {
+      data: { id: "c_1", name: "Gong", domain: null, status: "active" },
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.research_competitor({
+    scope: new OrgScope(ORG_A, client),
+    payload: { competitorId: "c_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a name with no domain fails permanently — retrying will not produce a site",
+    !outcome.ok && outcome.permanent === true,
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const { client } = fakeClient({
+    "select:competitors": {
+      data: {
+        id: "c_1",
+        name: "Gong",
+        domain: "gong.io",
+        status: "active",
+        last_researched_at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      },
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.research_competitor({
+    scope: new OrgScope(ORG_A, client),
+    payload: { competitorId: "c_1" },
+    job: {} as never,
+    now: new Date(),
+  });
+  expect(
+    "a current profile is not re-bought, and the skip says why",
+    outcome.ok && String(outcome.result.skipped).includes("still current"),
+    JSON.stringify(outcome),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nresearch_competitor — the two pure decisions");
+{
+  expectEqual(
+    "a prose list splits on lines and commas",
+    splitList("- Mid-market SaaS\n- Enterprise fintech"),
+    ["Mid-market SaaS", "Enterprise fintech"],
+  );
+  expectEqual(
+    "but a number keeps its thousands separator",
+    splitList("Teams of 1,000 seats and up"),
+    ["Teams of 1,000 seats and up"],
+  );
+  expectEqual(
+    "overlap is containment in both directions, because exact-match lists never intersect",
+    icpOverlap(["Mid-market SaaS", "Public sector"], ["SaaS", "Fintech"]),
+    ["Mid-market SaaS"],
+  );
+  expectEqual(
+    "and an org with no ICP yet overlaps with nothing rather than erroring",
+    icpOverlap(["Mid-market SaaS"], []),
+    [],
   );
 }
 

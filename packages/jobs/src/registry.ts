@@ -49,6 +49,17 @@ import { advanceEnrollments } from "./handlers/advance-enrollments.ts";
 import { sendMessage } from "./handlers/send-message.ts";
 import { scheduleLearning } from "./handlers/schedule-learning.ts";
 import { analyzePerformanceJob } from "./handlers/analyze-performance.ts";
+import { scheduleDiscovery } from "./handlers/schedule-discovery.ts";
+import { discoverCompanies } from "./handlers/discover-companies.ts";
+import { enrichCompanyJob } from "./handlers/enrich-company.ts";
+import { rankContactsJob } from "./handlers/rank-contacts.ts";
+import { resolveEntity } from "./handlers/resolve-entity.ts";
+import { researchCompetitorJob } from "./handlers/research-competitor.ts";
+import { resolveCompetitorMentions } from "./handlers/resolve-competitor-mentions.ts";
+import { purgeContactData } from "./handlers/purge-contact-data.ts";
+import { enforceRetention } from "./handlers/enforce-retention.ts";
+import { recomputeScores } from "./handlers/recompute-scores.ts";
+import { scheduleRecomputes } from "./handlers/schedule-recomputes.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -63,4 +74,15 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   send_message: sendMessage,
   schedule_learning: scheduleLearning,
   analyze_performance: analyzePerformanceJob,
+  schedule_discovery: scheduleDiscovery,
+  discover_companies: discoverCompanies,
+  enrich_company: enrichCompanyJob,
+  rank_contacts: rankContactsJob,
+  resolve_entity: resolveEntity,
+  research_competitor: researchCompetitorJob,
+  resolve_competitor_mentions: resolveCompetitorMentions,
+  purge_contact_data: purgeContactData,
+  enforce_retention: enforceRetention,
+  recompute_scores: recomputeScores,
+  schedule_recomputes: scheduleRecomputes,
 };

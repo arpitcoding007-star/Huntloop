@@ -160,6 +160,8 @@ export async function scanSource(ctx: JobContext): Promise<JobOutcome> {
   let events = 0;
   let companies = 0;
   let skippedExtraction: string | null = null;
+  /** Companies this scan wrote evidence about, for the dedupe pass below. */
+  const touched = new Set<string>();
 
   for (const doc of fresh.slice(0, MAX_EXTRACTIONS_PER_SCAN)) {
     /* An empty document is a fetch that succeeded and produced nothing to read
@@ -198,10 +200,31 @@ export async function scanSource(ctx: JobContext): Promise<JobOutcome> {
       const resolved = await recordSignal(ctx, sourceId, doc.id, doc.url, signal);
       if (resolved.recorded) events++;
       if (resolved.companyCreated) companies++;
+      if (resolved.companyId) touched.add(resolved.companyId);
     }
   }
 
   /* ── close out ─────────────────────────────────────────────────────── */
+
+  /* `EVD-02`. One feed frequently carries the same story twice — a summary
+     item and the full article, or a syndicated copy — and three feeds carry
+     it three times. Merged once per company at the end of the scan rather
+     than once per row, because the answer is only right when the whole batch
+     has landed, which is the same reason `flag_contradictions` is a separate
+     call.
+
+     Failing here does not fail the scan: the evidence is already written and
+     correct, and duplicates are a presentation problem. Retrying a completed
+     scan to tidy them would re-fetch the source. */
+  let merged = 0;
+  for (const companyId of touched) {
+    const { data, error: mergeError } = await scope.rpc("merge_duplicate_evidence", {
+      p_org: scope.orgId,
+      p_subject_type: "company",
+      p_subject: companyId,
+    });
+    if (!mergeError) merged += Number(data ?? 0);
+  }
 
   await scope.rpc("record_source_success", { p_source: sourceId });
 
@@ -226,6 +249,7 @@ export async function scanSource(ctx: JobContext): Promise<JobOutcome> {
       duplicates,
       events,
       companies,
+      merged_evidence: merged,
       ...(skippedExtraction ? { extraction_skipped: skippedExtraction } : {}),
     },
   };
@@ -251,7 +275,7 @@ async function recordSignal(
   documentId: string,
   documentUrl: string,
   signal: ExtractedSignal,
-): Promise<{ recorded: boolean; companyCreated: boolean }> {
+): Promise<{ recorded: boolean; companyCreated: boolean; companyId: string | null }> {
   const { scope } = ctx;
   let companyId: string | null = null;
   let companyCreated = false;
@@ -300,9 +324,9 @@ async function recordSignal(
     kind: signal.kind,
     url: documentUrl,
   });
-  if (eventError) return { recorded: false, companyCreated };
+  if (eventError) return { recorded: false, companyCreated, companyId };
 
-  if (!companyId) return { recorded: true, companyCreated };
+  if (!companyId) return { recorded: true, companyCreated, companyId: null };
 
   /* §52. The excerpt is the whole value of the row — it is what lets a person
      answer "why do you think this?" without re-reading the page, and
@@ -348,7 +372,19 @@ async function recordSignal(
     idempotencyKey: `score:${companyId}`,
   });
 
-  return { recorded: true, companyCreated };
+  /* New evidence about a company is the only moment a competitor mention can
+     appear, so this is where the resolver is asked. Same idempotency shape,
+     and deliberately a separate job rather than an inline call: the scan's
+     work is already recorded, and a competitor list that fails to load must
+     not turn a successful scan into a retried one. */
+  await enqueue({
+    orgId: scope.orgId,
+    name: "resolve_competitor_mentions",
+    payload: { companyId },
+    idempotencyKey: `competitors:${companyId}`,
+  });
+
+  return { recorded: true, companyCreated, companyId };
 }
 
 /**

@@ -57,6 +57,23 @@ export {
   type ResearchFinding,
 } from "./tasks/research-company.ts";
 
+/**
+ * Reading a *third party's* site, which is a stricter job than reading the
+ * customer's own. Its output becomes sentences a salesperson repeats to a
+ * prospect about a company that is not present to correct them, so pricing is
+ * fact-or-nothing and an unsourced strength is refused.
+ */
+export {
+  COMPETITOR_FIELDS,
+  COMPETITOR_FIELD_LABELS,
+  isCompetitorField,
+  researchCompetitor,
+  type CompetitorField,
+  type CompetitorFinding,
+  type CompetitorProfile,
+  type ResearchCompetitorInput,
+} from "./tasks/research-competitor.ts";
+
 export {
   MAX_RECOMMENDATIONS,
   SOURCE_KINDS,
@@ -66,6 +83,17 @@ export {
   type SourceKind,
   type SourceRecommendation,
 } from "./tasks/recommend-sources.ts";
+
+export {
+  ICP_REGIONS,
+  ICP_SIZE_BANDS,
+  draftBases,
+  draftIcp,
+  type DraftedField,
+  type IcpDraft,
+  type IcpDraftInput,
+  type PersonaDraftOutput,
+} from "./tasks/draft-icp.ts";
 
 export {
   PRIORITIES,

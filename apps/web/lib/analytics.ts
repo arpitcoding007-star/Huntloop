@@ -55,7 +55,30 @@ export type AnalyticsEvent =
   | "analysis_requested"
   | "analysis_refused";
 
-export type OnboardingStep = "organisation" | "product" | "icp" | "sources";
+/**
+ * The funnel's steps.
+ *
+ * Deliberately NOT `lib/onboarding/steps.ts`'s union, even though the two
+ * overlap. This is a *reporting* vocabulary and it has to stay stable across
+ * product changes: renaming a screen must not silently split one funnel into
+ * two series that nobody can join, and retiring a screen must not make the
+ * historical data unreadable.
+ *
+ * So `organisation` and `product` stay after the screens by those names were
+ * folded into `company` — the events already recorded under them are real, and
+ * dropping the member here would make a year of funnel data fail to typecheck
+ * rather than fail to compare.
+ */
+export type OnboardingStep =
+  | "organisation"
+  | "product"
+  | "you"
+  | "company"
+  | "goals"
+  | "icp"
+  | "sources"
+  | "building"
+  | "review";
 
 /** Closed set, for the reason given above: no free-form strings leave here. */
 export interface AnalyticsProperties {

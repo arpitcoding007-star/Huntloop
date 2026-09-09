@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { CLAIM_KINDS, CONFIDENCES, PRIORITIES, SCORE_DIMENSIONS } from "@huntloop/ai";
 import { ORG_TONES } from "@huntloop/db/org-profile";
+import {
+  GOALS,
+  MAX_GOALS,
+  FIRST_RUN_STAGES,
+  ONBOARDING_STEPS,
+  OUTREACH_CHANNELS,
+  USER_ROLES,
+} from "./onboarding/steps";
 
 /**
  * Schemas for everything that crosses a Server Action boundary.
@@ -395,6 +403,15 @@ export const opportunityStatusSchema = z.enum([
 export const threadStatusSchema = z.enum(["open", "snoozed", "closed"]);
 
 /**
+ * The four bands, for the one endpoint that lets a person overrule one.
+ *
+ * The same `PRIORITIES` the qualifier and the rule evaluator use — exported
+ * separately from the internal `priority` above only because SCO-02's action
+ * validates a bare string rather than a form object.
+ */
+export const priorityBandSchema = priority;
+
+/**
  * Parses, and reports *which field* failed.
  *
  * `parseInput` above returns one sentence, which is right for a single scalar
@@ -513,3 +530,116 @@ export const agentQuestionSchema = z
   .trim()
   .min(1, "Ask something first.")
   .max(2000, "That question is longer than the agent will read. Trim it to 2 000 characters.");
+
+/* ── Onboarding ────────────────────────────────────────────────────────────
+ *
+ * Every enum below is derived from `lib/onboarding/steps.ts` rather than
+ * retyped, for the reason given at the top of this file: a literal union
+ * copied by hand drifts the first time a member is added, and it drifts
+ * silently — the schema keeps validating and starts rejecting the new member
+ * as invalid input.
+ *
+ * Each of these also has a CHECK constraint in `0024`. The duplication is the
+ * correct kind: the constraint is the last line and cannot be bypassed, this
+ * is the first line and produces a sentence instead of a Postgres error code.
+ */
+
+export const onboardingStepSchema = z.enum(ONBOARDING_STEPS);
+
+export const youStepSchema = z.object({
+  /* 120 rather than the 160 `name` uses: this is a person's name, it is
+     rendered into an email signature, and there is no human name that needs
+     more. The lower bound is 1 because mononyms exist. */
+  fullName: z.string().trim().min(1, "We need something to call you.").max(120),
+  role: z.enum(USER_ROLES),
+});
+
+export const goalsStepSchema = z.object({
+  /* At least one, at most two. The floor matters as much as the cap: an empty
+     selection tells the dashboard nothing and would leave the user with the
+     generic layout while believing they had chosen. */
+  goals: z
+    .array(z.enum(GOALS))
+    .min(1, "Pick at least one, so we know what to lead with.")
+    .max(MAX_GOALS, `Pick at most ${MAX_GOALS} — more than that isn't a priority.`),
+  channel: z.enum(OUTREACH_CHANNELS),
+});
+
+/**
+ * The employee range a provider filter takes.
+ *
+ * Nullable on both ends independently: "at least 50, no upper bound" is a real
+ * ICP and `{min: 50, max: null}` is how `packages/db/src/icp.ts` spells it.
+ */
+const employeeRangeSchema = z
+  .object({
+    min: z.number().int().min(0).max(10_000_000).nullable(),
+    max: z.number().int().min(0).max(10_000_000).nullable(),
+  })
+  .nullable();
+
+/**
+ * The ICP as the onboarding screen submits it.
+ *
+ * Wider than `icpFormSchema`, which is the settings form's four v1 lists.
+ * `0013` gave `criteria` fifteen typed keys and `translateIcp()` maps every
+ * one to a provider filter or reports it as unmappable — writing only the four
+ * means discovery searches on a quarter of what the user said, silently.
+ *
+ * Every list is optional rather than defaulted to `[]`, because
+ * `packages/db/src/icp.ts` is built on the distinction between "not stated"
+ * and "stated as none" and defaulting here would erase it at the boundary.
+ */
+export const icpStepSchema = z.object({
+  segments: stringList.optional(),
+  sizes: stringList.optional(),
+  regions: stringList.optional(),
+  triggers: stringList.optional(),
+  industries: stringList.optional(),
+  employeeRange: employeeRangeSchema.optional(),
+  technologies: stringList.optional(),
+  businessModels: stringList.optional(),
+  painPoints: stringList.optional(),
+  useCases: stringList.optional(),
+  exampleCompanies: stringList.optional(),
+  exclusions: stringList.optional(),
+  /* Domains, not URLs. This is the one exclusion that is exact rather than
+     fuzzy, and 253 is the DNS maximum for a fully qualified name. */
+  excludeDomains: z.array(z.string().trim().min(1).max(253)).max(200).optional(),
+
+  personaName: z.string().trim().max(160).optional(),
+  titles: stringList.optional(),
+  seniority: stringList.optional(),
+  departments: stringList.optional(),
+  excludeTitles: stringList.optional(),
+
+  /* The reach estimate, from a provider's own count for a zero-row search.
+     Bounded well above any real market and at zero below, because "no
+     companies match" is a meaningful and important answer. */
+  addressableEstimate: z.number().int().min(0).max(1_000_000_000).optional(),
+});
+
+export const sourcesStepSchema = z.object({
+  sources: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(160),
+        kind: z.string().trim().max(40),
+        url: z.string().trim().max(2048).nullable(),
+        recommendedBy: z.enum(["system", "user"]),
+      }),
+    )
+    /* 60 is far past what `recommend_sources` returns plus a reasonable number
+       of hand-added feeds, and it stops a caller inserting ten thousand rows
+       into a tenant's source list in one request. */
+    .max(60),
+});
+
+/**
+ * A first-run stage name.
+ *
+ * Derived from the jobs package's own list rather than retyped, for the reason
+ * at the top of this file. It is a `z.enum` over a readonly tuple, so adding a
+ * stage there without a runner here is a type error at the call site.
+ */
+export const firstRunStageSchema = z.enum(FIRST_RUN_STAGES);

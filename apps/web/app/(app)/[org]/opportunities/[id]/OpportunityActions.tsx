@@ -1,16 +1,26 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Badge, Button, Field, FormMessage, Select } from "@huntloop/ui";
-import { Send, UserPlus } from "lucide-react";
+import { Badge, Button, Field, FormMessage, Input, Select } from "@huntloop/ui";
+import { Send, ThumbsDown, UserPlus } from "lucide-react";
 import type { Member } from "../../../../../lib/data/team";
 import type { CampaignTarget } from "../../../../../lib/data/outreach";
 import { assignOpportunityAction } from "../../team/actions";
 import { enrollOpportunitiesAction } from "../actions";
+import { overridePriorityAction } from "./actions";
 
 /**
- * The two things a person does from this page: give it an owner, and put it
- * into a campaign.
+ * The three things a person does from this page: give it an owner, put it into
+ * a campaign, and say the verdict is wrong.
+ *
+ * ── Why disagreeing is a first-class action ──────────────────────────────
+ *
+ * `0016` built `human_overrides` around a specific moment: a salesperson looks
+ * at a `hot` opportunity, knows it is not, and says so. That is a labelled
+ * training example about their own market, with a reason attached, supplied for
+ * free — and before this control existed the product had nowhere to receive
+ * one. The band would be silently ignored by a person who stopped trusting the
+ * ranking, which is the failure that ends with the scores being decoration.
  *
  * ── Why these were `pending` and are not any more ────────────────────────
  *
@@ -35,6 +45,7 @@ export function OpportunityActions({
   opportunityId,
   owner,
   ownerId,
+  priority,
   members,
   campaigns,
   canWrite,
@@ -44,12 +55,15 @@ export function OpportunityActions({
   /** The label — "You", or "another member". See `OpportunityDetail.owner`. */
   owner: string | null;
   ownerId: string | null;
+  /** The band the system arrived at. What a disagreement is recorded against. */
+  priority: string;
   members: Member[];
   campaigns: CampaignTarget[];
   canWrite: boolean;
 }) {
   const [assigning, setAssigning] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
+  const [disagreeing, setDisagreeing] = useState(false);
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
   >(null);
@@ -87,11 +101,26 @@ export function OpportunityActions({
       >
         Add to campaign
       </Button>
+      {/* The disagreement. Deliberately as prominent as the other two: a
+          salesperson overruling the verdict is the highest-quality signal this
+          product can receive, and a control they have to hunt for is one they
+          use once. */}
+      <Button
+        variant="ghost"
+        icon={ThumbsDown}
+        onClick={() => {
+          setDisagreeing((open) => !open);
+          setAssigning(false);
+          setEnrolling(false);
+        }}
+      >
+        Disagree
+      </Button>
 
       {/* Full-width, so the panels sit under the header rather than squeezing
           the score and status badges beside them. `basis-full` inside the
           header's existing wrap is what puts them on their own line. */}
-      {(assigning || enrolling) && (
+      {(assigning || enrolling || disagreeing) && (
         <div className="basis-full rounded-md border border-line bg-surface p-4">
           {assigning && (
             <Assign
@@ -110,6 +139,15 @@ export function OpportunityActions({
               campaigns={campaigns}
               onResult={setResult}
               onDone={() => setEnrolling(false)}
+            />
+          )}
+          {disagreeing && (
+            <Disagree
+              org={org}
+              opportunityId={opportunityId}
+              priority={priority}
+              onResult={setResult}
+              onDone={() => setDisagreeing(false)}
             />
           )}
         </div>
@@ -255,4 +293,101 @@ function memberLabel(member: Member): string {
   if (member.isYou) return "You";
   if (member.name && member.email) return `${member.name} · ${member.email}`;
   return member.name ?? member.email ?? member.userId;
+}
+
+/**
+ * Overruling the verdict, with the reason that makes it useful.
+ *
+ * ── Why the reason is asked for and not required ─────────────────────────
+ *
+ * A reason is what turns "they disagreed" into something a rule proposal can
+ * be derived from — `human_overrides.reason` exists for exactly that. But
+ * requiring it would mean a salesperson in a hurry either types "wrong" to get
+ * past the field, or does not correct the band at all. The first pollutes the
+ * signal and the second loses it, so the field is offered and the band is
+ * recorded either way.
+ *
+ * ── Why it is a submit rather than a Select that fires on change ─────────
+ *
+ * Unlike the owner picker above, this writes a permanent record of somebody's
+ * judgement. A mis-click on a dropdown should not file a correction under
+ * their name, and the reason box needs somewhere to be typed before the write
+ * happens anyway.
+ */
+function Disagree({
+  org,
+  opportunityId,
+  priority,
+  onResult,
+  onDone,
+}: {
+  org: string;
+  opportunityId: string;
+  priority: string;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
+  onDone: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [band, setBand] = useState(priority);
+  const [reason, setReason] = useState("");
+
+  return (
+    <div className="max-w-[520px] space-y-3">
+      <p className="text-[12px] text-fg-muted">
+        The system called this <strong className="text-fg-secondary">{priority}</strong>. Setting a
+        different band changes it now and keeps your correction, which the weekly
+        analysis reads alongside what actually happened.
+      </p>
+
+      <Field label="Priority">
+        {(field) => (
+          <Select
+            {...field}
+            value={band}
+            disabled={pending}
+            onChange={(e) => setBand(e.target.value)}
+          >
+            <option value="hot">Hot</option>
+            <option value="warm">Warm</option>
+            <option value="watch">Watch</option>
+            <option value="ignore">Ignore</option>
+          </Select>
+        )}
+      </Field>
+
+      <Field label="Why (optional)" hint="A sentence is enough. It is what a rule can be drafted from.">
+        {(field) => (
+          <Input
+            {...field}
+            value={reason}
+            maxLength={500}
+            disabled={pending}
+            placeholder="Too small for us to serve well"
+            onChange={(e) => setReason(e.target.value)}
+          />
+        )}
+      </Field>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="primary"
+          disabled={pending || band === priority}
+          onClick={() =>
+            start(async () => {
+              const res = await overridePriorityAction(org, opportunityId, band, reason || null);
+              onResult(
+                res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
+              );
+              if (res.ok) onDone();
+            })
+          }
+        >
+          {pending ? "Saving…" : "Record my correction"}
+        </Button>
+        <Button variant="ghost" disabled={pending} onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
 }

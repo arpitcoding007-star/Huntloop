@@ -1,6 +1,13 @@
+import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { getDashboard } from "../../../../lib/data/dashboard";
+import { getOnboardingState } from "../../../../lib/data/onboarding";
+import { personalize, type DashboardSection } from "../../../../lib/data/personalization";
+import { getIcpQuality } from "../../../../lib/data/icp-quality";
+import { IcpQualityCard } from "./IcpQualityCard";
+import { getNudge } from "../../../../lib/data/nudges";
+import { LearningNudge } from "./LearningNudge";
 import { RefreshButton } from "../RefreshButton";
 import {
   ActionRail,
@@ -77,10 +84,17 @@ export default async function DashboardPage({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
-  const [viewer, { data }] = await Promise.all([
+  const [viewer, { data }, onboarding, icpQuality, nudge] = await Promise.all([
     currentViewer(org),
     getDashboard(org),
+    getOnboardingState(org),
+    getIcpQuality(org),
+    getNudge(org),
   ]);
+
+  /* The layout this person gets. Order and defaults only — never capability;
+     see lib/data/personalization.ts for why that line is where it is. */
+  const layout = personalize(onboarding?.role ?? null, onboarding?.goals ?? [], org);
   const mayHunt = canSpend(viewer);
 
   /* Resolved once per request and passed down, so every relative age on the
@@ -97,95 +111,22 @@ export default async function DashboardPage({
      one. In demo mode the layout's `DataSourceBanner` already says the whole
      deployment is on fixtures, and two banners saying the same thing in
      different words reads as one of them being about something else. */
-  return (
-    <>
-      <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
-      {/* ── Main column ─────────────────────────────────────────────── */}
-      <div className="min-w-0">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-[30px] leading-9 font-semibold text-fg">
-                Command Center
-              </h1>
-              {/* No "Live" badge. It described the hunt, not the data, and
-                  next to invented figures it read as a claim that they were
-                  real — the §7 failure this screen is most exposed to. */}
-            </div>
-            <p className="mt-1 text-[13px] text-fg-muted">
-              {org} · {totalOpportunities === 0
-                ? "no opportunities yet"
-                : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
-            </p>
-          </div>
-          {/* "Analyze a URL" starts work that costs money, so a viewer does not
-              get a button that would fail at the database (audit FEAT-04). It
-              is a link rather than a `pending` button, because unlike the
-              "New hunt" it replaced, its destination exists: scheduled hunting
-              is the sources screen's scan interval, and one-off qualification
-              is Analyze. There was never a third thing for that button to do. */}
-          <div className="flex items-center gap-2">
-            <RefreshButton />
-            <Button
-              icon={Radar}
-              variant="secondary"
-              href={`/${org}/sources`}
-              linkComponent={Link}
-            >
-              Sources
-            </Button>
-            {mayHunt && (
-              <Button
-                icon={Plus}
-                variant="primary"
-                href={`/${org}/analyze`}
-                linkComponent={Link}
-              >
-                Analyze a URL
-              </Button>
-            )}
-          </div>
-        </header>
-
-        {/*
-          Alert chips. All three were `href="#"` — links that look like links,
-          announce as links, and go nowhere (audit A11Y-03 caught them; the
-          underlying fault is the FEAT-01 one, the product asserting a
-          capability it doesn't have).
-
-          The counts are real now, and each chip is rendered only when its
-          count is non-zero: "0 new triggers in the last 24h" is a sentence
-          nobody needs, and a row of zeroes reads as a broken screen rather
-          than a quiet week.
-        */}
-        <div className="mt-6 flex flex-wrap gap-2">
-          {data.triggersLastDay > 0 && (
-            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
-              <Zap className="size-3.5" strokeWidth={1.75} />
-              {data.triggersLastDay} new{" "}
-              {data.triggersLastDay === 1 ? "trigger" : "triggers"} in the last 24h
-            </span>
-          )}
-          {data.awaitingReview > 0 && (
-            <Link
-              href={`/${org}/opportunities`}
-              className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
-            >
-              <Sparkles className="size-3.5" strokeWidth={1.75} />
-              {data.awaitingReview}{" "}
-              {data.awaitingReview === 1 ? "opportunity" : "opportunities"} awaiting your
-              review →
-            </Link>
-          )}
-          <Link
-            href={`/${org}/analyze`}
-            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
-          >
-            <Search className="size-3.5" strokeWidth={1.75} />
-            Analyze a company URL →
-          </Link>
-        </div>
-
+  /*
+   * The main column, as values rather than in source order.
+   *
+   * Rendered from `layout.order`, so a founder leads with why-now, an SDR
+   * leads with sending capacity, and a RevOps lead leads with the loop. The
+   * content of each section is identical for all of them.
+   *
+   * Every section is always present. Personalization reorders and never
+   * removes, because a role that hides a feature produces a support ticket
+   * reading "where did X go" — and it means somebody who picked the wrong
+   * option in onboarding is quietly locked out of something they can see a
+   * nav item for.
+   */
+  const sections: Record<DashboardSection, ReactNode> = {
+    counts: (
+      <>
         {/* §15 — the headline classification, above everything else.
             Each card deep-links into the list filtered to its bucket, which is
             why `?priority=` exists on that page. These four were `href="#"`:
@@ -235,7 +176,10 @@ export default async function DashboardPage({
             />
           </StatGrid>
         </section>
-
+      </>
+    ),
+    whyNow: (
+      <>
         {/* §13 + §52 — the differentiator, and the reason the score is
             trustworthy. Evidence sits inline rather than behind a click:
             a why-now claim with the source one page away is a claim most
@@ -245,10 +189,27 @@ export default async function DashboardPage({
           {whyNow.length === 0 ? (
             <Card className="mt-3">
               <div className="p-5">
+                {/* An empty state that names the one next thing to do, rather
+                    than describing what would be here if there were anything.
+                    A first-run user cannot tell "nothing has arrived yet" from
+                    "this is broken", and the difference between the two is a
+                    single sentence saying what to do about it. The action is
+                    chosen from what they said they wanted in onboarding — one,
+                    not a menu, because somebody who has just answered five
+                    questions has spent their decision budget. */}
                 <EmptyState
                   icon={Search}
                   title="Nothing is waiting for a verdict"
-                  description="Why now lists the opportunities nobody has triaged yet. When a scan turns up a company that fits, it appears here with the evidence behind it."
+                  description="Why now lists the opportunities nobody has triaged yet. When a scan or a search turns up a company that fits, it appears here with the evidence behind it."
+                  action={
+                    <Button
+                      variant="secondary"
+                      href={layout.firstAction.href}
+                      linkComponent={Link}
+                    >
+                      {layout.firstAction.label}
+                    </Button>
+                  }
                 />
               </div>
             </Card>
@@ -326,7 +287,10 @@ export default async function DashboardPage({
             </div>
           )}
         </section>
-
+      </>
+    ),
+    loop: (
+      <>
         {/* Activity, demoted below the verdict it produces. Each card now has
             the screen its number came from, because each of those screens
             exists — they were `href="#"` when they did not. */}
@@ -400,7 +364,10 @@ export default async function DashboardPage({
             />
           </StatGrid>
         </section>
-
+      </>
+    ),
+    capacity: (
+      <>
         {capacity.length > 0 && (
           <section className="mt-10">
             <SectionLabel>Sending capacity</SectionLabel>
@@ -413,7 +380,10 @@ export default async function DashboardPage({
             </Card>
           </section>
         )}
-
+      </>
+    ),
+    signals: (
+      <>
         <section className="mt-10 grid gap-4 lg:grid-cols-2">
           <Card flush>
             <CardHeader
@@ -447,6 +417,128 @@ export default async function DashboardPage({
             </div>
           </Card>
         </section>
+      </>
+    ),
+  };
+
+  return (
+    <>
+      <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
+      {/* ── Main column ─────────────────────────────────────────────── */}
+      <div className="min-w-0">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-[30px] leading-9 font-semibold text-fg">
+                Command Center
+              </h1>
+              {/* No "Live" badge. It described the hunt, not the data, and
+                  next to invented figures it read as a claim that they were
+                  real — the §7 failure this screen is most exposed to. */}
+            </div>
+            <p className="mt-1 text-[13px] text-fg-muted">
+              {org} · {totalOpportunities === 0
+                ? "no opportunities yet"
+                : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
+            </p>
+            {/* What this arrangement leads with, said out loud. A dashboard
+                that quietly rearranged itself per user would be disorienting;
+                one that names why it is arranged this way is legible — and it
+                makes the role answer from onboarding visibly load-bearing
+                rather than a question that went nowhere. */}
+            <p className="mt-1 text-[13px] text-fg-secondary">{layout.lead}</p>
+          </div>
+          {/* "Analyze a URL" starts work that costs money, so a viewer does not
+              get a button that would fail at the database (audit FEAT-04). It
+              is a link rather than a `pending` button, because unlike the
+              "New hunt" it replaced, its destination exists: scheduled hunting
+              is the sources screen's scan interval, and one-off qualification
+              is Analyze. There was never a third thing for that button to do. */}
+          <div className="flex items-center gap-2">
+            <RefreshButton />
+            <Button
+              icon={Radar}
+              variant="secondary"
+              href={`/${org}/sources`}
+              linkComponent={Link}
+            >
+              Sources
+            </Button>
+            {mayHunt && (
+              <Button
+                icon={Plus}
+                variant="primary"
+                href={`/${org}/analyze`}
+                linkComponent={Link}
+              >
+                Analyze a URL
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {/*
+          Alert chips. All three were `href="#"` — links that look like links,
+          announce as links, and go nowhere (audit A11Y-03 caught them; the
+          underlying fault is the FEAT-01 one, the product asserting a
+          capability it doesn't have).
+
+          The counts are real now, and each chip is rendered only when its
+          count is non-zero: "0 new triggers in the last 24h" is a sentence
+          nobody needs, and a row of zeroes reads as a broken screen rather
+          than a quiet week.
+        */}
+        <div className="mt-6 flex flex-wrap gap-2">
+          {data.triggersLastDay > 0 && (
+            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
+              <Zap className="size-3.5" strokeWidth={1.75} />
+              {data.triggersLastDay} new{" "}
+              {data.triggersLastDay === 1 ? "trigger" : "triggers"} in the last 24h
+            </span>
+          )}
+          {data.awaitingReview > 0 && (
+            <Link
+              href={`/${org}/opportunities`}
+              className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text transition-colors duration-[120ms] hover:border-brand"
+            >
+              <Sparkles className="size-3.5" strokeWidth={1.75} />
+              {data.awaitingReview}{" "}
+              {data.awaitingReview === 1 ? "opportunity" : "opportunities"} awaiting your
+              review →
+            </Link>
+          )}
+          <Link
+            href={`/${org}/analyze`}
+            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+          >
+            <Search className="size-3.5" strokeWidth={1.75} />
+            Analyze a company URL →
+          </Link>
+        </div>
+
+        {/* Ordered by role and goal — see the record above. The fragment
+            carries the key, because a section is a JSX expression rather than
+            a component and cannot take one itself. */}
+        {layout.order.map((name) => (
+          <Fragment key={name}>{sections[name]}</Fragment>
+        ))}
+
+        {/* Below the work, not above it.
+            This is advice about the profile rather than something that needs
+            doing today, and a suggestion sitting above the pipeline would be
+            read as an interruption. It returns null on its own once the
+            profile is complete or the viewer has dismissed it. */}
+        {/* One card, not two.
+            The learning nudge wins when there is one: it is about something
+            that has *happened* — ten approvals, a rejection streak, a reply —
+            where the quality card is about a field that was never filled in.
+            Stacking both would put two pieces of advice under a pipeline
+            somebody opened to work, and two suggestions get read as none. */}
+        {nudge ? (
+          <LearningNudge org={org} nudge={nudge} />
+        ) : icpQuality ? (
+          <IcpQualityCard org={org} quality={icpQuality} />
+        ) : null}
 
         {/* §7 — the rule the whole product rests on, stated where the numbers
             above are read rather than buried in a docs page. */}

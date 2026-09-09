@@ -46,4 +46,11 @@ export const RESERVED_SLUGS = new Set([
   "kitchen-sink",
   "settings",
   "new",
+  /* Static segments win over `[org]` in Next's matcher, so none of these
+     would actually shadow a real route. They are reserved because an
+     organisation whose URL is `/orgs` or `/invite` is unreachable in practice
+     and unreadable in every breadcrumb, which is reason enough. */
+  "orgs",
+  "invite",
+  "unsubscribe",
 ]);

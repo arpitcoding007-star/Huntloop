@@ -15,8 +15,8 @@ import {
 } from "@huntloop/ui";
 import { Check, Compass, Plus, X } from "lucide-react";
 import type { SourceKind, SourceRecommendation } from "@huntloop/ai";
-import { clearDraft, draftIcp, readDraft } from "../../../../lib/onboarding/draft";
 import { recommendSourcesAction, type SourcesState } from "./actions";
+import { saveSources } from "../actions";
 
 /**
  * §10 — source discovery.
@@ -34,6 +34,23 @@ import { recommendSourcesAction, type SourcesState } from "./actions";
  * "because you said you sell to crypto trading desks" is checkable against
  * something the user typed, where a reason written by the model is only
  * plausible.
+ *
+ * ── Two changes from the version that did not save ───────────────────────
+ *
+ * **It writes rows.** The previous step called `clearDraft()` and navigated to
+ * the dashboard, so the sources a user had just reviewed were discarded
+ * (`ONB-01`). Each accepted source is now a `sources` row carrying
+ * `recommended_by`, which `0002` added specifically so the learning loop could
+ * later ask whether system picks or user picks produced better opportunities —
+ * a question that is unanswerable retroactively.
+ *
+ * **The gate moved.** Continue used to be disabled with zero sources, which
+ * was right when `scan_source` was the only way a company could enter the
+ * system. It is wrong now: with `discover_companies` and an ICP that maps to a
+ * provider search, a workspace can have no sources and a full pipeline.
+ * Sources are how you catch a *trigger*; discovery is how you find the
+ * company. Requiring one to reach the other would block the user whose market
+ * has no trade press.
  */
 
 /**
@@ -71,6 +88,8 @@ export function SourcesStep({ org }: { org: string }) {
   const [removed, setRemoved] = useState<string[]>([]);
   const [custom, setCustom] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Recommending costs a model call. In development, StrictMode mounts effects
   // twice, and without this every visit to this screen would quietly bill for
@@ -80,16 +99,11 @@ export function SourcesStep({ org }: { org: string }) {
   const started = useRef(false);
 
   const run = useCallback(async () => {
-    const icp = draftIcp(readDraft());
-    if (!icp) {
-      setPhase("no-icp");
-      return;
-    }
     setPhase("loading");
     setState({});
-    const next = await recommendSourcesAction(org, icp);
+    const next = await recommendSourcesAction(org);
     setState(next);
-    setPhase(next.result ? "ready" : "error");
+    setPhase(next.noIcp ? "no-icp" : next.result ? "ready" : "error");
   }, [org]);
 
   useEffect(() => {
@@ -97,6 +111,39 @@ export function SourcesStep({ org }: { org: string }) {
     started.current = true;
     void run();
   }, [run]);
+
+  async function finish() {
+    const accepted = (state.result?.recommendations ?? []).filter(
+      (s) => !removed.includes(keyOf(s)),
+    );
+
+    setSaving(true);
+    setSaveError(null);
+
+    const result = await saveSources(org, [
+      ...accepted.map((s) => ({
+        name: s.name,
+        kind: s.kind,
+        url: s.url,
+        recommendedBy: "system" as const,
+      })),
+      ...custom.map((url) => ({
+        // Named by host, because a source list of bare URLs is unreadable and
+        // `sources.name` is `not null`. The user can rename it in settings.
+        name: hostOf(url) ?? url,
+        kind: "custom",
+        url,
+        recommendedBy: "user" as const,
+      })),
+    ]);
+
+    setSaving(false);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
+    }
+    router.push(`/welcome/building?org=${org}`);
+  }
 
   if (phase === "no-icp") {
     return (
@@ -153,17 +200,22 @@ export function SourcesStep({ org }: { org: string }) {
           <RateLimited
             className="mt-6 max-w-2xl"
             retryAt={state.rateLimited.retryAt ?? undefined}
-            description="Nothing was saved. You can add your own sources on the next screen in the meantime."
+            description="Nothing was saved. You can add your own sources below, or carry on — discovery works from your profile either way."
           />
         ) : (
           <ErrorState
             className="mt-6 max-w-2xl"
             title="We couldn't work out your sources"
-            description="Nothing was saved. You can try again, or add your own sources on the next screen."
+            description="Nothing was saved. You can try again, add your own below, or carry on without them."
             detail={state.error}
             onRetry={() => void run()}
           />
         )}
+        <div className="mt-4">
+          <Button variant="secondary" onClick={() => void finish()} disabled={saving}>
+            {saving ? "Saving…" : "Carry on without sources"}
+          </Button>
+        </div>
       </>
     );
   }
@@ -317,6 +369,7 @@ export function SourcesStep({ org }: { org: string }) {
                 onChange={(e) => setDraft(e.target.value)}
                 aria-label="Add your own source"
                 placeholder="https://example.com/blog"
+                maxLength={2048}
                 className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 text-[13px] text-fg placeholder:text-fg-muted"
               />
               <Button type="submit" size="sm" variant="secondary" icon={Plus}>
@@ -327,32 +380,28 @@ export function SourcesStep({ org }: { org: string }) {
         </Card>
       </div>
 
+      {saveError && (
+        <p role="alert" className="mt-4 max-w-2xl text-[13px] text-danger">
+          {saveError}
+        </p>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {/* A button, not a link wrapping a button. `<a><button disabled>` is
             only half a guard: the anchor stays focusable and Enter navigates
             straight past it, so a keyboard user reaches the dashboard with
             zero sources while a mouse user can't. It is also nested
             interactive content, which no assistive technology reads well. */}
-        <Button
-          variant="primary"
-          size="lg"
-          disabled={count === 0}
-          onClick={() => {
-            // Onboarding is over; the draft has done its job. Leaving it behind
-            // would have the next run of /welcome start half-filled with the
-            // last one's answers.
-            clearDraft();
-            router.push(`/${org}/dashboard`);
-          }}
-        >
-          Start hunting
+        <Button variant="primary" size="lg" disabled={saving} onClick={() => void finish()}>
+          {saving ? "Saving…" : "Start hunting"}
         </Button>
         {count === 0 ? (
-          // Not a nag — with no sources there is genuinely nothing to scan, and
-          // letting the user through would produce an empty dashboard that
-          // looks like a broken product rather than an unconfigured one.
-          <span className="text-[13px] text-warning">
-            Pick at least one source — with none, there&rsquo;s nothing to scan.
+          /* Not a block. Sources catch triggers; discovery finds companies, and
+             a workspace with a searchable profile has a full pipeline without
+             a single feed. Saying what is lost is more useful than refusing. */
+          <span className="text-[13px] text-fg-muted">
+            No sources — we&rsquo;ll still find companies from your profile, but
+            we won&rsquo;t catch news about them. You can add sources any time.
           </span>
         ) : (
           <span className="text-[13px] text-fg-muted">
@@ -362,4 +411,16 @@ export function SourcesStep({ org }: { org: string }) {
       </div>
     </>
   );
+}
+
+/** The host of a pasted URL, for a readable source name. Null when unparseable. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(
+      /^www\./,
+      "",
+    );
+  } catch {
+    return null;
+  }
 }

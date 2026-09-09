@@ -9,16 +9,21 @@
     ".": "./src/index.ts",
     "./admin": "./src/admin.ts",
     "./rules": "./src/rules.ts",
-    "./org-profile": "./src/org-profile.ts"
+    "./org-profile": "./src/org-profile.ts",
+    "./icp": "./src/icp.ts",
+    "./identity": "./src/identity.ts",
+    "./contact": "./src/contact.ts",
+    "./discovery": "./src/discovery.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "seed": "node --experimental-strip-types scripts/seed.ts",
     "doctor": "node --experimental-strip-types scripts/doctor.ts",
-    "test": "npm run test:migrations && npm run test:rules && npm run check:admin-imports",
+    "test": "npm run test:migrations && npm run test:rules && npm run test:pure && npm run check:admin-imports",
     "test:migrations": "node --experimental-strip-types scripts/verify-migrations.ts",
     "check:admin-imports": "node --experimental-strip-types scripts/check-admin-imports.ts",
-    "test:rules": "node --experimental-strip-types scripts/verify-rules.ts"
+    "test:rules": "node --experimental-strip-types scripts/verify-rules.ts",
+    "test:pure": "node --experimental-strip-types scripts/verify-pure.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

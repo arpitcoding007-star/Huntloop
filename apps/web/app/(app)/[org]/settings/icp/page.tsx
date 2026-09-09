@@ -4,6 +4,8 @@ import { canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { listProducts } from "../../../../../lib/data/product";
 import { DemoFigures } from "../../DemoFigures";
 import { IcpEditor } from "./IcpEditor";
+import { SearchPreview } from "./SearchPreview";
+import { getDiscoveryPreview } from "../../../../../lib/data/discovery-preview";
 
 /**
  * ICP — master context §9.
@@ -24,10 +26,8 @@ export default async function IcpPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: icps, source }, { data: products }] = await Promise.all([
-    listIcps(org),
-    listProducts(org),
-  ]);
+  const [{ data: icps, source }, { data: products }, searchPreview] =
+    await Promise.all([listIcps(org), listProducts(org), getDiscoveryPreview(org)]);
 
   return (
     <div className="space-y-6">
@@ -40,6 +40,11 @@ export default async function IcpPage({
         products={products}
         canWrite={canWrite(viewer)}
       />
+      {/* Under the editor, because it describes the consequence of what is
+          above it: which criteria a provider can act on, which are applied at
+          qualification instead, and what the example companies added. Renders
+          nothing when there is no saved search. */}
+      <SearchPreview preview={searchPreview} />
     </div>
   );
 }

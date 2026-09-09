@@ -70,3 +70,77 @@ export {
   type OrgTone,
   type OrgVoice,
 } from "./org-profile.ts";
+
+/**
+ * The ICP, as a type both sides import.
+ *
+ * The reason this is here rather than in the web app is `ICP-01`: the seed
+ * and the reader disagreed about the shape of one jsonb column, jsonb
+ * accepted both, and the qualifier judged every company against a profile
+ * asserting nothing. A schema that lives with the row types is a schema the
+ * writer, the reader and the provider query translator all import from the
+ * same place — which is the only arrangement in which they cannot drift.
+ */
+export {
+  CRITERIA_KEYS,
+  EXCLUSION_KEYS,
+  InvalidIcpError,
+  bandsToRange,
+  isEmpty as isIcpEmpty,
+  isExcluded,
+  parseCriteria,
+  parseExclusions,
+  parseIcp,
+  scoreIcp,
+  serializeCriteria,
+  serializeExclusions,
+  type EmployeeRange,
+  type ExclusionSubject,
+  type ExclusionVerdict,
+  type Icp,
+  type IcpCriteria,
+  type IcpExclusions,
+  type IcpQuality,
+} from "./icp.ts";
+
+/** Entity resolution — the deterministic half. `0012` has the exact lookups. */
+export {
+  InvalidDomainError,
+  canonicalizeDomain,
+  compareCompanies,
+  editDistance,
+  normalizeName,
+  orderPair,
+  rootLabel,
+  type MatchCandidate,
+  type MatchConfidence,
+  type MatchResult,
+  type MatchSignal,
+} from "./identity.ts";
+
+/** Contact fit — who to talk to, and why. Deterministic; the angle is not. */
+export {
+  classifyTitle,
+  rankContacts,
+  scoreContactFit,
+  type ContactFit,
+  type ContactSubject,
+  type FitDimensions,
+  type PersonaSpec,
+  type RankedContact,
+  type TitleClassification,
+} from "./contact.ts";
+
+/**
+ * ICP → a provider-neutral search. Deterministic, and total over the ICP: a
+ * criterion either maps or is reported as unmappable, never silently dropped.
+ */
+export {
+  EMPTY_FILTERS,
+  canonicalFilters,
+  describeFilters,
+  translateIcp,
+  type DiscoveryFilters,
+  type Translation,
+  type UnmappedCriterion,
+} from "./discovery.ts";

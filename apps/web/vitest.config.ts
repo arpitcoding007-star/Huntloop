@@ -42,5 +42,23 @@ export default defineConfig({
     // The Next-specific globals these modules expect are absent under vitest.
     // Any test needing them is an integration test and belongs in e2e/.
     restoreMocks: true,
+    /*
+     * Well above what any assertion here needs, and not a hidden slow test.
+     *
+     * `spend-guard.test.ts` reaches its wrappers through `await import()`, so
+     * the *first* case in that file pays to transform the whole graph behind
+     * it — `lib/ai/qualify` pulls in `@huntloop/ai`, which pulls in the
+     * Anthropic SDK. That is a one-off cost of roughly a second in isolation
+     * and it was measured at 12.7s when `npm test` ran every workspace's suite
+     * concurrently on a loaded machine, which tripped the 5s default and
+     * produced a red build for correct code.
+     *
+     * Raised rather than worked around by pre-importing, because the dynamic
+     * import is load-bearing: the module has to be evaluated *after*
+     * `vi.mock("@huntloop/ai")` is registered, or the wrapper closes over the
+     * real `runTask` and a regression makes an outbound request to
+     * api.anthropic.com from somebody's laptop.
+     */
+    testTimeout: 30_000,
   },
 });

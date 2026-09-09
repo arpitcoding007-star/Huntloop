@@ -58,6 +58,37 @@ export interface ScorePayload {
   companyId: string;
   /** Optional. Defaults to the org's active ICP. */
   icpId?: string;
+  /**
+   * Why this score is being computed, from `0016`'s enum.
+   *
+   * Set by whoever enqueued the job — `recompute_scores` says `rule_change` or
+   * `icp_change`, a person pressing Rescore says `manual`. Omitted means the
+   * ordinary path: something new was learned about the company.
+   */
+  reason?: string;
+}
+
+/** `0016`'s `computed_reason` enum. A payload cannot invent a sixth value. */
+const COMPUTED_REASONS = new Set([
+  "initial",
+  "new_evidence",
+  "rule_change",
+  "icp_change",
+  "manual",
+  "scheduled",
+]);
+
+/**
+ * The reason to record, defaulting to the honest one.
+ *
+ * An unrecognised value becomes `new_evidence` rather than failing the score:
+ * the CHECK constraint would reject the row and lose a verdict that is
+ * otherwise complete, and getting the *label* wrong is a reporting problem
+ * while losing the score is a product one.
+ */
+function computedReason(payload: Record<string, unknown>): string {
+  const reason = String(payload.reason ?? "");
+  return COMPUTED_REASONS.has(reason) ? reason : "new_evidence";
 }
 
 /**
@@ -111,6 +142,7 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
   const observed = await loadObservations(ctx, companyId);
 
   let qualification;
+  let promptVersion: string | null = null;
   try {
     const run = await runForOrg(scope, qualifyOpportunity, {
       url: String(company.website || `https://${company.canonical_domain}`),
@@ -118,6 +150,10 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
       observed,
     });
     qualification = run.output;
+    /* `SCO-01`. A prompt edit moves scores far more often than a model swap
+       does, and `model_version` alone cannot tell the two apart — so drift
+       reads as a mystery rather than as "we changed the prompt on Tuesday". */
+    promptVersion = run.promptVersion;
   } catch (e) {
     if (e instanceof AiUnavailable) {
       // Not a failure of this job — a fact about the deployment. Reported as a
@@ -186,9 +222,28 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
     return found && found.value !== "unknown" ? found.value : null;
   };
 
+  /* `SCO-01`'s provenance, and the reason drift is a query rather than a
+     guess. `0016` added these four columns and nothing wrote them, which left
+     every score claiming a model id and nothing else — so "did scores move
+     because the market moved, or because we edited a rule" had no answer.
+
+     `active_rules_version` is a hash of the live rule set rather than a
+     pointer to it: the question asked later is "were the rules the same as
+     now", which one comparison answers and a foreign key does not. */
+  const { data: rulesVersion } = await scope.rpc("active_rules_version", {
+    p_org: scope.orgId,
+  });
+
   const { error: scoreError } = await scope.insert("opportunity_scores", {
     opportunity_id: opportunityId,
     model_version: `qualify_opportunity@${new Date().toISOString().slice(0, 10)}`,
+    prompt_version: promptVersion,
+    icp_version_id: icp.versionId,
+    rules_version: rulesVersion ? String(rulesVersion) : null,
+    /* Why this score exists, which is what makes a score history readable. A
+       recomputation after a rule change and a rescore driven by fresh evidence
+       look identical in the data otherwise, and they mean opposite things. */
+    computed_reason: computedReason(payload),
     score: ruled.score,
     /* Kept separately and deliberately. Everything sorts and renders by
        `score`; the learning loop reads `model_score`, because a rule the
@@ -272,10 +327,19 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
 async function loadIcp(
   ctx: JobContext,
   icpId: string | null,
-): Promise<{ id: string; summary: Parameters<typeof qualifyOpportunity.renderInput>[0]["icp"] } | null> {
+): Promise<{
+  id: string;
+  /** The snapshot this profile currently stands at, for `SCO-01` provenance. */
+  versionId: string | null;
+  summary: Parameters<typeof qualifyOpportunity.renderInput>[0]["icp"];
+} | null> {
   const { scope } = ctx;
 
-  let query = scope.select("icps", "id, name, criteria, negative_criteria, products(description, value_props)")
+  let query = scope
+    .select(
+      "icps",
+      "id, name, current_version_id, criteria, negative_criteria, products(description, value_props)",
+    )
     .is("deleted_at", null);
 
   query = icpId ? query.eq("id", icpId) : query.eq("is_active", true);
@@ -289,6 +353,7 @@ async function loadIcp(
 
   return {
     id: String(data.id),
+    versionId: data.current_version_id ? String(data.current_version_id) : null,
     summary: {
       sells: String(product?.description ?? "").trim() || String(data.name ?? ""),
       segments: strings(criteria.segments),

@@ -46,7 +46,29 @@ export type JobName =
   | "advance_enrollments"
   | "send_message"
   | "schedule_learning"
-  | "analyze_performance";
+  | "analyze_performance"
+  /* 0011–0020: the provider era. Discovery, enrichment, identity and
+     contact selection, each added with its handler in the same change —
+     the registry is a total map, so a name here with no handler is a
+     compile error rather than a job that queues and fails three times. */
+  | "schedule_discovery"
+  | "discover_companies"
+  | "enrich_company"
+  | "rank_contacts"
+  | "resolve_entity"
+  /* 0021: the competitor subsystem's two jobs — one that reads a competitor's
+     own site, one that links what a source said about a prospect to the
+     competitor list. */
+  | "research_competitor"
+  | "resolve_competitor_mentions"
+  /* 0021: compliance. `0017` built the erasure and retention SQL and nothing
+     called it; these are the two jobs that do. */
+  | "purge_contact_data"
+  | "enforce_retention"
+  /* SCO-03: rescoring after the profile or the rules that produced the
+     existing scores have changed underneath them. */
+  | "recompute_scores"
+  | "schedule_recomputes";
 
 export interface JobRow {
   id: string;

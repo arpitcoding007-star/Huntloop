@@ -110,3 +110,60 @@ export {
   type OAuthTokens,
   type ProviderId,
 } from "./mailbox/index.ts";
+
+/**
+ * The reach estimate, called by the ICP screen during onboarding.
+ *
+ * Exported from this package rather than from `apps/web` because a provider
+ * call needs the service-role client, and `scope.ts` is the only runtime file
+ * permitted to hold it. See the header of `reach.ts` for the full argument.
+ */
+export { estimateReach, type ReachEstimate } from "./reach.ts";
+
+/**
+ * The first sixty seconds of a workspace.
+ *
+ * Exported for the onboarding "building" screen, which drives the stages in
+ * order so it can report progress. The handlers underneath are the same ones
+ * the cron runner calls — see `first-run.ts` for why this is not a second
+ * implementation of discovery.
+ */
+export {
+  FIRST_RUN_STAGES,
+  ensureDiscoveryQuery,
+  stageContacts,
+  stageDiscover,
+  stageEnrich,
+  stageExplain,
+  stageScore,
+  type FirstRunStage,
+  type StageResult,
+} from "./first-run.ts";
+
+/**
+ * The anonymous half of the funnel.
+ *
+ * Exported from this package because `public_research` has RLS on with no
+ * policy — nothing reads it through PostgREST — so it needs the service-role
+ * client, which only `scope.ts` may hold. See `public-research.ts` for why a
+ * SECURITY DEFINER function granted to `anon` would be strictly worse.
+ */
+export {
+  anonymousAllowance,
+  hashIp,
+  lookupPublicResearch,
+  publicResearchEnabled,
+  recordPublicResearch,
+  type AllowanceDecision,
+  type CachedResearch,
+} from "./public-research.ts";
+
+/**
+ * Look-alike expansion, exported for the discovery screen as well as the
+ * first run — a user editing a saved search should be able to see what their
+ * example companies contributed, not only a user setting one up.
+ */
+export {
+  expandWithLookAlikes,
+  type LookAlikeResult,
+} from "./look-alike.ts";

@@ -10,6 +10,7 @@ once before a launch and never again.
 | [BACKLOG.md](BACKLOG.md) | Every finding as a task: priority, effort, dependencies |
 | [ROADMAP.md](ROADMAP.md) | Those tasks sequenced into releases |
 | [AGENT-REACH.md](AGENT-REACH.md) | What still needs a human after the Agent-Reach integration |
+| [PLAN-11.md](PLAN-11.md) | The eleventh pass: the audit conclusion and the phased plan for the provider era, plus the manual actions it needs |
 | [`scripts/audit.mjs`](../scripts/audit.mjs) | The mechanizable checks, gating CI |
 
 ```bash
