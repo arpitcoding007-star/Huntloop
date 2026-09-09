@@ -97,8 +97,21 @@ async function expectAccept(db: PGlite, name: string, sql: string, params: unkno
 const db = new PGlite();
 await db.exec(SUPABASE_STUBS);
 
+/**
+ * A migration is a file named `NNNN_something.sql`. Nothing else is.
+ *
+ * The pattern is a filter rather than a convention nobody enforces, because
+ * the directory now also holds `COMBINED-0024-0027.sql` — one paste of four
+ * migrations for the Supabase SQL Editor, which is a deployment convenience
+ * and not a fifth migration. Applying it after the four it contains failed
+ * with "trigger public_research_touch already exists", which is the correct
+ * answer to the wrong question: the file is verified below by checking that
+ * it *is* those four, rather than by running it a second time.
+ */
+const MIGRATION_FILE = /^\d{4}_.+\.sql$/;
+
 // ── Run the migrations in order ────────────────────────────────────────────
-const files = (await readdir(migrationsDir)).filter((f) => f.endsWith(".sql")).sort();
+const files = (await readdir(migrationsDir)).filter((f) => MIGRATION_FILE.test(f)).sort();
 console.log(`\nRunning ${files.length} migrations`);
 for (const f of files) {
   const sql = await readFile(path.join(migrationsDir, f), "utf8");
@@ -2725,7 +2738,68 @@ console.log("\nStructural — no tenant table is left without RLS");
   else fail("every table with an org_id has at least one policy", r.rows.map((x) => x.tablename).join(", "));
 }
 
+/*
+ * ── The combined paste is the four migrations, and nothing else ──────────
+ *
+ * `COMBINED-0024-0027.sql` exists because the four cannot be applied by this
+ * repository — nobody here has the database password — so they are applied by
+ * a person pasting one file into the Supabase SQL Editor. That makes it the
+ * artefact that actually reaches production, and an unverified copy of a
+ * verified thing is the worst of both.
+ *
+ * It is not re-executed: running it after the originals fails on the first
+ * `create trigger`, correctly. Instead it is checked to *be* them — every
+ * migration's body present verbatim, in order, inside one transaction. A
+ * hand-edit to the paste, or a fifth migration nobody added to it, fails here
+ * rather than in somebody's production database.
+ */
+console.log("\nCombined paste — the migrations it claims, and in order");
+{
+  const combined = normalise(
+    await readFile(path.join(migrationsDir, "COMBINED-0024-0027.sql"), "utf8"),
+  );
+  const parts = ["0024", "0025", "0026", "0027"];
+
+  const included = files.filter((f) => parts.some((p) => f.startsWith(p)));
+  if (included.length === parts.length) ok("all four migrations still exist");
+  else fail("all four migrations still exist", included.join(", "));
+
+  let cursor = 0;
+  let ordered = true;
+  for (const file of included) {
+    const body = normalise(await readFile(path.join(migrationsDir, file), "utf8"));
+    const at = combined.indexOf(body, cursor);
+    if (at < 0) {
+      fail(`${file} appears in the paste verbatim`, "absent, altered, or out of order");
+      ordered = false;
+      continue;
+    }
+    ok(`${file} appears in the paste verbatim`);
+    cursor = at + body.length;
+  }
+  if (ordered) ok("and each after the one before it");
+
+  /* One transaction. A partial application is the failure the file's own
+     header promises cannot happen, and that promise is only as good as the
+     two keywords implementing it. */
+  if (/^begin;$/m.test(combined)) ok("the paste opens a transaction");
+  else fail("the paste opens a transaction", "no bare 'begin;' line");
+  if (/^commit;$/m.test(combined)) ok("and commits it");
+  else fail("and commits it", "no bare 'commit;' line");
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );
 process.exit(failures === 0 ? 0 : 1);
+
+/**
+ * Line endings, flattened.
+ *
+ * The paste and the migrations are separate files in a checkout that may be
+ * CRLF or LF for reasons that have nothing to do with whether the SQL matches.
+ * Comparing raw bytes would fail on a difference no database can observe.
+ */
+function normalise(sql: string): string {
+  return sql.split("\r\n").join("\n");
+}

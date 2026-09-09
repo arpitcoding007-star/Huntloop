@@ -1,8 +1,12 @@
 "use server";
 
-import type { IcpCriteria } from "@huntloop/db/icp";
 import { translateIcp } from "@huntloop/db/discovery";
 import { estimateReach } from "@huntloop/jobs";
+import {
+  previewLookAlikes,
+  type LookAlikePreview,
+} from "../../../../lib/data/look-alike-preview";
+import { stepIcp } from "../../../../lib/onboarding/icp-step";
 import { draft } from "../../../../lib/ai/icp-draft";
 import type { IcpDraftResult } from "../../../../lib/ai/icp-draft";
 import { toFailureState } from "../../../../lib/ai/outcome";
@@ -10,7 +14,13 @@ import {
   getOnboardingState,
   getStoredResearch,
 } from "../../../../lib/data/onboarding";
-import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import {
+  fail,
+  mutate,
+  ok,
+  resolveDataSource,
+  type ActionResult,
+} from "../../../../lib/data/org";
 import {
   icpStepSchema,
   orgSlugSchema,
@@ -134,43 +144,7 @@ export async function estimateReachAction(
   if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
   const v = parsed.value;
 
-  /* Written out rather than spread, for the reason `../actions.ts` gives: the
-     ICP type distinguishes "not stated" (null) from "stated as none" ([]) and
-     a spread would turn every unrendered field into `undefined`. */
-  const criteria: IcpCriteria = {
-    segments: v.segments ?? null,
-    sizes: v.sizes ?? null,
-    regions: v.regions ?? null,
-    triggers: v.triggers ?? null,
-    industries: v.industries ?? null,
-    employeeRange: v.employeeRange ?? null,
-    revenueBands: null,
-    technologies: v.technologies ?? null,
-    businessModels: v.businessModels ?? null,
-    painPoints: v.painPoints ?? null,
-    useCases: v.useCases ?? null,
-    buyingSignals: null,
-    keywords: null,
-    exampleCompanies: v.exampleCompanies ?? null,
-    notes: null,
-  };
-
-  const translation = translateIcp({
-    criteria,
-    exclusions: {
-      exclusions: v.exclusions ?? null,
-      industries: null,
-      regions: null,
-      sizes: null,
-      technologies: null,
-      businessModels: null,
-      employeeRange: null,
-      keywords: null,
-      domains: v.excludeDomains ?? null,
-      signals: null,
-      notes: null,
-    },
-  });
+  const translation = translateIcp(stepIcp(v));
 
   const unmapped = translation.unmapped.map((u) => ({
     field: String(u.field),
@@ -199,4 +173,58 @@ export async function estimateReachAction(
     const estimate = await estimateReach(orgId, translation.filters);
     return ok({ ...estimate, unmapped });
   });
+}
+
+/**
+ * What the example companies would add, before anything is saved.
+ *
+ * ── Why this is a button and the reach counter is not (`ONB-22`) ─────────
+ *
+ * The reach count is debounced and automatic because a provider's search
+ * endpoint returns a total for one row — it is cheap, and a number that
+ * changes as you type is the whole point of it. This is not that. Each
+ * example is a metered enrichment, so running it on a pause in typing would
+ * spend five credits every time somebody thought about their third domain.
+ * A press is the honest interface for a call that costs something.
+ *
+ * It writes nothing. The expansion happens at discovery time from the saved
+ * profile; this only shows what that will do.
+ */
+export async function previewLookAlikesAction(
+  org: string,
+  input: unknown,
+): Promise<ActionResult<LookAlikePreview>> {
+  const slug = parseInput(orgSlugSchema, org, "organisation");
+  if (!slug.ok) return fail(slug.error);
+
+  const parsed = parseForm(icpStepSchema, input);
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+  const v = parsed.value;
+
+  if (!v.exampleCompanies?.length) {
+    return fail(
+      "Add a company or two first — as domains, like stripe.com — and we'll " +
+        "read them and show you what they'd change.",
+    );
+  }
+
+  /* `mutate` would refuse this anyway, with "there is nothing to save to" —
+     which is the wrong sentence for an action that saves nothing. A reader
+     walking the demo deserves the actual reason, and the actual reason is
+     that a provider call has to be metered against a workspace that exists. */
+  const { db } = await resolveDataSource();
+  if (!db) {
+    return fail(
+      "This deployment has no database connected, so the example companies " +
+        "can't be read: looking one up is a metered provider call, and there " +
+        "is nowhere to meter it.",
+    );
+  }
+
+  /* `mutate` for the reason `estimateReachAction` gives: this spends a
+     provider credit, and the org id must come from a verified membership
+     before it reaches code running under the service-role client. */
+  return mutate(slug.value, "previewLookAlikes", async ({ orgId }) =>
+    ok(await previewLookAlikes(orgId, stepIcp(v))),
+  );
 }

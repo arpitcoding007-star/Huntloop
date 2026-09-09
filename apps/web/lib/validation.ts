@@ -213,6 +213,12 @@ export const icpFormSchema = z.object({
   sizes: stringList,
   regions: stringList,
   triggers: stringList,
+  /* Domains of companies that are obviously right. Editable here as well as in
+     onboarding because they are the one criterion that turns into filters
+     Huntloop *derives* rather than ones the user types — a list that can only
+     be set during setup is the one list nobody can correct after they have
+     seen what it did. */
+  exampleCompanies: stringList,
   exclusions: stringList,
   isActive: z.boolean().optional(),
 });
@@ -618,6 +624,15 @@ export const icpStepSchema = z.object({
      companies match" is a meaningful and important answer. */
   addressableEstimate: z.number().int().min(0).max(1_000_000_000).optional(),
 });
+
+/**
+ * The parsed shape of the ICP step's form.
+ *
+ * Exported so the two things that build an `Icp` from it — the reach counter
+ * and the look-alike preview — share one parameter type rather than each
+ * restating the fifteen fields and disagreeing about which are nullable.
+ */
+export type IcpStepValues = z.infer<typeof icpStepSchema>;
 
 export const sourcesStepSchema = z.object({
   sources: z

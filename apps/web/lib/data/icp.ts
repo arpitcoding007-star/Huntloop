@@ -117,11 +117,24 @@ export interface IcpRecord {
   sizes: string[];
   regions: string[];
   triggers: string[];
+  exampleCompanies: string[];
   exclusions: string[];
   isActive: boolean;
   version: number;
   updatedAt: string | null;
   personas: Persona[];
+  /**
+   * Criteria stored on the profile that this screen has no field for.
+   *
+   * `0013` gave `criteria` fifteen keys; the settings editor renders five.
+   * The other ten are written by onboarding, are scored against, and were —
+   * until `ICP-03` — silently erased by any save from here. They are now
+   * preserved, which makes showing them necessary rather than optional: a
+   * criterion that shapes every score and appears nowhere in the product is
+   * one nobody can correct, and one whose effect on the results has no
+   * visible cause.
+   */
+  alsoOnProfile: { label: string; values: string[] }[];
 }
 
 /**
@@ -171,14 +184,58 @@ function mapRecord(row: any): IcpRecord {
     sizes: strings(criteria.sizes),
     regions: strings(criteria.regions),
     triggers: strings(criteria.triggers),
+    exampleCompanies: strings(criteria.exampleCompanies),
     exclusions: strings(negative.exclusions),
     isActive: Boolean(row.is_active),
     version: Number(row.version ?? 1),
     updatedAt: row.updated_at ?? null,
+    alsoOnProfile: unrendered(criteria, negative),
     personas: (Array.isArray(row.personas) ? row.personas : [])
       .filter((p: any) => !p.deleted_at)
       .map(mapPersona),
   };
+}
+
+/**
+ * The stored criteria this screen has no field for, in a form fit for reading.
+ *
+ * ── Why a fixed list rather than "every key not in the form" ─────────────
+ *
+ * Because the two lists have different jobs. Enumerating what to *show*
+ * means a key added to `0013` and to the parser appears here only when
+ * somebody decides how to label it — which is the right default, since the
+ * alternative is a raw jsonb key name surfacing in the UI as a heading.
+ * `serializeCriteria` remains the authority on what is stored; this is the
+ * authority on what is worth putting on a screen.
+ *
+ * `notes` and `employeeRange` are deliberately absent: the first is free
+ * text rather than a list, and the second is derived from `sizes` for most
+ * profiles, so rendering it beside the size field would show the same answer
+ * twice and imply two independent settings.
+ */
+const ALSO_SHOWN: readonly { key: string; label: string; negative?: boolean }[] = [
+  { key: "industries", label: "Industries" },
+  { key: "technologies", label: "Technologies" },
+  { key: "businessModels", label: "Business models" },
+  { key: "painPoints", label: "Pain points" },
+  { key: "useCases", label: "Use cases" },
+  { key: "buyingSignals", label: "Buying signals" },
+  { key: "keywords", label: "Keywords" },
+  { key: "revenueBands", label: "Revenue bands" },
+  { key: "domains", label: "Excluded domains", negative: true },
+  { key: "signals", label: "Excluded signals", negative: true },
+];
+
+function unrendered(
+  criteria: Record<string, unknown>,
+  negative: Record<string, unknown>,
+): { label: string; values: string[] }[] {
+  const out: { label: string; values: string[] }[] = [];
+  for (const { key, label, negative: isNegative } of ALSO_SHOWN) {
+    const values = strings((isNegative ? negative : criteria)[key]);
+    if (values.length) out.push({ label, values });
+  }
+  return out;
 }
 
 function mapPersona(row: any): Persona {
@@ -207,10 +264,15 @@ const DEMO_RECORD: IcpRecord = {
   sizes: FIXTURE.sizes,
   regions: FIXTURE.regions,
   triggers: FIXTURE.triggers,
+  exampleCompanies: ["stripe.com", "ramp.com"],
   exclusions: FIXTURE.exclusions,
   isActive: true,
   version: 1,
   updatedAt: null,
+  alsoOnProfile: [
+    { label: "Technologies", values: ["Kubernetes", "Temporal"] },
+    { label: "Pain points", values: ["Agents move funds with no policy layer in front of them"] },
+  ],
   personas: [
     {
       id: "demo-persona",
@@ -221,3 +283,38 @@ const DEMO_RECORD: IcpRecord = {
     },
   ],
 };
+
+/**
+ * A stored jsonb object with some of its keys replaced.
+ *
+ * ── Why this exists (`ICP-03`) ───────────────────────────────────────────
+ *
+ * `criteria` has fifteen keys (`0013`) and the settings form renders five of
+ * them. It used to write the object wholesale, so a user who finished
+ * onboarding with industries, technologies, an employee range, pain points
+ * and use cases, then returned to fix a typo in the profile's name, silently
+ * lost all of it. Nothing failed — the reader degrades a missing key to an
+ * empty list, correctly, for a profile written by an older version. The scores
+ * simply got quieter, measured against a profile that no longer asserted most
+ * of what the user had said.
+ *
+ * ── Why the guard is not paranoia ────────────────────────────────────────
+ *
+ * `criteria` is jsonb, so Postgres will hand back a scalar, an array or null
+ * as happily as an object, and the seed has already written a shape the reader
+ * did not expect once. Spreading `null` yields `{}` — which is exactly the
+ * erasure this function exists to prevent — and spreading `["a"]` yields
+ * `{ 0: "a" }`, which is worse: a row that parses as an object and asserts
+ * nothing. A stored value that is not an object is treated as having no keys
+ * to preserve, which is the truth.
+ */
+export function mergeStoredJson(
+  existing: unknown,
+  owned: Record<string, unknown>,
+): Record<string, unknown> {
+  const base =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  return { ...base, ...owned };
+}

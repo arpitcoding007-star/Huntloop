@@ -11,6 +11,9 @@ once before a launch and never again.
 | [ROADMAP.md](ROADMAP.md) | Those tasks sequenced into releases |
 | [AGENT-REACH.md](AGENT-REACH.md) | What still needs a human after the Agent-Reach integration |
 | [PLAN-11.md](PLAN-11.md) | The eleventh pass: the audit conclusion and the phased plan for the provider era, plus the manual actions it needs |
+| [PLAN-12.md](PLAN-12.md) | The twelfth pass: the plan for the landing page and the onboarding flow — the argument, written before any of it existed |
+| [PASS-12.md](PASS-12.md) | The twelfth pass: what actually shipped against that plan, what changed while building it, and what it left open |
+| [PASS-13.md](PASS-13.md) | The thirteenth pass: the look-alike preview, the settings editor that was deleting criteria it never showed, and the paste that broke the migration verifier |
 | [`scripts/audit.mjs`](../scripts/audit.mjs) | The mechanizable checks, gating CI |
 
 ```bash

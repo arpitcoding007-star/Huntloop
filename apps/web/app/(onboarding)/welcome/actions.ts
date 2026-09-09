@@ -32,6 +32,7 @@ import {
   urlInputSchema,
   youStepSchema,
 } from "../../../lib/validation";
+import { stepIcp } from "../../../lib/onboarding/icp-step";
 import { RESERVED_SLUGS, slugify } from "../../../lib/slug";
 import { capture, captureForViewer } from "../../../lib/analytics";
 
@@ -275,43 +276,17 @@ export async function saveIcp(
 
   const v = parsed.value;
 
-  /* Mapped rather than spread. `IcpCriteria` distinguishes "not stated"
-     (null) from "stated as none" ([]) — the rule the whole of
-     `packages/db/src/icp.ts` is built on — and a spread of a form payload
-     would turn every field the screen did not render into `undefined`, which
-     `serializeCriteria` drops but `parseIcp` would then read back as null.
-     Same answer, arrived at by accident. Writing it out keeps it deliberate. */
+  /* `stepIcp` maps rather than spreads, and the reason is in that file: the
+     ICP type distinguishes "not stated" from "stated as none", and a spread
+     erases the difference by accident. It lives in `lib/onboarding` because
+     the reach counter and the look-alike preview build the same object from
+     the same form, and three hand-written copies of a fifteen-key literal is
+     how one of them ends up missing the sixteenth. */
+  const { criteria, exclusions } = stepIcp(v);
+
   const stepInput: IcpStepInput = {
-    criteria: {
-      segments: v.segments ?? null,
-      sizes: v.sizes ?? null,
-      regions: v.regions ?? null,
-      triggers: v.triggers ?? null,
-      industries: v.industries ?? null,
-      employeeRange: v.employeeRange ?? null,
-      revenueBands: null,
-      technologies: v.technologies ?? null,
-      businessModels: v.businessModels ?? null,
-      painPoints: v.painPoints ?? null,
-      useCases: v.useCases ?? null,
-      buyingSignals: null,
-      keywords: null,
-      exampleCompanies: v.exampleCompanies ?? null,
-      notes: null,
-    },
-    exclusions: {
-      exclusions: v.exclusions ?? null,
-      industries: null,
-      regions: null,
-      sizes: null,
-      technologies: null,
-      businessModels: null,
-      employeeRange: null,
-      keywords: null,
-      domains: v.excludeDomains ?? null,
-      signals: null,
-      notes: null,
-    },
+    criteria,
+    exclusions,
     persona: v.titles && v.titles.length > 0
       ? {
           name: v.personaName || "Primary buyer",

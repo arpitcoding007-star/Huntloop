@@ -17,13 +17,16 @@ import {
   joinList,
   splitList,
 } from "@huntloop/ui";
-import { Check, Plus, Save, Trash2 } from "lucide-react";
+import { Check, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import type { IcpRecord, Persona } from "../../../../../lib/data/icp";
 import type { Product } from "../../../../../lib/data/product";
+import { LookAlikeResult } from "../../../../_components/LookAlikeResult";
+import type { LookAlikePreview } from "../../../../../lib/data/look-alike-preview";
 import {
   activateIcpAction,
   deleteIcpAction,
   deletePersonaAction,
+  previewLookAlikesAction,
   saveIcpAction,
   savePersonaAction,
 } from "./actions";
@@ -218,6 +221,7 @@ function IcpForm({
   const [sizes, setSizes] = useState(joinList(icp?.sizes));
   const [regions, setRegions] = useState(joinList(icp?.regions));
   const [triggers, setTriggers] = useState(joinList(icp?.triggers));
+  const [examples, setExamples] = useState(joinList(icp?.exampleCompanies));
   const [exclusions, setExclusions] = useState(joinList(icp?.exclusions));
 
   const [result, setResult] = useState<
@@ -225,6 +229,33 @@ function IcpForm({
   >(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
+
+  /* Kept separate from `result`, because a preview is not a save. Sharing the
+     banner would let a successful look-up erase the error from a failed save
+     — and the message a user most needs to keep on screen is the one saying
+     their edit did not persist. */
+  const [preview, setPreview] = useState<LookAlikePreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewing, startPreview] = useTransition();
+
+  function previewExamples() {
+    setPreview(null);
+    setPreviewError(null);
+    startPreview(async () => {
+      const res = await previewLookAlikesAction(org, {
+        name: name || "Untitled",
+        productId: productId.startsWith("demo-") ? "" : productId,
+        segments: splitList(segments),
+        sizes: splitList(sizes),
+        regions: splitList(regions),
+        triggers: splitList(triggers),
+        exampleCompanies: splitList(examples),
+        exclusions: splitList(exclusions),
+      });
+      if (res.ok) setPreview(res.data);
+      else setPreviewError(res.error);
+    });
+  }
 
   function save() {
     setResult(null);
@@ -241,6 +272,7 @@ function IcpForm({
         sizes: splitList(sizes),
         regions: splitList(regions),
         triggers: splitList(triggers),
+        exampleCompanies: splitList(examples),
         exclusions: splitList(exclusions),
       });
       if (res.ok) setResult({ ok: true, message: res.message });
@@ -354,6 +386,62 @@ function IcpForm({
         </Field>
 
         <Field
+          label="Companies that are obviously right"
+          hint="Dream accounts or existing customers, as domains — stripe.com, not Stripe. Huntloop reads them and widens the search to match what they have in common."
+          error={fieldErrors.exampleCompanies}
+        >
+          {(a) => (
+            <ListInput
+              {...a}
+              value={examples}
+              onChange={(e) => {
+                setExamples(e.target.value);
+                /* A preview describes the list that produced it. Leaving it up
+                   while the list changes underneath is the screen asserting
+                   something that is no longer true. */
+                setPreview(null);
+                setPreviewError(null);
+              }}
+              disabled={!canWrite || pending}
+              rows={3}
+              placeholder="stripe.com"
+            />
+          )}
+        </Field>
+
+        {/* ONB-22. The panel under this editor answers the same question from
+            the *saved* provider query, which a workspace that has never run
+            discovery does not have — so the field that matters most here is
+            the one whose effect is least visible. This reads the companies
+            now and says what they would add. */}
+        {canWrite && (
+          <div className="rounded-md border border-line bg-surface p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Sparkles}
+                onClick={previewExamples}
+                disabled={previewing || pending || splitList(examples).length === 0}
+              >
+                {previewing ? "Reading them…" : "Preview what these add"}
+              </Button>
+              <span className="text-[12px] text-fg-muted">
+                Reads up to five of them. Nothing is saved.
+              </span>
+            </div>
+
+            {previewError && (
+              <p role="alert" className="mt-2 text-[12px] text-danger">
+                {previewError}
+              </p>
+            )}
+
+            {preview && <LookAlikeResult preview={preview} />}
+          </div>
+        )}
+
+        <Field
           label="Not a fit"
           hint="Its own question, not the opposite of the lists above. A company here stays down the list however strong its trigger."
           error={fieldErrors.exclusions}
@@ -368,6 +456,33 @@ function IcpForm({
             />
           )}
         </Field>
+
+        {/* ICP-03. These are stored on the profile, are scored against, and
+            have no field on this screen. Until they were preserved on save
+            they did not need showing, because a save from here deleted them;
+            now that they survive, a criterion that shapes every score and
+            appears nowhere in the product is one nobody can account for. */}
+        {icp && icp.alsoOnProfile.length > 0 && (
+          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2.5">
+            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+              Also on this profile
+            </p>
+            <p className="mt-1 text-[12px] leading-[1.5] text-fg-muted">
+              Drafted from your website when the profile was created. This
+              screen has no field for them and does not change them when you
+              save — they are still scored against.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {icp.alsoOnProfile.map((entry) => (
+                <li key={entry.label} className="text-[12px] leading-[1.5] text-fg-muted">
+                  <span className="text-fg-secondary">{entry.label}:</span>{" "}
+                  {entry.values.slice(0, 6).join(", ")}
+                  {entry.values.length > 6 && ` +${entry.values.length - 6}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <FormMessage result={result} />
 

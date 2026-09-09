@@ -15,11 +15,14 @@ import {
 } from "@huntloop/ui";
 import { Plus, Sparkles, X } from "lucide-react";
 import type { IcpDraft } from "@huntloop/ai";
+import { LookAlikeResult } from "../../../_components/LookAlikeResult";
+import type { LookAlikePreview } from "../../../../lib/data/look-alike-preview";
 import { REGION_OPTIONS, SIZE_BANDS } from "../../../../lib/onboarding/steps";
 import { saveIcp } from "../actions";
 import {
   draftIcpAction,
   estimateReachAction,
+  previewLookAlikesAction,
   type DraftState,
   type ReachState,
 } from "./actions";
@@ -218,6 +221,14 @@ export function IcpStep({ org }: { org: string }) {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [reach, setReach] = useState<ReachState | null>(null);
   const [reachPending, setReachPending] = useState(false);
+
+  /* The look-alike preview (`ONB-22`). Deliberately *not* debounced like the
+     reach counter beside it: a reach estimate is one search call for a count,
+     while this is up to five metered enrichments, and a call that costs
+     credits on a pause in typing is a call the user never agreed to make. */
+  const [lookAlike, setLookAlike] = useState<LookAlikePreview | null>(null);
+  const [lookAlikeError, setLookAlikeError] = useState<string | null>(null);
+  const [lookAlikePending, setLookAlikePending] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -285,6 +296,16 @@ export function IcpStep({ org }: { org: string }) {
       setReachPending(false);
     };
   }, [phase, org, payload]);
+
+  async function runLookAlike() {
+    setLookAlike(null);
+    setLookAlikeError(null);
+    setLookAlikePending(true);
+    const result = await previewLookAlikesAction(org, payload());
+    setLookAlikePending(false);
+    if (result.ok) setLookAlike(result.data);
+    else setLookAlikeError(result.error);
+  }
 
   const set = <K extends keyof Fields>(key: K) => (value: Fields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -575,10 +596,46 @@ export function IcpStep({ org }: { org: string }) {
               <ChipField
                 label="Companies that are obviously right"
                 values={fields.exampleCompanies}
-                onChange={set("exampleCompanies")}
+                onChange={(values) => {
+                  set("exampleCompanies")(values);
+                  /* A preview describes the list that produced it. Leaving it
+                     up while that list changes underneath is the screen
+                     asserting something that is no longer true. */
+                  setLookAlike(null);
+                  setLookAlikeError(null);
+                }}
                 placeholder="e.g. stripe.com"
                 hint="Dream accounts or existing customers, as domains. We read them and widen the search to match what they have in common."
               />
+
+              {/* ONB-22. This is the one field on the screen whose effect is
+                  invisible: everything else the user types becomes a filter
+                  they can read back, while these become filters Huntloop
+                  derives. Without this, the first sight of what they did is a
+                  discovery run that has already happened. */}
+              <div className="rounded-md border border-line bg-surface p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void runLookAlike()}
+                    disabled={lookAlikePending || fields.exampleCompanies.length === 0}
+                  >
+                    {lookAlikePending ? "Reading them…" : "Preview what these add"}
+                  </Button>
+                  <span className="text-[12px] text-fg-muted">
+                    Reads up to five. Nothing is saved.
+                  </span>
+                </div>
+
+                {lookAlikeError && (
+                  <p role="alert" className="mt-2 text-[12px] text-danger">
+                    {lookAlikeError}
+                  </p>
+                )}
+
+                {lookAlike && <LookAlikeResult preview={lookAlike} />}
+              </div>
               <ChipField
                 label="Seniority"
                 values={fields.seniority}

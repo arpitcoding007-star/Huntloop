@@ -157,7 +157,7 @@ Listed in the order they were built, with what each turned out to require.
 | ID | What | Why |
 |---|---|---|
 | `BILL-01` | Billing, at all | Not a gap in this work — `subscriptions`, `plans` and `usage_counters` exist and are enforced by `usage_limit()`, but nothing charges anybody. Stripe is env-vars-only. This is the real prerequisite behind the agency invoice question |
-| `ONB-22` | Look-alike preview before saving | The ICP screen shows what the examples added *after* a search exists. Somebody adding an example company for the first time cannot see the effect until the next discovery run creates the query |
+| `ONB-22` | ~~Look-alike preview before saving~~ | **Closed in the [thirteenth pass](PASS-13.md).** A button on both the onboarding ICP step and the settings editor runs the real expansion against the criteria as currently edited, and reports what it would add without saving anything |
 
 ---
 
