@@ -79,6 +79,9 @@ export type { NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
 export { Avatar, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
 
+export { ThemeToggle } from "./components/ThemeToggle";
+export type { ThemePreference } from "./components/ThemeToggle";
+
 /* ── Form primitives ────────────────────────────────────────────────────── */
 
 export {

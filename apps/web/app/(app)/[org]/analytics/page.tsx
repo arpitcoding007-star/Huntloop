@@ -91,7 +91,7 @@ export default async function AnalyticsPage({
   return (
     <div className="mx-auto w-full max-w-[1600px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">AI spend</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">AI spend</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
           Every model call this organisation has made in the last 30 days, and what
           it cost. Recorded before the call runs, so a crash still shows up here.

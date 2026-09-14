@@ -45,7 +45,7 @@ export function CardHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-base font-semibold text-fg">{title}</h2>
+        <h2 className="font-display text-base font-semibold text-fg">{title}</h2>
         {description && (
           <p className="mt-0.5 text-[13px] text-fg-muted">{description}</p>
         )}

@@ -22,7 +22,7 @@ export default async function SettingsLayout({
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">Settings</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Settings</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
           What this organisation is, what it sells, and who it sells to.
         </p>

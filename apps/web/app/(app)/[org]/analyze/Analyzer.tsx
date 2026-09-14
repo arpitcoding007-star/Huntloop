@@ -145,7 +145,7 @@ export function Analyzer({ org }: { org: string }) {
   return (
     <div className="mx-auto w-full max-w-[900px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">Analyze a URL</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Analyze a URL</h1>
         <p className="mt-1 max-w-xl text-[13px] leading-[1.5] text-fg-muted">
           Paste any company&rsquo;s website. Huntloop researches it against{" "}
           {org}&rsquo;s ICP and tells you whether it is worth contacting —{" "}

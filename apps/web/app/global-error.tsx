@@ -29,7 +29,29 @@ export default function GlobalError({
 
   return (
     <html lang="en">
+      <head>
+        {/*
+         * This page can't reach tokens.css or `data-theme` — it replaces the
+         * root layout that would normally provide both, and its whole job is
+         * to work when nothing else did (see the file comment above). It
+         * follows the OS preference directly instead: a plain media query,
+         * no script, no nonce, `!important` to win over the inline `style`
+         * attributes below. It does not honor an in-app System/Light/Dark
+         * override, which is an acceptable gap for a last-resort screen that
+         * intentionally depends on nothing else in the app.
+         */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `@media (prefers-color-scheme: light) {
+  .hl-global-error { background:#f3f1ea!important; color:#1c1a15!important; }
+  .hl-global-error-muted { color:#666154!important; }
+  .hl-global-error-btn { color:#1c1a15!important; background:#ffffff!important; border-color:#ddd7c6!important; }
+}`,
+          }}
+        />
+      </head>
       <body
+        className="hl-global-error"
         style={{
           margin: 0,
           minHeight: "100vh",
@@ -47,6 +69,7 @@ export default function GlobalError({
             Huntloop failed to start
           </h1>
           <p
+            className="hl-global-error-muted"
             style={{
               fontSize: "13px",
               lineHeight: 1.5,
@@ -59,6 +82,7 @@ export default function GlobalError({
           </p>
           {error.digest && (
             <p
+              className="hl-global-error-muted"
               style={{
                 fontSize: "11px",
                 fontFamily: "ui-monospace, monospace",
@@ -73,6 +97,7 @@ export default function GlobalError({
           <button
             type="button"
             onClick={reset}
+            className="hl-global-error-btn"
             style={{
               marginTop: "1.5rem",
               height: "2rem",

@@ -31,7 +31,7 @@ export default async function ImportsPage({
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">Imports</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Imports</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
           {org} · {companies.length}{" "}
           {companies.length === 1 ? "company" : "companies"} on your list · bring

@@ -148,7 +148,7 @@ export function CompanyManager({
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[30px] leading-9 font-semibold text-fg">Companies</h1>
+          <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Companies</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
             {org} · {companies.length} {companies.length === 1 ? "company" : "companies"} ·
             the accounts your opportunities are about

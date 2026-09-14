@@ -3,10 +3,13 @@
    Canonical source — see IMPLEMENTATION_PLAN.md §1.
 
    Color system and chrome derived from Supabase (near-black layered surfaces,
-   a single saturated green accent, hairline borders, no shadows).
+   a single saturated green accent, hairline borders, no shadows) for Dark.
+   Light derives its palette from the reference report screenshots (warm
+   paper canvas, white cards, rust/amber flag accent) rather than a plain
+   inversion of Dark — see the `[data-theme="light"]` block below.
    Dashboard semantics derived from Kima BD OS (stat grid, quota bars).
 
-   Semantic split that earns its place:
+   Semantic split that earns its place, and holds in BOTH themes:
      green  = system state + primary action + source-verified FACT
      violet = "a model produced this" — which includes every INFERENCE
      gray   = UNKNOWN / no evidence on file
@@ -16,9 +19,134 @@
    is painted in is the fastest place that promotion could happen unnoticed.
    A fact is something observed at a source (system state); an inference is
    something a model concluded (violet, already). See ClaimBadge.
+
+   ── Theme architecture ──────────────────────────────────────────────────
+   `:root` holds tokens that never change with theme: spacing, radius,
+   density, motion, type scale, and the raw font stacks. Every *color* leaf
+   token lives in `[data-theme="dark"]` or `[data-theme="light"]` instead,
+   scoped on `<html>` (which is also `:root`, so both selectors have equal
+   specificity — safe here because no token is declared in both places).
+   Composite/alias tokens (priority-*, score-*, focus-ring, font-display)
+   stay in `:root` as `var()` references: custom properties resolve at
+   used-value time against whichever theme block is active, so one alias
+   declaration serves both themes without duplication.
+
+   `<html data-theme="light|dark">` is set server-side from a stored
+   preference (apps/web/app/layout.tsx) or, for "system", resolved by a
+   blocking inline script before first paint. See that file for why.
    ========================================================================= */
 
 :root {
+  /* Belt-and-suspenders default for the instant before data-theme is set:
+     lets the browser pick native form-control/scrollbar colors from the OS
+     even in that gap. Each theme block below overrides it explicitly. */
+  color-scheme: light dark;
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  /* The `var(--font-*, …)` indirection keeps this package framework-agnostic.
+     An app that self-hosts the fonts — apps/web does, via next/font — defines
+     those variables on <html> and they win. An app that doesn't gets the
+     fallback family name, which resolves if the font happens to be installed
+     locally and falls through to the system stack if not. Either way this file
+     never learns that Next exists. */
+  --hl-font-sans: var(--font-inter, "Inter var"), "Inter", system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --hl-font-mono: var(--font-jetbrains-mono, "JetBrains Mono"),
+    "Source Code Pro", ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  /* Light-mode-only display face (see `--hl-font-display` per theme, below).
+     Declared here as an invariant raw stack — same reasoning as sans/mono. */
+  --hl-font-serif: var(--font-lora, "Lora"), Georgia, "Times New Roman", serif;
+
+  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 */
+  --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
+  --hl-text-h2: 1rem;           /* 16 / 24 / 600 */
+  --hl-text-body: 0.875rem;     /* 14 / 20 / 400 — the workhorse */
+  --hl-text-body-sm: 0.8125rem; /* 13 / 18 / 400 */
+  --hl-text-caption: 0.75rem;   /* 12 / 16 / 400 */
+  --hl-text-label: 0.6875rem;   /* 11 / 16 / 500 uppercase — the signature */
+  --hl-text-metric: 2rem;       /* 32 / 36 / 600 tabular */
+  --hl-text-metric-sm: 1.25rem; /* 20 / 24 / 600 tabular */
+
+  /* ── Spacing (4px base) ──────────────────────────────────────────────── */
+  --hl-space-1: 0.25rem;
+  --hl-space-2: 0.5rem;
+  --hl-space-3: 0.75rem;
+  --hl-space-4: 1rem;
+  --hl-space-5: 1.25rem;
+  --hl-space-6: 1.5rem;
+  --hl-space-8: 2rem;
+  --hl-space-10: 2.5rem;
+  --hl-space-12: 3rem;
+  --hl-space-16: 4rem;
+
+  /* ── Radius ──────────────────────────────────────────────────────────── */
+  --hl-radius-sm: 4px;
+  --hl-radius-md: 6px;   /* buttons, inputs, cards — the default */
+  --hl-radius-lg: 8px;   /* modals, drawers */
+  --hl-radius-full: 9999px;
+
+  /* ── Density ─────────────────────────────────────────────────────────── */
+  --hl-row-height: 44px;
+  --hl-nav-height: 32px;
+  --hl-control-height: 32px;
+  --hl-control-height-sm: 28px;
+  --hl-control-height-lg: 40px;
+
+  /* ── Motion ──────────────────────────────────────────────────────────── */
+  --hl-duration-fast: 120ms;
+  --hl-duration-base: 180ms;
+  --hl-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Opportunity priority (master context §15) — alias, not a leaf ─────
+     HOT / WARM / WATCH / IGNORE is a *ranked verdict*, not a system status,
+     so it gets its own named scale rather than borrowing the status colors
+     by accident. Every value here is an alias of a hue already measured
+     per theme below — a new hex would need re-measuring and buys nothing.
+     Conventional heat order (red → amber → blue → gray) is what users
+     already read, and the badge always carries the word too, so the a11y
+     floor ("never color alone") holds regardless of the overlap with
+     --hl-danger. */
+  --hl-priority-hot: var(--hl-danger);
+  --hl-priority-hot-surface: var(--hl-danger-surface);
+  --hl-priority-hot-border: var(--hl-danger-border);
+
+  --hl-priority-warm: var(--hl-warning);
+  --hl-priority-warm-surface: var(--hl-warning-surface);
+  --hl-priority-warm-border: var(--hl-warning-border);
+
+  --hl-priority-watch: var(--hl-info);
+  --hl-priority-watch-surface: var(--hl-info-surface);
+  --hl-priority-watch-border: var(--hl-info-border);
+
+  --hl-priority-ignore: var(--hl-text-muted);
+  --hl-priority-ignore-surface: var(--hl-surface-active);
+  --hl-priority-ignore-border: var(--hl-border-default);
+
+  /* ── Score ramp — alias ──────────────────────────────────────────────── */
+  --hl-score-poor: var(--hl-danger);       /*  0–39 */
+  --hl-score-fair: var(--hl-warning);      /* 40–69 */
+  --hl-score-good: var(--hl-success);      /* 70–89 */
+  --hl-score-excellent: var(--hl-score-excellent-leaf); /* 90+ */
+
+  /* ── Focus — alias, composed from theme leaves ──────────────────────── */
+  --hl-focus: var(--hl-brand);
+  --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hl-duration-fast: 0ms;
+    --hl-duration-base: 0ms;
+  }
+}
+
+/* ============================================================================
+   Dark — the original, unchanged palette. Canonical default until a
+   preference or the OS says otherwise.
+   ========================================================================= */
+[data-theme="dark"] {
+  color-scheme: dark;
+
   /* ── Surfaces ─────────────────────────────────────────────────────────── */
   --hl-canvas: #171717;
   --hl-panel: #1c1c1c;
@@ -80,36 +208,7 @@
   --hl-info-surface: #0d1f33;
   --hl-info-border: #1e4a75;
 
-  /* ── Score ramp ───────────────────────────────────────────────────────── */
-  --hl-score-poor: #ff6369;       /*  0–39 — text-safe red, see --hl-danger */
-  --hl-score-fair: #f5a623;       /* 40–69 */
-  --hl-score-good: #3ecf8e;       /* 70–89 */
-  --hl-score-excellent: #22d3a6;  /* 90+   */
-
-  /* ── Opportunity priority (master context §15) ────────────────────────
-     HOT / WARM / WATCH / IGNORE is a *ranked verdict*, not a system status,
-     so it gets its own named scale rather than borrowing the status colors
-     by accident. Every value here is an alias of a hue already measured
-     against all five surfaces above — a new hex would need re-measuring and
-     buys nothing. Conventional heat order (red → amber → blue → gray) is
-     what users already read, and the badge always carries the word too, so
-     the a11y floor ("never color alone") holds regardless of the overlap
-     with --hl-danger. */
-  --hl-priority-hot: var(--hl-danger);
-  --hl-priority-hot-surface: var(--hl-danger-surface);
-  --hl-priority-hot-border: var(--hl-danger-border);
-
-  --hl-priority-warm: var(--hl-warning);
-  --hl-priority-warm-surface: var(--hl-warning-surface);
-  --hl-priority-warm-border: var(--hl-warning-border);
-
-  --hl-priority-watch: var(--hl-info);
-  --hl-priority-watch-surface: var(--hl-info-surface);
-  --hl-priority-watch-border: var(--hl-info-border);
-
-  --hl-priority-ignore: var(--hl-text-muted);
-  --hl-priority-ignore-surface: var(--hl-surface-active);
-  --hl-priority-ignore-border: var(--hl-border-default);
+  --hl-score-excellent-leaf: #22d3a6;  /* 90+, --hl-score-excellent's source */
 
   /* ── Chart ramp ───────────────────────────────────────────────────────── */
   --hl-chart-1: #3ecf8e;
@@ -119,78 +218,100 @@
   --hl-chart-5: #e5484d;
   --hl-chart-6: #64748b;
 
-  /* ── Focus ───────────────────────────────────────────────────────────── */
-  --hl-focus: #3ecf8e;
-  --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
-
-  /* ── Typography ──────────────────────────────────────────────────────── */
-  /* The `var(--font-*, …)` indirection keeps this package framework-agnostic.
-     An app that self-hosts the fonts — apps/web does, via next/font — defines
-     those variables on <html> and they win. An app that doesn't gets the
-     fallback family name, which resolves if the font happens to be installed
-     locally and falls through to the system stack if not. Either way this file
-     never learns that Next exists. */
-  --hl-font-sans: var(--font-inter, "Inter var"), "Inter", system-ui,
-    -apple-system, "Segoe UI", sans-serif;
-  --hl-font-mono: var(--font-jetbrains-mono, "JetBrains Mono"),
-    "Source Code Pro", ui-monospace, "Cascadia Mono", "Consolas", monospace;
-
-  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 */
-  --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
-  --hl-text-h2: 1rem;           /* 16 / 24 / 600 */
-  --hl-text-body: 0.875rem;     /* 14 / 20 / 400 — the workhorse */
-  --hl-text-body-sm: 0.8125rem; /* 13 / 18 / 400 */
-  --hl-text-caption: 0.75rem;   /* 12 / 16 / 400 */
-  --hl-text-label: 0.6875rem;   /* 11 / 16 / 500 uppercase — the signature */
-  --hl-text-metric: 2rem;       /* 32 / 36 / 600 tabular */
-  --hl-text-metric-sm: 1.25rem; /* 20 / 24 / 600 tabular */
-
-  /* ── Spacing (4px base) ──────────────────────────────────────────────── */
-  --hl-space-1: 0.25rem;
-  --hl-space-2: 0.5rem;
-  --hl-space-3: 0.75rem;
-  --hl-space-4: 1rem;
-  --hl-space-5: 1.25rem;
-  --hl-space-6: 1.5rem;
-  --hl-space-8: 2rem;
-  --hl-space-10: 2.5rem;
-  --hl-space-12: 3rem;
-  --hl-space-16: 4rem;
-
-  /* ── Radius ──────────────────────────────────────────────────────────── */
-  --hl-radius-sm: 4px;
-  --hl-radius-md: 6px;   /* buttons, inputs, cards — the default */
-  --hl-radius-lg: 8px;   /* modals, drawers */
-  --hl-radius-full: 9999px;
-
-  /* ── Density ─────────────────────────────────────────────────────────── */
-  --hl-row-height: 44px;
-  --hl-nav-height: 32px;
-  --hl-control-height: 32px;
-  --hl-control-height-sm: 28px;
-  --hl-control-height-lg: 40px;
-
-  /* ── Motion ──────────────────────────────────────────────────────────── */
-  --hl-duration-fast: 120ms;
-  --hl-duration-base: 180ms;
-  --hl-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-
   /* ── Elevation — the ONLY shadows in the system ──────────────────────── */
   --hl-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* Headings stay on the same sans family as body copy — this theme keeps
+     its existing all-Inter Supabase-style typography untouched. */
+  --hl-font-display: var(--hl-font-sans);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --hl-duration-fast: 0ms;
-    --hl-duration-base: 0ms;
-  }
+/* ============================================================================
+   Light — derived from the reference report screenshots: a warm paper
+   canvas, white cards with hairline warm-gray borders, a serif display face
+   for headings, and a rust/amber flag accent that maps onto the existing
+   --hl-warning role (the screenshots use exactly that hue for a "flag this"
+   callout). Not a straight inversion of Dark — surfaces still get lighter as
+   they elevate (canvas → panel → white card), matching Dark's relationship,
+   but hover/active states darken instead of lightening, as they should on a
+   light ground.
+   ========================================================================= */
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --hl-canvas: #f3f1ea;
+  --hl-panel: #f8f7f2;
+  --hl-surface: #ffffff;
+  --hl-surface-hover: #f5f3ec;
+  --hl-surface-active: #ede9de;
+  --hl-overlay: rgba(26, 23, 18, 0.45);
+
+  /* ── Borders ─────────────────────────────────────────────────────────── */
+  --hl-border-subtle: #e8e4d8;
+  --hl-border-default: #ddd7c6;
+  --hl-border-strong: #c1baa4;
+
+  /* ── Text ────────────────────────────────────────────────────────────── */
+  --hl-text: #1c1a15;
+  --hl-text-secondary: #47433b;
+  --hl-text-muted: #666154;
+  --hl-text-inverse: #fbfaf7;
+
+  /* ── Brand green ─────────────────────────────────────────────────────── */
+  --hl-brand: #1c9463;
+  --hl-brand-hover: #157d53;
+  --hl-brand-active: #106844;
+  --hl-brand-surface: #e3f5ec;
+  --hl-brand-border: #b0e0c6;
+  --hl-brand-text: #12734d;
+
+  /* ── AI violet ───────────────────────────────────────────────────────── */
+  --hl-ai: #7c3aed;
+  --hl-ai-surface: #efe7fd;
+  --hl-ai-border: #d3bffa;
+  --hl-ai-text: #6425c9;
+
+  /* ── Status ──────────────────────────────────────────────────────────── */
+  --hl-success: #1c9463;
+  --hl-success-surface: #e3f5ec;
+  --hl-success-border: #b0e0c6;
+
+  /* The screenshots' rust/amber "flag this" callout accent. */
+  --hl-warning: #a15a13;
+  --hl-warning-surface: #faead4;
+  --hl-warning-border: #edc788;
+
+  --hl-danger: #c22f36;
+  --hl-danger-surface: #fbe6e5;
+  --hl-danger-border: #f1b9b7;
+
+  --hl-info: #1a63bd;
+  --hl-info-surface: #e2eefb;
+  --hl-info-border: #b3d3f5;
+
+  --hl-score-excellent-leaf: #0e8f6f;  /* 90+, --hl-score-excellent's source */
+
+  /* ── Chart ramp ──────────────────────────────────────────────────────── */
+  --hl-chart-1: #1c9463;
+  --hl-chart-2: #7c3aed;
+  --hl-chart-3: #1a63bd;
+  --hl-chart-4: #a15a13;
+  --hl-chart-5: #c22f36;
+  --hl-chart-6: #6b675c;
+
+  /* ── Elevation — softer than Dark's; a 0.4-alpha black shadow reads as a
+     smudge on a cream ground. */
+  --hl-shadow-popover: 0 8px 24px rgba(28, 24, 18, 0.14);
+
+  /* The one deliberate typographic swap from Dark: page/card headings pick
+     up the reference screenshots' serif, body copy and UI chrome stay on
+     Inter. Applied via the `font-display` utility (theme.css), not globally —
+     see Card's CardHeader and the page <h1>s that opt in. */
+  --hl-font-display: var(--hl-font-serif);
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────── */
-
-html {
-  color-scheme: dark;
-}
 
 body {
   background: var(--hl-canvas);

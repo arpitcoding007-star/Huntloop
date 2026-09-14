@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Lora } from "next/font/google";
+import { cookies, headers } from "next/headers";
 import { siteUrl } from "../lib/site-url";
 import "./globals.css";
+import {
+  parseThemePreference,
+  THEME_COOKIE_NAME,
+  THEME_INIT_SCRIPT,
+  type ThemePreference,
+} from "../lib/theme";
 
 /**
  * The design tokens have named Inter and JetBrains Mono since the system was
@@ -36,6 +43,21 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-jetbrains-mono",
+});
+
+/**
+ * Light theme's display face for page/card headings — see
+ * `--hl-font-display` in tokens.css. Dark theme never references this
+ * variable, so it costs Dark nothing; loaded unconditionally (rather than
+ * only when Light is active) because which theme is active is only known
+ * after the cookie/script resolution below, and next/font needs a
+ * build-time-static call.
+ */
+const lora = Lora({
+  subsets: ["latin"],
+  weight: ["600"],
+  display: "swap",
+  variable: "--font-lora",
 });
 
 /**
@@ -105,18 +127,53 @@ export const metadata: Metadata = {
  */
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  /*
+   * Theme preference, resolved server-side so an explicit choice never
+   * flashes: "light"/"dark" go straight onto `data-theme` in the HTML this
+   * renders. "system" can't be resolved here — the server doesn't know the
+   * visitor's OS setting — so `data-theme` is left unset for it and the
+   * bootstrap script below (nonce'd, first thing in <body>, synchronous)
+   * resolves it from `matchMedia` before anything else paints. See
+   * lib/theme.ts for the full reasoning.
+   */
+  const preference: ThemePreference = parseThemePreference(
+    (await cookies()).get(THEME_COOKIE_NAME)?.value,
+  );
+  const resolvedTheme = preference === "system" ? undefined : preference;
+
+  /*
+   * Same per-request nonce lib/csp.ts mints and proxy.ts attaches as
+   * `x-nonce` — reused here rather than minting a second one, so this
+   * script is covered by the same `script-src 'nonce-…'` the rest of the
+   * document's inline scripts already need.
+   */
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html
+      lang="en"
+      data-theme={resolvedTheme}
+      data-theme-preference={preference}
+      /*
+       * The bootstrap script mutates `data-theme` for the "system" case
+       * (and re-applies it, as a no-op, otherwise) before React hydrates —
+       * exactly the kind of server/client attribute drift this prop exists
+       * to silence. Nothing else about hydration is affected.
+       */
+      suppressHydrationWarning
+      className={`${inter.variable} ${jetbrainsMono.variable} ${lora.variable}`}
+    >
       {/* `font-sans` explicitly rather than relying on Tailwind's preflight
           picking up the theme's --font-sans: the token indirection above is
           worth nothing if the family is only applied by a default that a
           future preflight change could move. */}
       <body className="min-h-screen bg-canvas font-sans text-fg antialiased">
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {children}
       </body>
     </html>

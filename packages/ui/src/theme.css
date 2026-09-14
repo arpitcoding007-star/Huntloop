@@ -71,4 +71,5 @@
   /* Fonts */
   --font-sans: var(--hl-font-sans);
   --font-mono: var(--hl-font-mono);
+  --font-display: var(--hl-font-display);
 }

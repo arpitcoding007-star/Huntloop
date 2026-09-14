@@ -60,7 +60,7 @@ export default async function OutreachPage({
   return (
     <div className="mx-auto w-full max-w-[1000px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">Outreach</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Outreach</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
           {org} · what would go out, and who approves it first
         </p>

@@ -429,7 +429,7 @@ export default async function DashboardPage({
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-[30px] leading-9 font-semibold text-fg">
+              <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">
                 Command Center
               </h1>
               {/* No "Live" badge. It described the hunt, not the data, and

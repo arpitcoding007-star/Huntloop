@@ -105,7 +105,7 @@ export default async function OpportunityPage({
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[30px] leading-9 font-semibold text-fg">{o.company}</h1>
+            <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">{o.company}</h1>
             <PriorityBadge priority={o.priority} size="md" reason={o.priorityReason} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-muted">

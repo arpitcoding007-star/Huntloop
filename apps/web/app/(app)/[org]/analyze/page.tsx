@@ -28,7 +28,7 @@ export default async function AnalyzePage({
   if (!canSpend(viewer)) {
     return (
       <div className="mx-auto w-full max-w-[900px] px-6 py-8 lg:px-8">
-        <h1 className="text-[30px] leading-9 font-semibold text-fg">Analyze a URL</h1>
+        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Analyze a URL</h1>
         <PermissionDenied
           className="mt-6"
           resource="company analysis"

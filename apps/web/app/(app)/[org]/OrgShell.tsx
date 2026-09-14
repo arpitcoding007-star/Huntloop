@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Avatar, Sidebar, TopBar, type NavGroup } from "@huntloop/ui";
+import { Avatar, Sidebar, ThemeToggle, TopBar, type NavGroup } from "@huntloop/ui";
 import {
   Activity,
   BarChart3,
@@ -278,17 +278,20 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           helpHref={process.env.NEXT_PUBLIC_HELP_URL}
           avatar={<Avatar initials={org} />}
           actions={
-            /* A real form POST rather than a link: sign-out changes state, and
-               a GET that any page could trigger is a CSRF. See
-               app/auth/signout/route.ts. */
-            <form action="/auth/signout" method="post">
-              <button
-                type="submit"
-                className="hl-focusable flex h-8 items-center rounded-md px-2 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
-              >
-                Sign out
-              </button>
-            </form>
+            <>
+              <ThemeToggle />
+              {/* A real form POST rather than a link: sign-out changes state,
+                 and a GET that any page could trigger is a CSRF. See
+                 app/auth/signout/route.ts. */}
+              <form action="/auth/signout" method="post">
+                <button
+                  type="submit"
+                  className="hl-focusable flex h-8 items-center rounded-md px-2 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
+                >
+                  Sign out
+                </button>
+              </form>
+            </>
           }
         />
 
