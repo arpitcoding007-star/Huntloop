@@ -337,6 +337,23 @@ body {
   color: var(--hl-text-muted);
 }
 
+/* Theme-swapped raster brand marks. CSS can restyle a token but can't
+   reach into a PNG's pixels, so a raster lockup that needs different ink
+   per theme is two <img> elements, shown/hidden by data-theme — same
+   attribute the color tokens key off. */
+.hl-brand-light {
+  display: block;
+}
+.hl-brand-dark {
+  display: none;
+}
+[data-theme="dark"] .hl-brand-light {
+  display: none;
+}
+[data-theme="dark"] .hl-brand-dark {
+  display: block;
+}
+
 /* Focus ring — every interactive element, no exceptions. */
 .hl-focusable:focus-visible {
   outline: none;

@@ -5,11 +5,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@huntloop/ui";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import {
-  initialAuthState,
-  sendMagicLink,
-  signInWithGoogle,
-} from "./actions";
+import { initialAuthState, sendMagicLink } from "./actions";
 
 /**
  * Login / signup form.
@@ -117,20 +113,8 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
         />
       </form>
 
-      <div className="flex items-center gap-3">
-        <span className="h-px flex-1 bg-line-subtle" />
-        <span className="text-[11px] tracking-[0.06em] text-fg-muted uppercase">or</span>
-        <span className="h-px flex-1 bg-line-subtle" />
-      </div>
-
-      {/* A form rather than an onClick: the OAuth handoff is a server-issued
-          redirect now, so it works before hydration and without the SDK. */}
-      <form action={signInWithGoogle}>
-        <input type="hidden" name="next" value={next} />
-        <Button type="submit" variant="secondary" size="lg" className="w-full">
-          Continue with Google
-        </Button>
-      </form>
+      {/* Google OAuth temporarily hidden for testing — signInWithGoogle in
+          actions.ts is untouched, just not rendered here. */}
 
       {state.status === "error" && (
         <p role="alert" className="text-[13px] text-danger">

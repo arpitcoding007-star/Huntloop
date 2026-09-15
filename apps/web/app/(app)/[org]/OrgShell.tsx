@@ -222,9 +222,11 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           className="h-full"
           header={
             <div className="flex items-center gap-2 px-1">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand">
-                H
-              </span>
+              <img
+                src="/brand/huntloop-mark.png"
+                alt="Huntloop"
+                className="size-6 shrink-0 object-contain"
+              />
               {!collapsed && (
                 <span className="truncate text-[13px] font-semibold text-fg">Huntloop</span>
               )}
