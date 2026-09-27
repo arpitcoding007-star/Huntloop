@@ -32,7 +32,6 @@ import {
   Lightbulb,
   Radar,
   Send,
-  SquarePen,
   Settings,
   Target,
   Upload,
@@ -65,6 +64,9 @@ export function OrgShell({
   const [navOpen, setNavOpen] = useState(false);
   /** Submitted by the account menu's "Sign out". See the item for why. */
   const signOutForm = useRef<HTMLFormElement>(null);
+  /** The jump-to palette. Opened from the top bar's search field; the
+      Sidebar still binds ⌘K and supplies the destinations. */
+  const [jumpOpen, setJumpOpen] = useState(false);
 
   // Escape closes the drawer; a nav that can only be dismissed by pointer is
   // a keyboard trap on the one breakpoint where it covers the whole page.
@@ -180,7 +182,11 @@ export function OrgShell({
       label: "Team",
       items: [
         { label: "Members", href: `/${org}/team`, icon: Users },
-        { label: "Assignments", href: `/${org}/team/assignments`, icon: UserCheck },
+        {
+          label: "Assignments",
+          href: `/${org}/team/assignments`,
+          icon: UserCheck,
+        },
       ],
     },
     {
@@ -210,12 +216,28 @@ export function OrgShell({
         setNavOpen(false);
         router.push(href);
       },
+      open: jumpOpen,
+      onOpenChange: setJumpOpen,
+      /* The top bar carries the search field, as in the reference; a second
+         one in the sidebar would be two controls for one palette. */
+      trigger: false,
     }),
-    [router],
+    [router, jumpOpen],
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-canvas">
+    /*
+      One scroller, not two. The shell is exactly one viewport tall and only
+      <main> scrolls. `relative` makes this box the containing block for
+      absolutely positioned descendants: without it, every `sr-only` span in a
+      page (the fact/inference labels alone number dozens) is positioned
+      against the document, escapes the overflow clip, and stretches <html>
+      past the viewport — a second scrollbar that drags the whole shell,
+      sidebar and top bar included, off-screen. `h-dvh` rather than
+      `h-screen` because 100vh on mobile includes the collapsing URL bar,
+      which produces the same double scroll on phones.
+    */
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-canvas">
       {/*
         Skip link. Every authenticated page renders ~17 nav items before
         <main>, so without this a keyboard or screen-reader user tabs the
@@ -236,227 +258,66 @@ export function OrgShell({
         Skip to content
       </a>
 
-      {/* Scrim — only exists below lg, where the sidebar is an overlay. */}
-      {navOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-40 bg-overlay lg:hidden"
-        />
-      )}
-
-      <div
-        className={[
-          "fixed inset-y-0 left-0 z-50 transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
-          "motion-reduce:transition-none lg:static lg:z-auto",
-          /* The gutter that makes the sidebar a floating panel rather than a
-             wall. Only at lg: below it the sidebar is a drawer pinned to the
-             edge of the screen, where a gutter would show the page sliding
-             out from underneath it. */
-          "lg:shrink-0 lg:p-2",
-          // Scoped to max-lg deliberately: an unprefixed `-translate-x-full`
-          // outranks `lg:translate-x-0` in Tailwind's cascade, which would
-          // translate the sidebar off-screen on desktop too.
-          navOpen ? "" : "max-lg:-translate-x-full",
-        ].join(" ")}
-      >
-        <Sidebar
-          groups={groups}
-          /* The app-side half of the framework-agnostic `<a>` in packages/ui.
-             Without it every one of these seventeen items reloaded the whole
-             document — the single largest user-perceived performance cost in
-             the app (audit PERF-01). */
-          linkComponent={Link}
-          /* Longest matching prefix, so a detail route
-             (/opportunities/alphio-ai) still lights up its section, while
-             /settings/icp does not also light up /settings. An exact match
-             alone would leave every detail page with no active item. */
-          activeHref={
-            [...pinned, ...groups.flatMap((g) => g.items), ...footerItems]
-              .map((i) => i.href)
-              .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
-              .sort((a, b) => b.length - a.length)[0] ?? ""
-          }
-          // The rail is only collapsible where it is in flow; inside the
-          // drawer the control would fight the drawer's own dismissal.
-          collapsed={collapsed}
-          pinned={pinned}
-          footerItems={footerItems}
-          jumpTo={jumpTo}
-          /* Square off the floating panel while it *is* the drawer: a rounded
-             card with a gutter is right when the sidebar sits in the page,
-             and wrong when it is pinned to the edge of a phone screen. */
-          className="h-full max-lg:rounded-none max-lg:border-y-0 max-lg:border-l-0 max-lg:shadow-none"
-          header={
-            /*
-             * The workspace, not the product.
-             *
-             * This used to read "Huntloop" beside the mark, which is the one
-             * thing a signed-in user already knows and never needs the
-             * sidebar to tell them. What they do need — especially anyone in
-             * more than one workspace — is which workspace they are looking
-             * at and what it is paying for, so the header states both and
-             * doubles as the switcher.
-             */
-            <Link
-              href="/orgs"
-              title="Switch workspace"
-              className={[
-                "hl-focusable flex items-center transition-colors duration-[120ms] hover:bg-nav-hover",
-                collapsed
-                  ? "size-10 justify-center rounded-[10px]"
-                  : "h-9 max-w-full gap-[9px] rounded-[9px] pr-2 pl-1",
-              ].join(" ")}
-            >
-              {/* The real mark (commit de3e50d), in the design's 26px slot —
-                  32px in the rail. Intrinsic dimensions given so the header
-                  does not reflow when it decodes; CSS sizes it, these only
-                  supply the aspect ratio the browser reserves space with. */}
-              <img
-                src="/brand/huntloop-mark.png"
-                alt=""
-                width={1343}
-                height={638}
-                className={`${collapsed ? "size-8" : "size-[26px]"} shrink-0 object-contain`}
-              />
-              {!collapsed && (
-                <>
-                  <span className="flex min-w-0 flex-col items-start leading-[1.15]">
-                    <span className="max-w-full truncate text-[14px] font-semibold tracking-[-0.02em] text-fg">
-                      {chrome.orgName}
-                    </span>
-                    {chrome.planLabel && (
-                      <span className="max-w-full truncate text-[11px] text-fg-muted">
-                        {chrome.planLabel}
-                      </span>
-                    )}
-                  </span>
-                  <ChevronsUpDown
-                    aria-hidden
-                    className="ml-0.5 size-3.5 shrink-0 text-fg-faint"
-                    strokeWidth={1.8}
-                  />
-                </>
-              )}
-            </Link>
-          }
-          headerAction={
-            /* The design's pencil: straight to "is this a good lead?", the
-               one job worth a permanent shortcut in the header. A real
-               route, so it is a link, not a button. */
-            <Link
-              href={`/${org}/analyze`}
-              aria-label="Analyze a URL"
-              title="Analyze a URL"
-              className="hl-focusable flex size-8 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
-            >
-              <SquarePen className="size-4" strokeWidth={1.7} />
-            </Link>
-          }
-          quota={
-            /* Omitted, not zeroed, when the plan is unlimited or unknown —
-               a meter with no maximum is a bar that can only be empty. */
-            chrome.quota && (
-              <SidebarQuota
-                label={chrome.quota.label}
-                used={chrome.quota.used}
-                limit={chrome.quota.limit}
-                collapsed={collapsed}
-              />
-            )
-          }
-          footerAction={
-            // The rail is only collapsible where it is in flow; inside the
-            // drawer the control would fight the drawer's own dismissal.
-            <SidebarCollapseButton
-              collapsed={collapsed}
-              onToggle={() => setCollapsed((c) => !c)}
-              className="max-lg:hidden"
+      <TopBar
+        /*
+          No crumbs: the workspace is named by the switcher in `logo`, which
+          is the one thing a crumb here ever said that was true (audit UX-12
+          removed a hard-coded ICP crumb). Restore an ICP crumb, from the
+          org's real ICP, in the commit that loads one.
+        */
+        breadcrumbs={[]}
+        logo={
+          /*
+           * The workspace, not the product.
+           *
+           * This used to read "Huntloop" beside the mark, which is the one
+           * thing a signed-in user already knows and never needs the
+           * top bar to tell them. What they do need — especially anyone in
+           * more than one workspace — is which workspace they are looking
+           * at and what it is paying for, so the header states both and
+           * doubles as the switcher.
+           */
+          <Link
+            href="/orgs"
+            title="Switch workspace"
+            className="hl-focusable flex h-10 max-w-full min-w-0 items-center gap-2.5 rounded-[10px] pr-2 pl-1.5 transition-colors duration-[120ms] hover:bg-nav-hover"
+          >
+            {/* The real mark (commit de3e50d). Intrinsic dimensions given so
+                the bar does not reflow when it decodes; CSS sizes it, these
+                only supply the aspect ratio the browser reserves space with. */}
+            <img
+              src="/brand/huntloop-mark.png"
+              alt=""
+              width={1343}
+              height={638}
+              className="h-7 w-[42px] shrink-0 object-contain"
             />
-          }
-          account={
-            /* Demo mode: there is no signed-in person, so the row that
-               would name one is not rendered at all. */
-            chrome.account && (
-              <SidebarAccount
-                collapsed={collapsed}
-                avatar={
-                  <Avatar
-                    initials={chrome.account.name}
-                    className={collapsed ? "size-8" : "size-[30px]"}
-                  />
-                }
-                name={chrome.account.name}
-                secondary={chrome.account.email}
-                action={
-                  <Menu
-                    align="start"
-                    side="top"
-                    linkComponent={Link}
-                    items={[
-                      { label: "Workspace settings", href: `/${org}/settings` },
-                      { label: "Switch workspace", href: "/orgs" },
-                      {
-                        label: "Sign out",
-                        icon: LogOut,
-                        tone: "danger",
-                        separated: true,
-                        /* `requestSubmit` on the real form below rather
-                           than a fetch: sign-out changes state, so it
-                           has to be a POST, and submitting the form the
-                           browser already knows about keeps that true
-                           without this component learning how the
-                           endpoint works. */
-                        onSelect: () => signOutForm.current?.requestSubmit(),
-                      },
-                    ]}
-                    trigger={(props) => (
-                      <button
-                        type="button"
-                        {...props}
-                        aria-label="Account menu"
-                        className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
-                      >
-                        <MoreHorizontal className="size-[15px]" strokeWidth={1.6} />
-                      </button>
-                    )}
-                  />
-                }
-              />
-            )
-          }
-        />
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          /*
-            org → workspace, per the §38 tenancy hierarchy. The second crumb
-            was a campaign, which put an execution artefact above the
-            intelligence it comes from; the ICP is what a hunt is scoped by.
-
-            That second crumb is gone for now (audit UX-12). It read
-            "Web3 Infrastructure ICP · Hunting" for every organisation,
-            hard-coded — so a multi-tenant product named someone else's ICP
-            above every screen. No ICP name is plumbed here yet, and the honest
-            minimum is to show the one thing that is true. Restore it, from the
-            org's real ICP, in the commit that loads one.
-          */
-          breadcrumbs={[{ label: org }]}
-          onMenuClick={() => setNavOpen(true)}
-          /*
-            No `onSearchClick`. It was `() => {}`, and because the prop was
-            present TopBar rendered the full search control — a 224px field
-            with ⌘K printed inside it — for a shortcut nothing binds and a
-            click that did nothing (audit UX-02).
-
-            A dead link disappoints once; a dead shortcut teaches a habit and
-            then breaks it on every page. TopBar omits the control entirely
-            when the handler is absent, which is the same mechanism already
-            used for Feedback and Help. Pass a handler when the palette exists.
-          */
-          /*
+            <span className="flex min-w-0 flex-col items-start leading-[1.15]">
+              <span className="max-w-full truncate text-[16px] font-semibold tracking-[-0.02em] text-fg">
+                {chrome.orgName}
+              </span>
+              {chrome.planLabel && (
+                <span className="max-w-full truncate text-[11px] text-fg-muted">
+                  {chrome.planLabel}
+                </span>
+              )}
+            </span>
+            <ChevronsUpDown
+              aria-hidden
+              className="ml-0.5 size-3.5 shrink-0 text-fg-faint"
+              strokeWidth={1.8}
+            />
+          </Link>
+        }
+        onMenuClick={() => setNavOpen(true)}
+        /*
+          Opens the jump-to palette the Sidebar builds and binds ⌘K for.
+          This was once `() => {}` — a search field for a shortcut nothing
+          bound (audit UX-02) — which is why TopBar omits the control
+          entirely when no handler is passed.
+        */
+        onSearchClick={() => setJumpOpen(true)}
+        /*
             Both were `"#"` — a Feedback link and a Help button that looked
             live, tabbed like links, and went nowhere (audit ANL-03).
 
@@ -470,27 +331,162 @@ export function OrgShell({
             `NEXT_PUBLIC_` because this is a Client Component; the value is a
             public URL, and there is nothing here worth hiding.
           */
-          feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
-          helpHref={process.env.NEXT_PUBLIC_HELP_URL}
-          avatar={<Avatar initials={org} />}
-          /* Sign-out used to live here as well. It belongs with the
+        feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
+        helpHref={process.env.NEXT_PUBLIC_HELP_URL}
+        avatar={<Avatar initials={org} className="size-9 text-[12px]" />}
+        /* Sign-out used to live here as well. It belongs with the
              account it signs out of, which is now a real row at the foot of
              the sidebar with its own menu — and two sign-out controls on one
              screen is one more than any screen needs. */
-          actions={<ThemeToggle />}
-        />
+        actions={<ThemeToggle />}
+      />
 
-        {/*
+      <div className="relative flex min-h-0 flex-1">
+        {/* Scrim — only exists below lg, where the sidebar is an overlay. */}
+        {navOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setNavOpen(false)}
+            className="fixed inset-0 z-40 bg-overlay lg:hidden"
+          />
+        )}
+
+        <div
+          className={[
+            "fixed inset-y-0 left-0 z-50 transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+            "motion-reduce:transition-none lg:static lg:z-auto",
+            "lg:shrink-0",
+            // Scoped to max-lg deliberately: an unprefixed `-translate-x-full`
+            // outranks `lg:translate-x-0` in Tailwind's cascade, which would
+            // translate the sidebar off-screen on desktop too.
+            navOpen ? "" : "max-lg:-translate-x-full",
+          ].join(" ")}
+        >
+          <Sidebar
+            groups={groups}
+            /* The app-side half of the framework-agnostic `<a>` in packages/ui.
+             Without it every one of these seventeen items reloaded the whole
+             document — the single largest user-perceived performance cost in
+             the app (audit PERF-01). */
+            linkComponent={Link}
+            /* Longest matching prefix, so a detail route
+             (/opportunities/alphio-ai) still lights up its section, while
+             /settings/icp does not also light up /settings. An exact match
+             alone would leave every detail page with no active item. */
+            activeHref={
+              [...pinned, ...groups.flatMap((g) => g.items), ...footerItems]
+                .map((i) => i.href)
+                .filter(
+                  (href) =>
+                    pathname === href || pathname.startsWith(`${href}/`),
+                )
+                .sort((a, b) => b.length - a.length)[0] ?? ""
+            }
+            // The rail is only collapsible where it is in flow; inside the
+            // drawer the control would fight the drawer's own dismissal.
+            collapsed={collapsed}
+            pinned={pinned}
+            footerItems={footerItems}
+            jumpTo={jumpTo}
+            className="h-full"
+            quota={
+              /* Omitted, not zeroed, when the plan is unlimited or unknown —
+               a meter with no maximum is a bar that can only be empty. */
+              chrome.quota && (
+                <SidebarQuota
+                  label={chrome.quota.label}
+                  used={chrome.quota.used}
+                  limit={chrome.quota.limit}
+                  collapsed={collapsed}
+                />
+              )
+            }
+            footerAction={
+              // The rail is only collapsible where it is in flow; inside the
+              // drawer the control would fight the drawer's own dismissal.
+              <SidebarCollapseButton
+                collapsed={collapsed}
+                onToggle={() => setCollapsed((c) => !c)}
+                className="max-lg:hidden"
+              />
+            }
+            account={
+              /* Demo mode: there is no signed-in person, so the row that
+               would name one is not rendered at all. */
+              chrome.account && (
+                <SidebarAccount
+                  collapsed={collapsed}
+                  avatar={
+                    <Avatar
+                      initials={chrome.account.name}
+                      className={collapsed ? "size-8" : "size-[30px]"}
+                    />
+                  }
+                  name={chrome.account.name}
+                  secondary={chrome.account.email}
+                  action={
+                    <Menu
+                      align="start"
+                      side="top"
+                      linkComponent={Link}
+                      items={[
+                        {
+                          label: "Workspace settings",
+                          href: `/${org}/settings`,
+                        },
+                        { label: "Switch workspace", href: "/orgs" },
+                        {
+                          label: "Sign out",
+                          icon: LogOut,
+                          tone: "danger",
+                          separated: true,
+                          /* `requestSubmit` on the real form below rather
+                           than a fetch: sign-out changes state, so it
+                           has to be a POST, and submitting the form the
+                           browser already knows about keeps that true
+                           without this component learning how the
+                           endpoint works. */
+                          onSelect: () => signOutForm.current?.requestSubmit(),
+                        },
+                      ]}
+                      trigger={(props) => (
+                        <button
+                          type="button"
+                          {...props}
+                          aria-label="Account menu"
+                          className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
+                        >
+                          <MoreHorizontal
+                            className="size-[15px]"
+                            strokeWidth={1.6}
+                          />
+                        </button>
+                      )}
+                    />
+                  }
+                />
+              )
+            }
+          />
+        </div>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/*
           `tabIndex={-1}` is what makes the skip link actually skip. Without
           it, following `#main` moves the scroll position but leaves focus
           where it was, so the next Tab returns to the second nav item and the
           user is back in the sidebar they just escaped.
         */}
-        <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto">
-          {children}
-        </main>
+          <main
+            id="main"
+            tabIndex={-1}
+            className="relative min-h-0 min-w-0 flex-1 overflow-y-auto"
+          >
+            {children}
+          </main>
 
-        {/*
+          {/*
           A real form POST rather than a link: sign-out changes state, and a
           GET that any page could trigger is a CSRF. See
           app/auth/signout/route.ts.
@@ -499,11 +495,17 @@ export function OrgShell({
           unmounts on select, and a form that unmounts in the same tick as
           its own submit does not submit.
         */}
-        <form ref={signOutForm} action="/auth/signout" method="post" className="hidden">
-          <button type="submit" tabIndex={-1}>
-            Sign out
-          </button>
-        </form>
+          <form
+            ref={signOutForm}
+            action="/auth/signout"
+            method="post"
+            className="hidden"
+          >
+            <button type="submit" tabIndex={-1}>
+              Sign out
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

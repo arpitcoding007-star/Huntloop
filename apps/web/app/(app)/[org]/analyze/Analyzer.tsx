@@ -258,7 +258,7 @@ export function Analyzer({ org }: { org: string }) {
                     : "border-brand-border bg-brand-surface",
                 ].join(" ")}
               >
-                <SectionLabel>Recommendation</SectionLabel>
+                <SectionLabel variant="eyebrow">Recommendation</SectionLabel>
                 <p
                   className={[
                     "mt-1.5 text-[14px] leading-[1.6]",
@@ -339,7 +339,7 @@ export function Analyzer({ org }: { org: string }) {
 
                     {timing.result.whyNow.basedOn.length > 0 && (
                       <div>
-                        <SectionLabel>Rests on</SectionLabel>
+                        <SectionLabel variant="eyebrow">Rests on</SectionLabel>
                         {/* The traceability payoff: the timing claim names the
                             established claims underneath it, and the task
                             refused any that were not among them. */}

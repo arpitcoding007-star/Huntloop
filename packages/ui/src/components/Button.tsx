@@ -51,9 +51,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
      fill is #1F58F0 rather than the design's #2F6BFF — white on the latter
      is 4.49:1 (see tokens.css). */
   primary:
-    "bg-brand text-brand-ink border border-transparent hover:bg-brand-hover active:bg-brand-active",
+    "bg-brand text-brand-ink border border-transparent shadow-raised hover:bg-brand-hover active:bg-brand-active",
   secondary:
-    "bg-surface text-fg border border-line hover:bg-surface-active hover:border-fg active:bg-surface-active",
+    "bg-surface text-fg border border-line shadow-raised hover:bg-surface-hover hover:border-fg-faint active:bg-surface-active",
   ghost:
     "bg-transparent text-fg-secondary border border-transparent hover:bg-nav-hover hover:text-fg active:bg-nav-hover",
   // Hover fills with --hl-danger, so the label flips to the inverse ink:
@@ -66,9 +66,10 @@ const VARIANTS: Record<ButtonVariant, string> = {
 const SIZES: Record<ButtonSize, string> = {
   sm: "h-7 px-2.5 text-[12px] gap-1.5",
   md: "h-8 px-3 text-[13px] gap-2",
-  lg: "h-[38px] px-4 text-[14.5px] gap-2 rounded-[9px]",
-  /* Marketing only — the hero CTA: 46px at radius 10. `lg` is the nav
-     CTA at 38 / radius 9. */
+  /* A page header's actions — the reference's "Sources" / "Analyze a URL"
+     pair at 42 / radius 12 — and the marketing nav CTA. */
+  lg: "h-[42px] px-[18px] text-[15px] gap-2.5 rounded-[12px]",
+  /* Marketing only — the hero CTA: 46px at radius 10. */
   xl: "h-[46px] px-[22px] text-[15px] gap-2",
 };
 
@@ -83,7 +84,7 @@ const PRESS = "active:translate-y-[0.5px] motion-reduce:active:translate-y-0";
 const ICON_ONLY: Record<ButtonSize, string> = {
   sm: "w-7 px-0",
   md: "w-8 px-0",
-  lg: "w-[38px] px-0",
+  lg: "w-[42px] px-0",
   xl: "w-[46px] px-0",
 };
 

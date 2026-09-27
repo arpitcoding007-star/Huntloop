@@ -30,19 +30,19 @@ export function BreakdownList({ items, formatValue, className }: BreakdownListPr
   const max = Math.max(1, ...items.map((i) => i.value));
 
   return (
-    <ul className={cn("flex flex-col gap-2.5", className)}>
+    <ul className={cn("flex flex-col gap-3.5", className)}>
       {items.map((item, i) => {
         const pct = Math.max(2, (item.value / max) * 100);
         const color = CHART_VARS[i % CHART_VARS.length];
         return (
-          <li key={item.label} className="flex flex-col gap-1">
+          <li key={item.label} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2 text-[13px]">
               <span className="truncate text-fg-secondary">{item.label}</span>
               <span className="hl-tabular shrink-0 font-medium text-fg">
                 {formatValue ? formatValue(item.value) : item.value}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-active">
+            <div className="h-[5px] w-full overflow-hidden rounded-full bg-surface-active">
               <div
                 className="h-full rounded-full transition-[width] duration-[180ms]"
                 style={{ width: `${pct}%`, backgroundColor: color }}

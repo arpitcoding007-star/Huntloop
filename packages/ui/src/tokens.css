@@ -76,7 +76,7 @@
      unchanged UI density. */
   --hl-text-hero: 3.875rem;     /* 62 / 64 / 600 — landing hero only */
   --hl-text-display-lg: 2.625rem; /* 42 / 45 / 600 — section openers */
-  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 — in-app page titles */
+  --hl-text-display: 2.5rem;    /* 40 / 46 / 700 — in-app page titles */
   --hl-text-title: 1.625rem;    /* 26 / 32 / 600 — focused-flow titles */
   --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
   --hl-text-h2: 1rem;           /* 16 / 24 / 600 */
@@ -364,6 +364,11 @@
   --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
   --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 64px -12px rgba(0, 0, 0, 0.7);
   --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --hl-shadow-card: none;
+  --hl-violet-surface: rgba(167, 139, 250, 0.16);
+  --hl-violet-text: #a78bfa;
+  --hl-tile-neutral: #1d1e21;
+  --hl-tile-neutral-text: #a0a3aa;
 
   /* ── Sidebar — PremiumSidebar.dc.html, dark ─────────────────────────
      The nav has its own small palette because the design gives it one:
@@ -372,8 +377,8 @@
   --hl-sidebar: #08090a;
   --hl-sidebar-raised: #111214;
   --hl-nav-hover: rgba(255, 255, 255, 0.06);
-  --hl-nav-active: #17181b;
-  --hl-nav-active-ring: inset 0 0 0 1px #232427;
+  --hl-nav-active: rgba(47, 107, 255, 0.16);
+  --hl-nav-active-ring: none;
 
   --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8d94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
@@ -391,34 +396,34 @@
      #F6F6F7 band. The page is the band and everything that floats —
      cards, menus, modals — is white above it, so elevation is carried by
      the hairline and the shadow rather than by a hue. */
-  --hl-canvas: #f6f6f7;      /* --band */
+  --hl-canvas: #f8fafb;      /* the reference's page ground — cool, not neutral */
   --hl-panel: #ffffff;       /* --card */
   --hl-surface: #ffffff;     /* --paper */
-  --hl-surface-hover: #f6f6f7;
+  --hl-surface-hover: #f4f6fa;
   /* --sunk. `--hl-text-muted` is 4.48:1 on this — under AA — so nothing
      puts muted text on it; a neutral Badge sets secondary text instead. */
-  --hl-surface-active: #f0f0f2;
+  --hl-surface-active: #edf1f4;
   --hl-overlay: rgba(10, 11, 12, 0.45);
 
   /* The inside of a text input. --band rather than --sunk, for the same
      4.48:1 reason: a placeholder is muted text. */
-  --hl-field: #f6f6f7;
-  --hl-field-hover: #f0f0f2;
+  --hl-field: #f4f6fa;
+  --hl-field-hover: #edf1f4;
 
   /* ── Borders ─────────────────────────────────────────────────────────── */
-  --hl-border-subtle: #ebebee;  /* --line */
-  --hl-border-default: #dedee2; /* --line-2 */
-  --hl-border-strong: #9a9da4;  /* --ink-4, which is 3:1-ish decoration */
+  --hl-border-subtle: #e9edf0;  /* sidebar, top bar and card hairline */
+  --hl-border-default: #dfe4f2; /* control borders, the kbd chip */
+  --hl-border-strong: #838587;  /* chevrons — decoration */
 
   /* ── Text ────────────────────────────────────────────────────────────── */
-  --hl-text: #0a0b0c;           /* --ink */
-  --hl-text-secondary: #3b3d42; /* --ink-2 */
+  --hl-text: #0d1422;           /* headings, numerals, nav labels */
+  --hl-text-secondary: #525969; /* descriptions, stat labels */
   /* --ink-3. 5.11:1 on white · 4.72:1 on --band, the worst text case. */
-  --hl-text-muted: #6b6e75;
+  --hl-text-muted: #62656d;
   /* --ink-4 — 2.72:1 on white, so DECORATION ONLY: inactive nav icons,
      chevrons, dividers. Anywhere the design puts --ink-4 on real text
      (counts, placeholders, "Unknown"), the text uses --hl-text-muted. */
-  --hl-text-faint: #9a9da4;
+  --hl-text-faint: #838587;
   --hl-text-inverse: #ffffff;
 
   /* ── Brand blue ───────────────────────────────────────────────────────
@@ -437,20 +442,20 @@
   --hl-brand-hover: color-mix(in srgb, #1f58f0 86%, #0a0b0c);
   --hl-brand-active: color-mix(in srgb, #1f58f0 76%, #0a0b0c);
   --hl-brand-ink: #ffffff;
-  --hl-brand-surface: #eaf0ff; /* --blue-soft */
-  --hl-brand-border: #c3d6fa;
+  --hl-brand-surface: #e7eefc; /* active nav row, blue icon tile */
+  --hl-brand-border: #c6d7fb;
   /* 4.95:1 on --blue-soft. */
-  --hl-brand-text: #1f58f0;
+  --hl-brand-text: #1d4fc0;
 
   /* ── AI — the model's output is the accent, as a tint ────────────────── */
   --hl-ai: #2f6bff;
-  --hl-ai-surface: #eaf0ff;
-  --hl-ai-border: #c3d6fa;
-  --hl-ai-text: #1f58f0;
+  --hl-ai-surface: #e3ebff;
+  --hl-ai-border: #c6d7fb;
+  --hl-ai-text: #123999;
 
   /* ── Status ──────────────────────────────────────────────────────────── */
   --hl-success: #2e9e67;          /* --pos */
-  --hl-success-surface: #e4f1ea;  /* --pos-track */
+  --hl-success-surface: #e5f4ed;  /* green icon tile */
   --hl-success-border: #b0e0c6;
 
   --hl-warning: #c08a2a;          /* --mid */
@@ -478,7 +483,7 @@
      fills. That keeps every consumer writing one token name. */
   --hl-danger-text: #ae1b22;
   --hl-warning-text: #8f4801;
-  --hl-success-text: #12734d;
+  --hl-success-text: #0a6743;
   --hl-info-text: #0e57b1;
   /* 90+ shares the success surface, so it separates from --hl-success-text
      by hue rather than by lightness. The pill carries the number and the
@@ -486,30 +491,41 @@
   --hl-score-excellent-text: #00706b;
 
   /* ── Chart ramp — same order and intent as Dark's ────────────────────── */
-  --hl-chart-1: #2f6bff;
-  --hl-chart-2: #0d9488;
-  --hl-chart-3: #c08a2a;
+  --hl-chart-1: #447afe;
+  --hl-chart-2: #33b2a5;
+  --hl-chart-3: #dca847;
   --hl-chart-4: #c22f36;
   --hl-chart-5: #7c3aed;
   --hl-chart-6: #8a8d94;
 
   /* ── Elevation — Meridian --sh-sm / --sh / --sh-lg ───────────────────── */
-  --hl-shadow-raised: 0 1px 2px rgba(10, 11, 12, 0.06), 0 1px 1px rgba(10, 11, 12, 0.04);
+  --hl-shadow-raised: 0 1px 2px rgba(13, 20, 34, 0.05), 0 2px 6px -2px rgba(13, 20, 34, 0.08);
+  /* Every card at rest. The reference lifts cards off the ground with a
+     wide, faint shadow rather than a heavier border. */
+  --hl-shadow-card: 0 1px 2px rgba(13, 20, 34, 0.03), 0 4px 12px -4px rgba(13, 20, 34, 0.06);
+
+  /* ── Icon tiles the status ramp does not cover ───────────────────────
+     Violet is the reference's third tile hue (Contacted, Won); the neutral
+     tile is its grey one (Companies known). */
+  --hl-violet-surface: #eee8fc;
+  --hl-violet-text: #451aaf;
+  --hl-tile-neutral: #ececec;
+  --hl-tile-neutral-text: #3b3d4a;
   --hl-shadow-popover: 0 2px 4px rgba(10, 11, 12, 0.05), 0 24px 48px -28px rgba(10, 11, 12, 0.28);
   --hl-shadow-modal: 0 4px 8px rgba(10, 11, 12, 0.06), 0 48px 90px -36px rgba(10, 11, 12, 0.4);
 
-  /* ── Sidebar — PremiumSidebar.dc.html, light ────────────────────────
-     #FBFBFC, not --paper: the panel sits a hair off white so the white
-     active chip and the white search well read as raised within it. */
-  --hl-sidebar: #fbfbfc;
+  /* ── Sidebar — the reference screenshot, light ──────────────────────
+     A flat column a step darker than the page. The active row is a blue
+     tint with blue ink rather than a raised white chip. */
+  --hl-sidebar: #f4f6fa;
   --hl-sidebar-raised: #ffffff;
-  --hl-nav-hover: rgba(10, 11, 12, 0.045);
-  --hl-nav-active: #ffffff;
-  --hl-nav-active-ring: 0 0 0 1px #ebebee, 0 1px 2px rgba(10, 11, 12, 0.06);
+  --hl-nav-hover: #edf1f4;
+  --hl-nav-active: #e7eefc;
+  --hl-nav-active-ring: none;
 
   /* The chevron has to be re-declared rather than inherited, because the
-     URI bakes the hex in. #6b6e75 is --hl-text-muted. */
-  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b6e75' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+     URI bakes the hex in. #62656d is --hl-text-muted. */
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2362656d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* Headings are set in the UI grotesque in both themes. Light once
      swapped in a serif; an inverted band (`data-theme="dark"` inside a
@@ -566,9 +582,9 @@ body {
 .hl-heading {
   font-family: var(--hl-font-display);
   font-size: var(--hl-text-display);
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: var(--hl-tracking-heading);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: var(--hl-tracking-display);
   text-wrap: balance;
 }
 
@@ -602,7 +618,7 @@ body {
     font-size: 1.875rem;
   }
   .hl-heading {
-    font-size: 1.5rem;
+    font-size: 1.875rem;
   }
   .hl-title {
     font-size: 1.375rem;

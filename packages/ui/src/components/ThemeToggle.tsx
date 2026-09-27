@@ -52,7 +52,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   }, []);
 
   if (!preference) {
-    return <div className={cn("h-8 w-[84px] rounded-md", className)} aria-hidden />;
+    return <div className={cn("h-9 w-[96px] rounded-[10px]", className)} aria-hidden />;
   }
 
   return (
@@ -60,7 +60,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label="Theme"
       className={cn(
-        "inline-flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel p-0.5",
+        "inline-flex h-9 items-center gap-0.5 rounded-[10px] bg-surface-active p-1",
         className,
       )}
     >
@@ -78,11 +78,11 @@ export function ThemeToggle({ className }: { className?: string }) {
               setPreference(value);
             }}
             className={cn(
-              "hl-focusable flex size-7 items-center justify-center rounded-sm transition-colors duration-[120ms]",
-              active ? "bg-surface-active text-fg" : "text-fg-muted hover:text-fg",
+              "hl-focusable flex size-7 items-center justify-center rounded-[7px] transition-colors duration-[120ms]",
+              active ? "bg-surface text-fg shadow-raised" : "text-fg-muted hover:text-fg",
             )}
           >
-            <Icon className="size-3.5" strokeWidth={1.75} />
+            <Icon className="size-4" strokeWidth={1.75} />
             <span className="sr-only">{label}</span>
           </button>
         );

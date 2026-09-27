@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { ChevronDown, HelpCircle, Menu, Search } from "lucide-react";
 import { cn } from "../utils/cn";
+import { useShortcutLabel } from "../utils/shortcut";
 import { Badge, type BadgeVariant } from "./Badge";
 
 export interface BreadcrumbSwitcher {
@@ -41,7 +42,7 @@ export function TopBar({
   logo,
   breadcrumbs,
   onSearchClick,
-  searchShortcut = "⌘K",
+  searchShortcut,
   feedbackHref,
   helpHref,
   avatar,
@@ -49,14 +50,20 @@ export function TopBar({
   onMenuClick,
   className,
 }: TopBarProps) {
+  const platformShortcut = useShortcutLabel();
+  const shortcut = searchShortcut ?? platformShortcut;
   return (
+    /* The reference's full-width bar: brand at the left over the sidebar
+       column, search centred over the content, controls at the right. The
+       left block is the sidebar's width at lg, so the search field starts
+       where the page does. */
     <header
       className={cn(
-        "flex h-12 items-center justify-between gap-4 border-b border-line-subtle bg-canvas px-3",
+        "flex h-16 shrink-0 items-center gap-4 border-b border-line-subtle bg-canvas px-4",
         className,
       )}
     >
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1 lg:w-[240px] lg:shrink-0">
         {onMenuClick && (
           <button
             type="button"
@@ -119,25 +126,28 @@ export function TopBar({
         ))}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 justify-end md:justify-center">
         {onSearchClick && (
           <button
             type="button"
             onClick={onSearchClick}
-            aria-label="Search"
-            /* Collapses to a 32px icon button below md; the labelled field
-               costs 224px, which a phone viewport cannot spare. */
-            className="hl-focusable flex size-8 items-center justify-center gap-2 rounded-md border border-line-subtle bg-surface text-[13px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary md:w-56 md:justify-start md:px-2.5"
+            aria-label="Search or jump to"
+            /* Collapses to a 36px icon button below md; the labelled field
+               cannot share a phone's width with the brand and controls. */
+            className="hl-focusable flex size-9 shrink-0 items-center justify-center gap-2.5 rounded-[10px] border border-transparent bg-surface-active text-[14px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary md:w-full md:max-w-[660px] md:justify-start md:px-3.5"
           >
-            <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <span className="hidden flex-1 text-left md:inline">Search…</span>
-            {searchShortcut && (
-              <span className="hidden font-mono text-[11px] text-fg-muted md:inline">
-                {searchShortcut}
-              </span>
+            <Search className="size-4 shrink-0 text-fg" strokeWidth={1.75} />
+            <span className="hidden flex-1 truncate text-left md:inline">Search or jump to…</span>
+            {shortcut && (
+              <kbd className="hidden shrink-0 rounded-[6px] bg-canvas px-1.5 py-0.5 font-mono text-[11px] font-normal text-fg-muted md:inline">
+                {shortcut}
+              </kbd>
             )}
           </button>
         )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
 
         {feedbackHref && (
           <a

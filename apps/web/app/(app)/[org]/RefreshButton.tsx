@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, type ButtonVariant } from "@huntloop/ui";
+import { Button, type ButtonSize, type ButtonVariant } from "@huntloop/ui";
 import { RefreshCw } from "lucide-react";
 
 /**
@@ -25,9 +25,12 @@ import { RefreshCw } from "lucide-react";
  */
 export function RefreshButton({
   variant = "ghost",
+  size,
   children,
 }: {
   variant?: ButtonVariant;
+  /** Match the buttons it sits beside, e.g. `lg` in a page header. */
+  size?: ButtonSize;
   /** Omit for the icon-only form, which then needs the aria-label below. */
   children?: React.ReactNode;
 }) {
@@ -38,6 +41,7 @@ export function RefreshButton({
     <Button
       icon={RefreshCw}
       variant={variant}
+      size={size}
       disabled={refreshing}
       aria-label={children ? undefined : "Refresh"}
       onClick={() => start(() => router.refresh())}

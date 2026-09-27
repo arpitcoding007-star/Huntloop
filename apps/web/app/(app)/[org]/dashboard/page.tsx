@@ -31,17 +31,19 @@ import {
 import {
   Binoculars,
   CalendarCheck,
-  CheckCircle2,
   Eye,
+  FileText,
   Flame,
-  MessageSquare,
-  Plus,
+  Database,
+  Link2,
+  MessageSquareText,
   Radar,
+  Reply,
   Search,
-  Send,
   Sparkles,
   Target,
   Thermometer,
+  Trophy,
   Zap,
 } from "lucide-react";
 
@@ -133,7 +135,7 @@ export default async function DashboardPage({
             cards that said "Click to view →" and did not. */}
         <section className="mt-8">
           <SectionLabel>Priority</SectionLabel>
-          <StatGrid className="mt-3">
+          <StatGrid className="mt-4">
             <StatCard
               label="Hot"
               value={counts.hot}
@@ -214,7 +216,7 @@ export default async function DashboardPage({
               </div>
             </Card>
           ) : (
-            <div className="mt-3 flex flex-col gap-3">
+            <div className="mt-4 flex flex-col gap-3">
               {whyNow.map((o) => (
                 <Card key={o.id} flush>
                   <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
@@ -296,18 +298,19 @@ export default async function DashboardPage({
             exists — they were `href="#"` when they did not. */}
         <section className="mt-10">
           <SectionLabel>Loop this week</SectionLabel>
-          <StatGrid className="mt-3">
+          <StatGrid className="mt-4">
             <StatCard
               label="Discovered"
               value={loop.discovered}
-              icon={Search}
+              icon={Target}
+              tone="success"
               href={`/${org}/opportunities`}
               linkComponent={Link}
             />
             <StatCard
               label="Researched"
               value={loop.researched}
-              icon={Target}
+              icon={Search}
               tone="ai"
               href={`/${org}/companies`}
               linkComponent={Link}
@@ -318,7 +321,8 @@ export default async function DashboardPage({
             <StatCard
               label="Contacted"
               value={loop.contacted}
-              icon={Send}
+              icon={MessageSquareText}
+              tone="violet"
               href={`/${org}/outreach`}
               linkComponent={Link}
               hint="Messages that actually left"
@@ -326,15 +330,15 @@ export default async function DashboardPage({
             <StatCard
               label="Replied"
               value={loop.replied}
-              icon={MessageSquare}
-              tone="info"
+              icon={Reply}
+              tone="brand"
               href={`/${org}/inbox`}
               linkComponent={Link}
             />
           </StatGrid>
 
-          <SectionLabel className="mt-8">Outcomes</SectionLabel>
-          <StatGrid className="mt-3" columns={3}>
+          <SectionLabel className="mt-10">Outcomes</SectionLabel>
+          <StatGrid className="mt-4" columns={3}>
             <StatCard
               label="Meetings"
               value={outcomes.meetings}
@@ -346,8 +350,8 @@ export default async function DashboardPage({
             <StatCard
               label="Won"
               value={outcomes.won}
-              icon={CheckCircle2}
-              tone="brand"
+              icon={Trophy}
+              tone="violet"
               href={`/${org}/pipeline`}
               linkComponent={Link}
             />
@@ -358,7 +362,7 @@ export default async function DashboardPage({
             <StatCard
               label="Companies known"
               value={outcomes.companies}
-              icon={Target}
+              icon={Radar}
               href={`/${org}/companies`}
               linkComponent={Link}
             />
@@ -392,9 +396,7 @@ export default async function DashboardPage({
             />
             <div className="p-5">
               {data.signalsByType.length === 0 ? (
-                <p className="text-[13px] text-fg-muted">
-                  No triggers were recorded this week.
-                </p>
+                <BreakdownEmpty>No triggers were recorded this week.</BreakdownEmpty>
               ) : (
                 <BreakdownList items={data.signalsByType} />
               )}
@@ -408,9 +410,7 @@ export default async function DashboardPage({
             />
             <div className="p-5">
               {data.sourcePerformance.length === 0 ? (
-                <p className="text-[13px] text-fg-muted">
-                  No evidence has been attributed to a source this week.
-                </p>
+                <BreakdownEmpty>No evidence has been attributed to a source this week.</BreakdownEmpty>
               ) : (
                 <BreakdownList items={data.sourcePerformance} />
               )}
@@ -423,12 +423,22 @@ export default async function DashboardPage({
 
   return (
     <>
-      <div className="mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8 min-[1440px]:grid-cols-[minmax(0,1fr)_320px]">
+      {/* The rail's 320px column exists only when the rail does. It used to
+          be reserved unconditionally at ≥1440px, so a workspace with nothing
+          waiting got its content squeezed into two thirds of the screen
+          beside an empty column. */}
+      <div
+        className={[
+          "mx-auto grid w-full max-w-[1600px] gap-6 px-6 py-8 lg:px-8",
+          attention.length > 0 ? "min-[1440px]:grid-cols-[minmax(0,1fr)_320px]" : "",
+        ].join(" ")}
+      >
       {/* ── Main column ─────────────────────────────────────────────── */}
       <div className="min-w-0">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="hl-label">{org}</div>
+            <div className="mt-1 flex items-center gap-2.5">
               <h1 className="hl-heading text-fg">
                 Command Center
               </h1>
@@ -436,7 +446,7 @@ export default async function DashboardPage({
                   next to invented figures it read as a claim that they were
                   real — the §7 failure this screen is most exposed to. */}
             </div>
-            <p className="mt-1 text-[13px] text-fg-muted">
+            <p className="mt-2 text-[15px] text-fg-muted">
               {org} · {totalOpportunities === 0
                 ? "no opportunities yet"
                 : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
@@ -446,7 +456,7 @@ export default async function DashboardPage({
                 one that names why it is arranged this way is legible — and it
                 makes the role answer from onboarding visibly load-bearing
                 rather than a question that went nowhere. */}
-            <p className="mt-1 text-[13px] text-fg-secondary">{layout.lead}</p>
+            <p className="mt-0.5 text-[15px] text-fg-muted">{layout.lead}</p>
           </div>
           {/* "Analyze a URL" starts work that costs money, so a viewer does not
               get a button that would fail at the database (audit FEAT-04). It
@@ -454,11 +464,12 @@ export default async function DashboardPage({
               "New hunt" it replaced, its destination exists: scheduled hunting
               is the sources screen's scan interval, and one-off qualification
               is Analyze. There was never a third thing for that button to do. */}
-          <div className="flex items-center gap-2">
-            <RefreshButton />
+          <div className="flex items-center gap-2.5">
+            <RefreshButton size="lg" />
             <Button
-              icon={Radar}
+              icon={Database}
               variant="secondary"
+              size="lg"
               href={`/${org}/sources`}
               linkComponent={Link}
             >
@@ -466,8 +477,9 @@ export default async function DashboardPage({
             </Button>
             {mayHunt && (
               <Button
-                icon={Plus}
+                icon={Link2}
                 variant="primary"
+                size="lg"
                 href={`/${org}/analyze`}
                 linkComponent={Link}
               >
@@ -590,6 +602,18 @@ export default async function DashboardPage({
       )}
       </div>
     </>
+  );
+}
+
+/** An empty breakdown card: a quiet icon tile over one centred sentence. */
+function BreakdownEmpty({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center py-4 text-center">
+      <span className="flex size-11 items-center justify-center rounded-[12px] bg-brand-surface text-fg-muted">
+        <FileText aria-hidden className="size-[18px]" strokeWidth={1.75} />
+      </span>
+      <p className="mt-3 max-w-[260px] text-[13px] leading-relaxed text-fg-muted">{children}</p>
+    </div>
   );
 }
 

@@ -11,6 +11,7 @@ import {
 import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { cn } from "../utils/cn";
 import { Anchor, type LinkComponent } from "../utils/link";
+import { useShortcutLabel } from "../utils/shortcut";
 import { Badge, type BadgeVariant } from "./Badge";
 import { JumpTo, type JumpToItem } from "./JumpTo";
 
@@ -85,7 +86,18 @@ export interface SidebarProps {
    * Omitted entirely when absent, the same rule TopBar follows: a search box
    * for a palette that does not exist teaches a habit and then breaks it.
    */
-  jumpTo?: { onNavigate: (href: string) => void };
+  jumpTo?: {
+    onNavigate: (href: string) => void;
+    /**
+     * Controlled mode, for a shell that opens the palette from somewhere
+     * else too — the app's top-bar search field. The sidebar still owns the
+     * ⌘K binding and the item list; it just reports instead of deciding.
+     */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    /** `false` hides the sidebar's own search row, when the shell has one. */
+    trigger?: boolean;
+  };
   /** The workspace switcher at the top. */
   header?: ReactNode;
   /** The 32px icon control at the right of the header. Hidden in the rail. */
@@ -111,27 +123,24 @@ export interface SidebarProps {
   className?: string;
 }
 
-const EXPANDED_W = "w-[264px]";
+const EXPANDED_W = "w-[272px]";
 const RAIL_W = "w-[72px]";
 
 /**
- * The primary nav — `design/PremiumSidebar.dc.html`, in its three states:
- * light expanded, the 72px rail, and dark (the same markup; the tokens flip).
+ * The primary nav, in its three states: light expanded, the 72px rail, and
+ * dark (the same markup; the tokens flip).
  *
  * ── The shape ───────────────────────────────────────────────────────────
  *
- * A floating panel rather than a column welded to the window edge: one
- * hairline border all the way round, radius 16, sitting on the canvas with
- * a gutter. Its ground is #FBFBFC rather than white, so the white active
- * chip and the white search well read as raised within it.
+ * The reference screenshot's flat column: full height under the app's top
+ * bar, one hairline on the right, a ground a step darker than the page.
  *
  * ── Quiet by default ────────────────────────────────────────────────────
  *
  * Seventeen destinations is a lot to put on one surface, so the row at rest
- * spends almost nothing: 13.5px secondary label, 16px icon at 1.6 stroke in
- * the faintest grey. Exactly two things are allowed to be louder — where
- * you are (a white chip with a hairline ring and a blue icon) and what needs
- * you (a blue count). Everything else, including every merely informational
+ * is plain ink with a muted icon. Exactly two things are allowed to be
+ * louder — where you are (a blue tint with blue ink) and what needs you (a
+ * blue count). Everything else, including every merely informational
  * number, stays grey.
  */
 export function Sidebar({
@@ -150,23 +159,35 @@ export function Sidebar({
   className,
 }: SidebarProps) {
   const tip = useTooltip(collapsed);
-  const [jumpOpen, setJumpOpen] = useState(false);
+  const [ownJumpOpen, setOwnJumpOpen] = useState(false);
+  const controlled = jumpTo?.open !== undefined;
+  const jumpOpen = controlled ? !!jumpTo?.open : ownJumpOpen;
+  const onOpenChange = jumpTo?.onOpenChange;
+  const setJumpOpen = useCallback(
+    (next: boolean) => (controlled ? onOpenChange?.(next) : setOwnJumpOpen(next)),
+    [controlled, onOpenChange],
+  );
+  /* Read by the key handler, so toggling does not rebind it on every open. */
+  const jumpOpenRef = useRef(jumpOpen);
+  jumpOpenRef.current = jumpOpen;
   const shortcut = useShortcutLabel();
+  const showTrigger = jumpTo?.trigger !== false;
 
   /* ⌘K / Ctrl+K toggles the palette from anywhere in the app. The row
      advertises the shortcut, so the shortcut has to work wherever the row
-     is on screen — and is bound only while the row exists. */
+     is on screen — and is bound only while the palette exists. */
+  const hasJump = !!jumpTo;
   useEffect(() => {
-    if (!jumpTo) return;
+    if (!hasJump) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.key.toLowerCase() !== "k") return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       e.preventDefault();
-      setJumpOpen((o) => !o);
+      setJumpOpen(!jumpOpenRef.current);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [jumpTo]);
+  }, [hasJump, setJumpOpen]);
 
   const jumpItems: JumpToItem[] = [
     ...(pinned ?? []).map((item) => ({ item, group: undefined })),
@@ -176,28 +197,27 @@ export function Sidebar({
     .filter(({ item }) => !item.unbuilt)
     .map(({ item, group }) => ({ label: item.label, href: item.href, icon: item.icon, group }));
 
-  const renderItem = (item: NavItem, tall = false) => (
+  const renderItem = (item: NavItem) => (
     <SidebarRow
       key={item.href}
       item={item}
       active={item.href === activeHref && !item.unbuilt}
       collapsed={collapsed}
-      tall={tall}
       Link={Link}
       tip={tip}
     />
   );
 
   const openJump = () => setJumpOpen(true);
-  const rowList = cn("flex flex-col gap-px", collapsed && "items-center gap-0.5");
+  const rowList = cn("flex flex-col gap-0.5", collapsed && "items-center gap-0.5");
 
   return (
     <>
       <nav
         aria-label="Primary"
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-lg border border-line-subtle bg-sidebar",
-          "shadow-popover transition-[width] duration-[180ms] ease-out-hl motion-reduce:transition-none",
+          "flex h-full flex-col overflow-hidden border-r border-line-subtle bg-sidebar",
+          "transition-[width] duration-[180ms] ease-out-hl motion-reduce:transition-none",
           collapsed ? RAIL_W : EXPANDED_W,
           className,
         )}
@@ -205,7 +225,7 @@ export function Sidebar({
         {collapsed ? (
           <div className="flex shrink-0 flex-col items-center gap-0.5 pt-3">
             {header && <div className="mb-3 flex justify-center">{header}</div>}
-            {jumpTo && (
+            {jumpTo && showTrigger && (
               <button
                 type="button"
                 onClick={openJump}
@@ -225,7 +245,7 @@ export function Sidebar({
                 {headerAction}
               </div>
             )}
-            {jumpTo && (
+            {jumpTo && showTrigger && (
               <div className="shrink-0 px-3 pb-2.5">
                 <button
                   type="button"
@@ -244,17 +264,28 @@ export function Sidebar({
         )}
 
         {/* `overscroll-contain` so flicking past the end of a long nav does
-            not start scrolling the page behind it. */}
+            not start scrolling the page behind it. `relative` so this
+            scroller is the containing block for any absolutely positioned
+            descendant (an `sr-only` label, say) — otherwise it escapes the
+            clip and lengthens the document. `min-h-0` lets it shrink below
+            its content inside the column instead of pushing the footer out. */}
         <div
           className={cn(
-            "flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
-            collapsed ? "flex flex-col items-center pb-2" : "px-3 pt-1 pb-2",
+            "relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
+            collapsed
+              ? "flex flex-col items-center pt-2 pb-2"
+              : cn(
+                  "px-3 pb-2",
+                  /* Flush under a header or search row; given its own inset
+                     when the nav is the first thing in the panel. */
+                  header || headerAction || (jumpTo && showTrigger) ? "pt-1" : "pt-4",
+                ),
           )}
         >
           {pinned && pinned.length > 0 && (
             <>
               {collapsed && <RailRule />}
-              <ul className={rowList}>{pinned.map((i) => renderItem(i, true))}</ul>
+              <ul className={rowList}>{pinned.map((i) => renderItem(i))}</ul>
             </>
           )}
 
@@ -271,7 +302,7 @@ export function Sidebar({
                 <div
                   className={cn(
                     /* `!` because `.hl-label` is unlayered CSS and outranks utilities. */
-                    "hl-label mx-2.5 mt-3.5 mb-[5px] text-[10.5px]!",
+                    "hl-label mx-3 mt-5 mb-1.5 text-[11.5px]!",
                     !pinned?.length && "first:mt-1",
                   )}
                 >
@@ -297,7 +328,7 @@ export function Sidebar({
               <div className={cn("flex items-center gap-1", collapsed && "flex-col gap-2")}>
                 {footerItems?.length ? (
                   <ul className={cn("flex min-w-0 flex-1 flex-col", collapsed && "items-center")}>
-                    {footerItems.map((i) => renderItem(i, true))}
+                    {footerItems.map((i) => renderItem(i))}
                   </ul>
                 ) : null}
                 {footerAction}
@@ -326,42 +357,25 @@ function RailRule() {
   return <span aria-hidden className="my-1.5 block h-px w-7 shrink-0 bg-line-subtle" />;
 }
 
-/**
- * "⌘K" on Apple platforms, "Ctrl K" everywhere else — the row should name
- * the key the reader will actually press. Starts as ⌘K so the server and
- * client render the same markup, then corrects itself after hydration.
- */
-function useShortcutLabel() {
-  const [label, setLabel] = useState("⌘K");
-  useEffect(() => {
-    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
-    const platform = nav.userAgentData?.platform ?? nav.platform ?? "";
-    if (!/mac|iphone|ipad|ipod/i.test(platform)) setLabel("Ctrl K");
-  }, []);
-  return label;
-}
-
 /* ── Row ─────────────────────────────────────────────────────────────────
    One component for links, pinned items and unbuilt labels, so the three
-   cannot drift apart. The geometry is the reference spec: 30px tall (32 for
-   the pinned and footer rows), radius 8, 16px icon at 1.6 stroke, 13.5px
-   label. In the rail: a 40px target at radius 10 with an 18px icon.
+   cannot drift apart. The geometry is the reference screenshot: every row
+   40px tall at radius 10, an 18px icon, a 14.5px label, and the active row
+   a blue tint with blue ink. In the rail: a 40px square target.
 
-   The active chip is a box-shadow ring rather than a border, so becoming
+   Any active ring is a box-shadow rather than a border, so becoming
    active cannot shift the label by a pixel. */
 
 function SidebarRow({
   item,
   active,
   collapsed,
-  tall,
   Link,
   tip,
 }: {
   item: NavItem;
   active: boolean;
   collapsed: boolean;
-  tall: boolean;
   Link: LinkComponent;
   tip: Tooltip;
 }) {
@@ -392,14 +406,10 @@ function SidebarRow({
       <Icon
         className={cn(
           "shrink-0 transition-colors duration-[120ms]",
-          collapsed ? "size-[18px]" : "size-4",
-          active
-            ? "text-brand-vivid"
-            : collapsed
-              ? "text-fg-muted group-hover:text-fg"
-              : "text-fg-faint group-hover:text-fg-muted",
+          "size-[18px]",
+          active ? "text-brand-text" : "text-fg-muted group-hover:text-fg",
         )}
-        strokeWidth={1.6}
+        strokeWidth={1.7}
       />
       {!collapsed && (
         <>
@@ -429,11 +439,11 @@ function SidebarRow({
   );
 
   const shared = cn(
-    "group relative flex items-center rounded-[8px] text-[13.5px]",
+    "group relative flex items-center rounded-[10px] text-[14.5px]",
     "transition-[background-color,color,box-shadow] duration-[120ms] ease-out-hl",
     collapsed
       ? "size-10 justify-center rounded-[10px]"
-      : cn("gap-2.5 px-2.5", tall ? "h-8" : "h-[30px]"),
+      : "h-10 gap-3 px-3",
   );
 
   if (item.unbuilt) {
@@ -463,8 +473,8 @@ function SidebarRow({
           shared,
           "hl-focusable",
           active
-            ? "bg-nav-active font-medium text-fg shadow-nav-active"
-            : "text-fg-secondary hover:bg-nav-hover hover:text-fg",
+            ? "bg-nav-active font-medium text-brand-text shadow-nav-active"
+            : "text-fg hover:bg-nav-hover",
         )}
         {...tip.bind(collapsed ? item.label : undefined, item.count, item.countTone)}
       >

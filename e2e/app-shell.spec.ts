@@ -112,6 +112,27 @@ test.describe("navigation", () => {
   });
 });
 
+test.describe("scrolling", () => {
+  /*
+   * Only <main> scrolls. The document once grew to ~2× the viewport because
+   * `sr-only` spans (position: absolute, no positioned ancestor) escaped
+   * main's overflow clip, so the wheel scrolled <html> too and dragged the
+   * sidebar and top bar off-screen, leaving a blank canvas. Checked on the
+   * longest pages, where the escaped spans sit furthest down.
+   */
+  for (const path of ["dashboard", "settings/icp", "opportunities/alphio-ai"]) {
+    test(`/${path} has one scroller, not two`, async ({ page }) => {
+      await page.goto(`/${ORG}/${path}`);
+      await expect(page.locator("main#main")).toBeVisible();
+      const { docH, vh } = await page.evaluate(() => ({
+        docH: document.documentElement.scrollHeight,
+        vh: window.innerHeight,
+      }));
+      expect(docH).toBeLessThanOrEqual(vh);
+    });
+  }
+});
+
 test.describe("the AI spend screen", () => {
   /*
    * Added because the nav test did not catch a real bug in this page.

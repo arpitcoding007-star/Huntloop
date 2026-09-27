@@ -66,6 +66,11 @@
   --color-nav-active: var(--hl-nav-active);
   --shadow-nav-active: var(--hl-nav-active-ring);
 
+  --color-violet-surface: var(--hl-violet-surface);
+  --color-violet-text: var(--hl-violet-text);
+  --color-tile-neutral: var(--hl-tile-neutral);
+  --color-tile-neutral-text: var(--hl-tile-neutral-text);
+
   /* Attention — theme-invariant, see tokens.css */
   --color-attention: var(--hl-attention);
   --color-attention-hover: var(--hl-attention-hover);
@@ -106,6 +111,7 @@
 
   /* Elevation */
   --shadow-raised: var(--hl-shadow-raised);
+  --shadow-card: var(--hl-shadow-card);
   --shadow-popover: var(--hl-shadow-popover);
   --shadow-modal: var(--hl-shadow-modal);
 

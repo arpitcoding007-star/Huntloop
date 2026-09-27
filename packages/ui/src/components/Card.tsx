@@ -9,19 +9,16 @@ export interface CardProps {
 }
 
 /**
- * --hl-surface on --hl-canvas, one hairline border, radius `lg` (12px).
- *
- * Still no drop shadow: depth comes from the border and the surface's
- * lightness, which is what keeps a screen with fourteen cards on it from
- * looking like a pile of paper. The radius moved 6 → 12 with the rest of
- * the system, and a card is the element that change is most visible on —
- * it is the largest rounded rectangle on most screens.
+ * --hl-surface on --hl-canvas, one hairline border, radius `lg` (16px) and
+ * the reference's wide, faint `shadow-card`. The shadow is low enough in
+ * opacity that fourteen cards on one screen still read as one surface rather
+ * than a pile of paper, and it resolves to none in dark.
  */
 export function Card({ children, className, flush }: CardProps) {
   return (
     <section
       className={cn(
-        "min-w-0 rounded-lg border border-line-subtle bg-surface",
+        "min-w-0 rounded-lg border border-line-subtle bg-surface shadow-card",
         !flush && "p-5",
         className,
       )}
@@ -45,16 +42,18 @@ export function CardHeader({
   return (
     <header
       className={cn(
-        "flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4",
+        /* No rule under the header: the reference runs title, description
+           and content as one block, separated by space alone. */
+        "flex items-start justify-between gap-4 px-5 pt-5 pb-1",
         className,
       )}
     >
       <div className="min-w-0">
-        <h2 className="font-display text-base font-semibold tracking-heading text-fg">
+        <h2 className="font-display text-[17px] font-semibold tracking-heading text-fg">
           {title}
         </h2>
         {description && (
-          <p className="mt-0.5 text-[13px] text-fg-muted">{description}</p>
+          <p className="mt-1 text-[13px] text-fg-secondary">{description}</p>
         )}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -72,18 +71,27 @@ export function CardBody({
   return <div className={cn("p-5", className)}>{children}</div>;
 }
 
-/** The uppercase tracking-wide muted label — the Supabase signature. */
+/**
+ * The title of a section of a page — the reference's "Outcomes": sentence
+ * case, 19px, set in the heading ink. `eyebrow` is the small tracked-caps
+ * label, for a label nested inside a card where a heading would outrank the
+ * card's own title.
+ */
 export function SectionLabel({
   children,
   className,
+  variant = "heading",
 }: {
   children: ReactNode;
   className?: string;
+  variant?: "heading" | "eyebrow";
 }) {
   return (
     <div
       className={cn(
-        "text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
+        variant === "heading"
+          ? "font-display text-[19px] leading-6 font-semibold tracking-heading text-fg"
+          : "text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
         className,
       )}
     >
