@@ -245,9 +245,9 @@ export function SourceManager({
           silently returning fewer results would make the hunt look complete. */}
       {failing.length > 0 && (
         <div className="mt-6 flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-surface px-4 py-3">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" strokeWidth={1.75} />
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-text" strokeWidth={1.75} />
           <div>
-            <p className="text-[13px] text-warning">
+            <p className="text-[13px] text-warning-text">
               {failing.length} of {monitored.length} sources are not returning full
               results.
             </p>

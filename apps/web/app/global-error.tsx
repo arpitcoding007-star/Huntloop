@@ -43,9 +43,9 @@ export default function GlobalError({
         <style
           dangerouslySetInnerHTML={{
             __html: `@media (prefers-color-scheme: light) {
-  .hl-global-error { background:#f3f1ea!important; color:#1c1a15!important; }
-  .hl-global-error-muted { color:#666154!important; }
-  .hl-global-error-btn { color:#1c1a15!important; background:#ffffff!important; border-color:#ddd7c6!important; }
+  .hl-global-error { background:#f6f6f7!important; color:#0a0b0c!important; }
+  .hl-global-error-muted { color:#6b6e75!important; }
+  .hl-global-error-btn { color:#0a0b0c!important; background:#ffffff!important; border-color:#dedee2!important; }
 }`,
           }}
         />
@@ -58,8 +58,8 @@ export default function GlobalError({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#171717",
-          color: "#ededed",
+          background: "#08090a",
+          color: "#f5f5f6",
           fontFamily: "system-ui, -apple-system, sans-serif",
           padding: "3rem 1.5rem",
         }}
@@ -73,7 +73,7 @@ export default function GlobalError({
             style={{
               fontSize: "13px",
               lineHeight: 1.5,
-              color: "#949494",
+              color: "#8a8d94",
               marginTop: "0.5rem",
             }}
           >
@@ -86,7 +86,7 @@ export default function GlobalError({
               style={{
                 fontSize: "11px",
                 fontFamily: "ui-monospace, monospace",
-                color: "#949494",
+                color: "#8a8d94",
                 marginTop: "0.75rem",
                 wordBreak: "break-all",
               }}
@@ -103,9 +103,9 @@ export default function GlobalError({
               height: "2rem",
               padding: "0 0.75rem",
               fontSize: "13px",
-              color: "#ededed",
-              background: "#1f1f1f",
-              border: "1px solid #343434",
+              color: "#f5f5f6",
+              background: "#101113",
+              border: "1px solid #232427",
               borderRadius: "6px",
               cursor: "pointer",
             }}

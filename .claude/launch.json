@@ -20,6 +20,14 @@
       ],
       "port": 3101,
       "autoPort": true
+    },
+    {
+      "name": "huntloop-demo-prod",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/dev-demo-prod.mjs"
+      ],
+      "port": 3103
     }
   ]
 }

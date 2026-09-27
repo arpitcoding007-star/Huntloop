@@ -32,7 +32,8 @@ export interface BadgeProps {
 const VARIANTS: Record<BadgeVariant, string> = {
   neutral: "bg-surface-active border-line text-fg-secondary",
   brand: "bg-brand-surface border-brand-border text-brand-text",
-  ai: "bg-ai-surface border-ai-border text-ai-text",
+  // Borderless: the Meridian AI chip is a tint and a word, nothing else.
+  ai: "bg-ai-surface border-transparent text-ai-text",
   success: "bg-success-surface border-success-border text-success-text",
   warning: "bg-warning-surface border-warning-border text-warning-text",
   danger: "bg-danger-surface border-danger-border text-danger-text",
@@ -59,14 +60,14 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border font-medium whitespace-nowrap",
-        "tracking-[0.05em] uppercase",
-        /* Pill, not a rounded rectangle. A badge is the smallest element in
-           the system and the only one that never contains another element,
-           so it is the one place a fully round end reads as finished rather
-           than as a mismatched radius. Horizontal padding grows with the
-           round end so the first glyph is not crowded by the curve. */
-        size === "sm" ? "h-[18px] px-2 text-[10px]" : "h-[22px] px-2.5 text-[11px]",
+        "inline-flex items-center gap-1.5 border font-semibold whitespace-nowrap",
+        "tracking-[0.06em] uppercase",
+        /* Meridian chip: 18px at radius 5, 10px / 600 / .06em. A small
+           rounded rectangle rather than a pill — the design sets every tag,
+           from the sidebar AI chip to the evidence "Unknown", this way. */
+        size === "sm"
+          ? "h-[18px] rounded-[5px] px-1.5 text-[10px]"
+          : "h-[22px] rounded-[6px] px-2 text-[11px]",
         VARIANTS[variant],
         className,
       )}

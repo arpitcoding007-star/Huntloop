@@ -73,6 +73,30 @@ test.describe("accessibility", () => {
   }
 
   /**
+   * The ⌘K palette renders into the top layer only once opened, so the page
+   * scan above never sees it. Opened by the shortcut rather than a click, so
+   * the binding the search row advertises is exercised at the same time.
+   */
+  test("the jump-to palette has no detectable WCAG A/AA violation", async ({ page }) => {
+    await page.goto("/acme/dashboard");
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("combobox", { name: /search pages/i })).toBeFocused();
+
+    const { violations } = await new AxeBuilder({ page })
+      .withTags(TAGS)
+      .include("dialog[open]")
+      .analyze();
+
+    expect(
+      violations.map((v) => ({
+        rule: v.id,
+        impact: v.impact,
+        nodes: v.nodes.map((n) => n.target.join(" ")),
+      })),
+    ).toEqual([]);
+  });
+
+  /**
    * Both themes, because half the contrast tokens only exist in one of them.
    *
    * Light was added later and derives from reference screenshots rather than
@@ -80,9 +104,17 @@ test.describe("accessibility", () => {
    * exactly the situation where a colour gets changed in one theme and
    * forgotten in the other.
    */
-  for (const theme of ["light", "dark"] as const) {
-    test(`the opportunity list passes contrast in ${theme}`, async ({ page }) => {
-      await page.goto("/acme/opportunities");
+  /* The landing page too: Meridian's black bands are `data-theme="dark"`
+     subtrees inside a light page, and in the dark theme the whole page
+     inverts around them — two contrast situations one theme cannot show. */
+  const THEMED: { path: string; name: string }[] = [
+    { path: "/acme/opportunities", name: "the opportunity list" },
+    { path: "/", name: "the landing page" },
+  ];
+
+  for (const theme of ["light", "dark"] as const) for (const { path, name } of THEMED) {
+    test(`${name} passes contrast in ${theme}`, async ({ page }) => {
+      await page.goto(path);
       await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
 
       const { violations } = await new AxeBuilder({ page })

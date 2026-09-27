@@ -50,7 +50,7 @@ const TONES: Record<
   { frame: string; icon: string; fallback: ComponentType<{ className?: string; strokeWidth?: number }> }
 > = {
   neutral: {
-    frame: "border-line bg-panel text-fg-muted",
+    frame: "border-line bg-field text-fg-muted",
     icon: "text-fg-muted",
     fallback: Lock,
   },
@@ -60,8 +60,8 @@ const TONES: Record<
     fallback: Info,
   },
   success: {
-    frame: "border-brand-border bg-brand-surface text-brand-text",
-    icon: "text-brand-text",
+    frame: "border-success-border bg-success-surface text-success-text",
+    icon: "text-success-text",
     fallback: CheckCircle2,
   },
   warning: {

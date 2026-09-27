@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ToastProvider } from "@huntloop/ui";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { siteUrl } from "../lib/site-url";
 import "./globals.css";
@@ -12,17 +12,16 @@ import {
 } from "../lib/theme";
 
 /**
- * The design tokens have named Inter and JetBrains Mono since the system was
- * written, and until now neither was ever loaded — every user fell through to
- * `system-ui` and `ui-monospace` (audit UI-04). That is not only cosmetic: the
- * type scale, the letter-spacing on `.hl-label`, and the `hl-tabular` numeric
- * alignment were all tuned against Inter, so the design rendered differently
- * on every platform and nobody had seen the intended one.
+ * Geist and Geist Mono — the Meridian brief names them, and the type scale,
+ * the tracking on `.hl-label` and the `hl-tabular` numerals in `tokens.css`
+ * are tuned against them. They replaced Inter and JetBrains Mono, which are
+ * no longer loaded anywhere. (Audit UI-04 is why a family is loaded at all:
+ * before that, every user fell through to `system-ui`.)
  *
- * `next/font/google` rather than a `<link>` to fonts.googleapis.com: it
- * downloads the files at build time and serves them from our own origin, so
- * there is no third-party request on first paint, no extra DNS + TLS
- * handshake in the critical path, and no font CDN in the eventual CSP.
+ * `next/font/google` rather than a `<link>` to fonts.googleapis.com or the
+ * `geist` npm package: it downloads the files at build time and serves them
+ * from our own origin — no third-party request on first paint, no font CDN
+ * in the CSP, and no new dependency.
  *
  * `display: "swap"` — text renders immediately in the fallback and swaps when
  * the webfont arrives. The alternative, `block`, hides text for up to 3s;
@@ -31,19 +30,19 @@ import {
  *
  * Exposed as CSS variables rather than a className on <body>, because the
  * families are consumed by `tokens.css` in `packages/ui` — which must not know
- * that Next exists. The token reads `var(--font-inter, "Inter")`, so the
+ * that Next exists. The token reads `var(--font-geist, "Geist")`, so the
  * package still works standalone with the plain family name.
  */
-const inter = Inter({
+const geist = Geist({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-geist",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-jetbrains-mono",
+  variable: "--font-geist-mono",
 });
 
 /**
@@ -158,7 +157,7 @@ export default async function RootLayout({
        * to silence. Nothing else about hydration is affected.
        */
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${geist.variable} ${geistMono.variable}`}
     >
       {/* `font-sans` explicitly rather than relying on Tailwind's preflight
           picking up the theme's --font-sans: the token indirection above is

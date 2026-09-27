@@ -54,7 +54,7 @@ export function OnboardingProgress() {
               className={[
                 "flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
                 done && "border-brand-border bg-brand-surface text-brand-text",
-                active && "border-brand bg-brand text-fg-inverse",
+                active && "border-brand bg-brand text-brand-ink",
                 !done && !active && "border-line bg-surface text-fg-muted",
               ]
                 .filter(Boolean)

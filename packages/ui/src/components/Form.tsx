@@ -106,19 +106,20 @@ export function Field({
 /*
  * One control surface, four controls.
  *
- * `bg-panel` rather than `bg-surface`: a form sits inside a Card, which is
- * already `--hl-surface`, and an input painted the same value as the card
- * behind it is a rectangle defined entirely by its 1px border. Dropping the
- * field one step down the ramp makes it read as a well — the thing you type
- * into — in both themes, and it is the reason the light theme's white cards
- * now have visibly recessed fields rather than outlined ones.
+ * `bg-field`, which is its own token rather than a borrowed one. A form
+ * sits inside a Card, which is `--hl-surface`, and an input painted the
+ * same value as the card behind it is a rectangle defined entirely by its
+ * 1px border. The field has to sit one step *below* its card — while the
+ * sidebar, on the same page, sits one step *above* it. In the light theme
+ * those are white and near-white respectively, so no single existing token
+ * could serve both and `--hl-field` exists to say which is which.
  *
  * The hover border and the transition are not decoration. A 1px hairline at
  * rest is quiet by design, and `hover:border-line-strong` is what tells a
  * pointer user the quiet rectangle is live before they commit a click.
  */
 const CONTROL =
-  "hl-focusable mt-1.5 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted " +
+  "hl-focusable mt-1.5 w-full rounded-md border border-line bg-field px-3 text-[14px] text-fg placeholder:text-fg-muted " +
   "transition-[border-color,background-color,box-shadow] duration-[120ms] ease-out-hl " +
   "hover:border-line-strong focus:bg-surface " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-line " +

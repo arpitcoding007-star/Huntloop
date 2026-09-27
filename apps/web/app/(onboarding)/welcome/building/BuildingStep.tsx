@@ -170,7 +170,7 @@ export function BuildingStep({ org }: { org: string }) {
           get wrong, so it is stated rather than implied. */}
       {nothingFound && (
         <div className="mt-6 max-w-2xl rounded-md border border-warning-border bg-warning-surface p-4">
-          <p className="text-[13px] font-medium text-warning">
+          <p className="text-[13px] font-medium text-warning-text">
             We didn&rsquo;t find companies on this run.
           </p>
           <p className="mt-1.5 text-[13px] leading-[1.6] text-fg-secondary">
@@ -229,7 +229,7 @@ function StageIcon({ status }: { status: Status }) {
         />
       );
     case "done":
-      return <Check aria-label="Done" className={`${base} text-success`} strokeWidth={2.5} />;
+      return <Check aria-label="Done" className={`${base} text-success-text`} strokeWidth={2.5} />;
     case "skipped":
       /* Visually distinct from both done and failed, because it is neither.
          A skipped stage is a configuration state and reads as one. */

@@ -307,9 +307,9 @@ export function Confirmed({
         className,
       )}
     >
-      <Check className="size-4 shrink-0 text-success" strokeWidth={1.75} />
+      <Check className="size-4 shrink-0 text-success-text" strokeWidth={1.75} />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-success">{title}</p>
+        <p className="text-[13px] text-success-text">{title}</p>
         {description && (
           <p className="mt-0.5 text-[12px] leading-[1.5] text-fg-secondary">
             {description}

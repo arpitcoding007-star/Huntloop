@@ -44,8 +44,8 @@ export interface StatCardProps {
 
 const ICON_TONE: Record<StatTone, string> = {
   neutral: "bg-surface-active text-fg-secondary",
-  brand: "bg-brand-surface text-brand",
-  ai: "bg-ai-surface text-ai",
+  brand: "bg-brand-surface text-brand-text",
+  ai: "bg-ai-surface text-ai-text",
   success: "bg-success-surface text-success-text",
   warning: "bg-warning-surface text-warning-text",
   danger: "bg-danger-surface text-danger-text",

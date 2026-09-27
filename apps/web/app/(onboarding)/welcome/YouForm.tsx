@@ -82,7 +82,7 @@ export function YouForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alex Rivera"
-          className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+          className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-field px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
         />
         {initialName && (
           <p className="mt-1.5 text-[12px] text-fg-muted">

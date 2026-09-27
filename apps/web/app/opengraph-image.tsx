@@ -34,13 +34,17 @@ export const contentType = "image/png";
 /* Dark theme's leaves from packages/ui/src/tokens.css. Satori has no access
    to the stylesheet, so these are copies; they are the only copies in the
    codebase and they are here because the alternative is no card. */
-const CANVAS = "#171717";
-const SURFACE = "#1f1f1f";
-const BORDER = "#343434";
-const TEXT = "#ededed";
-const MUTED = "#949494";
-const BRAND = "#3ecf8e";
-const AI = "#8b5cf6";
+const CANVAS = "#08090a";
+const SURFACE = "#101113";
+const BORDER = "#232427";
+const TEXT = "#f5f5f6";
+const MUTED = "#8a8d94";
+/* Meridian: green is a verified fact, blue is the accent and the model. */
+const FACT = "#4bc98a";
+const FACT_SURFACE = "#243027";
+const BRAND = "#6e9bff";
+const BRAND_SURFACE = "#0e1931";
+const BRAND_BORDER = "#1e3a6e";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -66,7 +70,7 @@ export default function OpengraphImage() {
               width: 44,
               height: 44,
               borderRadius: 10,
-              background: "#0e2a1e",
+              background: BRAND_SURFACE,
               color: BRAND,
               fontSize: 26,
               fontWeight: 700,
@@ -98,10 +102,10 @@ export default function OpengraphImage() {
 
         {/* The three kinds of thing the product distinguishes, in the colours
             it distinguishes them with. Green is a source-verified fact,
-            violet is model output, gray is nothing on file. */}
+            blue is model output, gray is nothing on file. */}
         <div style={{ display: "flex", gap: 12 }}>
-          <Chip label="FACT" color={BRAND} background="#0e2a1e" border="#1f5a3f" />
-          <Chip label="INFERENCE" color={AI} background="#1e1633" border="#3f2d6b" />
+          <Chip label="FACT" color={FACT} background={FACT_SURFACE} border="#2f5a42" />
+          <Chip label="INFERENCE" color={BRAND} background={BRAND_SURFACE} border={BRAND_BORDER} />
           <Chip label="UNKNOWN" color={MUTED} background={SURFACE} border={BORDER} />
         </div>
       </div>

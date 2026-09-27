@@ -245,7 +245,7 @@ export default async function OpportunityPage({
                   message is written, not after it has been sent. */}
               {o.evidence.some((e) => e.kind === "unknown") && (
                 <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2.5">
-                  <p className="text-[12px] leading-[1.5] text-warning">
+                  <p className="text-[12px] leading-[1.5] text-warning-text">
                     Do not assert these — they are not established:
                   </p>
                   <ul className="mt-1.5 space-y-1">

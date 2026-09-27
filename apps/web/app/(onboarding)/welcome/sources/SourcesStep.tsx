@@ -241,7 +241,7 @@ export function SourcesStep({ org }: { org: string }) {
           role="status"
           className="mt-4 max-w-2xl rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
         >
-          <span className="font-medium text-warning">No model is connected.</span>{" "}
+          <span className="font-medium text-warning-text">No model is connected.</span>{" "}
           These are worked examples showing the shape of an answer — no model
           chose them for your business. Add{" "}
           <span className="font-mono text-[12px] text-fg">ANTHROPIC_API_KEY</span> to{" "}
@@ -370,7 +370,7 @@ export function SourcesStep({ org }: { org: string }) {
                 aria-label="Add your own source"
                 placeholder="https://example.com/blog"
                 maxLength={2048}
-                className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+                className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-field px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
               />
               <Button type="submit" size="sm" variant="secondary" icon={Plus}>
                 Add

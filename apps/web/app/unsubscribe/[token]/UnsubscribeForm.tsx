@@ -22,7 +22,7 @@ export function UnsubscribeForm({ token }: { token: string }) {
   if (state === "done") {
     return (
       <div className="rounded-md border border-success-border bg-success-surface px-4 py-3">
-        <p className="text-[14px] text-success">You have been unsubscribed.</p>
+        <p className="text-[14px] text-success-text">You have been unsubscribed.</p>
         <p className="mt-1 text-[13px] text-fg-secondary">
           You will not receive further messages from this sender. Nothing else on
           this page needs doing, and you can close it.

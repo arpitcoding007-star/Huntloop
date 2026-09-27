@@ -46,19 +46,19 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  /* `shadow-raised` is a 1px contact shadow, not a drop shadow. It is the
-     difference between a filled rectangle and a key — on the light theme's
-     cream ground especially, a flat green fill reads as a coloured area
-     rather than as something pressable. */
+  /* Meridian: a flat blue fill, an outline that darkens to ink on hover,
+     and a ghost that takes the same translucent wash as a nav row. The
+     fill is #1F58F0 rather than the design's #2F6BFF — white on the latter
+     is 4.49:1 (see tokens.css). */
   primary:
-    "bg-brand text-fg-inverse border border-brand shadow-raised hover:bg-brand-hover hover:border-brand-hover active:bg-brand-active active:border-brand-active",
+    "bg-brand text-brand-ink border border-transparent hover:bg-brand-hover active:bg-brand-active",
   secondary:
-    "bg-surface text-fg border border-line shadow-raised hover:bg-surface-hover hover:border-line-strong active:bg-surface-active",
+    "bg-surface text-fg border border-line hover:bg-surface-active hover:border-fg active:bg-surface-active",
   ghost:
-    "bg-transparent text-fg-secondary border border-transparent hover:bg-surface-hover hover:text-fg active:bg-surface-active",
+    "bg-transparent text-fg-secondary border border-transparent hover:bg-nav-hover hover:text-fg active:bg-nav-hover",
   // Hover fills with --hl-danger, so the label flips to the inverse ink:
   // near-white on that red is 2.5:1, while #0f0f0f on it is 6.6:1. Mirrors
-  // how `primary` treats its brand-green fill.
+  // how `primary` treats its brand fill.
   danger:
     "bg-danger-surface text-danger-text border border-danger-border hover:bg-danger hover:text-fg-inverse",
 };
@@ -66,19 +66,15 @@ const VARIANTS: Record<ButtonVariant, string> = {
 const SIZES: Record<ButtonSize, string> = {
   sm: "h-7 px-2.5 text-[12px] gap-1.5",
   md: "h-8 px-3 text-[13px] gap-2",
-  lg: "h-10 px-4 text-[14px] gap-2",
-  /* Marketing only. `rounded-full` rather than the shared radius: a CTA
-     sitting alone in whitespace is a shape before it is a control, and the
-     pill is the one place the system spends that. Inside the app, where
-     buttons sit in rows beside inputs and cards, a pill would break the
-     concentric radius relationship with everything around it. */
-  xl: "h-11 px-6 text-[14px] gap-2 rounded-full",
+  lg: "h-[38px] px-4 text-[14.5px] gap-2 rounded-[9px]",
+  /* Marketing only — the hero CTA: 46px at radius 10. `lg` is the nav
+     CTA at 38 / radius 9. */
+  xl: "h-[46px] px-[22px] text-[15px] gap-2",
 };
 
-/* The press. 0.97 is small enough to feel like travel rather than like a
-   zoom, and it is suppressed under `prefers-reduced-motion` — scale is
-   exactly the kind of transform that triggers vestibular symptoms. */
-const PRESS = "active:scale-[0.97] motion-reduce:active:scale-100";
+/* The press — Meridian's half-pixel of travel. Enough to feel like a key
+   going down, and off under `prefers-reduced-motion` all the same. */
+const PRESS = "active:translate-y-[0.5px] motion-reduce:active:translate-y-0";
 
 /* Square, at the height the size already sets. A lookup rather than the
    nested ternary this replaces, which silently gave `xl` the `md` width
@@ -87,8 +83,8 @@ const PRESS = "active:scale-[0.97] motion-reduce:active:scale-100";
 const ICON_ONLY: Record<ButtonSize, string> = {
   sm: "w-7 px-0",
   md: "w-8 px-0",
-  lg: "w-10 px-0",
-  xl: "w-11 px-0",
+  lg: "w-[38px] px-0",
+  xl: "w-[46px] px-0",
 };
 
 export function Button({
@@ -109,7 +105,7 @@ export function Button({
     "transition-[background-color,border-color,color,box-shadow,transform] duration-[120ms] ease-out-hl",
     PRESS,
     /* A control that cannot act must not animate as though it did. */
-    "disabled:active:scale-100 aria-disabled:active:scale-100",
+    "disabled:active:translate-y-0 aria-disabled:active:translate-y-0",
     "disabled:cursor-not-allowed disabled:opacity-50",
     // The aria-disabled twin of the line above. Both are needed: `disabled`
     // is still the right answer for a control that is momentarily busy, and

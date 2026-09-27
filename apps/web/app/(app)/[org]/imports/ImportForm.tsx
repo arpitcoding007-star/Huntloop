@@ -222,19 +222,19 @@ function Preview({ preview }: { preview: PreviewData }) {
         {(preview.unusable > 0 || preview.malformed > 0 || preview.truncated) && (
           <div className="flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-surface px-4 py-3">
             <AlertTriangle
-              className="mt-0.5 size-4 shrink-0 text-warning"
+              className="mt-0.5 size-4 shrink-0 text-warning-text"
               strokeWidth={1.75}
             />
             <div className="space-y-1">
               {preview.unusable > 0 && (
-                <p className="text-[13px] text-warning">
+                <p className="text-[13px] text-warning-text">
                   {preview.unusable} {preview.unusable === 1 ? "row has" : "rows have"} no
                   usable domain and will be skipped. A domain is what keeps one
                   company one row.
                 </p>
               )}
               {preview.malformed > 0 && (
-                <p className="text-[13px] text-warning">
+                <p className="text-[13px] text-warning-text">
                   {preview.malformed}{" "}
                   {preview.malformed === 1 ? "row has" : "rows have"} a different number
                   of columns than the header, so importing them would shift values into
@@ -242,7 +242,7 @@ function Preview({ preview }: { preview: PreviewData }) {
                 </p>
               )}
               {preview.truncated && (
-                <p className="text-[13px] text-warning">
+                <p className="text-[13px] text-warning-text">
                   Only the first 1,000 rows will be imported. Split the file to import
                   the rest.
                 </p>

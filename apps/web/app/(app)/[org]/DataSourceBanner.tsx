@@ -27,8 +27,8 @@ export function DataSourceBanner({ source }: { source: DataSource }) {
       role="status"
       className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-warning-border bg-warning-surface px-6 py-2 lg:px-8"
     >
-      <Icon className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
-      <span className="text-[12px] font-medium text-warning">Demo data.</span>
+      <Icon className="size-3.5 shrink-0 text-warning-text" strokeWidth={1.75} />
+      <span className="text-[12px] font-medium text-warning-text">Demo data.</span>
       <span className="text-[12px] text-fg-secondary">
         {noSchema ? (
           <>

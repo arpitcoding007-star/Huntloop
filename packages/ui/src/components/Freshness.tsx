@@ -36,7 +36,10 @@ export function freshnessBand(days: number): FreshnessBand {
 }
 
 const BAND_STYLE: Record<FreshnessBand, string> = {
-  fresh: "text-brand-text",
+  /* Green, not the accent. "Seen in the last week" is a fact about the
+     evidence being good, which is the success colour's job — the accent
+     means "act on this", and a timestamp is not asking to be clicked. */
+  fresh: "text-success-text",
   recent: "text-fg-secondary",
   aging: "text-fg-muted",
   stale: "text-fg-muted",
@@ -86,7 +89,7 @@ export function Freshness({ date, now, label, className }: FreshnessProps) {
         {elapsedLabel(days)}
       </time>
       {band === "stale" && (
-        <span className="rounded-sm border border-line px-1 text-[10px] tracking-label uppercase">
+        <span className="rounded-[5px] border border-line px-1 text-[10px] tracking-[0.06em] uppercase">
           Stale
         </span>
       )}

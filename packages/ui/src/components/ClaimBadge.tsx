@@ -23,12 +23,23 @@ export interface ClaimBadgeProps {
   className?: string;
 }
 
-/* Colour follows the token rule rather than a new palette: green = observed
-   system state, violet = a model produced this, gray = nothing on file. */
+/* Meridian --fact / --inf / --unk: green = observed at a source, blue = a
+   model produced this, grey = nothing on file. The hue rides on the leading
+   mark, where it only has to clear 3:1; the word is always AA ink.
+
+   Unknown is a dashed outline rather than a grey fill — the design draws
+   every "not established" box that way, and a dashed edge says "a gap"
+   where a filled chip would say "a value". */
 const STYLES: Record<ClaimKind, string> = {
-  fact: "bg-success-surface border-success-border text-brand-text",
-  inference: "bg-ai-surface border-ai-border text-ai-text",
-  unknown: "bg-surface-active border-line text-fg-muted",
+  fact: "bg-success-surface border-transparent text-success-text",
+  inference: "bg-ai-surface border-transparent text-ai-text",
+  unknown: "bg-transparent border-dashed border-line-strong text-fg-muted",
+};
+
+const MARKS: Record<ClaimKind, string> = {
+  fact: "bg-success",
+  inference: "bg-brand-vivid",
+  unknown: "border border-dashed border-fg-faint",
 };
 
 const MEANING: Record<ClaimKind, string> = {
@@ -47,13 +58,14 @@ export function ClaimBadge({
     <span
       title={MEANING[kind]}
       className={cn(
-        "inline-flex items-center gap-1 rounded-sm border font-medium",
-        "tracking-label whitespace-nowrap uppercase",
+        "inline-flex items-center gap-1.5 rounded-[5px] border font-semibold",
+        "tracking-[0.06em] whitespace-nowrap uppercase",
         size === "sm" ? "h-[18px] px-1.5 text-[10px]" : "h-[22px] px-2 text-[11px]",
         STYLES[kind],
         className,
       )}
     >
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", MARKS[kind])} />
       <span className="sr-only">{MEANING[kind]}</span>
       <span aria-hidden>{kind}</span>
       {/* Confidence is a word, not a number. §16: "do not create fake
@@ -69,7 +81,7 @@ export function ClaimBadge({
          * at 5.17:1, so 70% took it to 2.96:1 — well under AA, on the label
          * that says how sure the system is.
          *
-         * Dropping to `font-normal` against the badge's `font-medium` gives
+         * Dropping to `font-normal` against the badge's `font-semibold` gives
          * the same "this is the secondary half" reading at full contrast.
          * Caught by axe; see `e2e/a11y.spec.ts`.
          */

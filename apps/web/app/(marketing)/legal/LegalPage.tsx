@@ -42,7 +42,7 @@ export function LegalPage({
 
       {!legalIsComplete() && (
         <div className="mt-6 rounded-md border border-warning-border bg-warning-surface p-4">
-          <p className="flex items-center gap-2 text-[13px] font-medium text-warning">
+          <p className="flex items-center gap-2 text-[13px] font-medium text-warning-text">
             <AlertTriangle className="size-4 shrink-0" strokeWidth={1.75} />
             Draft — not in force
           </p>
@@ -84,7 +84,7 @@ export function Section({ title, children }: { title: string; children: ReactNod
 export function Pending({ what, why }: { what: string; why: string }) {
   return (
     <span className="inline-flex flex-col gap-0.5 rounded-sm border border-dashed border-warning-border bg-warning-surface px-2 py-1 align-top">
-      <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-warning uppercase">
+      <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-warning-text uppercase">
         Requires legal review — {what}
       </span>
       <span className="text-[12px] leading-[1.5] text-fg-muted">{why}</span>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Avatar,
   Menu,
@@ -32,6 +32,7 @@ import {
   Lightbulb,
   Radar,
   Send,
+  SquarePen,
   Settings,
   Target,
   Upload,
@@ -57,6 +58,7 @@ export function OrgShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   /** Icon-rail collapse — desktop only, where the sidebar is in flow. */
   const [collapsed, setCollapsed] = useState(false);
   /** Off-canvas drawer — below lg, where 264px of nav would leave ~110px of content. */
@@ -184,7 +186,6 @@ export function OrgShell({
     {
       label: "Operate",
       items: [
-        { label: "Settings", href: `/${org}/settings`, icon: Settings },
         /* `JOB-01`. Grouped rather than top-level: it answers "why has
            nothing happened", which is a question asked occasionally and
            urgently, not a workflow of its own. */
@@ -192,6 +193,26 @@ export function OrgShell({
       ],
     },
   ];
+
+  /* Settings sits in the footer beside the collapse control, as in the
+     Meridian sidebar, rather than in a group: it is where you go to change
+     the loop, not a stage of it. Same row, same active treatment. */
+  const footerItems: NavItem[] = [
+    { label: "Settings", href: `/${org}/settings`, icon: Settings },
+  ];
+
+  /* Stable across renders, because the Sidebar binds ⌘K against it. The
+     drawer closes on a jump for the same reason it closes on Escape: below
+     lg it covers the page the user just asked to see. */
+  const jumpTo = useMemo(
+    () => ({
+      onNavigate: (href: string) => {
+        setNavOpen(false);
+        router.push(href);
+      },
+    }),
+    [router],
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas">
@@ -252,7 +273,7 @@ export function OrgShell({
              /settings/icp does not also light up /settings. An exact match
              alone would leave every detail page with no active item. */
           activeHref={
-            [...pinned, ...groups.flatMap((g) => g.items)]
+            [...pinned, ...groups.flatMap((g) => g.items), ...footerItems]
               .map((i) => i.href)
               .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
               .sort((a, b) => b.length - a.length)[0] ?? ""
@@ -261,6 +282,8 @@ export function OrgShell({
           // drawer the control would fight the drawer's own dismissal.
           collapsed={collapsed}
           pinned={pinned}
+          footerItems={footerItems}
+          jumpTo={jumpTo}
           /* Square off the floating panel while it *is* the drawer: a rounded
              card with a gutter is right when the sidebar sits in the page,
              and wrong when it is pinned to the edge of a phone screen. */
@@ -280,116 +303,128 @@ export function OrgShell({
               href="/orgs"
               title="Switch workspace"
               className={[
-                "hl-focusable flex items-center gap-2.5 rounded-md",
-                "transition-colors duration-[120ms] hover:bg-surface-hover",
-                collapsed ? "size-9 justify-center" : "-mx-1.5 w-[calc(100%+0.75rem)] px-1.5 py-1.5",
+                "hl-focusable flex items-center transition-colors duration-[120ms] hover:bg-nav-hover",
+                collapsed
+                  ? "size-10 justify-center rounded-[10px]"
+                  : "h-9 max-w-full gap-[9px] rounded-[9px] pr-2 pl-1",
               ].join(" ")}
             >
-              {/* Intrinsic dimensions given so the header does not reflow
-                  when the mark decodes. CSS sizes it; these only supply the
-                  aspect ratio the browser reserves space with. */}
+              {/* The real mark (commit de3e50d), in the design's 26px slot —
+                  32px in the rail. Intrinsic dimensions given so the header
+                  does not reflow when it decodes; CSS sizes it, these only
+                  supply the aspect ratio the browser reserves space with. */}
               <img
                 src="/brand/huntloop-mark.png"
                 alt=""
                 width={1343}
                 height={638}
-                className="size-6 shrink-0 object-contain"
+                className={`${collapsed ? "size-8" : "size-[26px]"} shrink-0 object-contain`}
               />
               {!collapsed && (
                 <>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] leading-[1.3] font-semibold text-fg">
+                  <span className="flex min-w-0 flex-col items-start leading-[1.15]">
+                    <span className="max-w-full truncate text-[14px] font-semibold tracking-[-0.02em] text-fg">
                       {chrome.orgName}
                     </span>
                     {chrome.planLabel && (
-                      <span className="block truncate text-[11px] leading-[1.3] text-fg-muted">
+                      <span className="max-w-full truncate text-[11px] text-fg-muted">
                         {chrome.planLabel}
                       </span>
                     )}
                   </span>
                   <ChevronsUpDown
                     aria-hidden
-                    className="size-3.5 shrink-0 text-fg-muted"
-                    strokeWidth={1.6}
+                    className="ml-0.5 size-3.5 shrink-0 text-fg-faint"
+                    strokeWidth={1.8}
                   />
                 </>
               )}
             </Link>
           }
-          footer={
-            <div className={collapsed ? "flex flex-col items-center gap-3" : "flex flex-col gap-3"}>
-              {/* Omitted, not zeroed, when the plan is unlimited or unknown —
-                  a meter with no maximum is a bar that can only be empty. */}
-              {chrome.quota && (
-                <SidebarQuota
-                  label={chrome.quota.label}
-                  used={chrome.quota.used}
-                  limit={chrome.quota.limit}
-                  collapsed={collapsed}
-                />
-              )}
-
-              {chrome.account ? (
-                <SidebarAccount
-                  collapsed={collapsed}
-                  avatar={<Avatar initials={chrome.account.name} />}
-                  name={chrome.account.name}
-                  secondary={chrome.account.email}
-                  action={
-                    <div className="flex shrink-0 items-center">
-                      <Menu
-                        align="start"
-                        side="top"
-                        linkComponent={Link}
-                        items={[
-                          { label: "Workspace settings", href: `/${org}/settings` },
-                          { label: "Switch workspace", href: "/orgs" },
-                          {
-                            label: "Sign out",
-                            icon: LogOut,
-                            tone: "danger",
-                            separated: true,
-                            /* `requestSubmit` on the real form below rather
-                               than a fetch: sign-out changes state, so it
-                               has to be a POST, and submitting the form the
-                               browser already knows about keeps that true
-                               without this component learning how the
-                               endpoint works. */
-                            onSelect: () => signOutForm.current?.requestSubmit(),
-                          },
-                        ]}
-                        trigger={(props) => (
-                          <button
-                            type="button"
-                            {...props}
-                            aria-label="Account menu"
-                            className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
-                          >
-                            <MoreHorizontal className="size-4" strokeWidth={1.6} />
-                          </button>
-                        )}
-                      />
-                      <SidebarCollapseButton
-                        collapsed={collapsed}
-                        onToggle={() => setCollapsed((c) => !c)}
-                        className="max-lg:hidden"
-                      />
-                    </div>
-                  }
-                />
-              ) : (
-                /* Demo mode: there is no signed-in person, so the row that
-                   would name one is not rendered at all. The rail control
-                   still has to exist. */
-                <div className={collapsed ? "" : "flex justify-end"}>
-                  <SidebarCollapseButton
-                    collapsed={collapsed}
-                    onToggle={() => setCollapsed((c) => !c)}
-                    className="max-lg:hidden"
+          headerAction={
+            /* The design's pencil: straight to "is this a good lead?", the
+               one job worth a permanent shortcut in the header. A real
+               route, so it is a link, not a button. */
+            <Link
+              href={`/${org}/analyze`}
+              aria-label="Analyze a URL"
+              title="Analyze a URL"
+              className="hl-focusable flex size-8 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
+            >
+              <SquarePen className="size-4" strokeWidth={1.7} />
+            </Link>
+          }
+          quota={
+            /* Omitted, not zeroed, when the plan is unlimited or unknown —
+               a meter with no maximum is a bar that can only be empty. */
+            chrome.quota && (
+              <SidebarQuota
+                label={chrome.quota.label}
+                used={chrome.quota.used}
+                limit={chrome.quota.limit}
+                collapsed={collapsed}
+              />
+            )
+          }
+          footerAction={
+            // The rail is only collapsible where it is in flow; inside the
+            // drawer the control would fight the drawer's own dismissal.
+            <SidebarCollapseButton
+              collapsed={collapsed}
+              onToggle={() => setCollapsed((c) => !c)}
+              className="max-lg:hidden"
+            />
+          }
+          account={
+            /* Demo mode: there is no signed-in person, so the row that
+               would name one is not rendered at all. */
+            chrome.account && (
+              <SidebarAccount
+                collapsed={collapsed}
+                avatar={
+                  <Avatar
+                    initials={chrome.account.name}
+                    className={collapsed ? "size-8" : "size-[30px]"}
                   />
-                </div>
-              )}
-            </div>
+                }
+                name={chrome.account.name}
+                secondary={chrome.account.email}
+                action={
+                  <Menu
+                    align="start"
+                    side="top"
+                    linkComponent={Link}
+                    items={[
+                      { label: "Workspace settings", href: `/${org}/settings` },
+                      { label: "Switch workspace", href: "/orgs" },
+                      {
+                        label: "Sign out",
+                        icon: LogOut,
+                        tone: "danger",
+                        separated: true,
+                        /* `requestSubmit` on the real form below rather
+                           than a fetch: sign-out changes state, so it
+                           has to be a POST, and submitting the form the
+                           browser already knows about keeps that true
+                           without this component learning how the
+                           endpoint works. */
+                        onSelect: () => signOutForm.current?.requestSubmit(),
+                      },
+                    ]}
+                    trigger={(props) => (
+                      <button
+                        type="button"
+                        {...props}
+                        aria-label="Account menu"
+                        className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
+                      >
+                        <MoreHorizontal className="size-[15px]" strokeWidth={1.6} />
+                      </button>
+                    )}
+                  />
+                }
+              />
+            )
           }
         />
       </div>

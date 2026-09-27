@@ -67,7 +67,7 @@ export default async function DiscoverPage({
       <header className="border-b border-line-subtle">
         <div className="mx-auto flex max-w-[820px] items-center gap-2 px-6 py-3">
           <Link href="/" className="hl-focusable flex items-center gap-2 rounded-sm">
-            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand">
+            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
               H
             </span>
             <span className="text-[14px] font-semibold text-fg">Huntloop</span>
@@ -143,7 +143,7 @@ export default async function DiscoverPage({
                 role="status"
                 className="mt-4 rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
               >
-                <span className="font-medium text-warning">
+                <span className="font-medium text-warning-text">
                   This is a worked example, not a reading of your site.
                 </span>{" "}
                 No model is connected to this deployment, so nothing fetched{" "}

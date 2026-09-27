@@ -74,7 +74,7 @@ export default async function OrgsPage() {
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle bg-panel">
         <div className="mx-auto flex max-w-[720px] items-center gap-2 px-6 py-3">
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand">
+          <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
             H
           </span>
           <span className="text-[13px] font-semibold text-fg">Huntloop</span>
@@ -98,7 +98,7 @@ export default async function OrgsPage() {
                 <Card flush>
                   <CardBody>
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-brand-surface text-[15px] font-semibold text-brand">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-brand-surface text-[15px] font-semibold text-brand-text">
                         {m.name.slice(0, 1).toUpperCase()}
                       </span>
                       <div className="min-w-0 flex-1">

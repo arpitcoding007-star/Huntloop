@@ -1,24 +1,40 @@
 /* ============================================================================
    Huntloop design tokens
-   Canonical source — see IMPLEMENTATION_PLAN.md §1.
+   This file is the canonical source. IMPLEMENTATION_PLAN.md §1 holds the
+   original palette it grew out of — a green brand on a warm-paper light
+   theme — and is now history rather than specification: where the two
+   disagree, this file is right and the plan is a record of what was
+   superseded.
 
-   Color system and chrome derived from Supabase (near-black layered surfaces,
-   a single saturated green accent, hairline borders, no shadows) for Dark.
-   Light derives its palette from the reference report screenshots (warm
-   paper canvas, white cards, rust/amber flag accent) rather than a plain
-   inversion of Dark — see the `[data-theme="light"]` block below.
-   Dashboard semantics derived from Kima BD OS (stat grid, quota bars).
+   Both themes are Meridian (design/dir-prem.css and the two .dc.html comps
+   beside it): pure white paper, one electric blue, true-black #08090A
+   bands, hairline dividers, thin green score rings.
+   Dashboard semantics from Kima BD OS (stat grid, quota bars).
+
+   ── One accent ──────────────────────────────────────────────────────────
+
+   Blue, and only blue, carries everything the interface wants you to act
+   on: the primary button, the active nav chip's accents, a link, a focus
+   ring, an unread count, a quota bar. The reference comps are built on
+   that restraint — a page of greys with a single hue in it, spent only
+   where attention is actually being asked for.
+
+   This replaced a green brand. Green was load-bearing for a second reason
+   and that reason survives, narrowed: it is now the *success/verified*
+   status and nothing else. Which means a green chip on a screen means a
+   fact was confirmed, not that a button is important.
 
    Semantic split that earns its place, and holds in BOTH themes:
-     green  = system state + primary action + source-verified FACT
-     violet = "a model produced this" — which includes every INFERENCE
+     blue   = act on this — action, attention, focus, the model's output
+     green  = confirmed: success, and a source-verified FACT
      gray   = UNKNOWN / no evidence on file
 
    The epistemic clause is not a second meaning bolted on: master context §7
    forbids silently promoting an inference to a fact, and the colour a claim
    is painted in is the fastest place that promotion could happen unnoticed.
-   A fact is something observed at a source (system state); an inference is
-   something a model concluded (violet, already). See ClaimBadge.
+   A fact is something observed at a source (green, confirmed); an inference
+   is something a model concluded (blue, the model's colour). Neither is
+   ever the only carrier — ClaimBadge always writes the word.
 
    ── Theme architecture ──────────────────────────────────────────────────
    `:root` holds tokens that never change with theme: spacing, radius,
@@ -49,17 +65,17 @@
      fallback family name, which resolves if the font happens to be installed
      locally and falls through to the system stack if not. Either way this file
      never learns that Next exists. */
-  --hl-font-sans: var(--font-inter, "Inter var"), "Inter", system-ui,
+  --hl-font-sans: var(--font-geist, "Geist"), ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", sans-serif;
-  --hl-font-mono: var(--font-jetbrains-mono, "JetBrains Mono"),
-    "Source Code Pro", ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  --hl-font-mono: var(--font-geist-mono, "Geist Mono"), ui-monospace,
+    "SF Mono", "Cascadia Mono", menlo, monospace;
 
-  /* Display tier. The reference comps lead with type, not chrome: one very
-     large, very tightly tracked line per section, then a drop straight to
-     13–14px body. These three sizes are that ladder; everything below
-     --hl-text-h1 is unchanged UI density. */
-  --hl-text-hero: 3.5rem;       /* 56 / 58 / 600 — landing hero only */
-  --hl-text-display-lg: 2.5rem; /* 40 / 44 / 600 — section openers */
+  /* Display tier. Meridian leads with type, not chrome: one very large,
+     very tightly tracked line per section, then a drop straight to 13–14px
+     body. These sizes are that ladder; everything below --hl-text-h1 is
+     unchanged UI density. */
+  --hl-text-hero: 3.875rem;     /* 62 / 64 / 600 — landing hero only */
+  --hl-text-display-lg: 2.625rem; /* 42 / 45 / 600 — section openers */
   --hl-text-display: 1.875rem;  /* 30 / 36 / 600 — in-app page titles */
   --hl-text-title: 1.625rem;    /* 26 / 32 / 600 — focused-flow titles */
   --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
@@ -67,20 +83,21 @@
   --hl-text-body: 0.875rem;     /* 14 / 20 / 400 — the workhorse */
   --hl-text-body-sm: 0.8125rem; /* 13 / 18 / 400 */
   --hl-text-caption: 0.75rem;   /* 12 / 16 / 400 */
-  --hl-text-label: 0.6875rem;   /* 11 / 16 / 500 uppercase — the signature */
+  --hl-text-label: 0.71875rem;  /* 11.5 / 16 / 600 uppercase — the eyebrow */
   --hl-text-metric: 2rem;       /* 32 / 36 / 600 tabular */
   --hl-text-metric-sm: 1.25rem; /* 20 / 24 / 600 tabular */
 
   /* ── Tracking ────────────────────────────────────────────────────────
      Optical letter-spacing: large type needs negative tracking to stop
      looking loose, small caps need positive tracking to stay readable.
-     Inter is drawn for this — it ships no optical sizes, so the correction
-     has to be explicit. One token per tier so a heading never guesses. */
-  --hl-tracking-hero: -0.033em;
-  --hl-tracking-display: -0.026em;
-  --hl-tracking-heading: -0.017em;
-  --hl-tracking-body: -0.006em;
-  --hl-tracking-label: 0.06em;
+     Geist ships no optical sizes, so the correction has to be explicit.
+     One token per tier so a heading never guesses. Values are Meridian's:
+     -.04em at 62px, -.011em body, .14em on the eyebrow. */
+  --hl-tracking-hero: -0.04em;
+  --hl-tracking-display: -0.035em;
+  --hl-tracking-heading: -0.02em;
+  --hl-tracking-body: -0.011em;
+  --hl-tracking-label: 0.14em;
 
   /* ── Spacing (4px base) ──────────────────────────────────────────────── */
   --hl-space-1: 0.25rem;
@@ -95,18 +112,16 @@
   --hl-space-16: 4rem;
 
   /* ── Radius ──────────────────────────────────────────────────────────── */
-  /* Softer than the Supabase original it replaces (4 / 6 / 8). The whole
-     chrome is built from these three names, so the curve of every button,
-     input, card, badge and panel in the product is set here and nowhere
-     else. Concentric rule: a child's radius is the parent's minus the
-     padding between them, which is why sm sits 4px under lg rather than
-     being chosen by eye. */
+  /* Meridian's 10 / 16 / 24. The whole chrome is built from these names,
+     so the curve of every button, input, card, badge and panel in the
+     product is set here and nowhere else. Concentric rule: a child's radius
+     is the parent's minus the padding between them. */
   --hl-radius-xs: 4px;
   --hl-radius-sm: 6px;
-  --hl-radius-md: 8px;   /* buttons, inputs, controls — the default */
-  --hl-radius-lg: 12px;  /* cards, panels */
-  --hl-radius-xl: 16px;  /* modals, drawers, media frames */
-  --hl-radius-2xl: 22px; /* full-bleed marketing figures */
+  --hl-radius-md: 10px;  /* Meridian --r: buttons, inputs, controls */
+  --hl-radius-lg: 16px;  /* --r-lg: cards, panels */
+  --hl-radius-xl: 24px;  /* --r-xl: modals, drawers, product mocks */
+  --hl-radius-2xl: 24px; /* full-bleed marketing figures — same as xl now */
   --hl-radius-full: 9999px;
 
   /* ── Density ─────────────────────────────────────────────────────────── */
@@ -138,7 +153,9 @@
   --hl-priority-hot-surface: var(--hl-danger-surface);
   --hl-priority-hot-border: var(--hl-danger-border);
 
-  --hl-priority-warm: var(--hl-warning);
+  /* The text leaf, not the fill: Meridian's amber (--mid) is a graphic
+     value, 2.6:1 as the 11px word on its own tint. */
+  --hl-priority-warm: var(--hl-warning-text);
   --hl-priority-warm-surface: var(--hl-warning-surface);
   --hl-priority-warm-border: var(--hl-warning-border);
 
@@ -147,7 +164,9 @@
   --hl-priority-watch-border: var(--hl-info-border);
 
   --hl-priority-ignore: var(--hl-text-muted);
-  --hl-priority-ignore-surface: var(--hl-surface-active);
+  /* surface-hover rather than surface-active: muted text is 4.48:1 on
+     Meridian's --sunk, and 4.72 / 5.34 on this in light / dark. */
+  --hl-priority-ignore-surface: var(--hl-surface-hover);
   --hl-priority-ignore-border: var(--hl-border-default);
 
   /* ── Score ramp — alias ──────────────────────────────────────────────── */
@@ -168,17 +187,20 @@
      everywhere it is load-bearing.
 
      One value for both themes, because the thing it marks does not change
-     with the reader's preference and because #2563eb happens to clear every
-     floor from either side: 5.17:1 against white ink (so the 11px count is
-     AA), 3.35:1 on Dark's panel and 3.78:1 on Light's (so the pill itself
-     clears the 3:1 graphics threshold on the surface it sits on). A lighter
-     blue would fail the first; a darker one the second.
+     with the reader's preference: the brand fill, #1F58F0, which carries
+     the 11px white count at 5.65:1. (Meridian's #2F6BFF would be 4.49.)
 
      Never the only carrier of meaning: every count states its number, and
      the rail's dot is paired with a title. */
-  --hl-attention: #2563eb;
-  --hl-attention-hover: #1d4fd8;
-  --hl-attention-ink: #ffffff;
+  /* Attention is the brand. They were briefly two blues — one for "this is
+     the primary action" and one for "something is waiting for you" — and
+     two blues a shade apart on one screen is a distinction nobody can see
+     and everybody has to maintain. Kept as its own name because the
+     *meaning* is worth naming at the call site: a count badge is not a
+     button, and `bg-attention` says why it is coloured. */
+  --hl-attention: var(--hl-brand);
+  --hl-attention-hover: var(--hl-brand-hover);
+  --hl-attention-ink: var(--hl-brand-ink);
 
   /* ── Inverted band — theme-invariant ──────────────────────────────────
      The marketing pages alternate light sections with full-bleed near-black
@@ -189,34 +211,33 @@
      Dark — every band painted the same value as the section it was there to
      punctuate.
 
-     #151515 rather than #000. Pure black is the wrong dark for a large field:
-     on an OLED panel the pixels switch fully off and the band reads as a hole
-     cut in the page, gradients and product screenshots band visibly where
-     they meet it, and the near-black elevations above it have nowhere to go.
-     A hair of grey keeps the surface a surface. It is also the canvas Dark
-     itself is built on, below — so a band and the dark app agree. */
-  --hl-band: #151515;
-  --hl-band-raised: #1f1f1f;
-  --hl-band-hover: #272727;
-  --hl-band-border: #2e2e2e;
-  --hl-band-border-strong: #454545;
-  --hl-band-text: #f7f7f7;
-  --hl-band-text-secondary: #b4b4b4;
-  /* 6.0:1 on --hl-band — the eyebrow labels and captions that live in the
-     bands are 11–13px, so they are held to the small-text floor. */
-  --hl-band-text-muted: #949494;
-  --hl-band-brand: #3ecf8e;
+     Meridian's --black, #08090A, rather than #000: pure black switches OLED
+     pixels fully off and the band reads as a hole cut in the page. A hair of
+     lift keeps the surface a surface. It is also the canvas Dark itself is
+     built on, below — so a band and the dark app agree. */
+  --hl-band: #08090a;
+  --hl-band-raised: #101113;
+  --hl-band-hover: #17181b;
+  --hl-band-border: #232427;
+  --hl-band-border-strong: #54575d;
+  --hl-band-text: #f5f5f6;
+  --hl-band-text-secondary: #a0a3aa;
+  /* 5.99:1 on --hl-band — the eyebrows and captions in the bands are
+     11–13px, so they are held to the small-text floor. The design's own
+     #6C6F76 (3.96) is kept for decoration only. */
+  --hl-band-text-muted: #8a8d94;
+  --hl-band-brand: #6e9bff;
 
   /* The <select> disclosure chevron, as a data URI. Declared here rather
      than in the component so both themes resolve `--hl-text-muted` at paint
      time — an SVG loaded as an image cannot see `currentColor`, so the only
      way for the arrow to follow the theme is for the URI to be built from a
      custom property that the theme already moves. */
-  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23949494' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8d94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* ── Focus — alias, composed from theme leaves ──────────────────────── */
-  --hl-focus: var(--hl-brand);
-  --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
+  --hl-focus: var(--hl-brand-vivid);
+  --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand-vivid);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -228,78 +249,85 @@
 }
 
 /* ============================================================================
-   Dark — the original, unchanged palette. Canonical default until a
-   preference or the OS says otherwise.
+   Dark — Meridian true black. Both theme blocks carry the design's own
+   values (`design/dir-prem.css`, `design/PremiumSidebar.dc.html`); where a
+   design value fails WCAG AA as text it is kept for decoration and the text
+   role steps up the same ramp — see each block.
    ========================================================================= */
 [data-theme="dark"] {
   color-scheme: dark;
 
   /* ── Surfaces ─────────────────────────────────────────────────────────
-     Rebased from #171717 onto #151515 so the dark app and the marketing
-     bands (`--hl-band`, above) sit at exactly the same value — a visitor
-     moving from the landing page into the workspace crosses no seam. The
-     ramp is otherwise widened slightly: 21 → 26 → 31 → 39 → 44 in 8-bit
-     grey, where it used to be 23 → 28 → 31 → 36 → 42. Elevation on a dark
-     ground is carried almost entirely by lightness, and the old steps
-     between surface / hover / active were close enough to read as noise
-     rather than as levels. */
-  --hl-canvas: #151515;
-  --hl-panel: #1a1a1a;
-  --hl-surface: #1f1f1f;
-  --hl-surface-hover: #272727;
-  --hl-surface-active: #2c2c2c;
-  --hl-overlay: rgba(8, 8, 8, 0.72);
+     Meridian's true black, #08090A, is both the dark page and the marketing
+     band (`--hl-band`), so a visitor moving from a black section of the
+     landing page into the dark workspace crosses no seam. The ramp above it
+     is taken from the design files rather than stepped by eye:
+       #101113 the dark product mock's card
+       #111214 the dark sidebar's search field
+       #17181B the dark sidebar's active row
+       #1D1E21 the evidence ring's track */
+  --hl-canvas: #08090a;
+  --hl-panel: #08090a;
+  --hl-surface: #101113;
+  --hl-surface-hover: #17181b;
+  --hl-surface-active: #1d1e21;
+  --hl-overlay: rgba(0, 0, 0, 0.72);
 
-  /* ── Borders — depth is expressed with 1px lines, never shadows ─────────
-     `--hl-text-muted` (#949494) measures 6.02 on canvas · 5.68 on panel ·
-     5.15 on surface · 4.99 on surface-hover · 4.60 on surface-active. All
-     five clear AA for the 11–13px labels they carry, which is the constraint
-     that fixed --hl-surface-active at #2c2c2c rather than a rounder #2e2e2e
-     (4.48 — a rounding error under the floor). */
-  --hl-border-subtle: #242424;
-  --hl-border-default: #323232;
-  --hl-border-strong: #484848;
+  /* The inside of a text input, one step below the card it sits in. */
+  --hl-field: #111214;
+  --hl-field-hover: #17181b;
 
-  /* ── Text ─────────────────────────────────────────────────────────────── */
-  /* Muted was #6f6f6f, which the plan recorded as ~4.6:1 on canvas. Measured,
-     it is 3.57:1 on canvas and 3.28:1 on surface — a WCAG AA failure on every
-     uppercase label, stat-card label, timestamp and helper string in the app.
-     #949494 is the darkest gray clearing 4.5:1 against ALL five surfaces:
-     canvas 5.91 · panel 5.61 · surface 5.43 · surface-hover 5.12 ·
-     surface-active 4.73. Secondary moves up in step so the two levels stay
-     visually distinct rather than collapsing into one. */
-  --hl-text: #ededed;
-  --hl-text-secondary: #b4b4b4;
-  --hl-text-muted: #949494;
-  --hl-text-inverse: #0f0f0f;
+  /* ── Borders ─────────────────────────────────────────────────────────── */
+  --hl-border-subtle: #1c1d20;  /* the dark sidebar's border */
+  --hl-border-default: #232427; /* --black-line */
+  --hl-border-strong: #54575d;  /* the dark group label — decoration here */
 
-  /* ── Brand green (Supabase #3ECF8E) ───────────────────────────────────── */
-  --hl-brand: #3ecf8e;
-  --hl-brand-hover: #4ae0a0;
-  --hl-brand-active: #34b87c;
-  --hl-brand-surface: #0e2a1e;
-  --hl-brand-border: #1f5a3f;
-  --hl-brand-text: #6ee7b0;
+  /* ── Text ─────────────────────────────────────────────────────────────
+     The design's dark muted grey, #6C6F76, is 3.96:1 on black and its group
+     label #54575D is 2.75:1 — both are kept, but as decoration only
+     (`--hl-text-faint`). Muted text reads #8A8D94 instead, the design's own
+     --unk grey: 5.99 on canvas · 5.68 on surface · 5.34 on surface-hover ·
+     5.01 on surface-active. That keeps it a clear step below --on-black-2,
+     where stepping straight up the ramp would have merged the two. */
+  --hl-text: #f5f5f6;           /* --on-black */
+  --hl-text-secondary: #a0a3aa; /* --on-black-2 */
+  --hl-text-muted: #8a8d94;
+  --hl-text-faint: #6c6f76;
+  --hl-text-inverse: #0a0b0c;
 
-  /* ── AI violet (Kima) ─────────────────────────────────────────────────── */
-  --hl-ai: #8b5cf6;
-  --hl-ai-surface: #1e1633;
-  --hl-ai-border: #3f2d6b;
-  --hl-ai-text: #b79dfb;
+  /* ── Brand blue ───────────────────────────────────────────────────────
+     Same split as Light (see there). A white label on #1F58F0 is 5.65:1 in
+     either theme, so the fill does not change. Blue *text* and blue
+     graphics on black — the active nav icon, the quota fill, the focus
+     ring — are the design's accent-on-dark, #6E9BFF (7.40:1). */
+  --hl-brand-vivid: #6e9bff;
+  --hl-brand: #1f58f0;
+  --hl-brand-hover: color-mix(in srgb, #1f58f0 86%, #0a0b0c);
+  --hl-brand-active: color-mix(in srgb, #1f58f0 76%, #0a0b0c);
+  /* What sits *on* a brand fill. White in both themes — `--hl-text-inverse`
+     is near-black in Dark. */
+  --hl-brand-ink: #ffffff;
+  --hl-brand-surface: rgba(47, 107, 255, 0.16);
+  --hl-brand-border: rgba(47, 107, 255, 0.35);
+  --hl-brand-text: #6e9bff;
 
-  /* ── Status ───────────────────────────────────────────────────────────── */
-  --hl-success: #3ecf8e;
-  --hl-success-surface: #0e2a1e;
-  --hl-success-border: #1f5a3f;
+  /* ── AI — the dark sidebar's chip: rgba(47,107,255,.16) under #6E9BFF,
+     6.05:1 on the composite even over --hl-surface. */
+  --hl-ai: #6e9bff;
+  --hl-ai-surface: rgba(47, 107, 255, 0.16);
+  --hl-ai-border: rgba(47, 107, 255, 0.35);
+  --hl-ai-text: #6e9bff;
+
+  /* ── Status ───────────────────────────────────────────────────────────
+     Success is the dark mock's score ring: #4BC98A on #243027. */
+  --hl-success: #4bc98a;
+  --hl-success-surface: #243027;
+  --hl-success-border: #2f5a42;
 
   --hl-warning: #f5a623;
   --hl-warning-surface: #2b1f08;
   --hl-warning-border: #6b4a12;
 
-  /* #e5484d measures 4.35:1 on --hl-surface — under AA for the 11–13px text
-     it carries in Badge, StatCard and ScorePill. Lightened to clear 4.5:1 on
-     every surface; the deeper red is kept for charts, where the 3:1 graphics
-     threshold applies. */
   --hl-danger: #ff6369;
   --hl-danger-surface: #2b1113;
   --hl-danger-border: #6b2226;
@@ -310,172 +338,186 @@
 
   --hl-score-excellent-leaf: #22d3a6;  /* 90+, --hl-score-excellent's source */
 
-  /* Dark's statuses measure 6.07 / 7.96 / 7.69 / 7.99 against their own
-     surfaces, so the text leaves the light block needs are aliases here.
-     Declared rather than omitted: a token that exists in one theme and not
-     the other is a component that renders unstyled in the other. */
+  /* Dark's statuses clear 4.5:1 against their own surfaces already, so the
+     text leaves Light needs are aliases here. Declared rather than omitted:
+     a token that exists in one theme and not the other is a component that
+     renders unstyled in the other. */
   --hl-danger-text: var(--hl-danger);
   --hl-warning-text: var(--hl-warning);
   --hl-success-text: var(--hl-success);
   --hl-info-text: var(--hl-info);
   --hl-score-excellent-text: var(--hl-score-excellent-leaf);
 
-  /* ── Chart ramp ───────────────────────────────────────────────────────── */
-  --hl-chart-1: #3ecf8e;
-  --hl-chart-2: #8b5cf6;
-  --hl-chart-3: #3b9eff;
-  --hl-chart-4: #f5a623;
-  --hl-chart-5: #e5484d;
-  --hl-chart-6: #64748b;
+  /* ── Chart ramp ───────────────────────────────────────────────────────
+     Accent first, then hues chosen to stay separable for the common
+     colour-vision deficiencies. */
+  --hl-chart-1: #6e9bff;
+  --hl-chart-2: #2dd4bf;
+  --hl-chart-3: #f5a623;
+  --hl-chart-4: #e5484d;
+  --hl-chart-5: #a78bfa;
+  --hl-chart-6: #8a8d94;
 
-  /* ── Elevation — the only shadows in the system ───────────────────────
-     Two-part: a tight contact shadow that anchors the element to whatever
-     is beneath it, and a wide soft one that carries the distance. A single
-     blurred drop is what makes a dark UI look smudged rather than layered.
-     Dark still leans on borders first; these are for things that float free
-     of the layout — popovers, menus, modals, toasts. */
+  /* ── Elevation ────────────────────────────────────────────────────────
+     A black ground has no darker value left to cast, so Dark leans on the
+     hairline first; these are for things that float free of the layout. */
   --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
   --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 64px -12px rgba(0, 0, 0, 0.7);
   --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
 
-  /* Headings are set in the same family as body copy. The seam is kept so
-     a display face can be introduced in one line; see the note in the light
-     block for why there is not one today. */
+  /* ── Sidebar — PremiumSidebar.dc.html, dark ─────────────────────────
+     The nav has its own small palette because the design gives it one:
+     the panel, the raised wells inside it (search, quota), and the active
+     chip are each a specific value, not a step on the surface ramp. */
+  --hl-sidebar: #08090a;
+  --hl-sidebar-raised: #111214;
+  --hl-nav-hover: rgba(255, 255, 255, 0.06);
+  --hl-nav-active: #17181b;
+  --hl-nav-active-ring: inset 0 0 0 1px #232427;
+
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8d94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
   --hl-font-display: var(--hl-font-sans);
 }
 
 /* ============================================================================
-   Light — derived from the reference report screenshots: a warm paper
-   canvas, white cards with hairline warm-gray borders, a serif display face
-   for headings, and a rust/amber flag accent that maps onto the existing
-   --hl-warning role (the screenshots use exactly that hue for a "flag this"
-   callout). Not a straight inversion of Dark — surfaces still get lighter as
-   they elevate (canvas → panel → white card), matching Dark's relationship,
-   but hover/active states darken instead of lightening, as they should on a
-   light ground.
+   Light — Meridian: pure white, one electric blue, hairline dividers.
    ========================================================================= */
 [data-theme="light"] {
   color-scheme: light;
 
-  /* ── Surfaces ─────────────────────────────────────────────────────────── */
-  --hl-canvas: #f3f1ea;
-  --hl-panel: #f8f7f2;
-  --hl-surface: #ffffff;
-  --hl-surface-hover: #f5f3ec;
-  --hl-surface-active: #ede9de;
-  --hl-overlay: rgba(26, 23, 18, 0.45);
+  /* ── Surfaces ─────────────────────────────────────────────────────────
+     Meridian (`design/dir-prem.css`): pure white paper and cards on a
+     #F6F6F7 band. The page is the band and everything that floats —
+     cards, menus, modals — is white above it, so elevation is carried by
+     the hairline and the shadow rather than by a hue. */
+  --hl-canvas: #f6f6f7;      /* --band */
+  --hl-panel: #ffffff;       /* --card */
+  --hl-surface: #ffffff;     /* --paper */
+  --hl-surface-hover: #f6f6f7;
+  /* --sunk. `--hl-text-muted` is 4.48:1 on this — under AA — so nothing
+     puts muted text on it; a neutral Badge sets secondary text instead. */
+  --hl-surface-active: #f0f0f2;
+  --hl-overlay: rgba(10, 11, 12, 0.45);
+
+  /* The inside of a text input. --band rather than --sunk, for the same
+     4.48:1 reason: a placeholder is muted text. */
+  --hl-field: #f6f6f7;
+  --hl-field-hover: #f0f0f2;
 
   /* ── Borders ─────────────────────────────────────────────────────────── */
-  --hl-border-subtle: #e8e4d8;
-  --hl-border-default: #ddd7c6;
-  --hl-border-strong: #c1baa4;
+  --hl-border-subtle: #ebebee;  /* --line */
+  --hl-border-default: #dedee2; /* --line-2 */
+  --hl-border-strong: #9a9da4;  /* --ink-4, which is 3:1-ish decoration */
 
   /* ── Text ────────────────────────────────────────────────────────────── */
-  --hl-text: #1c1a15;
-  --hl-text-secondary: #47433b;
-  --hl-text-muted: #666154;
-  --hl-text-inverse: #fbfaf7;
+  --hl-text: #0a0b0c;           /* --ink */
+  --hl-text-secondary: #3b3d42; /* --ink-2 */
+  /* --ink-3. 5.11:1 on white · 4.72:1 on --band, the worst text case. */
+  --hl-text-muted: #6b6e75;
+  /* --ink-4 — 2.72:1 on white, so DECORATION ONLY: inactive nav icons,
+     chevrons, dividers. Anywhere the design puts --ink-4 on real text
+     (counts, placeholders, "Unknown"), the text uses --hl-text-muted. */
+  --hl-text-faint: #9a9da4;
+  --hl-text-inverse: #ffffff;
 
-  /* ── Brand green ─────────────────────────────────────────────────────── */
-  /* Was #1c9463, and it failed AA where it mattered most: the primary button
-     fills with it and sets `--hl-text-inverse` on top, which measured
-     3.68:1 — every "Save", "Start free" and "Connect" label in the light
-     theme, under the floor. #0a8050 puts that at 4.77:1 and reads 4.98:1 as
-     text on white, so the one value serves both uses.
+  /* ── Brand blue ───────────────────────────────────────────────────────
+     The Meridian accent is #2F6BFF, and white on it measures 4.4988:1 —
+     axe truncates that to 4.49 and fails it. So the value split by job:
 
-     Found by measurement, not by eye: `e2e/a11y.spec.ts` runs axe against
-     both themes now. The dark palette's ratios were recorded when it was
-     written; light was derived from reference screenshots later and its
-     ratios were never taken. Three of its four ramp colours were below AA. */
-  --hl-brand: #0a8050;
-  --hl-brand-hover: #06724a;
-  --hl-brand-active: #04613e;
-  --hl-brand-surface: #e3f5ec;
-  --hl-brand-border: #b0e0c6;
-  --hl-brand-text: #12734d;
+       --hl-brand-vivid  #2F6BFF  graphics only: the active nav icon, dots,
+                                  rings, quota fills, the focus ring.
+       --hl-brand        #1F58F0  every fill that carries white text and
+                                  every blue word on a light ground (5.65).
 
-  /* ── AI violet ───────────────────────────────────────────────────────── */
-  --hl-ai: #7c3aed;
-  --hl-ai-surface: #efe7fd;
-  --hl-ai-border: #d3bffa;
-  --hl-ai-text: #6425c9;
+     #1F58F0 is the design's own --blue-h, so nothing is invented; the one
+     derived value is the hover, a step darker by mixing in --ink. */
+  --hl-brand-vivid: #2f6bff;
+  --hl-brand: #1f58f0;
+  --hl-brand-hover: color-mix(in srgb, #1f58f0 86%, #0a0b0c);
+  --hl-brand-active: color-mix(in srgb, #1f58f0 76%, #0a0b0c);
+  --hl-brand-ink: #ffffff;
+  --hl-brand-surface: #eaf0ff; /* --blue-soft */
+  --hl-brand-border: #c3d6fa;
+  /* 4.95:1 on --blue-soft. */
+  --hl-brand-text: #1f58f0;
+
+  /* ── AI — the model's output is the accent, as a tint ────────────────── */
+  --hl-ai: #2f6bff;
+  --hl-ai-surface: #eaf0ff;
+  --hl-ai-border: #c3d6fa;
+  --hl-ai-text: #1f58f0;
 
   /* ── Status ──────────────────────────────────────────────────────────── */
-  --hl-success: #0a8050;
-  --hl-success-surface: #e3f5ec;
+  --hl-success: #2e9e67;          /* --pos */
+  --hl-success-surface: #e4f1ea;  /* --pos-track */
   --hl-success-border: #b0e0c6;
 
-  /* The screenshots' rust/amber "flag this" callout accent. #a15a13 measured
-     4.46:1 on its own surface — a fifth of a point under AA, on the demo-data
-     banner that appears at the top of most screens. */
-  --hl-warning: #9e5710;
-  --hl-warning-surface: #faead4;
-  --hl-warning-border: #edc788;
+  --hl-warning: #c08a2a;          /* --mid */
+  --hl-warning-surface: #f4ecda;  /* --mid-track */
+  --hl-warning-border: #f0d3a0;
 
   --hl-danger: #c22f36;
-  --hl-danger-surface: #fbe6e5;
-  --hl-danger-border: #f1b9b7;
+  --hl-danger-surface: #fdeaea;
+  --hl-danger-border: #f5c2c1;
 
   --hl-info: #1a63bd;
-  --hl-info-surface: #e2eefb;
-  --hl-info-border: #b3d3f5;
+  --hl-info-surface: #e8f0fc;
+  --hl-info-border: #c2d9f7;
 
   --hl-score-excellent-leaf: #0b6b50;  /* 90+, --hl-score-excellent's source */
 
   /* ── Status text leaves ──────────────────────────────────────────────
      A status colour has two jobs and light cannot do both with one value:
-     fill a 3:1 graphic, and be read as 11px text on its own tint. The fill
-     values above are tuned for the first; these are tuned for the second,
-     and each clears 4.5:1 on its matching `-surface`.
+     fill a 3:1 graphic, and be read as 11px text. Meridian's --pos and
+     --mid are graphic values (3.38 and 3.03 on white) — right for a ring,
+     wrong for a numeral — so text reads from these, each of which clears
+     4.5:1 on white and on its own `-surface`.
 
-     Dark needs no such split — its statuses measure 6–8:1 on their own
-     surfaces already — so the dark block aliases these straight back to the
+     Dark needs no such split, so the dark block aliases these back to the
      fills. That keeps every consumer writing one token name. */
   --hl-danger-text: #ae1b22;
   --hl-warning-text: #8f4801;
   --hl-success-text: #12734d;
   --hl-info-text: #0e57b1;
   /* 90+ shares the success surface, so it separates from --hl-success-text
-     by hue rather than by lightness — a teal against a forest green. Two
-     greens the same distance from the ground would clear AA and still be
-     indistinguishable, which is a contrast pass and a design failure. The
-     pill carries the number and the panel carries the word regardless, so
-     nothing here is conveyed by colour alone. */
+     by hue rather than by lightness. The pill carries the number and the
+     panel carries the word regardless. */
   --hl-score-excellent-text: #00706b;
 
-  /* ── Chart ramp ──────────────────────────────────────────────────────── */
-  --hl-chart-1: #1c9463;
-  --hl-chart-2: #7c3aed;
-  --hl-chart-3: #1a63bd;
-  --hl-chart-4: #a15a13;
-  --hl-chart-5: #c22f36;
-  --hl-chart-6: #6b675c;
+  /* ── Chart ramp — same order and intent as Dark's ────────────────────── */
+  --hl-chart-1: #2f6bff;
+  --hl-chart-2: #0d9488;
+  --hl-chart-3: #c08a2a;
+  --hl-chart-4: #c22f36;
+  --hl-chart-5: #7c3aed;
+  --hl-chart-6: #8a8d94;
 
-  /* ── Elevation — softer than Dark's; a 0.4-alpha black shadow reads as a
-     smudge on a cream ground. Tinted with the canvas's own warmth rather
-     than neutral black, for the same reason. */
-  --hl-shadow-popover: 0 1px 2px rgba(28, 24, 18, 0.06), 0 8px 24px -4px rgba(28, 24, 18, 0.12);
-  --hl-shadow-modal: 0 2px 4px rgba(28, 24, 18, 0.06), 0 24px 64px -12px rgba(28, 24, 18, 0.18);
-  --hl-shadow-raised: 0 1px 2px rgba(28, 24, 18, 0.05);
+  /* ── Elevation — Meridian --sh-sm / --sh / --sh-lg ───────────────────── */
+  --hl-shadow-raised: 0 1px 2px rgba(10, 11, 12, 0.06), 0 1px 1px rgba(10, 11, 12, 0.04);
+  --hl-shadow-popover: 0 2px 4px rgba(10, 11, 12, 0.05), 0 24px 48px -28px rgba(10, 11, 12, 0.28);
+  --hl-shadow-modal: 0 4px 8px rgba(10, 11, 12, 0.06), 0 48px 90px -36px rgba(10, 11, 12, 0.4);
 
-  /* Light's muted grey is #666154, not #949494 — the chevron has to be
-     re-declared rather than inherited, because the URI bakes the hex in. */
-  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666154' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  /* ── Sidebar — PremiumSidebar.dc.html, light ────────────────────────
+     #FBFBFC, not --paper: the panel sits a hair off white so the white
+     active chip and the white search well read as raised within it. */
+  --hl-sidebar: #fbfbfc;
+  --hl-sidebar-raised: #ffffff;
+  --hl-nav-hover: rgba(10, 11, 12, 0.045);
+  --hl-nav-active: #ffffff;
+  --hl-nav-active-ring: 0 0 0 1px #ebebee, 0 1px 2px rgba(10, 11, 12, 0.06);
 
-  /* Light used to swap in a serif here — Lora, from an earlier set of
-     reference screenshots. It is gone, and not because it looked wrong on
-     its own.
+  /* The chevron has to be re-declared rather than inherited, because the
+     URI bakes the hex in. #6b6e75 is --hl-text-muted. */
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b6e75' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
-     An inverted band is a `data-theme="dark"` subtree inside a light page
-     (see `.hl-band`), and Dark has always set headings in the sans. So the
-     moment the marketing pages gained bands, one scroll alternated serif
-     headings and sans headings for the same heading tier. A typographic
-     rule that only holds while a page is entirely one theme is not a rule.
-
-     Both current references set every heading in the UI grotesque, which is
-     also a webfont family fewer on every page load. */
+  /* Headings are set in the UI grotesque in both themes. Light once
+     swapped in a serif; an inverted band (`data-theme="dark"` inside a
+     light page) then alternated serif and sans for one heading tier on one
+     scroll, which is why the display face is the sans everywhere. */
   --hl-font-display: var(--hl-font-sans);
 }
+
 
 /* ── Base ─────────────────────────────────────────────────────────────── */
 
@@ -485,9 +527,9 @@ body {
   font-family: var(--hl-font-sans);
   font-size: var(--hl-text-body);
   line-height: 1.43;
-  /* Inter sets a touch wide at UI sizes. A hair negative across the board is
+  /* Geist sets a touch wide at UI sizes. A hair negative across the board is
      most of the difference between "a web app" and "a considered one", and
-     it is small enough — -0.006em is 0.08px at 14px — that no measured
+     it is small enough — -0.011em is 0.15px at 14px — that no measured
      line length, column width or truncation point moves. */
   letter-spacing: var(--hl-tracking-body);
   -webkit-font-smoothing: antialiased;
@@ -636,7 +678,7 @@ body {
    appears on every surface in the product. */
 .hl-label {
   font-size: var(--hl-text-label);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.45;
   letter-spacing: var(--hl-tracking-label);
   text-transform: uppercase;
@@ -679,6 +721,6 @@ body {
    the row itself and survives collapse. Same colour and width, so the two
    read as one convention. */
 .hl-focusable-row:focus-visible {
-  outline: 2px solid var(--hl-brand);
+  outline: 2px solid var(--hl-brand-vivid);
   outline-offset: -2px;
 }

@@ -29,8 +29,8 @@ export function DemoFigures({ what }: { what: string }) {
       role="status"
       className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warning-border bg-warning-surface px-4 py-2.5"
     >
-      <FlaskConical className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
-      <span className="text-[12px] font-medium text-warning">
+      <FlaskConical className="size-3.5 shrink-0 text-warning-text" strokeWidth={1.75} />
+      <span className="text-[12px] font-medium text-warning-text">
         Illustrative figures.
       </span>
       <span className="text-[12px] text-fg-secondary">

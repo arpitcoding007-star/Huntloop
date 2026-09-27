@@ -263,7 +263,7 @@ export function CompanyStep({
                 onChange={(e) => setUrl(e.target.value)}
                 aria-label={forClient ? "Your client's website" : "Your company website"}
                 placeholder={forClient ? "https://theirclient.com" : "https://yourcompany.com"}
-                className="hl-focusable h-10 w-full rounded-md border border-line bg-panel pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+                className="hl-focusable h-10 w-full rounded-md border border-line bg-field pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
               />
             </div>
             <Button type="submit" variant="primary" size="lg">
@@ -319,7 +319,7 @@ export function CompanyStep({
           role="status"
           className="mt-4 max-w-2xl rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
         >
-          <span className="font-medium text-warning">No model is connected.</span>{" "}
+          <span className="font-medium text-warning-text">No model is connected.</span>{" "}
           These are worked examples, not a reading of your site — nothing fetched{" "}
           {url || "your website"}. Add{" "}
           <span className="font-mono text-[12px] text-fg">ANTHROPIC_API_KEY</span> to{" "}
@@ -387,7 +387,7 @@ export function CompanyStep({
                     )
                   }
                   onBlur={() => setEditing(null)}
-                  className="hl-focusable mt-2 w-full resize-y rounded-md border border-line bg-panel px-2.5 py-2 text-[14px] leading-[1.6] text-fg transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+                  className="hl-focusable mt-2 w-full resize-y rounded-md border border-line bg-field px-2.5 py-2 text-[14px] leading-[1.6] text-fg transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
                 />
               ) : (
                 <p className="mt-1.5 text-[14px] leading-[1.6] text-fg-secondary">

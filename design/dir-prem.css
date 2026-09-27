@@ -1,0 +1,40 @@
+/* Direction F — "Meridian": the premium reference look.
+   Pure white, one electric blue, true-black bands, thin green score rings,
+   tiny tracked uppercase eyebrows, hairline dividers. Ruthless restraint. */
+.pm{
+  --paper:#FFFFFF; --band:#F6F6F7; --sunk:#F0F0F2; --card:#FFFFFF;
+  --ink:#0A0B0C; --ink-2:#3B3D42; --ink-3:#6B6E75; --ink-4:#9A9DA4;
+  --line:#EBEBEE; --line-2:#DEDEE2;
+  --black:#08090A; --on-black:#F5F5F6; --on-black-2:#A0A3AA; --black-line:#232427;
+  --blue:#2F6BFF; --blue-h:#1F58F0; --blue-soft:#EAF0FF;
+  --pos:#2E9E67; --pos-track:#E4F1EA; --mid:#C08A2A; --mid-track:#F4ECDA;
+  --fact:#2E9E67; --inf:#2F6BFF; --unk:#8A8D94;
+  --r:10px; --r-lg:16px; --r-xl:24px;
+  --sh-sm:0 1px 2px rgba(10,11,12,.06), 0 1px 1px rgba(10,11,12,.04);
+  --sh:0 2px 4px rgba(10,11,12,.05), 0 24px 48px -28px rgba(10,11,12,.28);
+  --sh-lg:0 4px 8px rgba(10,11,12,.06), 0 48px 90px -36px rgba(10,11,12,.40);
+  font-family:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  color:var(--ink); background:var(--paper);
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; letter-spacing:-.011em;
+}
+.pm *{box-sizing:border-box} .pm a{color:inherit;text-decoration:none} .pm button{font:inherit;cursor:pointer;color:inherit}
+.pm h1,.pm h2,.pm h3,.pm h4,.pm p{margin:0}
+.pm .num{font-variant-numeric:tabular-nums;letter-spacing:0}
+.pm .mono{font-family:'Geist Mono',ui-monospace,'SF Mono',menlo,monospace}
+.pm .eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.pm .eyebrow .n{color:var(--blue);margin-right:8px}
+/* interactions */
+.pm .pm-btn{transition:background .16s ease,box-shadow .16s ease,transform .1s ease}
+.pm .pm-btn:active{transform:translateY(.5px)}
+.pm .pm-blue:hover{background:var(--blue-h)!important}
+.pm .pm-outline:hover{border-color:var(--ink)!important;background:var(--sunk)!important}
+.pm .pm-ghost:hover{background:rgba(10,11,12,.05)!important}
+.pm .pm-link{transition:color .14s ease,gap .14s ease}
+.pm .pm-link:hover{color:var(--blue-h)!important}
+.pm .pm-nav:hover{color:var(--ink)!important}
+.pm .pm-row{transition:background .14s ease}
+.pm .pm-row:hover{background:var(--band)!important}
+.pm .pm-card{transition:box-shadow .2s ease,transform .2s ease,border-color .2s ease}
+.pm .pm-card:hover{box-shadow:var(--sh)!important;transform:translateY(-2px)}
+.pm a:focus-visible,.pm button:focus-visible,.pm input:focus-visible{outline:none;box-shadow:0 0 0 3px var(--blue-soft),0 0 0 1px var(--blue)!important}
+.pm ::selection{background:var(--blue);color:#fff}

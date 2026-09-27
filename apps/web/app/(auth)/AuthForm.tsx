@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Button } from "@huntloop/ui";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Button, Note } from "@huntloop/ui";
 import { initialAuthState, sendMagicLink } from "./actions";
 
 /**
@@ -40,18 +39,15 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
 
   if (!configured) {
     return (
-      <div className="rounded-md border border-warning-border bg-warning-surface p-4">
-        <p className="flex items-center gap-2 text-[13px] font-medium text-warning">
-          <AlertTriangle className="size-4" strokeWidth={1.75} />
-          Supabase is not configured
-        </p>
-        <p className="mt-1.5 text-[13px] leading-[1.5] text-fg-secondary">
+      <Note tone="warning">
+        <p className="font-medium">Supabase is not configured</p>
+        <p className="mt-1.5 text-fg-secondary">
           There is nothing to sign in to yet. Copy{" "}
           <span className="font-mono text-[12px]">.env.example</span> to{" "}
           <span className="font-mono text-[12px]">apps/web/.env.local</span>, fill
           in the Supabase URL and publishable key, and restart the dev server.
         </p>
-        <p className="mt-3 text-[13px] text-fg-muted">
+        <p className="mt-3 text-fg-secondary">
           Until then the app runs on demo data —{" "}
           <Link
             href="/acme/dashboard"
@@ -61,23 +57,20 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
           </Link>
           .
         </p>
-      </div>
+      </Note>
     );
   }
 
   if (state.status === "sent") {
     return (
-      <div className="rounded-md border border-brand-border bg-brand-surface p-4">
-        <p className="flex items-center gap-2 text-[13px] font-medium text-brand-text">
-          <CheckCircle2 className="size-4" strokeWidth={1.75} />
-          Check your email
-        </p>
-        <p className="mt-1.5 text-[13px] leading-[1.5] text-fg-secondary">
+      <Note tone="success">
+        <p className="font-medium">Check your email</p>
+        <p className="mt-1.5 text-fg-secondary">
           If an account can be created or found for{" "}
-          <span className="text-fg">{state.email}</span>, a sign-in link is on its
-          way. It expires in an hour.
+          <span className="text-fg">{state.email}</span>, a sign-in link is on
+          its way. It expires in an hour.
         </p>
-      </div>
+      </Note>
     );
   }
 
@@ -104,7 +97,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
             required
             autoComplete="email"
             placeholder="you@company.com"
-            className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+            className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-field px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
           />
         </div>
 

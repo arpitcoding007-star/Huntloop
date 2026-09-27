@@ -49,7 +49,7 @@ export function LookAlikeResult({ preview }: { preview: LookAlikePreview }) {
       )}
 
       {preview.notDomains.length > 0 && (
-        <p className="mt-2 text-[12px] leading-[1.5] text-warning">
+        <p className="mt-2 text-[12px] leading-[1.5] text-warning-text">
           {preview.notDomains.length === 1
             ? "This is not a domain, so it was not looked up"
             : "These are not domains, so they were not looked up"}

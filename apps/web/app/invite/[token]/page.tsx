@@ -82,7 +82,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
     <div className="flex min-h-screen items-center justify-center bg-canvas px-6 py-12">
       <div className="w-full max-w-[420px]">
         <div className="mb-8 flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-md bg-brand-surface text-[15px] font-bold text-brand">
+          <span className="flex size-7 items-center justify-center rounded-md bg-brand-surface text-[15px] font-bold text-brand-text">
             H
           </span>
           <span className="text-[15px] font-semibold text-fg">Huntloop</span>

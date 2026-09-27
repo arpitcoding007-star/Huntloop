@@ -273,7 +273,7 @@ function IssuedLink({ url, email }: { url: string; email: string }) {
 
   return (
     <div className="mb-5 rounded-md border border-success-border bg-success-surface p-4">
-      <p className="text-[13px] text-success">
+      <p className="text-[13px] text-success-text">
         Invitation for <span className="font-medium">{email}</span>. Send them
         this link — it expires in 14 days and works only for that address.
       </p>

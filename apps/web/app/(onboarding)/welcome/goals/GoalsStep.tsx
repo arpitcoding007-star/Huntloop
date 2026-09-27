@@ -111,7 +111,7 @@ export function GoalsStep({ org }: { org: string }) {
                   aria-hidden
                   className={[
                     "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border",
-                    on ? "border-brand bg-brand text-fg-inverse" : "border-line",
+                    on ? "border-brand bg-brand text-brand-ink" : "border-line",
                   ].join(" ")}
                 >
                   {on && <Check className="size-3" strokeWidth={3} />}

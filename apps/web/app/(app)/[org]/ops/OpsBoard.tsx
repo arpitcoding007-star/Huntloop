@@ -96,7 +96,7 @@ export function OpsBoard({
             <Card>
               <CardBody>
                 <div className="flex items-start gap-2.5">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" strokeWidth={1.75} />
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-text" strokeWidth={1.75} />
                   <div>
                     <p className="text-[13px] font-medium text-fg">Nothing is running the queue</p>
                     <p className="mt-1 max-w-[70ch] text-[12px] text-fg-muted">

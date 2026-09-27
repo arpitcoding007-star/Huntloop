@@ -8,6 +8,8 @@
   --color-surface: var(--hl-surface);
   --color-surface-hover: var(--hl-surface-hover);
   --color-surface-active: var(--hl-surface-active);
+  --color-field: var(--hl-field);
+  --color-field-hover: var(--hl-field-hover);
   --color-overlay: var(--hl-overlay);
 
   /* Borders */
@@ -19,17 +21,21 @@
   --color-fg: var(--hl-text);
   --color-fg-secondary: var(--hl-text-secondary);
   --color-fg-muted: var(--hl-text-muted);
+  /* Decoration only — icons, chevrons. Never text; see tokens.css. */
+  --color-fg-faint: var(--hl-text-faint);
   --color-fg-inverse: var(--hl-text-inverse);
 
-  /* Brand green */
+  /* Brand blue — `brand` fills and text, `brand-vivid` graphics only */
+  --color-brand-vivid: var(--hl-brand-vivid);
   --color-brand: var(--hl-brand);
   --color-brand-hover: var(--hl-brand-hover);
   --color-brand-active: var(--hl-brand-active);
+  --color-brand-ink: var(--hl-brand-ink);
   --color-brand-surface: var(--hl-brand-surface);
   --color-brand-border: var(--hl-brand-border);
   --color-brand-text: var(--hl-brand-text);
 
-  /* AI violet */
+  /* AI — the accent, as a tint */
   --color-ai: var(--hl-ai);
   --color-ai-surface: var(--hl-ai-surface);
   --color-ai-border: var(--hl-ai-border);
@@ -52,6 +58,13 @@
   --color-info-surface: var(--hl-info-surface);
   --color-info-border: var(--hl-info-border);
   --color-info-text: var(--hl-info-text);
+
+  /* Sidebar — its own small palette, see tokens.css */
+  --color-sidebar: var(--hl-sidebar);
+  --color-sidebar-raised: var(--hl-sidebar-raised);
+  --color-nav-hover: var(--hl-nav-hover);
+  --color-nav-active: var(--hl-nav-active);
+  --shadow-nav-active: var(--hl-nav-active-ring);
 
   /* Attention — theme-invariant, see tokens.css */
   --color-attention: var(--hl-attention);
@@ -100,6 +113,7 @@
   --tracking-hero: var(--hl-tracking-hero);
   --tracking-display: var(--hl-tracking-display);
   --tracking-heading: var(--hl-tracking-heading);
+  --tracking-body: var(--hl-tracking-body);
   --tracking-label: var(--hl-tracking-label);
 
   /* Motion */

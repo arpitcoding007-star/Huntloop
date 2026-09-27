@@ -164,7 +164,7 @@ function ChipField({
               aria-label={`Add to ${label}`}
               placeholder={placeholder ?? "Add…"}
               maxLength={400}
-              className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+              className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-field px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
             />
             <Button type="submit" size="sm" variant="secondary" icon={Plus}>
               Add
@@ -414,7 +414,7 @@ export function IcpStep({ org }: { org: string }) {
           role="status"
           className="mt-4 max-w-2xl rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
         >
-          <span className="font-medium text-warning">No model is connected.</span>{" "}
+          <span className="font-medium text-warning-text">No model is connected.</span>{" "}
           This is a worked example showing the shape of an answer — no model
           drafted it for your business. Add{" "}
           <span className="font-mono text-[12px] text-fg">ANTHROPIC_API_KEY</span> to{" "}
@@ -667,7 +667,7 @@ export function IcpStep({ org }: { org: string }) {
           /* Named rather than a generic "complete the form". Five required
              fields on a long screen is exactly the case where "something is
              missing" makes a user re-read all of it. */
-          <span className="text-[13px] text-warning">
+          <span className="text-[13px] text-warning-text">
             Still needed:{" "}
             {[
               !ready && "a segment or industry",
@@ -742,7 +742,7 @@ function ReachBar({ reach, pending }: { reach: ReachState | null; pending: boole
       {/* Both directions of "this profile will not work", said while editing
           is still free rather than a week later from an empty pipeline. */}
       {reach?.total !== null && reach?.total !== undefined && reach.total > 50_000 && (
-        <p className="mt-2 text-[12px] leading-[1.5] text-warning">
+        <p className="mt-2 text-[12px] leading-[1.5] text-warning-text">
           That&rsquo;s very broad — Huntloop will surface a lot that isn&rsquo;t
           a fit. Adding an industry or a size band narrows it sharply.
         </p>

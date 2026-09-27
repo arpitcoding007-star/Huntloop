@@ -51,7 +51,7 @@ export default async function UseCasePage({
           className="mx-auto flex max-w-[880px] items-center gap-4 px-6 py-3"
         >
           <Link href="/" className="hl-focusable flex items-center gap-2 rounded-sm">
-            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand">
+            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
               H
             </span>
             <span className="text-[14px] font-semibold text-fg">Huntloop</span>
@@ -147,7 +147,7 @@ export default async function UseCasePage({
         </section>
 
         <section className="mt-12 rounded-md border border-warning-border bg-warning-surface/40 p-5">
-          <h2 className="text-[14px] font-semibold text-warning">
+          <h2 className="text-[14px] font-semibold text-warning-text">
             Where Huntloop is the wrong tool
           </h2>
           <p className="mt-2 max-w-2xl text-[14px] leading-[1.7] text-fg-secondary">

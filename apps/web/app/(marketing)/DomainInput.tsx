@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@huntloop/ui";
-import { ArrowRight, Globe } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 /**
  * The landing page's only primary call to action.
@@ -44,9 +44,12 @@ export function DomainInput({
    * the dead end in between.
    */
   canResearch = true,
+  /** For an in-page link that should land on the field, e.g. "Try it on your domain". */
+  id,
 }: {
   size?: "md" | "lg";
   canResearch?: boolean;
+  id?: string;
 }) {
   const router = useRouter();
   const [value, setValue] = useState("");
@@ -71,16 +74,12 @@ export function DomainInput({
             : `/signup?d=${encodeURIComponent(cleaned)}`,
         );
       }}
-      className="w-full max-w-lg"
+      className="w-full max-w-[560px]"
     >
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2.5 sm:flex-row">
         <div className="relative min-w-0 flex-1">
-          <Globe
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-muted"
-            strokeWidth={1.75}
-          />
           <input
+            id={id}
             type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -92,25 +91,34 @@ export function DomainInput({
                a phone it opens the keyboard over the headline that was supposed
                to persuade them to use it. */
             autoComplete="url"
+            /* Meridian's CTA field: 52px at radius 11 on a surface, no icon.
+               Inside a dark band the same tokens give the design's #101113
+               well on a #232427 hairline. */
             className={[
-              "hl-focusable w-full rounded-md border border-line bg-panel pr-3 pl-9 text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface",
-              size === "lg" ? "h-12 text-[15px]" : "h-10 text-[14px]",
+              "hl-focusable w-full border border-line bg-surface text-fg placeholder:text-fg-muted transition-[border-color] duration-[120ms] ease-out-hl hover:border-line-strong",
+              size === "lg"
+                ? "h-[52px] rounded-[11px] px-[18px] text-[15px]"
+                : "h-10 rounded-md px-3 text-[14px]",
             ].join(" ")}
           />
         </div>
         <Button
           type="submit"
           variant="primary"
-          size={size === "lg" ? "lg" : "md"}
-          icon={ArrowRight}
+          size={size === "lg" ? "xl" : "md"}
           disabled={pending || !plausible}
+          className={size === "lg" ? "h-[52px]! rounded-[11px]!" : undefined}
         >
           {pending ? "Reading…" : "See what Huntloop finds"}
+          <ChevronRight aria-hidden className="-mr-1 size-4" strokeWidth={1.8} />
         </Button>
       </div>
-      <p className="mt-2 text-[12px] text-fg-muted">
-        No card, no account yet. We&rsquo;ll read your site and show you who you
-        should be selling to.
+      {/* The promise follows the switch. With the anonymous read off the
+          box goes to sign-up, so "no account" would be untrue. */}
+      <p className="mt-3 text-[13px] text-fg-muted">
+        {canResearch
+          ? "No card. No account. Just your domain."
+          : "No card. Create a free account and we’ll read your site first."}
       </p>
     </form>
   );

@@ -87,6 +87,12 @@ export {
 } from "./components/Sidebar";
 export type { CountTone, NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
 
+export { ScoreRing, SCORE_RING_THRESHOLD } from "./components/ScoreRing";
+export type { ScoreRingProps, ScoreRingSize, ScoreRingTone } from "./components/ScoreRing";
+
+export { JumpTo } from "./components/JumpTo";
+export type { JumpToItem, JumpToProps } from "./components/JumpTo";
+
 export { Avatar, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
 

@@ -75,6 +75,23 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0008_engine_columns.sql", probe: "requeue_stalled_jobs", kind: "rpc" },
   { file: "0009_service_role_surface.sql", probe: "check_quota_internal", kind: "rpc" },
   { file: "0010_learning_loop.sql", probe: "learning_findings", kind: "table" },
+  { file: "0011_providers.sql", probe: "provider_breakers", kind: "table" },
+  { file: "0012_entity_identity.sql", probe: "merge_candidates", kind: "table" },
+  { file: "0013_icp_v2.sql", probe: "icp_versions", kind: "table" },
+  { file: "0014_discovery.sql", probe: "discovery_results", kind: "table" },
+  { file: "0015_competitors.sql", probe: "company_competitor_signals", kind: "table" },
+  { file: "0016_contacts_scoring_v2.sql", probe: "human_overrides", kind: "table" },
+  { file: "0017_outreach_safety.sql", probe: "contact_frequency", kind: "table" },
+  { file: "0018_learning_targets.sql", probe: "persona_performance", kind: "table" },
+  { file: "0019_ops_views.sql", probe: "queue_pressure", kind: "table" },
+  { file: "0020_evidence_v2.sql", probe: "flag_contradictions", kind: "rpc" },
+  { file: "0022_evidence_dedupe.sql", probe: "evidence_citations", kind: "table" },
+  { file: "0023_score_recompute.sql", probe: "score_recompute_requests", kind: "table" },
+  { file: "0024_onboarding.sql", probe: "advance_onboarding", kind: "rpc" },
+  { file: "0025_anonymous_research.sql", probe: "public_research", kind: "table" },
+  { file: "0027_org_directory.sql", probe: "join_requests", kind: "table" },
+  { file: "0028_signals_and_crm.sql", probe: "hubspot_connections", kind: "table" },
+  { file: "0029_data_rights.sql", probe: "delete_own_account", kind: "rpc" },
 ];
 
 /**
@@ -88,7 +105,12 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
  * half its schema — a green tick asserting something nobody had checked, which
  * is the §7 failure this tool is supposed to catch in others.
  */
-const UNPROBEABLE = new Set(["0006_prune_schedule.sql"]);
+const UNPROBEABLE = new Set([
+  "0006_prune_schedule.sql",
+  "0021_competitor_evidence.sql",
+  "0026_product_research.sql",
+  "COMBINED-0024-0027.sql",
+]);
 
 /**
  * PostgREST publishes an OpenAPI document listing every table and function it

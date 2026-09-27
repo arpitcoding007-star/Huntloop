@@ -184,7 +184,7 @@ export function Analyzer({ org }: { org: string }) {
             onChange={(e) => setUrl(e.target.value)}
             aria-label="Company website"
             placeholder="https://company.com"
-            className="hl-focusable h-10 w-full rounded-md border border-line bg-panel pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
+            className="hl-focusable h-10 w-full rounded-md border border-line bg-field pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
           />
         </div>
         <Button
@@ -217,7 +217,7 @@ export function Analyzer({ org }: { org: string }) {
               role="status"
               className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.5] text-fg-secondary"
             >
-              <span className="font-medium text-warning">No model is connected.</span>{" "}
+              <span className="font-medium text-warning-text">No model is connected.</span>{" "}
               This is a worked example, not an assessment — nothing fetched{" "}
               <span className="font-mono text-[12px] text-fg">{q.canonicalDomain}</span>.
               Add{" "}

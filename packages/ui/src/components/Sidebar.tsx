@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ComponentType,
@@ -11,6 +12,7 @@ import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { cn } from "../utils/cn";
 import { Anchor, type LinkComponent } from "../utils/link";
 import { Badge, type BadgeVariant } from "./Badge";
+import { JumpTo, type JumpToItem } from "./JumpTo";
 
 /**
  * How a trailing number on a nav row should read.
@@ -23,9 +25,8 @@ import { Badge, type BadgeVariant } from "./Badge";
  *  · `attention` — something is waiting on the user. Solid blue pill.
  *  · `muted` — this is simply how many there are. Grey numeral, no pill.
  *
- * Blue rather than the brand green: green already means "source-verified
- * fact / system state" everywhere else in this system (see tokens.css), and
- * a green "2" beside Inbox would read as a status rather than as a summons.
+ * Blue because blue is the one accent, and it is spent only on "act on
+ * this" — see tokens.css.
  */
 export type CountTone = "attention" | "muted";
 
@@ -76,19 +77,31 @@ export interface SidebarProps {
    */
   pinned?: NavItem[];
   /**
-   * The search affordance. A full-width field when expanded, a single icon
-   * button in the rail. Omitted entirely when absent — the same rule TopBar
-   * follows, and the reason this is a prop rather than always-on: a search
-   * box for a palette that does not exist teaches a habit and then breaks it.
+   * "Search or jump to". When given, the sidebar renders the search row (an
+   * icon button in the rail), binds ⌘K / Ctrl+K, and opens {@link JumpTo}
+   * over every built destination in the nav. `onNavigate` performs the jump —
+   * pass the router's `push`.
+   *
+   * Omitted entirely when absent, the same rule TopBar follows: a search box
+   * for a palette that does not exist teaches a habit and then breaks it.
    */
-  search?: {
-    label: string;
-    /** e.g. "⌘K". Display only. */
-    shortcut?: string;
-    onClick: () => void;
-  };
+  jumpTo?: { onNavigate: (href: string) => void };
+  /** The workspace switcher at the top. */
   header?: ReactNode;
-  footer?: ReactNode;
+  /** The 32px icon control at the right of the header. Hidden in the rail. */
+  headerAction?: ReactNode;
+  /** The plan readout at the top of the footer — see {@link SidebarQuota}. */
+  quota?: ReactNode;
+  /**
+   * Rows pinned to the footer rather than to a group — the reference puts
+   * Settings here, beside the collapse control. Same row component, so the
+   * active treatment is identical.
+   */
+  footerItems?: NavItem[];
+  /** Sits on the footer row beside `footerItems` — the collapse control. */
+  footerAction?: ReactNode;
+  /** The account row at the very bottom — see {@link SidebarAccount}. */
+  account?: ReactNode;
   /**
    * Router-aware link component, e.g. `next/link`. Defaults to a plain `<a>`.
    * See utils/link.ts — this is the seam that keeps the package
@@ -102,187 +115,326 @@ const EXPANDED_W = "w-[264px]";
 const RAIL_W = "w-[72px]";
 
 /**
- * The primary nav.
+ * The primary nav — `design/PremiumSidebar.dc.html`, in its three states:
+ * light expanded, the 72px rail, and dark (the same markup; the tokens flip).
  *
  * ── The shape ───────────────────────────────────────────────────────────
  *
  * A floating panel rather than a column welded to the window edge: one
- * hairline border all the way round, radius `xl`, sitting on the canvas with
- * a gutter. It is the single change that does most to make the app read as
- * composed rather than as a frame with regions in it, and it is why the
- * sidebar and the content area no longer share a border.
+ * hairline border all the way round, radius 16, sitting on the canvas with
+ * a gutter. Its ground is #FBFBFC rather than white, so the white active
+ * chip and the white search well read as raised within it.
  *
  * ── Quiet by default ────────────────────────────────────────────────────
  *
  * Seventeen destinations is a lot to put on one surface, so the row at rest
- * spends almost nothing: 13.5px label, 16px icon at 1.6 stroke, secondary
- * grey. Exactly two things are allowed to be louder — where you are (a
- * raised chip, one step up the surface ramp, with a contact shadow) and what
- * needs you (a blue count). Everything else, including every merely
- * informational number, stays grey.
- *
- * That is a deliberate reversal of what was here before, which painted the
- * active item in brand green. Green is the product's "verified fact" colour;
- * spending it on "you are on this page" both weakened the signal and said
- * something untrue.
+ * spends almost nothing: 13.5px secondary label, 16px icon at 1.6 stroke in
+ * the faintest grey. Exactly two things are allowed to be louder — where
+ * you are (a white chip with a hairline ring and a blue icon) and what needs
+ * you (a blue count). Everything else, including every merely informational
+ * number, stays grey.
  */
 export function Sidebar({
   groups,
   activeHref,
   collapsed = false,
   pinned,
-  search,
+  jumpTo,
   header,
-  footer,
+  headerAction,
+  quota,
+  footerItems,
+  footerAction,
+  account,
   linkComponent: Link = Anchor,
   className,
 }: SidebarProps) {
   const tip = useTooltip(collapsed);
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const shortcut = useShortcutLabel();
 
-  const renderItem = (item: NavItem) => (
+  /* ⌘K / Ctrl+K toggles the palette from anywhere in the app. The row
+     advertises the shortcut, so the shortcut has to work wherever the row
+     is on screen — and is bound only while the row exists. */
+  useEffect(() => {
+    if (!jumpTo) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.key.toLowerCase() !== "k") return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      setJumpOpen((o) => !o);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [jumpTo]);
+
+  const jumpItems: JumpToItem[] = [
+    ...(pinned ?? []).map((item) => ({ item, group: undefined })),
+    ...groups.flatMap((g) => g.items.map((item) => ({ item, group: g.label }))),
+    ...(footerItems ?? []).map((item) => ({ item, group: undefined })),
+  ]
+    .filter(({ item }) => !item.unbuilt)
+    .map(({ item, group }) => ({ label: item.label, href: item.href, icon: item.icon, group }));
+
+  const renderItem = (item: NavItem, tall = false) => (
     <SidebarRow
       key={item.href}
       item={item}
       active={item.href === activeHref && !item.unbuilt}
       collapsed={collapsed}
+      tall={tall}
       Link={Link}
       tip={tip}
     />
   );
+
+  const openJump = () => setJumpOpen(true);
+  const rowList = cn("flex flex-col gap-px", collapsed && "items-center gap-0.5");
 
   return (
     <>
       <nav
         aria-label="Primary"
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-panel",
-          "shadow-raised transition-[width] duration-[180ms] ease-out-hl motion-reduce:transition-none",
+          "flex h-full flex-col overflow-hidden rounded-lg border border-line-subtle bg-sidebar",
+          "shadow-popover transition-[width] duration-[180ms] ease-out-hl motion-reduce:transition-none",
           collapsed ? RAIL_W : EXPANDED_W,
           className,
         )}
       >
-        {header && (
-          <div className={cn("px-3 pt-3", collapsed && "flex justify-center px-0")}>
-            {header}
+        {collapsed ? (
+          <div className="flex shrink-0 flex-col items-center gap-0.5 pt-3">
+            {header && <div className="mb-3 flex justify-center">{header}</div>}
+            {jumpTo && (
+              <button
+                type="button"
+                onClick={openJump}
+                aria-label="Search or jump to"
+                className="hl-focusable flex size-10 items-center justify-center rounded-[10px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
+                {...tip.bind("Search or jump to")}
+              >
+                <Search className="size-[18px]" strokeWidth={1.6} />
+              </button>
+            )}
           </div>
-        )}
-
-        {search && (
-          <div className={cn("px-3 pt-3", collapsed && "flex justify-center px-0")}>
-            <SearchControl {...search} collapsed={collapsed} tip={tip} />
-          </div>
+        ) : (
+          <>
+            {(header || headerAction) && (
+              <div className="flex h-[58px] shrink-0 items-center justify-between gap-2 pr-2.5 pl-3">
+                <div className="min-w-0 flex-1">{header}</div>
+                {headerAction}
+              </div>
+            )}
+            {jumpTo && (
+              <div className="shrink-0 px-3 pb-2.5">
+                <button
+                  type="button"
+                  onClick={openJump}
+                  className="hl-focusable flex h-[34px] w-full items-center gap-[9px] rounded-[9px] border border-line-subtle bg-sidebar-raised pr-2 pl-[11px] text-left text-[13px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary"
+                >
+                  <Search aria-hidden className="size-[15px] shrink-0" strokeWidth={1.7} />
+                  <span className="min-w-0 flex-1 truncate">Search or jump to</span>
+                  <kbd className="shrink-0 rounded-[5px] border border-line-subtle bg-canvas px-[5px] py-px font-mono text-[10.5px] font-normal text-fg-muted">
+                    {shortcut}
+                  </kbd>
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* `overscroll-contain` so flicking past the end of a long nav does
             not start scrolling the page behind it. */}
-        <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-3">
+        <div
+          className={cn(
+            "flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
+            collapsed ? "flex flex-col items-center pb-2" : "px-3 pt-1 pb-2",
+          )}
+        >
           {pinned && pinned.length > 0 && (
-            <ul className="mb-1 flex flex-col gap-0.5">{pinned.map(renderItem)}</ul>
+            <>
+              {collapsed && <RailRule />}
+              <ul className={rowList}>{pinned.map((i) => renderItem(i, true))}</ul>
+            </>
           )}
 
           {groups.map((group) => (
-            <div key={group.label}>
+            <div key={group.label} className={cn(collapsed && "flex flex-col items-center")}>
               {collapsed ? (
                 /* In the rail the group label has nowhere to go, so the
                    grouping is carried by a rule instead. Presentational —
-                   the groups are still announced by the labels below. */
-                <hr
-                  aria-hidden
-                  className="mx-auto my-2 w-6 border-0 border-t border-line-subtle"
-                />
+                   every link still carries its own name. */
+                <RailRule />
               ) : (
-                <div className="hl-label px-2.5 pt-4 pb-1.5 first:pt-1">
+                /* 10.5px eyebrow. The design sets it in --ink-4, which is
+                   2.7:1 — `hl-label`'s muted grey is the next step up. */
+                <div
+                  className={cn(
+                    /* `!` because `.hl-label` is unlayered CSS and outranks utilities. */
+                    "hl-label mx-2.5 mt-3.5 mb-[5px] text-[10.5px]!",
+                    !pinned?.length && "first:mt-1",
+                  )}
+                >
                   {group.label}
                 </div>
               )}
-              <ul className="flex flex-col gap-0.5">{group.items.map(renderItem)}</ul>
+              <ul className={rowList}>{group.items.map((i) => renderItem(i))}</ul>
             </div>
           ))}
         </div>
 
-        {footer && (
-          <div className={cn("border-t border-line-subtle p-3", collapsed && "px-2")}>
-            {footer}
+        {(quota || footerItems?.length || footerAction || account) && (
+          <div
+            className={cn(
+              "flex shrink-0 flex-col gap-2",
+              collapsed
+                ? "items-center pt-2 pb-3"
+                : "border-t border-line-subtle px-3 pt-2.5 pb-3",
+            )}
+          >
+            {quota}
+            {(footerItems?.length || footerAction) && (
+              <div className={cn("flex items-center gap-1", collapsed && "flex-col gap-2")}>
+                {footerItems?.length ? (
+                  <ul className={cn("flex min-w-0 flex-1 flex-col", collapsed && "items-center")}>
+                    {footerItems.map((i) => renderItem(i, true))}
+                  </ul>
+                ) : null}
+                {footerAction}
+              </div>
+            )}
+            {account}
           </div>
         )}
       </nav>
 
       {tip.node}
+
+      {jumpTo && (
+        <JumpTo
+          open={jumpOpen}
+          onClose={() => setJumpOpen(false)}
+          items={jumpItems}
+          onNavigate={jumpTo.onNavigate}
+        />
+      )}
     </>
   );
 }
 
+function RailRule() {
+  return <span aria-hidden className="my-1.5 block h-px w-7 shrink-0 bg-line-subtle" />;
+}
+
+/**
+ * "⌘K" on Apple platforms, "Ctrl K" everywhere else — the row should name
+ * the key the reader will actually press. Starts as ⌘K so the server and
+ * client render the same markup, then corrects itself after hydration.
+ */
+function useShortcutLabel() {
+  const [label, setLabel] = useState("⌘K");
+  useEffect(() => {
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const platform = nav.userAgentData?.platform ?? nav.platform ?? "";
+    if (!/mac|iphone|ipad|ipod/i.test(platform)) setLabel("Ctrl K");
+  }, []);
+  return label;
+}
+
 /* ── Row ─────────────────────────────────────────────────────────────────
    One component for links, pinned items and unbuilt labels, so the three
-   cannot drift apart. The geometry is the reference spec: 30px tall, radius
-   `md`, 16px icon at 1.6 stroke, 13.5px label. */
+   cannot drift apart. The geometry is the reference spec: 30px tall (32 for
+   the pinned and footer rows), radius 8, 16px icon at 1.6 stroke, 13.5px
+   label. In the rail: a 40px target at radius 10 with an 18px icon.
 
-const ROW =
-  "relative flex h-[30px] items-center gap-2.5 rounded-md px-2.5 text-[13.5px] " +
-  "transition-[background-color,color,box-shadow,border-color] duration-[120ms] ease-out-hl";
+   The active chip is a box-shadow ring rather than a border, so becoming
+   active cannot shift the label by a pixel. */
 
 function SidebarRow({
   item,
   active,
   collapsed,
+  tall,
   Link,
   tip,
 }: {
   item: NavItem;
   active: boolean;
   collapsed: boolean;
+  tall: boolean;
   Link: LinkComponent;
   tip: Tooltip;
 }) {
   const Icon = item.icon;
+  const count = typeof item.count === "number" && item.count > 0 ? item.count : 0;
+  const attention = count > 0 && item.countTone === "attention";
 
   /* The trailing slot, in priority order. A row shows one of these, never
      two — "Soon", a tag, a count, a shortcut hint and a presence dot all
      compete for the same 40px, and a row carrying three of them is how a
      nav stops being scannable. */
   const trailing = item.unbuilt ? (
-    <span className="shrink-0 text-[10px] tracking-label text-fg-muted uppercase">
-      Soon
-    </span>
+    <span className="shrink-0 text-[10px] tracking-[0.06em] text-fg-muted uppercase">Soon</span>
   ) : item.badge ? (
     <Badge variant={item.badge.variant ?? "ai"} size="sm">
       {item.badge.label}
     </Badge>
-  ) : typeof item.count === "number" && item.count > 0 ? (
-    <CountPill value={item.count} tone={item.countTone ?? "muted"} />
+  ) : count ? (
+    <CountPill value={count} tone={item.countTone ?? "muted"} />
   ) : item.hint ? (
-    <kbd className="shrink-0 font-mono text-[11px] font-normal text-fg-muted">
-      {item.hint}
-    </kbd>
+    <kbd className="shrink-0 font-mono text-[10.5px] font-normal text-fg-muted">{item.hint}</kbd>
   ) : item.dot ? (
     <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-attention" />
   ) : null;
 
   const inner = (
     <>
-      <Icon className="size-4 shrink-0" strokeWidth={1.6} />
+      <Icon
+        className={cn(
+          "shrink-0 transition-colors duration-[120ms]",
+          collapsed ? "size-[18px]" : "size-4",
+          active
+            ? "text-brand-vivid"
+            : collapsed
+              ? "text-fg-muted group-hover:text-fg"
+              : "text-fg-faint group-hover:text-fg-muted",
+        )}
+        strokeWidth={1.6}
+      />
       {!collapsed && (
         <>
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           {trailing}
         </>
       )}
-      {/* In the rail there is no label, so an attention count has to survive
-          as a mark on the icon itself — otherwise collapsing the sidebar
-          silently hides every "something is waiting for you" in the app. */}
-      {collapsed &&
-        !item.unbuilt &&
-        ((typeof item.count === "number" && item.count > 0 && item.countTone === "attention") ||
-          item.dot) && (
-          <span
-            aria-hidden
-            className="absolute top-1 right-1.5 size-1.5 rounded-full bg-attention ring-2 ring-panel"
-          />
-        )}
+      {/* In the rail there is no label, so "something is waiting" has to
+          survive as a mark on the icon itself — a ringed count where there
+          is a number, a dot where there is only presence. Otherwise
+          collapsing the sidebar silently hides every summons in the app. */}
+      {collapsed && !item.unbuilt && attention && (
+        <span
+          aria-hidden
+          className="hl-tabular absolute top-[3px] right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-attention px-1 text-[10px] font-semibold text-attention-ink ring-2 ring-sidebar"
+        >
+          {count}
+        </span>
+      )}
+      {collapsed && !item.unbuilt && !attention && item.dot && (
+        <span
+          aria-hidden
+          className="absolute top-1.5 right-1.5 size-[7px] rounded-full bg-attention ring-2 ring-sidebar"
+        />
+      )}
     </>
   );
 
-  const shared = cn(ROW, collapsed && "h-9 justify-center gap-0 px-0");
+  const shared = cn(
+    "group relative flex items-center rounded-[8px] text-[13.5px]",
+    "transition-[background-color,color,box-shadow] duration-[120ms] ease-out-hl",
+    collapsed
+      ? "size-10 justify-center rounded-[10px]"
+      : cn("gap-2.5 px-2.5", tall ? "h-8" : "h-[30px]"),
+  );
 
   if (item.unbuilt) {
     /* A span, not a disabled link: there is no destination to disable. Kept
@@ -311,14 +463,8 @@ function SidebarRow({
           shared,
           "hl-focusable",
           active
-            ? /* One step up the surface ramp, plus a hairline and a contact
-                 shadow: the same "raised chip" the rest of the system uses
-                 for the thing in front. It reads in both themes without
-                 spending a hue on it. */
-              "border border-line-subtle bg-surface font-medium text-fg shadow-raised"
-            : /* The inactive row carries a transparent border of the same
-                 width, so becoming active does not shift the label by 1px. */
-              "border border-transparent text-fg-secondary hover:bg-surface-hover hover:text-fg",
+            ? "bg-nav-active font-medium text-fg shadow-nav-active"
+            : "text-fg-secondary hover:bg-nav-hover hover:text-fg",
         )}
         {...tip.bind(collapsed ? item.label : undefined, item.count, item.countTone)}
       >
@@ -330,57 +476,14 @@ function SidebarRow({
 
 function CountPill({ value, tone }: { value: number; tone: CountTone }) {
   if (tone === "muted") {
-    return (
-      <span className="hl-tabular shrink-0 text-[12px] text-fg-muted">{value}</span>
-    );
+    /* The design sets this numeral in --ink-4 (2.7:1); it is real text, so
+       it reads one step up the ramp. */
+    return <span className="hl-tabular shrink-0 text-[12px] text-fg-muted">{value}</span>;
   }
   return (
-    <span className="hl-tabular flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-attention px-1.5 text-[11px] font-semibold text-attention-ink">
+    <span className="hl-tabular flex h-5 min-w-5 shrink-0 items-center justify-center rounded-[10px] bg-attention px-1.5 text-[11px] font-semibold text-attention-ink">
       {value}
     </span>
-  );
-}
-
-/* ── Search ──────────────────────────────────────────────────────────────
-   A recessed well when expanded (canvas sits *below* panel on the ramp, so
-   painting the field with it reads as something you type into rather than
-   something that sits on top), a plain icon button in the rail. */
-
-function SearchControl({
-  label,
-  shortcut,
-  onClick,
-  collapsed,
-  tip,
-}: NonNullable<SidebarProps["search"]> & { collapsed: boolean; tip: Tooltip }) {
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        className="hl-focusable flex size-9 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
-        {...tip.bind(label)}
-      >
-        <Search className="size-4" strokeWidth={1.6} />
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="hl-focusable flex h-9 w-full items-center gap-2 rounded-md border border-line-subtle bg-canvas px-2.5 text-left text-[13px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary"
-    >
-      <Search className="size-4 shrink-0" strokeWidth={1.6} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {shortcut && (
-        <kbd className="shrink-0 rounded-xs border border-line-subtle bg-surface px-1.5 py-0.5 font-mono text-[10px] font-normal text-fg-muted">
-          {shortcut}
-        </kbd>
-      )}
-    </button>
   );
 }
 
@@ -389,7 +492,7 @@ function SearchControl({
    the design system — a quota readout and an account row invented per-app
    are how two products that share a component library stop looking alike. */
 
-/** The plan/usage readout above the account row. */
+/** The plan/usage readout at the top of the footer. */
 export function SidebarQuota({
   label,
   used,
@@ -412,9 +515,12 @@ export function SidebarQuota({
     return (
       <div
         title={`${label}: ${text}`}
-        className={cn("mx-auto h-1 w-8 overflow-hidden rounded-full bg-surface-active", className)}
+        className={cn("mx-auto h-1 w-8 overflow-hidden rounded-[2px] bg-surface-active", className)}
       >
-        <div className="h-full rounded-full bg-attention" style={{ width: `${pct}%` }} />
+        <div
+          className={cn("h-full rounded-[2px] bg-brand-vivid", used > 0 && "min-w-[3px]")}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     );
   }
@@ -422,13 +528,13 @@ export function SidebarQuota({
   return (
     <div
       className={cn(
-        "rounded-md border border-line-subtle bg-surface px-2.5 py-2",
+        "flex flex-col gap-2 rounded-[10px] border border-line-subtle bg-sidebar-raised px-3 py-2.5",
         className,
       )}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[12px] font-medium text-fg">{label}</span>
-        <span className="hl-tabular shrink-0 text-[12px] text-fg-muted">{text}</span>
+      <div className="flex items-baseline justify-between gap-2 text-[12px]">
+        <span className="truncate font-medium text-fg">{label}</span>
+        <span className="hl-tabular shrink-0 text-fg-muted">{text}</span>
       </div>
       {/* `role="meter"` rather than `progressbar`: this is a level within a
           known range, not the progress of a task that completes. */}
@@ -439,11 +545,16 @@ export function SidebarQuota({
         aria-valuemin={0}
         aria-valuemax={limit}
         aria-valuetext={text}
-        className="mt-2 h-1 w-full overflow-hidden rounded-full bg-surface-active"
+        className="h-1 w-full overflow-hidden rounded-[2px] bg-surface-active"
       >
+        {/* A 5px floor once anything is used, as in the design: 8 of 1,000
+            is real usage, and a 0.8% bar is invisible. Zero stays empty. */}
         <div
-          className="h-full rounded-full bg-attention transition-[width] duration-[280ms] ease-out-hl motion-reduce:transition-none"
-          style={{ width: `${Math.max(pct, pct > 0 ? 4 : 0)}%` }}
+          className={cn(
+            "h-full rounded-[2px] bg-brand-vivid transition-[width] duration-[280ms] ease-out-hl motion-reduce:transition-none",
+            used > 0 && "min-w-[5px]",
+          )}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
@@ -469,16 +580,19 @@ export function SidebarAccount({
 }) {
   if (collapsed) {
     return (
-      <div title={secondary ? `${name} · ${secondary}` : name} className={cn("flex justify-center", className)}>
+      <div
+        title={secondary ? `${name} · ${secondary}` : name}
+        className={cn("flex justify-center", className)}
+      >
         {avatar}
       </div>
     );
   }
 
   return (
-    <div className={cn("flex items-center gap-2.5 px-0.5", className)}>
+    <div className={cn("flex items-center gap-2.5 rounded-[10px] p-1.5", className)}>
       {avatar}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 leading-[1.25]">
         <div className="truncate text-[13px] font-medium text-fg">{name}</div>
         {secondary && (
           <div className="truncate font-mono text-[11px] text-fg-muted">{secondary}</div>
@@ -508,8 +622,11 @@ export function SidebarCollapseButton({
       title={label}
       aria-expanded={!collapsed}
       className={cn(
-        "hl-focusable flex size-7 shrink-0 items-center justify-center rounded-sm text-fg-muted",
-        "transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg",
+        /* Muted rather than the design's --ink-4: this icon is the control's
+           only label, so it is held to the 3:1 non-text floor. */
+        "hl-focusable flex shrink-0 items-center justify-center text-fg-muted",
+        "transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg",
+        collapsed ? "size-10 rounded-[10px]" : "size-8 rounded-[8px]",
         className,
       )}
     >
@@ -532,7 +649,8 @@ export function SidebarCollapseButton({
    scrolls, `overflow-y: auto` computes `overflow-x` to `auto` as well, and
    the tooltip is clipped at the rail's 72px edge. So there is one fixed
    element outside the scroll container, positioned from the hovered row's
-   own rect.
+   own rect — 14px off its right edge, which is the design's `left: 54px`
+   from a 40px target.
 
    It is decoration, not content: `aria-hidden`, with the accessible name
    still carried by the link text (visually hidden at this width is not the
@@ -542,24 +660,23 @@ export function SidebarCollapseButton({
 
 interface Tooltip {
   node: ReactNode;
-  bind: (
-    label: string | undefined,
-    count?: number,
-    tone?: CountTone,
-  ) => Record<string, unknown>;
+  bind: (label: string | undefined, count?: number, tone?: CountTone) => Record<string, unknown>;
 }
 
 function useTooltip(enabled: boolean): Tooltip {
-  const [state, setState] = useState<
-    { text: string; note?: string; top: number; left: number } | null
-  >(null);
+  const [state, setState] = useState<{
+    text: string;
+    note?: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const frame = useRef<number | null>(null);
 
   const show = useCallback((el: HTMLElement, text: string, note?: string) => {
     const rect = el.getBoundingClientRect();
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() =>
-      setState({ text, note, top: rect.top + rect.height / 2, left: rect.right + 12 }),
+      setState({ text, note, top: rect.top + rect.height / 2, left: rect.right + 14 }),
     );
   }, []);
 
@@ -571,13 +688,10 @@ function useTooltip(enabled: boolean): Tooltip {
   const bind: Tooltip["bind"] = (label, count, tone) => {
     if (!enabled || !label) return {};
     const note =
-      tone === "attention" && typeof count === "number" && count > 0
-        ? `${count} new`
-        : undefined;
+      tone === "attention" && typeof count === "number" && count > 0 ? `${count} new` : undefined;
     return {
       title: label,
-      onPointerEnter: (e: { currentTarget: HTMLElement }) =>
-        show(e.currentTarget, label, note),
+      onPointerEnter: (e: { currentTarget: HTMLElement }) => show(e.currentTarget, label, note),
       onPointerLeave: hide,
       onFocus: (e: { currentTarget: HTMLElement }) => show(e.currentTarget, label, note),
       onBlur: hide,
@@ -589,10 +703,12 @@ function useTooltip(enabled: boolean): Tooltip {
       <div
         aria-hidden
         style={{ top: state.top, left: state.left }}
-        className="pointer-events-none fixed z-[70] -translate-y-1/2 rounded-md bg-band px-2.5 py-1.5 text-[12px] whitespace-nowrap text-band-fg shadow-popover"
+        className="pointer-events-none fixed z-[70] flex -translate-y-1/2 items-center gap-2.5 rounded-[8px] bg-band px-2.5 py-[7px] text-[12.5px] font-medium whitespace-nowrap text-band-fg shadow-popover ring-1 ring-band-line"
       >
         {state.text}
-        {state.note && <span className="ml-2 text-band-fg-muted">{state.note}</span>}
+        {state.note && (
+          <span className="hl-tabular font-normal text-band-fg-secondary">{state.note}</span>
+        )}
       </div>
     ) : null;
 
