@@ -46,10 +46,10 @@ const ICON_TONE: Record<StatTone, string> = {
   neutral: "bg-surface-active text-fg-secondary",
   brand: "bg-brand-surface text-brand",
   ai: "bg-ai-surface text-ai",
-  success: "bg-success-surface text-success",
-  warning: "bg-warning-surface text-warning",
-  danger: "bg-danger-surface text-danger",
-  info: "bg-info-surface text-info",
+  success: "bg-success-surface text-success-text",
+  warning: "bg-warning-surface text-warning-text",
+  danger: "bg-danger-surface text-danger-text",
+  info: "bg-info-surface text-info-text",
   hot: "bg-hot-surface text-hot",
   warm: "bg-warm-surface text-warm",
   watch: "bg-watch-surface text-watch",
@@ -80,9 +80,9 @@ export function StatCard({
     <Root
       {...(href ? { href } : {})}
       className={cn(
-        "hl-focusable group relative flex flex-col justify-between rounded-md border border-line-subtle bg-surface p-4",
-        "min-h-[132px] transition-colors duration-[120ms]",
-        href && "hover:border-line hover:bg-surface-hover",
+        "hl-focusable group relative flex flex-col justify-between rounded-lg border border-line-subtle bg-surface p-4",
+        "min-h-[132px] transition-[background-color,border-color,box-shadow] duration-[120ms] ease-out-hl",
+        href && "hover:border-line hover:bg-surface-hover hover:shadow-raised",
         className,
       )}
     >
@@ -110,7 +110,7 @@ export function StatCard({
         <div className="hl-tabular text-[32px] leading-9 font-semibold text-fg">
           {value}
         </div>
-        <div className="mt-1 text-[11px] leading-4 font-medium tracking-[0.06em] text-fg-muted uppercase">
+        <div className="mt-1 text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase">
           {label}
         </div>
         {hint && <div className="mt-1.5 text-[12px] text-fg-muted">{hint}</div>}

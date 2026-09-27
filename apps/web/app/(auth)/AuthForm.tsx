@@ -93,7 +93,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
         <div>
           <label
             htmlFor="email"
-            className="block text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase"
+            className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
           >
             Work email
           </label>
@@ -104,7 +104,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
             required
             autoComplete="email"
             placeholder="you@company.com"
-            className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-surface px-3 text-[14px] text-fg placeholder:text-fg-muted"
+            className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
           />
         </div>
 

@@ -73,7 +73,7 @@ export function GoalsStep({ org }: { org: string }) {
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         What do you want Huntloop to do?
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -83,7 +83,7 @@ export function GoalsStep({ org }: { org: string }) {
 
       <div className="mt-6 max-w-2xl">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
             Mainly
           </span>
           <span className="hl-tabular text-[12px] text-fg-muted">
@@ -141,7 +141,7 @@ export function GoalsStep({ org }: { org: string }) {
       </div>
 
       <fieldset className="mt-8 max-w-2xl">
-        <legend className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+        <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
           How do you want to reach people?
         </legend>
         <p className="mt-1 text-[13px] text-fg-muted">

@@ -1,6 +1,19 @@
 /**
- * Application-layer encryption for the two columns that hold somebody else's
- * credentials: `mailboxes.oauth_token_enc` and `mailboxes.refresh_token_enc`.
+ * Application-layer encryption for every column that holds somebody else's
+ * credentials: `mailboxes.oauth_token_enc`, `mailboxes.refresh_token_enc`,
+ * and `hubspot_connections.access_token`.
+ *
+ * ── One key, and a name narrower than its use ────────────────────────────
+ *
+ * `MAILBOX_ENCRYPTION_KEY` was named when mailboxes were the only thing it
+ * protected. The CRM integration stores the same *kind* of thing — a token
+ * belonging to the customer, not to us, sitting in a row — so it uses the
+ * same key rather than introducing a second one. Two keys would double what
+ * a rotation has to touch and protect nothing the first does not.
+ *
+ * The variable keeps its name because renaming one that is already set on a
+ * live deployment trades a real outage for a tidier word. This paragraph is
+ * the alternative to that trade.
  *
  * ── Why encrypt at all, when the database is already private ─────────────
  *
@@ -39,9 +52,10 @@ const IV_BYTES = 12;
 export class EncryptionUnavailable extends Error {
   constructor() {
     super(
-      "MAILBOX_ENCRYPTION_KEY is not set, so mailbox tokens cannot be stored. " +
-        "It must be 32 bytes, hex-encoded — generate one with `openssl rand -hex 32`. " +
-        "Without it, connecting a mailbox is refused rather than storing a token in plain text.",
+      "MAILBOX_ENCRYPTION_KEY is not set, so credentials belonging to a customer " +
+        "— a mailbox token, a CRM token — cannot be stored. It must be 32 bytes, " +
+        "hex-encoded: generate one with `openssl rand -hex 32`. Without it, " +
+        "connecting is refused rather than storing a token in plain text.",
     );
     this.name = "EncryptionUnavailable";
   }

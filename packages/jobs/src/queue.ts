@@ -68,7 +68,13 @@ export type JobName =
   /* SCO-03: rescoring after the profile or the rules that produced the
      existing scores have changed underneath them. */
   | "recompute_scores"
-  | "schedule_recomputes";
+  | "schedule_recomputes"
+  /* The signal capability: hiring/job-posting evidence, refreshed on its own
+     48-hour cadence rather than piggybacking on enrich_company's 30-day one. */
+  | "schedule_signal_fetches"
+  | "fetch_company_signals"
+  /* CRM sync: push an opportunity to HubSpot and record what came back. */
+  | "sync_hubspot";
 
 export interface JobRow {
   id: string;

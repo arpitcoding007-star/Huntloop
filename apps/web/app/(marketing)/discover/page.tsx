@@ -83,7 +83,7 @@ export default async function DiscoverPage({
       <main id="main" className="mx-auto max-w-[820px] px-6 py-12">
         {state.error || !state.understanding ? (
           <>
-            <h1 className="text-[26px] leading-8 font-semibold text-fg">
+            <h1 className="hl-title text-fg">
               {state.refused ? "Let's do this with an account" : "That didn't work"}
             </h1>
             <ErrorState
@@ -115,7 +115,7 @@ export default async function DiscoverPage({
           </>
         ) : (
           <>
-            <h1 className="text-[26px] leading-8 font-semibold text-fg">
+            <h1 className="hl-title text-fg">
               Here&rsquo;s what we understood about{" "}
               {state.understanding.companyName}
             </h1>
@@ -160,7 +160,7 @@ export default async function DiscoverPage({
                 {state.understanding.findings.map((f) => (
                   <div key={f.field}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                      <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                         {f.label}
                       </span>
                       <ClaimBadge kind={f.kind} confidence={f.confidence ?? undefined} />

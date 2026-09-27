@@ -182,7 +182,7 @@ export function CompanyStep({
 
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           {forClient ? "What does your client sell?" : "What does your company sell?"}
         </h1>
         <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -193,7 +193,7 @@ export function CompanyStep({
 
         {isAgency && (
           <fieldset className="mt-5">
-            <legend className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+            <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Who is this workspace for?
             </legend>
             <div role="group" className="mt-2 flex flex-wrap gap-1.5">
@@ -263,7 +263,7 @@ export function CompanyStep({
                 onChange={(e) => setUrl(e.target.value)}
                 aria-label={forClient ? "Your client's website" : "Your company website"}
                 placeholder={forClient ? "https://theirclient.com" : "https://yourcompany.com"}
-                className="hl-focusable h-10 w-full rounded-md border border-line bg-surface pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted"
+                className="hl-focusable h-10 w-full rounded-md border border-line bg-panel pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
               />
             </div>
             <Button type="submit" variant="primary" size="lg">
@@ -289,7 +289,7 @@ export function CompanyStep({
   if (phase === "researching") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Reading {url || "your website"}…
         </h1>
         <p className="mt-1.5 text-[14px] text-fg-muted">
@@ -305,7 +305,7 @@ export function CompanyStep({
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         Here&rsquo;s what we understood
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -354,7 +354,7 @@ export function CompanyStep({
           {findings.map((f, i) => (
             <div key={f.field}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                   {f.label}
                 </span>
                 <ClaimBadge kind={f.kind} confidence={f.confidence ?? undefined} />
@@ -387,7 +387,7 @@ export function CompanyStep({
                     )
                   }
                   onBlur={() => setEditing(null)}
-                  className="hl-focusable mt-2 w-full resize-y rounded-md border border-line bg-surface px-2.5 py-2 text-[14px] leading-[1.6] text-fg"
+                  className="hl-focusable mt-2 w-full resize-y rounded-md border border-line bg-panel px-2.5 py-2 text-[14px] leading-[1.6] text-fg transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
                 />
               ) : (
                 <p className="mt-1.5 text-[14px] leading-[1.6] text-fg-secondary">

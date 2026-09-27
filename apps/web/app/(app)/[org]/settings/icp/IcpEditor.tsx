@@ -7,15 +7,17 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   Field,
   FormMessage,
   Input,
+  joinList,
   ListInput,
+  Note,
   SectionLabel,
   Select,
-  Textarea,
-  joinList,
   splitList,
+  Textarea,
 } from "@huntloop/ui";
 import { Check, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import type { IcpRecord, Persona } from "../../../../../lib/data/icp";
@@ -183,13 +185,12 @@ function IcpRow({
       )}
 
       {canWrite && !icp.isActive && (
-        <Button
-          size="sm"
-          variant="ghost"
+        <ConfirmButton
           icon={Trash2}
-          aria-label={`Remove ${icp.name}`}
-          disabled={pending}
-          onClick={() =>
+          label={`Remove ${icp.name}`}
+          confirmLabel="Remove it"
+          pending={pending}
+          onConfirm={() =>
             start(async () => {
               setError(null);
               const res = await deleteIcpAction(org, icp.id);
@@ -291,10 +292,10 @@ function IcpForm({
       />
       <CardBody className="space-y-5">
         {!canWrite && (
-          <p className="rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg-muted">
+          <Note>
             Your role is read-only. You can see the profile your opportunities
             are judged against, but not change it.
-          </p>
+          </Note>
         )}
 
         <Field label="Name" required error={fieldErrors.name}>
@@ -463,8 +464,8 @@ function IcpForm({
             now that they survive, a criterion that shapes every score and
             appears nowhere in the product is one nobody can account for. */}
         {icp && icp.alsoOnProfile.length > 0 && (
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2.5">
-            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2.5">
+            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Also on this profile
             </p>
             <p className="mt-1 text-[12px] leading-[1.5] text-fg-muted">
@@ -682,12 +683,12 @@ function PersonaForm({
             {pending ? "Saving…" : persona ? "Save persona" : "Add persona"}
           </Button>
           {persona && (
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmButton
               icon={Trash2}
-              disabled={pending}
-              onClick={() =>
+              label="Remove this persona"
+              confirmLabel="Remove it"
+              pending={pending}
+              onConfirm={() =>
                 start(async () => {
                   const res = await deletePersonaAction(org, persona.id);
                   setResult(
@@ -697,9 +698,7 @@ function PersonaForm({
                   );
                 })
               }
-            >
-              Remove
-            </Button>
+            />
           )}
           {onDone && !persona && (
             <Button size="sm" variant="ghost" onClick={onDone} disabled={pending}>

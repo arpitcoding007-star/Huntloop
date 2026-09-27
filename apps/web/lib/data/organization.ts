@@ -1,4 +1,5 @@
 import "server-only";
+import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
@@ -25,6 +26,15 @@ export interface Organization {
   trialEndsAt: string | null;
   createdAt: string | null;
   settings: Record<string, unknown>;
+  /**
+   * The sender's physical postal address, rendered into every outbound email
+   * footer. Parsed out of `settings` rather than left in the opaque blob,
+   * because `send_message` refuses to send without it and a screen that can
+   * block sending should not have to know the jsonb layout.
+   */
+  postalAddress: string | null;
+  /** Null means keep everything — see `enforce-retention.ts`. */
+  contactRetentionDays: number | null;
 }
 
 export async function getOrganization(orgSlug: string): Promise<Loaded<Organization | null>> {
@@ -34,7 +44,9 @@ export async function getOrganization(orgSlug: string): Promise<Loaded<Organizat
 
       const { data, error } = await db
         .from("organizations")
-        .select("id, name, slug, plan_id, trial_ends_at, created_at, settings")
+        .select(
+          "id, name, slug, plan_id, trial_ends_at, created_at, settings, contact_retention_days",
+        )
         .eq("id", orgId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -61,6 +73,15 @@ function mapOrganization(row: any): Organization {
       row.settings && typeof row.settings === "object" && !Array.isArray(row.settings)
         ? (row.settings as Record<string, unknown>)
         : {},
+    /* Through the profile parser rather than off the jsonb directly, so this
+       screen and `send_message` agree about what counts as a set address —
+       including the length floor, which is the difference between "saved"
+       and "will actually satisfy the send precondition". */
+    postalAddress: parseOrgProfile(row.settings).compliance.postalAddress,
+    contactRetentionDays:
+      row.contact_retention_days === null || row.contact_retention_days === undefined
+        ? null
+        : Number(row.contact_retention_days),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -80,4 +101,10 @@ const DEMO: Organization = {
   trialEndsAt: null,
   createdAt: null,
   settings: {},
+  /* Both left unset rather than filled with a plausible-looking address and a
+     tidy 365. The demo organisation is what an unconfigured workspace looks
+     like, and these two fields are exactly the ones whose unconfigured state
+     the product now has to be honest about. */
+  postalAddress: null,
+  contactRetentionDays: null,
 };

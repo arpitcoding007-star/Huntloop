@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Lora } from "next/font/google";
+import { ToastProvider } from "@huntloop/ui";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { siteUrl } from "../lib/site-url";
 import "./globals.css";
@@ -46,21 +47,6 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 /**
- * Light theme's display face for page/card headings — see
- * `--hl-font-display` in tokens.css. Dark theme never references this
- * variable, so it costs Dark nothing; loaded unconditionally (rather than
- * only when Light is active) because which theme is active is only known
- * after the cookie/script resolution below, and next/font needs a
- * build-time-static call.
- */
-const lora = Lora({
-  subsets: ["latin"],
-  weight: ["600"],
-  display: "swap",
-  variable: "--font-lora",
-});
-
-/**
  * `title.template` rather than a bare string: every page that sets its own
  * title was already writing "· Huntloop" by hand, which is the kind of thing
  * that stays consistent right up until someone adds a page and forgets.
@@ -93,9 +79,15 @@ export const metadata: Metadata = {
     description:
       "Know who needs you before you reach out. Qualified opportunities with evidence, not lead lists.",
   },
-  // No `images` on either card yet, and none invented. A card that points at a
-  // nonexistent asset renders worse than one with no image at all — the
-  // scraper fetches a 404 and some clients then cache the failure.
+  // `images` is not set here on purpose, and is no longer absent either.
+  // `app/opengraph-image.tsx` is a file convention: Next discovers it,
+  // generates the PNG, and injects `og:image` and `twitter:image` with the
+  // right absolute URL and dimensions on every page that does not override
+  // them. Listing it here as well would produce two tags for one image.
+  //
+  // The note this replaces said no card was better than a card pointing at a
+  // 404, which was true while there was nothing to point at. There is now,
+  // and it is generated rather than committed, so it cannot become a 404.
 };
 
 /**
@@ -166,7 +158,7 @@ export default async function RootLayout({
        * to silence. Nothing else about hydration is affected.
        */
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable} ${lora.variable}`}
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
     >
       {/* `font-sans` explicitly rather than relying on Tailwind's preflight
           picking up the theme's --font-sans: the token indirection above is
@@ -174,7 +166,12 @@ export default async function RootLayout({
           future preflight change could move. */}
       <body className="min-h-screen bg-canvas font-sans text-fg antialiased">
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        {children}
+        {/* At the root rather than inside the app shell, so the marketing,
+            auth and onboarding trees can confirm an action too. The live
+            region it renders is empty until something is put in it, and it
+            has to exist beforehand — an aria-live element that appears at
+            the same moment as its text is frequently not announced. */}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

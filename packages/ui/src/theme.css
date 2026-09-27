@@ -39,15 +39,35 @@
   --color-success: var(--hl-success);
   --color-success-surface: var(--hl-success-surface);
   --color-success-border: var(--hl-success-border);
+  --color-success-text: var(--hl-success-text);
   --color-warning: var(--hl-warning);
   --color-warning-surface: var(--hl-warning-surface);
   --color-warning-border: var(--hl-warning-border);
+  --color-warning-text: var(--hl-warning-text);
   --color-danger: var(--hl-danger);
   --color-danger-surface: var(--hl-danger-surface);
   --color-danger-border: var(--hl-danger-border);
+  --color-danger-text: var(--hl-danger-text);
   --color-info: var(--hl-info);
   --color-info-surface: var(--hl-info-surface);
   --color-info-border: var(--hl-info-border);
+  --color-info-text: var(--hl-info-text);
+
+  /* Attention — theme-invariant, see tokens.css */
+  --color-attention: var(--hl-attention);
+  --color-attention-hover: var(--hl-attention-hover);
+  --color-attention-ink: var(--hl-attention-ink);
+
+  /* Inverted band — theme-invariant, see tokens.css */
+  --color-band: var(--hl-band);
+  --color-band-raised: var(--hl-band-raised);
+  --color-band-hover: var(--hl-band-hover);
+  --color-band-line: var(--hl-band-border);
+  --color-band-line-strong: var(--hl-band-border-strong);
+  --color-band-fg: var(--hl-band-text);
+  --color-band-fg-secondary: var(--hl-band-text-secondary);
+  --color-band-fg-muted: var(--hl-band-text-muted);
+  --color-band-brand: var(--hl-band-brand);
 
   /* Opportunity priority */
   --color-hot: var(--hl-priority-hot);
@@ -64,9 +84,27 @@
   --color-ignore-border: var(--hl-priority-ignore-border);
 
   /* Radius */
+  --radius-xs: var(--hl-radius-xs);
   --radius-sm: var(--hl-radius-sm);
   --radius-md: var(--hl-radius-md);
   --radius-lg: var(--hl-radius-lg);
+  --radius-xl: var(--hl-radius-xl);
+  --radius-2xl: var(--hl-radius-2xl);
+
+  /* Elevation */
+  --shadow-raised: var(--hl-shadow-raised);
+  --shadow-popover: var(--hl-shadow-popover);
+  --shadow-modal: var(--hl-shadow-modal);
+
+  /* Tracking — optical letter-spacing per type tier */
+  --tracking-hero: var(--hl-tracking-hero);
+  --tracking-display: var(--hl-tracking-display);
+  --tracking-heading: var(--hl-tracking-heading);
+  --tracking-label: var(--hl-tracking-label);
+
+  /* Motion */
+  --ease-out-hl: var(--hl-ease-out);
+  --ease-emphasis: var(--hl-ease-emphasis);
 
   /* Fonts */
   --font-sans: var(--hl-font-sans);

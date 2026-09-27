@@ -35,6 +35,7 @@
  * double-sending if the first attempt actually succeeded and only the response
  * was lost.
  */
+import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { MailboxUnavailable, authorize, pickMailbox } from "../mailbox/index.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -132,6 +133,106 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, error: refusalMessage(reason, verdict?.detail) };
   }
 
+  /*
+   * Step 3b. An unsubscribe link has to exist before anything else is spent.
+   *
+   * `absolute()` returns null when `NEXT_PUBLIC_SITE_URL` is unset, and until
+   * now that produced the worst outcome available here, quietly: `withFooter`
+   * returned the body unchanged and `oneClickUrl` handed the provider null,
+   * so the message went out with **no footer link and no `List-Unsubscribe`
+   * header** — a commercial email carrying no opt-out mechanism at all.
+   *
+   * `unsubscribeUrl`'s own comment argues that a dead unsubscribe link is
+   * worse than none. That is right, and it left out the case that is worse
+   * than both: no link. It is also the only failure in this handler that is a
+   * legal requirement rather than a deliverability one — CAN-SPAM
+   * §7704(a)(3), CASL and PECR each require a working opt-out on every
+   * commercial message, and none of them have an exception for a missing
+   * environment variable.
+   *
+   * So: the third option, refuse. Retryable rather than permanent, because
+   * the fix is one variable and the message should go out once it is set —
+   * the same shape as the allowance refusal below.
+   *
+   * Placed before `claim_mailbox_send` so a misconfiguration cannot burn a
+   * day's send allowance on a message that was never going to leave.
+   */
+  if (!unsubscribeUrl(message.unsubscribe_token)) {
+    const why =
+      "Not sent: no unsubscribe link could be built for this message, so it " +
+      "would arrive with no way to opt out. Set NEXT_PUBLIC_SITE_URL.";
+    await scope.update("messages", { error: why }).eq("id", messageId);
+    await recordEvent(ctx, messageId, "failed", { reason: "no_unsubscribe_url" });
+    return { ok: false, error: why };
+  }
+
+  /*
+   * Step 3c. The sender's postal address, which is the other mandatory
+   * element of a commercial message.
+   *
+   * CAN-SPAM §7704(a)(5) requires a valid physical postal address in every
+   * commercial email and CASL requires the sender's mailing address; neither
+   * has an exception for a workspace that has not filled the field in. The
+   * footer carried only an unsubscribe line until now, and no column existed
+   * that could have held an address — see `OrgComplianceSettings`.
+   *
+   * Refused rather than defaulted for the same reason as the unsubscribe URL
+   * above, and the refusal names the screen rather than the column, because
+   * the person who reads this in the outreach inbox is the person who has to
+   * go and fix it.
+   */
+  const { data: orgRow } = await scope.organization("settings").maybeSingle();
+  const postalAddress = parseOrgProfile(
+    (orgRow as { settings?: unknown } | null)?.settings,
+  ).compliance.postalAddress;
+
+  if (!postalAddress) {
+    const why =
+      "Not sent: this workspace has no postal address, which every commercial " +
+      "email is required to carry. Add one under Settings → Organisation.";
+    await scope.update("messages", { error: why }).eq("id", messageId);
+    await recordEvent(ctx, messageId, "failed", { reason: "no_postal_address" });
+    return { ok: false, error: why };
+  }
+
+  /*
+   * Step 3d. The plan's email allowance.
+   *
+   * `emails` is one of five quotas `plans.limits` defines and the landing
+   * page prices. It was incremented after every successful send — the line
+   * near the bottom of this function — and checked nowhere, so a workspace
+   * on Free, whose allowance is literally zero, was metered and never
+   * stopped. Of the five limits the pricing section calls "the limits the
+   * product actually enforces", this was one of the three that were not.
+   *
+   * Distinct from `claim_mailbox_send` below, which is a per-mailbox daily
+   * cap protecting sender reputation and does not vary by plan. Both are
+   * real and neither substitutes for the other.
+   *
+   * Checked before the allowance claim for the same reason as the two
+   * preconditions above, and it fails *open* on a read error — the same call
+   * `packages/jobs/src/ai.ts` makes, with the same reasoning: the cost of
+   * failing open is a reconciliation and it is ours, while the cost of
+   * failing closed is a customer's outreach silently stopping.
+   */
+  const { data: quotaData, error: quotaError } = await scope.rpc("check_quota_internal", {
+    p_org: scope.orgId,
+    p_metric: "emails",
+  });
+  const quotaRow = (Array.isArray(quotaData) ? quotaData[0] : quotaData) as
+    | { allowed?: boolean; used?: number; quota?: number | null }
+    | undefined;
+
+  if (!quotaError && quotaRow && quotaRow.allowed === false) {
+    const why =
+      `Not sent: this workspace has used ${quotaRow.used ?? 0} of its ` +
+      `${quotaRow.quota ?? 0} emails this month. The message stays queued ` +
+      `and sends when the allowance resets, or when the plan changes.`;
+    await scope.update("messages", { error: why }).eq("id", messageId);
+    await recordEvent(ctx, messageId, "failed", { reason: "over_email_quota" });
+    return { ok: false, error: why };
+  }
+
   const mailboxId = message.mailbox_id ?? (await pickMailbox(scope));
   if (!mailboxId) {
     return {
@@ -172,8 +273,26 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     const sent = await mailbox.provider.send(mailbox.accessToken, {
       to: String(message.to_email),
       subject: String(message.subject ?? ""),
-      text: withFooter(String(message.body_text ?? ""), unsubscribeUrl(message.unsubscribe_token)),
-      ...(message.body_html ? { html: String(message.body_html) } : {}),
+      text: withFooter(
+        String(message.body_text ?? ""),
+        unsubscribeUrl(message.unsubscribe_token),
+        postalAddress,
+      ),
+      /* The HTML part gets the same footer, not none.
+         `withFooter` used to be applied to `text` only, so a message with an
+         HTML body would have rendered — in the part most clients actually
+         display — with no unsubscribe link and no address. Nothing writes
+         `body_html` today, which is the only reason that was not already a
+         live defect, and a latent one in this handler is not worth keeping. */
+      ...(message.body_html
+        ? {
+            html: withHtmlFooter(
+              String(message.body_html),
+              unsubscribeUrl(message.unsubscribe_token),
+              postalAddress,
+            ),
+          }
+        : {}),
       inReplyTo: thread?.lastMessageId ?? null,
       threadId: thread?.providerThreadId ?? null,
       /* The header gets the one-click endpoint, the footer above gets the page
@@ -336,10 +455,52 @@ function absolute(token: unknown, prefix: string): string | null {
  * every message and a prompt is not a guarantee. `List-Unsubscribe` covers the
  * clients that support one-click; this covers the ones that do not, and the
  * recipients who look for a link because that is what they are used to.
+ *
+ * Both arguments are checked before the send now, so the `null` branches are
+ * unreachable in the handler's own path. They stay because this is an
+ * exported-shaped helper and a footer function that silently drops a legally
+ * required element when handed null is the bug this file just fixed.
  */
-function withFooter(body: string, url: string | null): string {
-  if (!url) return body;
-  return `${body}\n\n—\nIf you'd rather not hear from us: ${url}`;
+function withFooter(body: string, url: string | null, postalAddress: string | null): string {
+  const parts = [body, "\n\n—"];
+  if (postalAddress) parts.push(`\n${postalAddress}`);
+  if (url) parts.push(`\nIf you'd rather not hear from us: ${url}`);
+  return parts.join("");
+}
+
+/**
+ * The same footer, for the HTML part.
+ *
+ * Appended rather than inserted into the document: a regex that tries to find
+ * `</body>` in model-generated HTML will eventually meet a fragment that has
+ * none, and an appended block renders correctly in every mail client either
+ * way — they are far more forgiving of trailing markup than of a footer that
+ * is not there.
+ *
+ * The address is escaped and its newlines become `<br>`, because it is
+ * operator-supplied free text being placed into markup.
+ */
+function withHtmlFooter(body: string, url: string | null, postalAddress: string | null): string {
+  const lines: string[] = [];
+  if (postalAddress) lines.push(escapeHtml(postalAddress).replace(/\n/g, "<br>"));
+  if (url) {
+    const href = escapeHtml(url);
+    lines.push(`If you'd rather not hear from us: <a href="${href}">unsubscribe</a>`);
+  }
+  if (!lines.length) return body;
+
+  return (
+    `${body}\n<hr>\n<div style="color:#666;font-size:12px;line-height:1.5">` +
+    `${lines.join("<br><br>")}</div>`
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 async function loadThread(

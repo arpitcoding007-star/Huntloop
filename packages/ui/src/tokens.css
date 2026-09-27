@@ -53,11 +53,15 @@
     -apple-system, "Segoe UI", sans-serif;
   --hl-font-mono: var(--font-jetbrains-mono, "JetBrains Mono"),
     "Source Code Pro", ui-monospace, "Cascadia Mono", "Consolas", monospace;
-  /* Light-mode-only display face (see `--hl-font-display` per theme, below).
-     Declared here as an invariant raw stack — same reasoning as sans/mono. */
-  --hl-font-serif: var(--font-lora, "Lora"), Georgia, "Times New Roman", serif;
 
-  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 */
+  /* Display tier. The reference comps lead with type, not chrome: one very
+     large, very tightly tracked line per section, then a drop straight to
+     13–14px body. These three sizes are that ladder; everything below
+     --hl-text-h1 is unchanged UI density. */
+  --hl-text-hero: 3.5rem;       /* 56 / 58 / 600 — landing hero only */
+  --hl-text-display-lg: 2.5rem; /* 40 / 44 / 600 — section openers */
+  --hl-text-display: 1.875rem;  /* 30 / 36 / 600 — in-app page titles */
+  --hl-text-title: 1.625rem;    /* 26 / 32 / 600 — focused-flow titles */
   --hl-text-h1: 1.25rem;        /* 20 / 28 / 600 */
   --hl-text-h2: 1rem;           /* 16 / 24 / 600 */
   --hl-text-body: 0.875rem;     /* 14 / 20 / 400 — the workhorse */
@@ -66,6 +70,17 @@
   --hl-text-label: 0.6875rem;   /* 11 / 16 / 500 uppercase — the signature */
   --hl-text-metric: 2rem;       /* 32 / 36 / 600 tabular */
   --hl-text-metric-sm: 1.25rem; /* 20 / 24 / 600 tabular */
+
+  /* ── Tracking ────────────────────────────────────────────────────────
+     Optical letter-spacing: large type needs negative tracking to stop
+     looking loose, small caps need positive tracking to stay readable.
+     Inter is drawn for this — it ships no optical sizes, so the correction
+     has to be explicit. One token per tier so a heading never guesses. */
+  --hl-tracking-hero: -0.033em;
+  --hl-tracking-display: -0.026em;
+  --hl-tracking-heading: -0.017em;
+  --hl-tracking-body: -0.006em;
+  --hl-tracking-label: 0.06em;
 
   /* ── Spacing (4px base) ──────────────────────────────────────────────── */
   --hl-space-1: 0.25rem;
@@ -80,9 +95,18 @@
   --hl-space-16: 4rem;
 
   /* ── Radius ──────────────────────────────────────────────────────────── */
-  --hl-radius-sm: 4px;
-  --hl-radius-md: 6px;   /* buttons, inputs, cards — the default */
-  --hl-radius-lg: 8px;   /* modals, drawers */
+  /* Softer than the Supabase original it replaces (4 / 6 / 8). The whole
+     chrome is built from these three names, so the curve of every button,
+     input, card, badge and panel in the product is set here and nowhere
+     else. Concentric rule: a child's radius is the parent's minus the
+     padding between them, which is why sm sits 4px under lg rather than
+     being chosen by eye. */
+  --hl-radius-xs: 4px;
+  --hl-radius-sm: 6px;
+  --hl-radius-md: 8px;   /* buttons, inputs, controls — the default */
+  --hl-radius-lg: 12px;  /* cards, panels */
+  --hl-radius-xl: 16px;  /* modals, drawers, media frames */
+  --hl-radius-2xl: 22px; /* full-bleed marketing figures */
   --hl-radius-full: 9999px;
 
   /* ── Density ─────────────────────────────────────────────────────────── */
@@ -95,7 +119,11 @@
   /* ── Motion ──────────────────────────────────────────────────────────── */
   --hl-duration-fast: 120ms;
   --hl-duration-base: 180ms;
+  --hl-duration-slow: 280ms;  /* overlays entering — long enough to read */
   --hl-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The spring-ish curve overlays and disclosure use. Slight overshoot in
+     the first half, settled by 60% — reads as "placed", not "popped". */
+  --hl-ease-emphasis: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* ── Opportunity priority (master context §15) — alias, not a leaf ─────
      HOT / WARM / WATCH / IGNORE is a *ranked verdict*, not a system status,
@@ -128,6 +156,64 @@
   --hl-score-good: var(--hl-success);      /* 70–89 */
   --hl-score-excellent: var(--hl-score-excellent-leaf); /* 90+ */
 
+  /* ── Attention — theme-invariant ──────────────────────────────────────
+     The one blue in the system, and it means exactly one thing: *something
+     is waiting for you*. The unread count beside Inbox, the review count on
+     Command Center, the fill on a quota bar the user is about to run out of.
+
+     It is not `--hl-info`, which is a status ("here is a note"), and it is
+     deliberately not the brand green, which already means "source-verified
+     fact / system state" — a green "2" beside Inbox reads as a status rather
+     than as a summons, and spending the fact colour on chrome weakens it
+     everywhere it is load-bearing.
+
+     One value for both themes, because the thing it marks does not change
+     with the reader's preference and because #2563eb happens to clear every
+     floor from either side: 5.17:1 against white ink (so the 11px count is
+     AA), 3.35:1 on Dark's panel and 3.78:1 on Light's (so the pill itself
+     clears the 3:1 graphics threshold on the surface it sits on). A lighter
+     blue would fail the first; a darker one the second.
+
+     Never the only carrier of meaning: every count states its number, and
+     the rail's dot is paired with a title. */
+  --hl-attention: #2563eb;
+  --hl-attention-hover: #1d4fd8;
+  --hl-attention-ink: #ffffff;
+
+  /* ── Inverted band — theme-invariant ──────────────────────────────────
+     The marketing pages alternate light sections with full-bleed near-black
+     ones. Those bands are the SAME value in both themes, which is the whole
+     reason they need their own tokens rather than `--hl-canvas`: the band is
+     a fixture of the page's rhythm, not a surface that follows the reader's
+     preference. Let it flip with the theme and the alternation collapses in
+     Dark — every band painted the same value as the section it was there to
+     punctuate.
+
+     #151515 rather than #000. Pure black is the wrong dark for a large field:
+     on an OLED panel the pixels switch fully off and the band reads as a hole
+     cut in the page, gradients and product screenshots band visibly where
+     they meet it, and the near-black elevations above it have nowhere to go.
+     A hair of grey keeps the surface a surface. It is also the canvas Dark
+     itself is built on, below — so a band and the dark app agree. */
+  --hl-band: #151515;
+  --hl-band-raised: #1f1f1f;
+  --hl-band-hover: #272727;
+  --hl-band-border: #2e2e2e;
+  --hl-band-border-strong: #454545;
+  --hl-band-text: #f7f7f7;
+  --hl-band-text-secondary: #b4b4b4;
+  /* 6.0:1 on --hl-band — the eyebrow labels and captions that live in the
+     bands are 11–13px, so they are held to the small-text floor. */
+  --hl-band-text-muted: #949494;
+  --hl-band-brand: #3ecf8e;
+
+  /* The <select> disclosure chevron, as a data URI. Declared here rather
+     than in the component so both themes resolve `--hl-text-muted` at paint
+     time — an SVG loaded as an image cannot see `currentColor`, so the only
+     way for the arrow to follow the theme is for the URI to be built from a
+     custom property that the theme already moves. */
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23949494' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
   /* ── Focus — alias, composed from theme leaves ──────────────────────── */
   --hl-focus: var(--hl-brand);
   --hl-focus-ring: 0 0 0 2px var(--hl-canvas), 0 0 0 4px var(--hl-brand);
@@ -137,6 +223,7 @@
   :root {
     --hl-duration-fast: 0ms;
     --hl-duration-base: 0ms;
+    --hl-duration-slow: 0ms;
   }
 }
 
@@ -147,18 +234,31 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* ── Surfaces ─────────────────────────────────────────────────────────── */
-  --hl-canvas: #171717;
-  --hl-panel: #1c1c1c;
+  /* ── Surfaces ─────────────────────────────────────────────────────────
+     Rebased from #171717 onto #151515 so the dark app and the marketing
+     bands (`--hl-band`, above) sit at exactly the same value — a visitor
+     moving from the landing page into the workspace crosses no seam. The
+     ramp is otherwise widened slightly: 21 → 26 → 31 → 39 → 44 in 8-bit
+     grey, where it used to be 23 → 28 → 31 → 36 → 42. Elevation on a dark
+     ground is carried almost entirely by lightness, and the old steps
+     between surface / hover / active were close enough to read as noise
+     rather than as levels. */
+  --hl-canvas: #151515;
+  --hl-panel: #1a1a1a;
   --hl-surface: #1f1f1f;
-  --hl-surface-hover: #242424;
-  --hl-surface-active: #2a2a2a;
-  --hl-overlay: rgba(10, 10, 10, 0.8);
+  --hl-surface-hover: #272727;
+  --hl-surface-active: #2c2c2c;
+  --hl-overlay: rgba(8, 8, 8, 0.72);
 
-  /* ── Borders — depth is expressed with 1px lines, never shadows ───────── */
-  --hl-border-subtle: #262626;
-  --hl-border-default: #343434;
-  --hl-border-strong: #4a4a4a;
+  /* ── Borders — depth is expressed with 1px lines, never shadows ─────────
+     `--hl-text-muted` (#949494) measures 6.02 on canvas · 5.68 on panel ·
+     5.15 on surface · 4.99 on surface-hover · 4.60 on surface-active. All
+     five clear AA for the 11–13px labels they carry, which is the constraint
+     that fixed --hl-surface-active at #2c2c2c rather than a rounder #2e2e2e
+     (4.48 — a rounding error under the floor). */
+  --hl-border-subtle: #242424;
+  --hl-border-default: #323232;
+  --hl-border-strong: #484848;
 
   /* ── Text ─────────────────────────────────────────────────────────────── */
   /* Muted was #6f6f6f, which the plan recorded as ~4.6:1 on canvas. Measured,
@@ -210,6 +310,16 @@
 
   --hl-score-excellent-leaf: #22d3a6;  /* 90+, --hl-score-excellent's source */
 
+  /* Dark's statuses measure 6.07 / 7.96 / 7.69 / 7.99 against their own
+     surfaces, so the text leaves the light block needs are aliases here.
+     Declared rather than omitted: a token that exists in one theme and not
+     the other is a component that renders unstyled in the other. */
+  --hl-danger-text: var(--hl-danger);
+  --hl-warning-text: var(--hl-warning);
+  --hl-success-text: var(--hl-success);
+  --hl-info-text: var(--hl-info);
+  --hl-score-excellent-text: var(--hl-score-excellent-leaf);
+
   /* ── Chart ramp ───────────────────────────────────────────────────────── */
   --hl-chart-1: #3ecf8e;
   --hl-chart-2: #8b5cf6;
@@ -218,11 +328,19 @@
   --hl-chart-5: #e5484d;
   --hl-chart-6: #64748b;
 
-  /* ── Elevation — the ONLY shadows in the system ──────────────────────── */
-  --hl-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.4);
+  /* ── Elevation — the only shadows in the system ───────────────────────
+     Two-part: a tight contact shadow that anchors the element to whatever
+     is beneath it, and a wide soft one that carries the distance. A single
+     blurred drop is what makes a dark UI look smudged rather than layered.
+     Dark still leans on borders first; these are for things that float free
+     of the layout — popovers, menus, modals, toasts. */
+  --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
+  --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 64px -12px rgba(0, 0, 0, 0.7);
+  --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
 
-  /* Headings stay on the same sans family as body copy — this theme keeps
-     its existing all-Inter Supabase-style typography untouched. */
+  /* Headings are set in the same family as body copy. The seam is kept so
+     a display face can be introduced in one line; see the note in the light
+     block for why there is not one today. */
   --hl-font-display: var(--hl-font-sans);
 }
 
@@ -259,9 +377,19 @@
   --hl-text-inverse: #fbfaf7;
 
   /* ── Brand green ─────────────────────────────────────────────────────── */
-  --hl-brand: #1c9463;
-  --hl-brand-hover: #157d53;
-  --hl-brand-active: #106844;
+  /* Was #1c9463, and it failed AA where it mattered most: the primary button
+     fills with it and sets `--hl-text-inverse` on top, which measured
+     3.68:1 — every "Save", "Start free" and "Connect" label in the light
+     theme, under the floor. #0a8050 puts that at 4.77:1 and reads 4.98:1 as
+     text on white, so the one value serves both uses.
+
+     Found by measurement, not by eye: `e2e/a11y.spec.ts` runs axe against
+     both themes now. The dark palette's ratios were recorded when it was
+     written; light was derived from reference screenshots later and its
+     ratios were never taken. Three of its four ramp colours were below AA. */
+  --hl-brand: #0a8050;
+  --hl-brand-hover: #06724a;
+  --hl-brand-active: #04613e;
   --hl-brand-surface: #e3f5ec;
   --hl-brand-border: #b0e0c6;
   --hl-brand-text: #12734d;
@@ -273,12 +401,14 @@
   --hl-ai-text: #6425c9;
 
   /* ── Status ──────────────────────────────────────────────────────────── */
-  --hl-success: #1c9463;
+  --hl-success: #0a8050;
   --hl-success-surface: #e3f5ec;
   --hl-success-border: #b0e0c6;
 
-  /* The screenshots' rust/amber "flag this" callout accent. */
-  --hl-warning: #a15a13;
+  /* The screenshots' rust/amber "flag this" callout accent. #a15a13 measured
+     4.46:1 on its own surface — a fifth of a point under AA, on the demo-data
+     banner that appears at the top of most screens. */
+  --hl-warning: #9e5710;
   --hl-warning-surface: #faead4;
   --hl-warning-border: #edc788;
 
@@ -290,7 +420,28 @@
   --hl-info-surface: #e2eefb;
   --hl-info-border: #b3d3f5;
 
-  --hl-score-excellent-leaf: #0e8f6f;  /* 90+, --hl-score-excellent's source */
+  --hl-score-excellent-leaf: #0b6b50;  /* 90+, --hl-score-excellent's source */
+
+  /* ── Status text leaves ──────────────────────────────────────────────
+     A status colour has two jobs and light cannot do both with one value:
+     fill a 3:1 graphic, and be read as 11px text on its own tint. The fill
+     values above are tuned for the first; these are tuned for the second,
+     and each clears 4.5:1 on its matching `-surface`.
+
+     Dark needs no such split — its statuses measure 6–8:1 on their own
+     surfaces already — so the dark block aliases these straight back to the
+     fills. That keeps every consumer writing one token name. */
+  --hl-danger-text: #ae1b22;
+  --hl-warning-text: #8f4801;
+  --hl-success-text: #12734d;
+  --hl-info-text: #0e57b1;
+  /* 90+ shares the success surface, so it separates from --hl-success-text
+     by hue rather than by lightness — a teal against a forest green. Two
+     greens the same distance from the ground would clear AA and still be
+     indistinguishable, which is a contrast pass and a design failure. The
+     pill carries the number and the panel carries the word regardless, so
+     nothing here is conveyed by colour alone. */
+  --hl-score-excellent-text: #00706b;
 
   /* ── Chart ramp ──────────────────────────────────────────────────────── */
   --hl-chart-1: #1c9463;
@@ -301,14 +452,29 @@
   --hl-chart-6: #6b675c;
 
   /* ── Elevation — softer than Dark's; a 0.4-alpha black shadow reads as a
-     smudge on a cream ground. */
-  --hl-shadow-popover: 0 8px 24px rgba(28, 24, 18, 0.14);
+     smudge on a cream ground. Tinted with the canvas's own warmth rather
+     than neutral black, for the same reason. */
+  --hl-shadow-popover: 0 1px 2px rgba(28, 24, 18, 0.06), 0 8px 24px -4px rgba(28, 24, 18, 0.12);
+  --hl-shadow-modal: 0 2px 4px rgba(28, 24, 18, 0.06), 0 24px 64px -12px rgba(28, 24, 18, 0.18);
+  --hl-shadow-raised: 0 1px 2px rgba(28, 24, 18, 0.05);
 
-  /* The one deliberate typographic swap from Dark: page/card headings pick
-     up the reference screenshots' serif, body copy and UI chrome stay on
-     Inter. Applied via the `font-display` utility (theme.css), not globally —
-     see Card's CardHeader and the page <h1>s that opt in. */
-  --hl-font-display: var(--hl-font-serif);
+  /* Light's muted grey is #666154, not #949494 — the chevron has to be
+     re-declared rather than inherited, because the URI bakes the hex in. */
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666154' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  /* Light used to swap in a serif here — Lora, from an earlier set of
+     reference screenshots. It is gone, and not because it looked wrong on
+     its own.
+
+     An inverted band is a `data-theme="dark"` subtree inside a light page
+     (see `.hl-band`), and Dark has always set headings in the sans. So the
+     moment the marketing pages gained bands, one scroll alternated serif
+     headings and sans headings for the same heading tier. A typographic
+     rule that only holds while a page is entirely one theme is not a rule.
+
+     Both current references set every heading in the UI grotesque, which is
+     also a webfont family fewer on every page load. */
+  --hl-font-display: var(--hl-font-sans);
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────── */
@@ -319,7 +485,145 @@ body {
   font-family: var(--hl-font-sans);
   font-size: var(--hl-text-body);
   line-height: 1.43;
+  /* Inter sets a touch wide at UI sizes. A hair negative across the board is
+     most of the difference between "a web app" and "a considered one", and
+     it is small enough — -0.006em is 0.08px at 14px — that no measured
+     line length, column width or truncation point moves. */
+  letter-spacing: var(--hl-tracking-body);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Headline tiers ───────────────────────────────────────────────────────
+   Each pairs a size with the tracking that size needs. The two are never
+   independent choices — type set large at body tracking looks loose, and
+   body set at display tracking looks cramped — so they are never separate
+   classes either. `text-wrap: balance` keeps a two-line headline from
+   leaving one word on the second line; it is capped by the browser at a
+   handful of lines, which is exactly the range these are used at. */
+
+.hl-hero {
+  font-family: var(--hl-font-display);
+  font-size: var(--hl-text-hero);
+  line-height: 1.04;
+  font-weight: 600;
+  letter-spacing: var(--hl-tracking-hero);
+  text-wrap: balance;
+}
+
+.hl-display {
+  font-family: var(--hl-font-display);
+  font-size: var(--hl-text-display-lg);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: var(--hl-tracking-display);
+  text-wrap: balance;
+}
+
+/* The title of a page inside the app. */
+.hl-heading {
+  font-family: var(--hl-font-display);
+  font-size: var(--hl-text-display);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: var(--hl-tracking-heading);
+  text-wrap: balance;
+}
+
+/* The title of a focused single-column flow — onboarding, sign-in, an
+   invite, the workspace picker. One step down from `.hl-heading` because
+   these sit on a 420–600px measure with no surrounding chrome, where the
+   in-app size reads as shouting.
+
+   Two tiers, not three. There were three: 30px in the app, 26px across
+   onboarding, and 24px on the auth and standalone pages — and the third
+   was not a decision, it was the second one typed again from memory. */
+.hl-title {
+  font-family: var(--hl-font-display);
+  font-size: var(--hl-text-title);
+  line-height: 1.23;
+  font-weight: 600;
+  letter-spacing: var(--hl-tracking-heading);
+  text-wrap: balance;
+}
+
+/* One breakpoint, not a fluid clamp(). 56px is a deliberate value chosen
+   against a 1100px measure; a clamp would interpolate through sizes nobody
+   looked at, and the hero is the one place on the site where the exact
+   size is the design. */
+@media (max-width: 640px) {
+  .hl-hero {
+    font-size: 2.25rem;
+    line-height: 1.08;
+  }
+  .hl-display {
+    font-size: 1.875rem;
+  }
+  .hl-heading {
+    font-size: 1.5rem;
+  }
+  .hl-title {
+    font-size: 1.375rem;
+  }
+}
+
+/* The toast entrance. Declared here rather than in the component because
+   a `@keyframes` inside a Tailwind arbitrary value cannot define itself —
+   the utility can only reference a name that already exists. Rises 8px and
+   settles; `motion-safe:` on the consumer keeps it off under reduced
+   motion, so no reduced-motion override is needed here. */
+@keyframes hl-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Long-form measure. Anything the reader reads a paragraph of, rather than
+   scans, is capped here: 65ch is the top of the comfortable range, and it
+   is why the marketing copy columns never span the full 1100px shell. */
+.hl-prose {
+  max-width: 65ch;
+  text-wrap: pretty;
+}
+
+/* ── Inverted band ────────────────────────────────────────────────────────
+   A full-bleed near-black section on an otherwise light page — the rhythm
+   the marketing pages are built on.
+
+   ── How a whole section inverts without rewriting its children ──────────
+
+   Write it as `<section data-theme="dark" class="hl-band">`.
+
+   `[data-theme="dark"]` above is an attribute selector, not a `:root` rule.
+   Put the attribute on a <section> and every colour leaf is redeclared for
+   that subtree, so a Card inside the band is `--hl-surface` as usual and
+   `--hl-surface` is now #1f1f1f. A heading is `text-fg` and `text-fg` is
+   now #ededed. Nothing inside the section has to know it is in a band,
+   which is the difference between inverting a section in one line and
+   hand-converting forty class strings — and between a band that stays
+   correct as its contents change and one that rots the first time somebody
+   adds a card to it.
+
+   That also means the band is dark in *both* page themes, which is the
+   point: the alternation is a fixture of the page, not a preference. In the
+   dark theme the band and the page share a value, so the `border-y` on the
+   section is what keeps the rhythm legible.
+
+   This class then only has to paint the background, since the tokens have
+   already flipped. `color-scheme` comes with the dark block, so native
+   controls, scrollbars and spinners inside the band match it too.
+
+   The `--hl-band-*` tokens are for the other case: a small element that is
+   always dark with no wrapper to hang an attribute on — the sidebar rail's
+   tooltip. */
+.hl-band {
+  background: var(--hl-canvas);
+  color: var(--hl-text);
 }
 
 /* Anything that updates in place must not jitter. */
@@ -327,14 +631,22 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* The Supabase signature label. */
+/* The eyebrow. Small caps, tracked open, muted — it titles a section
+   without spending a heading on it, and it is the one piece of chrome that
+   appears on every surface in the product. */
 .hl-label {
   font-size: var(--hl-text-label);
   font-weight: 500;
   line-height: 1.45;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--hl-tracking-label);
   text-transform: uppercase;
   color: var(--hl-text-muted);
+}
+
+/* Inside a band the page's muted grey is the wrong grey — it was measured
+   against `--hl-canvas`, which the band is not. */
+.hl-band .hl-label {
+  color: var(--hl-band-text-muted);
 }
 
 /* Theme-swapped raster brand marks. CSS can restyle a token but can't

@@ -35,6 +35,15 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   loading?: boolean;
   empty?: ReactNode;
+  /**
+   * What a screen reader says on landing in the scroll region.
+   *
+   * Defaulted rather than required, so adding the focus stop did not become
+   * a breaking change for nine call sites at once — but every table worth
+   * naming should name itself, because "Table" is what the fallback says
+   * and a page with two tables then has two identical landmarks.
+   */
+  label?: string;
   className?: string;
 }
 
@@ -54,6 +63,7 @@ export function DataTable<T>({
   onRowClick,
   loading,
   empty,
+  label = "Table",
   className,
 }: DataTableProps<T>) {
   const selectable = Boolean(selectedIds && onSelectionChange);
@@ -82,11 +92,26 @@ export function DataTable<T>({
 
   return (
     <div
+      /*
+       * Focusable, for the reason `ScrollRegion` exists: the table has a
+       * 720px minimum and this box scrolls it, so on any viewport narrower
+       * than that a keyboard user could not reach the right-hand columns at
+       * all. Axe found it on the mobile project and not on desktop, which is
+       * the shape of the bug — it only exists where nothing is wide enough.
+       *
+       * Inlined rather than wrapped in `ScrollRegion`, because this element
+       * already carries the border, radius and `min-w-0` the table is drawn
+       * inside, and nesting a second box would mean reconciling all three.
+       */
+      role="region"
+      aria-label={label}
+      tabIndex={0}
       className={cn(
         // min-w-0 is load-bearing: a scroll container defaults to
         // min-width:auto, which lets the 720px table widen its flex/grid
         // parent and scroll the whole page sideways instead of itself.
-        "min-w-0 overflow-x-auto rounded-md border border-line-subtle bg-surface",
+        "min-w-0 overflow-x-auto rounded-lg border border-line-subtle bg-surface",
+        "hl-focusable",
         className,
       )}
     >
@@ -119,7 +144,7 @@ export function DataTable<T>({
                       : undefined
                   }
                   className={cn(
-                    "px-4 py-2.5 text-[11px] leading-4 font-medium tracking-[0.06em] text-fg-muted uppercase",
+                    "px-4 py-2.5 text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
                     col.align === "right" && "text-right",
                     col.align === "center" && "text-center",
                   )}

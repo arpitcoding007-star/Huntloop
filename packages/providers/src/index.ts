@@ -28,6 +28,8 @@ import {
   type Capability,
   type CompanySearchQuery,
   type CompanySearchResult,
+  type CompanySignalsQuery,
+  type CompanySignalsResult,
   type PersonMatchQuery,
   type PersonSearchQuery,
   type PersonSearchResult,
@@ -240,6 +242,31 @@ export async function verifyEmail(
   });
 }
 
+/* ── company.signals ───────────────────────────────────────────────────── */
+
+export async function searchCompanySignals(
+  ctx: CallContext,
+  query: CompanySignalsQuery,
+): Promise<ProviderResult<CompanySignalsResult>> {
+  const { adapter, provider } = await route(ctx, "company.signals");
+  const run = adapter.searchSignals;
+  if (!run) throw unsupported(provider, "company.signals");
+
+  return callProvider<CompanySignalsResult>({
+    db: ctx.db,
+    orgId: ctx.orgId,
+    capability: "company.signals",
+    provider,
+    requestHash: requestHash("company.signals", provider, query),
+    ttl: TTL["company.signals"],
+    entity: ctx.entity ?? null,
+    skipCache: ctx.refresh ?? false,
+    run: () => run.call(adapter, query),
+    fromCache: (body) => body as CompanySignalsResult,
+    toCache: (data) => data,
+  });
+}
+
 function unsupported(provider: string, capability: Capability): ProviderRefused {
   return new ProviderRefused({
     provider,
@@ -266,6 +293,10 @@ export {
   type CallOutcome,
   type CompanySearchQuery,
   type CompanySearchResult,
+  type CompanySignal,
+  type CompanySignalsQuery,
+  type CompanySignalsResult,
+  type SignalKind,
   type PersonMatchQuery,
   type PersonSearchQuery,
   type PersonSearchResult,

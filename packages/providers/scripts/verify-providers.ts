@@ -467,6 +467,53 @@ console.log("\napollo — email_status is the most important mapping in the pack
   globalThis.fetch = original;
 }
 
+console.log("\napollo — job postings become citable hiring signals");
+{
+  const original = globalThis.fetch;
+  let capturedUrl: string | null = null;
+  let capturedMethod: string | null = null;
+  const respond = (body: unknown, status = 200) => {
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedMethod = init?.method ?? null;
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+  };
+
+  const adapter = apolloAdapter("test-key");
+
+  const noId = await adapter.searchSignals!({
+    companyDomain: "acme.com", companyName: "Acme", companyProviderId: null,
+    kinds: ["hiring"], cursor: null, limit: 25,
+  });
+  expectEqual("no provider id means no call and no cost", noId.credits, 0);
+  expectEqual("and an empty, non-partial result — not an error", noId.data.items.length, 0);
+
+  respond({
+    job_postings: [
+      { id: "j1", title: "Senior AE", department: "Sales", city: "Austin", state: "TX", country: "US",
+        url: "https://apollo.io/jobs/j1", posted_at: "2026-09-01" },
+      { title: "" }, // no title: not a citable posting
+      { id: "j3" },  // no title at all: same
+    ],
+    pagination: { total_entries: 1, total_pages: 1, page: 1 },
+  });
+  const found = await adapter.searchSignals!({
+    companyDomain: "acme.com", companyName: "Acme", companyProviderId: "org_1",
+    kinds: ["hiring"], cursor: null, limit: 25,
+  });
+  expectEqual("a titleless posting is dropped", found.data.items.length, 1);
+  expectEqual("kind is always hiring for this endpoint", found.data.items[0]?.kind, "hiring");
+  expectEqual("location joins city, state, country", found.data.items[0]?.location, "Austin, TX, US");
+  expectEqual("the listing URL survives, for a real citation", found.data.items[0]?.url, "https://apollo.io/jobs/j1");
+  expect("this is a GET, unlike every other Apollo call in this adapter", capturedMethod === "GET");
+  expect("against the organization-scoped job-postings resource", (capturedUrl ?? "").includes("/organizations/org_1/job_postings"));
+  expectEqual("the provider's own total is passed through", found.data.total, 1);
+  expectEqual("one complete page is not partial", found.data.partial, false);
+
+  globalThis.fetch = original;
+}
+
 console.log("\napollo — a numeric range becomes a superset of bands, never a subset");
 {
   // A superset is filtered at our end, where the exclusion is visible with a
@@ -562,6 +609,7 @@ console.log("\nregistry — nothing is configured until a key says so");
   resetRegistryForTests();
   expect("Apollo serves company search", adapterFor("company.search")?.name === "apollo");
   expect("and person match, when it is the only option", adapterFor("person.match")?.name === "apollo");
+  expect("and signals, the newest capability it serves", adapterFor("company.signals")?.name === "apollo");
   expect("but not verification, which it does not do", adapterFor("email.verify") === null);
 
   process.env.ENRICHMENT_API_KEY = "k";

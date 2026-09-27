@@ -1,0 +1,120 @@
+Huntloop — third-party notices
+==============================
+
+This file records the licences of things Huntloop ships or builds with, and
+names the ones whose provenance still needs confirming. It exists because an
+asset is not licensed by virtue of sitting in a repository, and the audit
+found several here whose terms nobody had written down.
+
+
+Fonts
+-----
+
+All three are served from Huntloop's own origin. `next/font/google`
+downloads them at build time rather than linking to a font CDN, so no
+request leaves the user's browser to a third party — see the reasoning in
+`apps/web/app/layout.tsx`.
+
+  Inter
+    SIL Open Font License 1.1
+    Copyright (c) 2016 The Inter Project Authors
+    https://github.com/rsms/inter
+
+  JetBrains Mono
+    SIL Open Font License 1.1
+    Copyright (c) 2020 The JetBrains Mono Project Authors
+    https://github.com/JetBrains/JetBrainsMono
+
+  Lora
+    SIL Open Font License 1.1
+    Copyright (c) 2011 The Lora Project Authors
+    https://github.com/cyrealtype/Lora-Cyrillic
+
+The OFL asks that its copyright and licence notice travel with the font
+files. Build-time subsetting makes that awkward to do literally, and common
+practice ignores it; this file is the notice instead, which costs nothing and
+removes the question.
+
+
+Icons
+-----
+
+  Lucide
+    ISC License
+    Copyright (c) 2022 Lucide Contributors
+    (Fork of Feather Icons, MIT, Copyright (c) 2013-2022 Cole Bemis)
+    https://lucide.dev
+
+
+Brand assets
+------------
+
+  apps/web/public/brand/huntloop-mark.png
+  apps/web/public/brand/huntloop-lockup-light.png
+  apps/web/public/brand/huntloop-lockup-dark.png
+  HuntLoop_SVGs/*.svg
+
+  **PROVENANCE NOT RECORDED.** These are presented as Huntloop's own marks
+  and most likely are, but nothing in this repository establishes who made
+  them or under what terms. If they were commissioned, the agreement should
+  say that copyright was assigned; if they were produced from a template,
+  stock library or generative tool, that tool's terms govern whether they can
+  be used as a trademark at all — several forbid exactly that.
+
+  Whoever knows the answer should replace this paragraph with it. Until then
+  this is an open question, not a settled one.
+
+  The name "Huntloop" is used as a trademark. No registration is recorded
+  here. Whether one is needed, and in which classes and territories, is a
+  question for counsel.
+
+
+Design influences
+-----------------
+
+Not licensing matters, recorded because the design system's own comments name
+them and a reader should be able to tell influence from reuse:
+
+  · The dark palette and chrome derive from Supabase's visual language
+    (near-black layered surfaces, a single saturated green accent, hairline
+    borders, no shadows). No Supabase code or asset is used — the tokens in
+    `packages/ui/src/tokens.css` are written from scratch and every contrast
+    ratio in them was measured independently.
+  · The dashboard information architecture derives from Kima BD OS.
+  · The light palette derives from reference report screenshots.
+
+
+Software dependencies
+---------------------
+
+479 packages resolve into `node_modules`. The distribution is overwhelmingly
+permissive: 391 MIT, 38 Apache-2.0, 15 ISC, 17 BSD-2/3-Clause, with the
+remainder BlueOak-1.0.0, MIT-0, CC0-1.0, 0BSD, Python-2.0 and Unlicense.
+
+**No copyleft or source-available licence reaches the browser bundle.** Each
+of the non-permissive ones below was checked individually and is build-time
+or development-time only:
+
+  @sentry/cli, @sentry/cli-win32-x64   FSL-1.1-MIT
+      Functional Source License: source-available with a non-compete clause,
+      converting to MIT two years after each release. Used only to upload
+      source maps during a build. Huntloop does not compete with Sentry, so
+      the clause is not engaged — but this is the one licence here that is
+      not simply permissive, and it is recorded rather than assumed.
+
+  @img/sharp-win32-x64                 Apache-2.0 AND LGPL-3.0-or-later
+      The LGPL portion is the bundled libvips, dynamically linked, used for
+      build-time image optimisation. Not redistributed by the application.
+
+  axe-core, lightningcss                MPL-2.0
+      File-level copyleft. Neither is modified. `axe-core` arrives only as a
+      transitive dependency of eslint-plugin-jsx-a11y and is also used
+      directly by the accessibility test in `e2e/a11y.spec.ts`.
+
+  caniuse-lite                          CC-BY-4.0
+      Browser-support data, consumed at build time. Attribution: the
+      caniuse.com database, by Alexis Deveria and contributors.
+
+Run `npm ls --all` for the complete resolved tree. This summary was generated
+by walking every `package.json` under `node_modules` and is accurate as of
+the audit dated 21 September 2026.

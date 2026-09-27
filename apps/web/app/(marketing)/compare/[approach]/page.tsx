@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Badge, Button } from "@huntloop/ui";
+import { Badge, Button, ScrollRegion } from "@huntloop/ui";
 import { DomainInput } from "../../DomainInput";
 import { APPROACHES, findApproach } from "../approaches";
 import { USE_CASES } from "../../for/use-cases";
@@ -66,7 +66,7 @@ export default async function ComparePage({
       <main id="main" className="mx-auto max-w-[880px] px-6 py-14">
         <Badge variant="neutral">Compared to {approach.labelInSentence}</Badge>
 
-        <h1 className="mt-4 text-[34px] leading-[1.15] font-semibold tracking-[-0.02em] text-fg">
+        <h1 className="hl-display mt-4 text-fg">
           {approach.headline}
         </h1>
         <p className="mt-4 max-w-xl text-[16px] leading-[1.6] text-fg-secondary">
@@ -74,7 +74,7 @@ export default async function ComparePage({
         </p>
 
         {/* First, and not grudging. See the header. */}
-        <section className="mt-10 rounded-md border border-line-subtle bg-panel p-5">
+        <section className="mt-10 rounded-lg border border-line-subtle bg-panel p-5">
           <h2 className="text-[15px] font-semibold text-fg">
             {approach.strengths.heading}
           </h2>
@@ -90,7 +90,7 @@ export default async function ComparePage({
 
           {/* Wide content scrolls inside its own container rather than making
               the page scroll horizontally. */}
-          <div className="mt-5 overflow-x-auto">
+          <ScrollRegion label="Side-by-side comparison" className="mt-5">
             <table className="w-full min-w-[640px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-line">
@@ -127,7 +127,7 @@ export default async function ComparePage({
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
         </section>
 
         {/* The section that makes this a comparison rather than an advert. */}
@@ -154,7 +154,7 @@ export default async function ComparePage({
         </section>
 
         <nav aria-label="More" className="mt-14 border-t border-line-subtle pt-6">
-          <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
             Also compared to
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
@@ -170,7 +170,7 @@ export default async function ComparePage({
             ))}
           </ul>
 
-          <p className="mt-5 text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <p className="mt-5 text-[11px] font-medium tracking-label text-fg-muted uppercase">
             Or by what you do
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">

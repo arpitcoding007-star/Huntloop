@@ -7,6 +7,9 @@ export type { BadgeProps, BadgeVariant } from "./components/Badge";
 
 export { Button } from "./components/Button";
 export type { ButtonProps, ButtonSize, ButtonVariant } from "./components/Button";
+export { ConfirmButton } from "./components/ConfirmButton";
+export { ScrollRegion } from "./components/ScrollRegion";
+export type { ConfirmButtonProps } from "./components/ConfirmButton";
 
 export { Card, CardBody, CardHeader, SectionLabel } from "./components/Card";
 export type { CardProps } from "./components/Card";
@@ -58,6 +61,9 @@ export type {
   RateLimitedProps,
 } from "./components/States";
 
+export { Note } from "./components/Note";
+export type { NoteProps, NoteTone } from "./components/Note";
+
 export { DataTable } from "./components/DataTable";
 export type { Column, DataTableProps } from "./components/DataTable";
 
@@ -73,11 +79,30 @@ export type { BreakdownItem, BreakdownListProps } from "./components/BreakdownLi
 export { ActionRail, ActionRailItem } from "./components/ActionRail";
 export type { ActionRailItemProps, ActionRailProps } from "./components/ActionRail";
 
-export { Sidebar } from "./components/Sidebar";
-export type { NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
+export {
+  Sidebar,
+  SidebarAccount,
+  SidebarCollapseButton,
+  SidebarQuota,
+} from "./components/Sidebar";
+export type { CountTone, NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
 
 export { Avatar, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
+
+/* ── Overlays and feedback ──────────────────────────────────────────────
+   Modals, menus and toasts: the three surfaces the system asserted in its
+   own docs and never had, so every screen that needed one either invented
+   it inline or did without. */
+
+export { Modal } from "./components/Modal";
+export type { ModalProps, ModalSize } from "./components/Modal";
+
+export { Menu } from "./components/Menu";
+export type { MenuItem, MenuProps } from "./components/Menu";
+
+export { ToastProvider, useToast } from "./components/Toast";
+export type { ToastOptions, ToastTone } from "./components/Toast";
 
 export { ThemeToggle } from "./components/ThemeToggle";
 export type { ThemePreference } from "./components/ThemeToggle";

@@ -40,6 +40,7 @@ export const CAPABILITIES = [
   "person.search",
   "person.match",
   "email.verify",
+  "company.signals",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -241,6 +242,65 @@ export interface PersonMatchQuery {
 
 export type VerificationStatus = "deliverable" | "undeliverable" | "risky" | "unknown";
 
+/* ── Signals ───────────────────────────────────────────────────────────────
+ *
+ * §14 of the Apollo comparison named this the single highest-leverage gap in
+ * the provider contract: a hiring surge or a champion's job change is exactly
+ * the kind of thing "why now" was built to hold, and until now there was no
+ * capability shaped to carry it in.
+ *
+ * `kind` is deliberately narrow today. Apollo's public API documents an
+ * Organization Job Postings endpoint — real headcount growth, attributable to
+ * a specific role — which is what `hiring` maps to below. Job-change (a named
+ * person moving companies) and Bombora-style topic intent are NOT wired here:
+ * neither has a public, documented Apollo endpoint as clean as job postings,
+ * and inventing a shape for an endpoint nobody has called would be exactly
+ * the "invented weight presented as the model's arithmetic" failure this
+ * schema exists to prevent elsewhere. The union is written to make adding
+ * `job_change` and `intent` later a type change in one place, not a redesign.
+ */
+
+export type SignalKind = "hiring";
+
+/**
+ * A single, citable signal about a company.
+ *
+ * Deliberately shaped like the evidence row it is going to become —
+ * `postedAt`, `url` and `title` map onto `evidence.observed_at`,
+ * `evidence.source_url` and `evidence.claim` at the call site — so the
+ * adapter never has to know about `evidence` and the job handler never has to
+ * know about a vendor's payload shape.
+ */
+export interface CompanySignal {
+  /** The provider's own id for this signal, when it has one. Used for dedup. */
+  providerId: string | null;
+  kind: SignalKind;
+  title: string;
+  department: string | null;
+  location: string | null;
+  /** Null when the provider does not expose a per-posting URL to cite. */
+  url: string | null;
+  /** When the underlying event happened, per the provider. Null if unknown. */
+  observedAt: string | null;
+  raw: Record<string, unknown> | null;
+}
+
+export interface CompanySignalsQuery {
+  companyDomain: string | null;
+  companyName: string | null;
+  companyProviderId: string | null;
+  kinds: SignalKind[];
+  cursor: string | null;
+  limit: number;
+}
+
+export interface CompanySignalsResult {
+  items: CompanySignal[];
+  total: number | null;
+  cursor: string | null;
+  partial: boolean;
+}
+
 /* ── The adapter ───────────────────────────────────────────────────────── */
 
 /**
@@ -276,6 +336,7 @@ export interface ProviderAdapter {
   searchPeople?(query: PersonSearchQuery): Promise<RawCall<PersonSearchResult>>;
   matchPerson?(query: PersonMatchQuery): Promise<RawCall<ProviderPerson | null>>;
   verifyEmail?(email: string): Promise<RawCall<VerificationStatus>>;
+  searchSignals?(query: CompanySignalsQuery): Promise<RawCall<CompanySignalsResult>>;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   DataTable,
   EmptyState,
   Field,
@@ -148,7 +149,7 @@ export function CompanyManager({
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Companies</h1>
+          <h1 className="hl-heading text-fg">Companies</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
             {org} · {companies.length} {companies.length === 1 ? "company" : "companies"} ·
             the accounts your opportunities are about
@@ -194,6 +195,7 @@ export function CompanyManager({
 
       <div className="mt-4">
         <DataTable
+          label="Companies"
           rows={rows}
           columns={columns}
           rowKey={(c) => c.id}
@@ -304,21 +306,19 @@ function CompanyForm({
         description="Identifying facts only. Problems, gaps and triggers arrive from research, with evidence behind them."
         actions={
           company && canWrite ? (
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmButton
               icon={Trash2}
-              disabled={pending}
-              onClick={() =>
+              label={`Remove ${company.name}`}
+              confirmLabel="Remove it"
+              pending={pending}
+              onConfirm={() =>
                 start(async () => {
                   const res = await deleteCompanyAction(org, company.id);
                   if (res.ok) onDone();
                   else setResult({ ok: false, error: res.error });
                 })
               }
-            >
-              Remove
-            </Button>
+            />
           ) : null
         }
       />

@@ -104,6 +104,26 @@ export function canAdmin(viewer: Viewer | null): boolean {
 }
 
 /**
+ * May this viewer end the workspace?
+ *
+ * A third tier, for the same reason there is a second: `0029`'s
+ * `delete_organization` checks `has_org_role(..., 'owner')`, so an admin who
+ * is offered the control gets a Postgres exception rather than an answer.
+ *
+ * Owner rather than admin is the schema's call and the right one — deleting
+ * the workspace ends it for everybody in it, and admin is the role you give
+ * somebody to manage members. One function, so the two never drift.
+ */
+export function canOwn(viewer: Viewer | null): boolean {
+  if (!viewer) return false;
+  /* Demo has no real workspace to delete, and the control is rendered
+     disabled with the banner explaining why — same call every other helper
+     here makes, for the same reason. */
+  if (viewer.kind === "demo") return true;
+  return viewer.role === "owner";
+}
+
+/**
  * May this viewer spend money — run a model, start a hunt?
  *
  * The same set as `canWrite` today, and separate on purpose. Model calls are

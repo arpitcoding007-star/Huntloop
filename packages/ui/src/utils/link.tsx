@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ComponentType, Ref } from "react";
 
 /**
  * The seam that lets `packages/ui` stay framework-agnostic while the app that
@@ -22,13 +22,23 @@ import type { ComponentType, ReactNode } from "react";
  * ordinary anchor attributes — so `linkComponent={Link}` typechecks with no
  * adapter, and so does a plain `"a"`.
  */
-export interface LinkComponentProps {
+
+/**
+ * Everything an `<a>` takes, with `href` promoted to required.
+ *
+ * This was a hand-written list of four attributes — href, className,
+ * children, title — which was accurate for the two call sites that existed
+ * and wrong for the third. Menu gives a link a `role`, a `tabIndex`, an
+ * `onClick` and a ref; Sidebar gives one pointer and focus handlers for the
+ * rail tooltip. Adding those one at a time as each consumer appears is how
+ * the list eventually grows a `[key: string]: unknown` and stops typing
+ * anything at all.
+ */
+export interface LinkComponentProps
+  extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
   href: string;
-  className?: string;
-  children?: ReactNode;
-  title?: string;
-  /** Set by Sidebar on the item matching the current route. */
-  "aria-current"?: "page" | undefined;
+  /** React 19 passes refs as an ordinary prop; `next/link` forwards them. */
+  ref?: Ref<HTMLAnchorElement>;
 }
 
 export type LinkComponent = ComponentType<LinkComponentProps>;

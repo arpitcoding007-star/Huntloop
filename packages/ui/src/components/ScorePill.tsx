@@ -80,6 +80,51 @@ const BAND_VAR: Record<Band, string> = {
   excellent: "var(--hl-score-excellent)",
 };
 
+/**
+ * The pill's ink and ground, as a matched pair.
+ *
+ * ── Why not a tint of the ink itself ────────────────────────────────────
+ *
+ * That is what this did: a 15% mix of the band colour over whatever was
+ * behind it. It is a tidy one-liner and it is structurally incapable of
+ * meeting AA, because text on a tint of itself has a contrast ceiling the
+ * tint strength sets. Measured in the light theme it gave 2.70:1 for a
+ * strong score and 3.36:1 for an excellent one — the two bands a user sees
+ * most, on the number the whole product is about.
+ *
+ * Pairing an ink leaf with a designed surface leaf is what every other
+ * status component here already does, and those pairs were measured when
+ * they were chosen. This component was the one that mixed its own colour
+ * instead of using them.
+ *
+ * `excellent` borrows the success surface rather than getting a fifth one.
+ * It is the top of the same green scale, and its ink is distinct enough to
+ * separate 90+ from 70–89 without a second background nobody would be able
+ * to name.
+ *
+ * Found by axe, not by eye — see `e2e/a11y.spec.ts`.
+ */
+const BAND_INK: Record<Band, string> = {
+  poor: "var(--hl-danger-text)",
+  fair: "var(--hl-warning-text)",
+  good: "var(--hl-success-text)",
+  excellent: "var(--hl-score-excellent-text)",
+};
+
+const BAND_SURFACE: Record<Band, string> = {
+  poor: "var(--hl-danger-surface)",
+  fair: "var(--hl-warning-surface)",
+  good: "var(--hl-success-surface)",
+  excellent: "var(--hl-success-surface)",
+};
+
+const BAND_BORDER: Record<Band, string> = {
+  poor: "var(--hl-danger-border)",
+  fair: "var(--hl-warning-border)",
+  good: "var(--hl-success-border)",
+  excellent: "var(--hl-success-border)",
+};
+
 /* Was "Poor fit"…"Excellent fit", which mislabelled the composite as ICP fit
    alone. ICP fit is one of eight dimensions (§51) and §78 is explicit that a
    strong trigger must not drag a poor-fit company up — so the two readings
@@ -118,14 +163,14 @@ export function ScorePill({
           : "h-6 min-w-[34px] px-2 text-[12px]",
       )}
       triggerStyle={{
-        color,
-        borderColor: `color-mix(in srgb, ${color} 35%, transparent)`,
-        backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
+        color: BAND_INK[b],
+        borderColor: BAND_BORDER[b],
+        backgroundColor: BAND_SURFACE[b],
       }}
       panel={
         <>
           <span className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+            <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               {BAND_LABEL[b]}
             </span>
             <span className="hl-tabular text-[11px] font-semibold" style={{ color }}>
@@ -144,7 +189,7 @@ export function ScorePill({
                   <span className="flex items-center justify-between gap-3 text-[12px]">
                     <span className="truncate text-fg-muted">{d.label}</span>
                     {d.value === "unknown" ? (
-                      <span className="shrink-0 text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+                      <span className="shrink-0 text-[11px] tracking-label text-fg-muted uppercase">
                         Unknown
                       </span>
                     ) : (
@@ -194,7 +239,7 @@ export function ScorePill({
           )}
 
           {confidence && (
-            <span className="mt-2.5 block border-t border-line-subtle pt-2 text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+            <span className="mt-2.5 block border-t border-line-subtle pt-2 text-[11px] tracking-label text-fg-muted uppercase">
               {confidence} confidence in this score
             </span>
           )}

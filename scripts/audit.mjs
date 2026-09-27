@@ -328,6 +328,92 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 4 — Backend architecture ─────────────────────────────────────── */
+
+{
+  /*
+   * The provider seam, enforced rather than described.
+   *
+   * `packages/providers/src/adapters/apollo.ts` opens by claiming this check
+   * exists: "PRV-CHK in scripts/audit.mjs fails the build if the string
+   * 'apollo' appears in an import path or a type name anywhere outside
+   * packages/providers/src/adapters/". It did not exist. The discipline was
+   * being followed by hand, which is the state every other check here was
+   * written to replace — and a comment asserting a guarantee nothing enforces
+   * is worse than no comment, because a reviewer trusts it.
+   *
+   * ── What this checks, precisely ──────────────────────────────────────────
+   *
+   * Import specifiers and type names only, exactly as the comment claims —
+   * NOT every occurrence of a vendor's name. That distinction is the whole
+   * reason this is implementable: vendor names legitimately appear as *data*
+   * all over this repository. `enrich_company` maps 'apollo' to a record URL
+   * and argues at length why that is coupling-free; `resolve_competitor_
+   * mentions` lists "apollo", "clay" and "hunter" as ambiguous company names
+   * a scanner must not over-match; the migration suite writes 'apollo' into
+   * provider_calls a hundred times. A string check would flag all of it and
+   * be switched off within a week.
+   *
+   * ── The three exempt paths ───────────────────────────────────────────────
+   *
+   *   adapters/    the vendor files themselves;
+   *   registry.ts  the single seam the adapter header names — "deleting this
+   *                file should break the build in exactly one place";
+   *   scripts/     the provider test suite, whose job is to import an adapter
+   *                directly and check the mapping it produces.
+   *
+   * ── Why @huntloop/crm is deliberately NOT covered ────────────────────────
+   *
+   * Its own `contract.ts` argues that it is one HubSpot module rather than a
+   * registry, because there is exactly one CRM destination and abstracting
+   * over one implementation is the premature abstraction this codebase avoids
+   * elsewhere. Extending a vendor-hiding rule to a package that deliberately
+   * does not hide its vendor would be enforcing the opposite of the recorded
+   * decision. When a second CRM is real, that package grows a registry and
+   * this check grows a second clause; not before.
+   */
+  const VENDORS = ["apollo", "hunter", "zerobounce"];
+  const EXEMPT = [
+    "packages/providers/src/adapters/",
+    "packages/providers/src/registry.ts",
+    "packages/providers/scripts/",
+  ];
+
+  const leaks = [];
+  for (const dir of ["packages", "apps/web"]) {
+    for (const file of walk(dir)) {
+      if (!/\.(ts|tsx)$/.test(file)) continue;
+      if (EXEMPT.some((prefix) => file.startsWith(prefix))) continue;
+
+      const src = stripComments(read(file) ?? "");
+      for (const vendor of VENDORS) {
+        /* An import or re-export whose specifier names the vendor. */
+        const imported = new RegExp(
+          `(?:^|\\n)\\s*(?:import|export)[^;\\n]*from\\s*["'][^"']*${vendor}[^"']*["']`,
+          "i",
+        ).test(src);
+        /* A declared or annotated type carrying the vendor's name —
+           `interface ApolloPerson`, `type ApolloOrg`, `: ApolloThing`. */
+        const typed = new RegExp(
+          `(?:interface|type|class)\\s+${vendor}\\w*|:\\s*${vendor}\\w*\\s*[|&,;)>]`,
+          "i",
+        ).test(src);
+
+        if (imported || typed) leaks.push(`${file} (${vendor})`);
+      }
+    }
+  }
+
+  check(
+    4,
+    "PRV-CHK",
+    "No vendor is named in an import path or a type outside its adapter",
+    leaks.length === 0,
+    "fail",
+    leaks.length ? leaks.join(", ") : null,
+  );
+}
+
 /* ── Phase 5 — Security ─────────────────────────────────────────────────── */
 
 {
@@ -561,6 +647,150 @@ function check(phase, id, title, ok, sev, detail) {
     /robots\\?\.txt/.test(mw) && /sitemap\\?\.xml/.test(mw),
     "fail",
   );
+
+  /*
+   * Every URL the sitemap submits must be crawlable by the robots policy.
+   *
+   * These two files are written independently and read by the same crawler,
+   * which is how they came to disagree: `robots.ts` disallowed any path with
+   * a second segment to cover tenant routes, and that also matched all eight
+   * marketing pages
+   * `sitemap.ts` submits — so the site asked to be indexed and refused to be
+   * crawled at the same time, in a way neither file could show on its own.
+   *
+   * Matching is the robots.txt rule: longest matching path wins, allow wins a
+   * tie. Only the prefixes are compared, which is all this needs — the
+   * question is whether a *group* of pages is reachable, not whether one
+   * generated slug is.
+   */
+  {
+    const robots = read("apps/web/app/robots.ts") ?? "";
+    const sitemapSrc = read("apps/web/app/sitemap.ts") ?? "";
+    const list = (name) =>
+      (robots.match(new RegExp(`${name}:\\s*\\[([^\\]]*)\\]`, "s"))?.[1] ?? "")
+        .match(/"([^"]+)"/g)
+        ?.map((s) => s.slice(1, -1)) ?? [];
+
+    const allow = list("allow");
+    const disallow = list("disallow");
+    /* The prefixes sitemap.ts builds URLs under, as literals in its source. */
+    const submitted = [...sitemapSrc.matchAll(/url\(`?\/([a-z-]+)\//g)].map((m) => `/${m[1]}/`);
+
+    const matches = (rule, path) =>
+      new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}`).test(path);
+    const score = (rules, path) =>
+      Math.max(0, ...rules.filter((r) => matches(r, path)).map((r) => r.length));
+
+    const blocked = [...new Set(submitted)].filter(
+      (p) => score(disallow, p) > score(allow, p),
+    );
+
+    check(
+      8,
+      "SEO-AGREE",
+      "Every prefix the sitemap submits is crawlable by robots.txt",
+      blocked.length === 0,
+      "fail",
+      blocked.length
+        ? `sitemap.xml submits ${blocked.join(", ")} and robots.txt disallows it.`
+        : null,
+    );
+  }
+
+  /*
+   * The legal pages, and the rule that keeps a draft from becoming published.
+   *
+   * `lib/legal.ts` holds the facts only the business can supply — entity
+   * name, registered address, jurisdiction, lawful basis — as explicit nulls
+   * rather than plausible strings. Until they are filled in, three things
+   * have to stay true together, and they are in three different files:
+   *
+   *   · each page sets `robots: noindex`
+   *   · robots.txt disallows all three paths
+   *   · the marketing footer does not link them
+   *
+   * Any one of those drifting publishes a document whose first paragraph
+   * says it is not in force. LEGAL-01 is a warning that counts what is still
+   * missing; LEGAL-02 is a hard failure if the pages are exposed while it is.
+   */
+  {
+    const legal = read("apps/web/lib/legal.ts") ?? "";
+    const pages = ["privacy", "terms", "acceptable-use"];
+
+    /* Counted against `REQUIRED` rather than against every PENDING entry, so
+       this number is the same one the page's own banner shows. Two fields
+       are deliberately optional — `registrationNumber`, because not every
+       jurisdiction issues one, and `euRepresentative`, because "none
+       needed" is a legitimate final answer — and counting them here would
+       make the audit and the page disagree about the same question. */
+    const required = (legal.match(/const REQUIRED[^=]*=\s*\[([\s\S]*?)\];/)?.[1] ?? "")
+      .match(/"(\w+)"/g)
+      ?.map((s) => s.slice(1, -1)) ?? [];
+    const pendingAll = [...legal.matchAll(/^\s{2}(\w+):\s*PENDING,/gm)].map((m) => m[1]);
+    const missing = pendingAll.filter((f) => required.includes(f));
+
+    check(
+      8,
+      "LEGAL-01",
+      "Every fact the legal pages need has been supplied",
+      missing.length === 0,
+      "warn",
+      missing.length
+        ? `${missing.length} required fact(s) still PENDING in lib/legal.ts: ` +
+          `${missing.join(", ")}. The pages exist and stay unpublished — noindex, ` +
+          `disallowed and unlinked — until these are filled in.`
+        : null,
+    );
+
+    const present = pages.filter((p) => has(`apps/web/app/(marketing)/${p}/page.tsx`));
+    check(
+      8,
+      "LEGAL-03",
+      "The privacy, terms and acceptable-use pages exist",
+      present.length === pages.length,
+      "fail",
+      present.length === pages.length
+        ? null
+        : `Missing: ${pages.filter((p) => !present.includes(p)).join(", ")}.`,
+    );
+
+    if (missing.length) {
+      const robots = read("apps/web/app/robots.ts") ?? "";
+      const landing = read("apps/web/app/(marketing)/page.tsx") ?? "";
+
+      /* Each guard is checked by the thing that actually gates it, not by a
+         proxy: the pages gate on `legalIsComplete()` in their `robots`
+         metadata, robots.ts gates the same way, and the footer wraps the
+         links in the same call. */
+      const gated = present.every((p) =>
+        /robots:\s*legalIsComplete\(\)\s*\?\s*undefined\s*:\s*\{\s*index:\s*false/.test(
+          read(`apps/web/app/(marketing)/${p}/page.tsx`) ?? "",
+        ),
+      );
+      const robotsGated =
+        /legalIsComplete\(\)/.test(robots) && /acceptable-use/.test(robots);
+      const footerGated = /legalIsComplete\(\)\s*&&/.test(landing);
+
+      check(
+        8,
+        "LEGAL-02",
+        "Incomplete legal pages are noindex, disallowed and unlinked",
+        gated && robotsGated && footerGated,
+        "fail",
+        gated && robotsGated && footerGated
+          ? null
+          : "A legal page with PENDING facts is reachable: " +
+            [
+              gated ? null : "a page is missing its noindex gate",
+              robotsGated ? null : "robots.ts does not gate them",
+              footerGated ? null : "the footer links them unconditionally",
+            ]
+              .filter(Boolean)
+              .join("; ") +
+            ".",
+      );
+    }
+  }
 
   check(
     8,

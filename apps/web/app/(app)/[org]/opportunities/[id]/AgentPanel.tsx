@@ -132,7 +132,7 @@ export function AgentPanel({
             hedge buried in a paragraph the reader may skim past. */}
         {unresolved.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2.5">
-            <p className="text-[11px] font-medium tracking-[0.06em] text-warning uppercase">
+            <p className="text-[11px] font-medium tracking-label text-warning uppercase">
               Not established
             </p>
             <ul className="mt-1.5 space-y-1">
@@ -167,7 +167,7 @@ export function AgentPanel({
             rows={3}
             aria-label={`Ask about ${company}`}
             placeholder="Ask anything about this opportunity…"
-            className="hl-focusable min-h-[64px] w-full resize-y rounded-md border border-line bg-surface px-2.5 py-2 text-[13px] text-fg placeholder:text-fg-muted disabled:opacity-60"
+            className="hl-focusable min-h-[64px] w-full resize-y rounded-md border border-line bg-panel px-2.5 py-2 text-[13px] text-fg placeholder:text-fg-muted disabled:opacity-60 transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
           />
           <Button
             variant="primary"
@@ -217,7 +217,7 @@ function Turn({ turn }: { turn: ConversationTurn }) {
           this product exists not to do. */}
       {turn.citedClaims.length > 0 && (
         <details className="group mt-2">
-          <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+          <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-[11px] tracking-label text-fg-muted uppercase">
             Based on ({turn.citedClaims.length})
             <span aria-hidden className="group-open:hidden">
               ▸

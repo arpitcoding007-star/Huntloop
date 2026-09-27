@@ -105,7 +105,7 @@ export default async function OpportunityPage({
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">{o.company}</h1>
+            <h1 className="hl-heading text-fg">{o.company}</h1>
             <PriorityBadge priority={o.priority} size="md" reason={o.priorityReason} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-muted">
@@ -152,7 +152,7 @@ export default async function OpportunityPage({
 
       {/* Recommended action, immediately under the verdict — §46 asks the
           page to answer "what do I do next" without scrolling. */}
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md border border-line-subtle bg-surface px-4 py-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-surface px-4 py-3">
         <SectionLabel>Recommended</SectionLabel>
         <span className="text-[14px] text-fg">{o.recommendedAction}</span>
         <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
@@ -289,10 +289,25 @@ export default async function OpportunityPage({
                             {b.title}
                           </div>
                         </div>
-                        {b.isDecisionMaker && (
-                          <Badge variant="brand">Decision maker</Badge>
-                        )}
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {/* The number the list is ordered by. Shown because
+                              an ordering a reader cannot see the reason for is
+                              indistinguishable from an arbitrary one — and
+                              `0016` requires the explanation to exist, so the
+                              only question was whether to render it. */}
+                          {b.fitScore !== null && (
+                            <Badge variant="neutral">Fit {b.fitScore}</Badge>
+                          )}
+                          {b.isDecisionMaker && (
+                            <Badge variant="brand">Decision maker</Badge>
+                          )}
+                        </div>
                       </div>
+                      {b.fitReason && (
+                        <p className="mt-1 text-[12px] leading-snug text-fg-muted">
+                          {b.fitReason}
+                        </p>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {b.email ? (
                           <a

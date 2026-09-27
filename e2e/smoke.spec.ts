@@ -40,10 +40,25 @@ const ROUTES = [
   `/${ORG}/settings/icp`,
   `/${ORG}/settings/product`,
   `/${ORG}/settings/scoring`,
+  `/${ORG}/settings/integrations`,
+  /* Both added by the compliance work: the screens that let somebody set a
+     retention window, export a workspace and honour an erasure request. */
+  `/${ORG}/settings/privacy`,
   "/welcome",
-  "/welcome/product",
+  /* `/welcome/product` was here and 404s — the product step was folded into
+     `company`, and this list was not updated. `lib/analytics.ts` records the
+     same merge from the other side, keeping `product` as a retired funnel
+     step so historical data stays readable. */
+  "/welcome/company",
+  "/welcome/goals",
   "/welcome/icp",
   "/welcome/sources",
+  /* The legal pages. They are unlinked and noindex while their facts are
+     PENDING, which is exactly the condition under which a page rots without
+     anybody noticing. */
+  "/privacy",
+  "/terms",
+  "/acceptable-use",
 ];
 
 for (const route of ROUTES) {

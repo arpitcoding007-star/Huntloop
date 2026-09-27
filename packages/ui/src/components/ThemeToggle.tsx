@@ -60,7 +60,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label="Theme"
       className={cn(
-        "inline-flex h-8 items-center gap-0.5 rounded-md border border-line bg-surface p-0.5",
+        "inline-flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel p-0.5",
         className,
       )}
     >
@@ -78,7 +78,7 @@ export function ThemeToggle({ className }: { className?: string }) {
               setPreference(value);
             }}
             className={cn(
-              "hl-focusable flex size-7 items-center justify-center rounded-[5px] transition-colors duration-[120ms]",
+              "hl-focusable flex size-7 items-center justify-center rounded-sm transition-colors duration-[120ms]",
               active ? "bg-surface-active text-fg" : "text-fg-muted hover:text-fg",
             )}
           >

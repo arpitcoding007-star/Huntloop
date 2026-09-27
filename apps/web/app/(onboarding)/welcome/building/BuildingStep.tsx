@@ -122,7 +122,7 @@ export function BuildingStep({ org }: { org: string }) {
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         {finished ? "Your workspace is ready" : "Building your workspace…"}
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -137,7 +137,7 @@ export function BuildingStep({ org }: { org: string }) {
           return (
             <li
               key={stage}
-              className="flex items-start gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2.5"
+              className="flex items-start gap-3 rounded-lg border border-line-subtle bg-surface px-3 py-2.5"
             >
               <StageIcon status={s.status} />
               <div className="min-w-0 flex-1">

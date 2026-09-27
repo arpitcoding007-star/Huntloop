@@ -11,26 +11,33 @@ import { expect, test } from "@playwright/test";
  */
 
 test.describe("the front door", () => {
-  test("/ sends visitors to sign-in, not to the component gallery", async ({
-    page,
-  }) => {
-    // It used to redirect to /kitchen-sink — which is also the canonical URL
-    // in the sitemap and the Open Graph `url`, so the internal swatch board
-    // was the first thing every crawler and first-time visitor saw (SEO-04).
+  /*
+   * These two used to assert that `/` answered 307 to `/login`, and they had
+   * been failing since the landing page replaced that redirect. The reason
+   * they were worth keeping rather than deleting is in their original
+   * comments: `/` once redirected to `/kitchen-sink`, so the internal swatch
+   * board was the canonical URL in the sitemap and the first thing every
+   * crawler saw (SEO-04); and the redirect was deliberately 307 rather than
+   * 308 so that a landing page could replace it without being invisible to
+   * everyone whose browser had cached the permanent one.
+   *
+   * The landing page arrived. So the assertion changes to what those
+   * comments were actually protecting — `/` serves the marketing page to an
+   * anonymous visitor, and under no circumstances the component gallery.
+   */
+  test("/ serves the landing page, not the component gallery", async ({ page }) => {
     const response = await page.goto("/");
     expect(response?.status()).toBe(200);
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator("h1")).toContainText(/know who needs you/i);
   });
 
-  test("the redirect is temporary, so a landing page can replace it", async ({
-    request,
-  }) => {
-    // A 308 is cached by browsers more or less forever. Shipping one here
-    // would make the eventual landing page invisible to everyone who had
-    // already visited.
+  test("/ does not redirect anywhere", async ({ request }) => {
+    // Any redirect here is a regression: it means either the old /login
+    // behaviour came back, or a signed-in redirect is firing for a visitor
+    // with no session.
     const response = await request.get("/", { maxRedirects: 0 });
-    expect(response.status()).toBe(307);
-    expect(response.headers()["location"]).toContain("/login");
+    expect(response.status()).toBe(200);
   });
 });
 

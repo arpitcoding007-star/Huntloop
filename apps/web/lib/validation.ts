@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CLAIM_KINDS, CONFIDENCES, PRIORITIES, SCORE_DIMENSIONS } from "@huntloop/ai";
-import { ORG_TONES } from "@huntloop/db/org-profile";
+import { MIN_POSTAL_ADDRESS_LENGTH, ORG_TONES } from "@huntloop/db/org-profile";
 import {
   GOALS,
   MAX_GOALS,
@@ -205,6 +205,20 @@ export const productSchema = z.object({
   proofPoints: stringList,
 });
 
+/**
+ * A HubSpot private-app token.
+ *
+ * `min(10)` catches an empty or truncated paste before it ever reaches
+ * `verifyHubspotToken` and spends a HubSpot call finding out. `max(300)` is
+ * the SEC-VAL bound — real tokens are well under 100 characters, and the
+ * point of a bound here is the same one `API-01` made for every other
+ * Server Action: a caller handing this action 50 KB of text should not get
+ * to make Huntloop's server send 50 KB of text to HubSpot's.
+ */
+export const hubspotTokenSchema = z.object({
+  token: z.string().trim().min(10, "That doesn't look like a full token.").max(300),
+});
+
 export const icpFormSchema = z.object({
   id: uuidSchema.optional(),
   name,
@@ -330,8 +344,57 @@ export const inviteSchema = z.object({
   role: z.enum(["admin", "member", "viewer"]),
 });
 
+/**
+ * The address a data-rights request names.
+ *
+ * Its own schema rather than `emailSchema` reused inline, because the error
+ * text matters more here than anywhere else in the product: the person
+ * typing it is servicing somebody's legal request, and "Invalid email" does
+ * not tell them whether the export came back empty because they mistyped or
+ * because nothing was held.
+ */
+export const contactEmailSchema = z.object({
+  email: emailSchema.refine(() => true, "That is not a valid email address."),
+});
+
+/**
+ * The organisation row, as the settings form submits it.
+ *
+ * ── `postalAddress` and `contactRetentionDays` ───────────────────────────
+ *
+ * Both back a public promise the product was making and could not keep. The
+ * landing page says contact data "has a retention window you set", and until
+ * now `contact_retention_days` existed on the table with no way for anybody
+ * to set it. Every commercial email needs a sender postal address, and no
+ * field anywhere could hold one.
+ *
+ * The 30-day floor on retention is `0017`'s own CHECK constraint restated
+ * here, so a bad value is a field error under the input rather than a
+ * Postgres message rendered as a form banner. Null means "keep everything",
+ * which is the honest default and is deliberately distinct from a long
+ * window — see `enforce-retention.ts`.
+ *
+ * The address is bounded but not parsed. `MIN_POSTAL_ADDRESS_LENGTH` is the
+ * same floor `parseOrgProfile` applies, imported rather than retyped so the
+ * form and the parser cannot disagree about what counts as set.
+ */
 export const orgSettingsSchema = z.object({
   name: orgNameSchema,
+  postalAddress: z
+    .string()
+    .trim()
+    .max(500, "That address is too long — 500 characters is the limit.")
+    .nullable()
+    .refine(
+      (v) => v === null || v === "" || v.length >= MIN_POSTAL_ADDRESS_LENGTH,
+      `That does not look like a postal address. Every outbound email has to carry one, so it needs at least ${MIN_POSTAL_ADDRESS_LENGTH} characters.`,
+    ),
+  contactRetentionDays: z
+    .number()
+    .int("A retention window is a whole number of days.")
+    .min(30, "30 days is the shortest retention window allowed.")
+    .max(3650, "10 years is the longest retention window allowed.")
+    .nullable(),
 });
 
 /**

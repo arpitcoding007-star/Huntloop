@@ -10,6 +10,7 @@ import {
   mapDetail,
   mapEvidence,
   mapListRow,
+  type ContactFit,
   type DetailQueryRow,
   type EvidenceQueryRow,
   type ListQueryRow,
@@ -178,7 +179,7 @@ export async function getOpportunity(
            companies!inner(name, canonical_domain, industry, region,
              employee_count, description,
              company_triggers(trigger_type, event_date, strength, deleted_at),
-             people(first_name, last_name, title, is_decision_maker,
+             people(id, first_name, last_name, title, is_decision_maker,
                linkedin_url, deleted_at,
                contact_points(kind, value, confidence, verification_status,
                  deleted_at))),
@@ -195,12 +196,18 @@ export async function getOpportunity(
       if (error) throw new Error(`getOpportunity: ${error.message}`);
       if (!data) return undefined;
 
-      const [evidence, viewerId] = await Promise.all([
+      const row = data as unknown as DetailQueryRow;
+      const personIds = (row.companies?.people ?? [])
+        .filter((p) => p.deleted_at === null)
+        .map((p) => p.id);
+
+      const [evidence, viewerId, fit] = await Promise.all([
         evidenceFor(db, orgId, id),
         currentUserId(db),
+        contactFitFor(db, orgId, personIds),
       ]);
 
-      return mapDetail(data as unknown as DetailQueryRow, evidence, viewerId);
+      return mapDetail(row, evidence, viewerId, fit);
     },
     () => {
       const fixture = findOpportunity(id);
@@ -210,6 +217,50 @@ export async function getOpportunity(
       return fixture && { ...fixture, ownerId: null };
     },
   );
+}
+
+/**
+ * The latest contact-fit score per person, for ordering the buyer list.
+ *
+ * ── Why a second query rather than an embed ──────────────────────────────
+ *
+ * `contact_fit_scores` could be nested under `people(...)` in the query
+ * above. It is not, for one reason: that query is the opportunity detail
+ * page, and a mistake in a nested embed does not degrade it — it throws,
+ * and the whole page becomes an error boundary. A separate read that comes
+ * back empty costs the ordering and nothing else, which is the failure this
+ * feature deserves. `evidenceFor` is beside it for the same reason.
+ *
+ * Append-only, so "latest" is a sort rather than a flag — the same shape
+ * `latestScore` applies to `opportunity_scores`.
+ */
+async function contactFitFor(
+  db: TenantClient,
+  orgId: string,
+  personIds: string[],
+): Promise<ContactFit> {
+  const fit: ContactFit = new Map();
+  if (personIds.length === 0) return fit;
+
+  const { data, error } = await db
+    .from("contact_fit_scores")
+    .select("person_id, score, explanation, computed_at")
+    .eq("org_id", orgId)
+    .in("person_id", personIds)
+    .order("computed_at", { ascending: false });
+
+  /* Not thrown. An org whose ranker has never run, and a deployment whose
+     `0016` has not been applied, both land here — and neither is a reason to
+     refuse to show an opportunity. */
+  if (error || !data) return fit;
+
+  for (const row of data as { person_id: string; score: number; explanation: string | null }[]) {
+    // First wins: the order above is newest-first.
+    if (!fit.has(row.person_id)) {
+      fit.set(row.person_id, { score: row.score, explanation: row.explanation });
+    }
+  }
+  return fit;
 }
 
 /** Full evidence for one opportunity, newest event first. */

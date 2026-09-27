@@ -1,15 +1,30 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Avatar, Sidebar, ThemeToggle, TopBar, type NavGroup } from "@huntloop/ui";
+import {
+  Avatar,
+  Menu,
+  Sidebar,
+  SidebarAccount,
+  SidebarCollapseButton,
+  SidebarQuota,
+  ThemeToggle,
+  TopBar,
+  type NavGroup,
+  type NavItem,
+} from "@huntloop/ui";
+import type { ShellChrome } from "../../../lib/data/chrome";
 import {
   Activity,
   BarChart3,
   Brain,
   Building2,
+  ChevronsUpDown,
   Flame,
+  LogOut,
+  MoreHorizontal,
   Globe,
   GraduationCap,
   Inbox as InboxIcon,
@@ -32,12 +47,22 @@ import {
  * references — so the nav array is built HERE, inside the client
  * component, rather than in the server layout and passed down.
  */
-export function OrgShell({ org, children }: { org: string; children: ReactNode }) {
+export function OrgShell({
+  org,
+  chrome,
+  children,
+}: {
+  org: string;
+  chrome: ShellChrome;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
   /** Icon-rail collapse — desktop only, where the sidebar is in flow. */
   const [collapsed, setCollapsed] = useState(false);
-  /** Off-canvas drawer — below lg, where 240px of nav would leave ~135px of content. */
+  /** Off-canvas drawer — below lg, where 264px of nav would leave ~110px of content. */
   const [navOpen, setNavOpen] = useState(false);
+  /** Submitted by the account menu's "Sign out". See the item for why. */
+  const signOutForm = useRef<HTMLFormElement>(null);
 
   // Escape closes the drawer; a nav that can only be dismissed by pointer is
   // a keyboard trap on the one breakpoint where it covers the whole page.
@@ -79,24 +104,21 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
    * at a route that does not exist — which is what makes "add the label, not
    * the link" the cheaper option rather than a discipline to remember.
    */
+  /*
+   * Command Center is pinned above the groups rather than sitting inside
+   * Hunt. It is the one destination that is not a stage of the loop — it is
+   * the view *of* the loop — and giving it its own row at the top is what
+   * makes the five groups below read as five equal stages instead of one
+   * lopsided first group.
+   */
+  const pinned: NavItem[] = [
+    { label: "Command Center", href: `/${org}/dashboard`, icon: Zap },
+  ];
+
   const groups: NavGroup[] = [
-    {
-      label: "Company",
-      items: [
-        { label: "Product", href: `/${org}/settings/product`, icon: Building2 },
-        {
-          label: "ICP",
-          href: `/${org}/settings/icp`,
-          icon: Target,
-          badge: { label: "AI", variant: "ai" },
-        },
-        { label: "Sources", href: `/${org}/sources`, icon: Radar },
-      ],
-    },
     {
       label: "Hunt",
       items: [
-        { label: "Command Center", href: `/${org}/dashboard`, icon: Zap, dot: true },
         { label: "Opportunities", href: `/${org}/opportunities`, icon: Flame },
         { label: "Companies", href: `/${org}/companies`, icon: Building2 },
         { label: "Analyze a URL", href: `/${org}/analyze`, icon: Globe },
@@ -107,17 +129,12 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       label: "Engage",
       items: [
         { label: "Outreach", href: `/${org}/outreach`, icon: Send },
-        // The count goes with the flag: "12" was a fixture, and an unread
-        // badge on a screen that does not exist is a notification about nothing.
+        // No count until something counts it. "12" was a fixture, and an
+        // unread badge that is always 12 is a notification about nothing —
+        // worse than none, because it is the one number a user learns to
+        // stop reading.
         { label: "Inbox", href: `/${org}/inbox`, icon: InboxIcon },
         { label: "Pipeline", href: `/${org}/pipeline`, icon: KanbanSquare },
-      ],
-    },
-    {
-      label: "Team",
-      items: [
-        { label: "Members", href: `/${org}/team`, icon: Users },
-        { label: "Assignments", href: `/${org}/team/assignments`, icon: UserCheck },
       ],
     },
     {
@@ -145,12 +162,32 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
       ],
     },
     {
-      label: "Settings",
+      label: "Company",
+      items: [
+        { label: "Product", href: `/${org}/settings/product`, icon: Building2 },
+        {
+          label: "ICP",
+          href: `/${org}/settings/icp`,
+          icon: Target,
+          badge: { label: "AI", variant: "ai" },
+        },
+        { label: "Sources", href: `/${org}/sources`, icon: Radar },
+      ],
+    },
+    {
+      label: "Team",
+      items: [
+        { label: "Members", href: `/${org}/team`, icon: Users },
+        { label: "Assignments", href: `/${org}/team/assignments`, icon: UserCheck },
+      ],
+    },
+    {
+      label: "Operate",
       items: [
         { label: "Settings", href: `/${org}/settings`, icon: Settings },
-        /* `JOB-01`. Under Settings rather than as a top-level destination:
-           it answers "why has nothing happened", which is a question asked
-           occasionally and urgently, not a workflow of its own. */
+        /* `JOB-01`. Grouped rather than top-level: it answers "why has
+           nothing happened", which is a question asked occasionally and
+           urgently, not a workflow of its own. */
         { label: "Engine", href: `/${org}/ops`, icon: Activity },
       ],
     },
@@ -192,6 +229,11 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
         className={[
           "fixed inset-y-0 left-0 z-50 transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
           "motion-reduce:transition-none lg:static lg:z-auto",
+          /* The gutter that makes the sidebar a floating panel rather than a
+             wall. Only at lg: below it the sidebar is a drawer pinned to the
+             edge of the screen, where a gutter would show the page sliding
+             out from underneath it. */
+          "lg:shrink-0 lg:p-2",
           // Scoped to max-lg deliberately: an unprefixed `-translate-x-full`
           // outranks `lg:translate-x-0` in Tailwind's cascade, which would
           // translate the sidebar off-screen on desktop too.
@@ -210,25 +252,142 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
              /settings/icp does not also light up /settings. An exact match
              alone would leave every detail page with no active item. */
           activeHref={
-            groups
-              .flatMap((g) => g.items.map((i) => i.href))
+            [...pinned, ...groups.flatMap((g) => g.items)]
+              .map((i) => i.href)
               .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
               .sort((a, b) => b.length - a.length)[0] ?? ""
           }
           // The rail is only collapsible where it is in flow; inside the
           // drawer the control would fight the drawer's own dismissal.
           collapsed={collapsed}
-          onToggleCollapse={() => setCollapsed((c) => !c)}
-          className="h-full"
+          pinned={pinned}
+          /* Square off the floating panel while it *is* the drawer: a rounded
+             card with a gutter is right when the sidebar sits in the page,
+             and wrong when it is pinned to the edge of a phone screen. */
+          className="h-full max-lg:rounded-none max-lg:border-y-0 max-lg:border-l-0 max-lg:shadow-none"
           header={
-            <div className="flex items-center gap-2 px-1">
+            /*
+             * The workspace, not the product.
+             *
+             * This used to read "Huntloop" beside the mark, which is the one
+             * thing a signed-in user already knows and never needs the
+             * sidebar to tell them. What they do need — especially anyone in
+             * more than one workspace — is which workspace they are looking
+             * at and what it is paying for, so the header states both and
+             * doubles as the switcher.
+             */
+            <Link
+              href="/orgs"
+              title="Switch workspace"
+              className={[
+                "hl-focusable flex items-center gap-2.5 rounded-md",
+                "transition-colors duration-[120ms] hover:bg-surface-hover",
+                collapsed ? "size-9 justify-center" : "-mx-1.5 w-[calc(100%+0.75rem)] px-1.5 py-1.5",
+              ].join(" ")}
+            >
+              {/* Intrinsic dimensions given so the header does not reflow
+                  when the mark decodes. CSS sizes it; these only supply the
+                  aspect ratio the browser reserves space with. */}
               <img
                 src="/brand/huntloop-mark.png"
-                alt="Huntloop"
+                alt=""
+                width={1343}
+                height={638}
                 className="size-6 shrink-0 object-contain"
               />
               {!collapsed && (
-                <span className="truncate text-[13px] font-semibold text-fg">Huntloop</span>
+                <>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] leading-[1.3] font-semibold text-fg">
+                      {chrome.orgName}
+                    </span>
+                    {chrome.planLabel && (
+                      <span className="block truncate text-[11px] leading-[1.3] text-fg-muted">
+                        {chrome.planLabel}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronsUpDown
+                    aria-hidden
+                    className="size-3.5 shrink-0 text-fg-muted"
+                    strokeWidth={1.6}
+                  />
+                </>
+              )}
+            </Link>
+          }
+          footer={
+            <div className={collapsed ? "flex flex-col items-center gap-3" : "flex flex-col gap-3"}>
+              {/* Omitted, not zeroed, when the plan is unlimited or unknown —
+                  a meter with no maximum is a bar that can only be empty. */}
+              {chrome.quota && (
+                <SidebarQuota
+                  label={chrome.quota.label}
+                  used={chrome.quota.used}
+                  limit={chrome.quota.limit}
+                  collapsed={collapsed}
+                />
+              )}
+
+              {chrome.account ? (
+                <SidebarAccount
+                  collapsed={collapsed}
+                  avatar={<Avatar initials={chrome.account.name} />}
+                  name={chrome.account.name}
+                  secondary={chrome.account.email}
+                  action={
+                    <div className="flex shrink-0 items-center">
+                      <Menu
+                        align="start"
+                        side="top"
+                        linkComponent={Link}
+                        items={[
+                          { label: "Workspace settings", href: `/${org}/settings` },
+                          { label: "Switch workspace", href: "/orgs" },
+                          {
+                            label: "Sign out",
+                            icon: LogOut,
+                            tone: "danger",
+                            separated: true,
+                            /* `requestSubmit` on the real form below rather
+                               than a fetch: sign-out changes state, so it
+                               has to be a POST, and submitting the form the
+                               browser already knows about keeps that true
+                               without this component learning how the
+                               endpoint works. */
+                            onSelect: () => signOutForm.current?.requestSubmit(),
+                          },
+                        ]}
+                        trigger={(props) => (
+                          <button
+                            type="button"
+                            {...props}
+                            aria-label="Account menu"
+                            className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
+                          >
+                            <MoreHorizontal className="size-4" strokeWidth={1.6} />
+                          </button>
+                        )}
+                      />
+                      <SidebarCollapseButton
+                        collapsed={collapsed}
+                        onToggle={() => setCollapsed((c) => !c)}
+                        className="max-lg:hidden"
+                      />
+                    </div>
+                  }
+                />
+              ) : (
+                /* Demo mode: there is no signed-in person, so the row that
+                   would name one is not rendered at all. The rail control
+                   still has to exist. */
+                <div className={collapsed ? "" : "flex justify-end"}>
+                  <SidebarCollapseButton
+                    collapsed={collapsed}
+                    onToggle={() => setCollapsed((c) => !c)}
+                    className="max-lg:hidden"
+                  />
+                </div>
               )}
             </div>
           }
@@ -279,22 +438,11 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
           feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
           helpHref={process.env.NEXT_PUBLIC_HELP_URL}
           avatar={<Avatar initials={org} />}
-          actions={
-            <>
-              <ThemeToggle />
-              {/* A real form POST rather than a link: sign-out changes state,
-                 and a GET that any page could trigger is a CSRF. See
-                 app/auth/signout/route.ts. */}
-              <form action="/auth/signout" method="post">
-                <button
-                  type="submit"
-                  className="hl-focusable flex h-8 items-center rounded-md px-2 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
-                >
-                  Sign out
-                </button>
-              </form>
-            </>
-          }
+          /* Sign-out used to live here as well. It belongs with the
+             account it signs out of, which is now a real row at the foot of
+             the sidebar with its own menu — and two sign-out controls on one
+             screen is one more than any screen needs. */
+          actions={<ThemeToggle />}
         />
 
         {/*
@@ -306,6 +454,21 @@ export function OrgShell({ org, children }: { org: string; children: ReactNode }
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto">
           {children}
         </main>
+
+        {/*
+          A real form POST rather than a link: sign-out changes state, and a
+          GET that any page could trigger is a CSRF. See
+          app/auth/signout/route.ts.
+
+          Rendered here rather than inside the menu that submits it: the menu
+          unmounts on select, and a form that unmounts in the same tick as
+          its own submit does not submit.
+        */}
+        <form ref={signOutForm} action="/auth/signout" method="post" className="hidden">
+          <button type="submit" tabIndex={-1}>
+            Sign out
+          </button>
+        </form>
       </div>
     </div>
   );

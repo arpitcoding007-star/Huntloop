@@ -19,19 +19,24 @@ export interface BadgeProps {
   className?: string;
 }
 
+/*
+ * Ink is always the `-text` leaf, never the fill.
+ *
+ * A status colour has two jobs — fill a 3:1 graphic, and be read as 10–11px
+ * type on its own tint — and in the light theme one value cannot do both.
+ * tokens.css splits them for exactly this component; three of these
+ * variants were still painting the fill value as ink, which measured
+ * 3.6–4.4:1 on the tint behind it. The dark theme aliases the two back
+ * together, so this is one token name either way.
+ */
 const VARIANTS: Record<BadgeVariant, string> = {
-  neutral:
-    "bg-surface-active border-line text-fg-secondary",
-  brand:
-    "bg-brand-surface border-brand-border text-brand-text",
+  neutral: "bg-surface-active border-line text-fg-secondary",
+  brand: "bg-brand-surface border-brand-border text-brand-text",
   ai: "bg-ai-surface border-ai-border text-ai-text",
-  success:
-    "bg-success-surface border-success-border text-brand-text",
-  warning:
-    "bg-warning-surface border-warning-border text-warning",
-  danger:
-    "bg-danger-surface border-danger-border text-danger",
-  info: "bg-info-surface border-info-border text-info",
+  success: "bg-success-surface border-success-border text-success-text",
+  warning: "bg-warning-surface border-warning-border text-warning-text",
+  danger: "bg-danger-surface border-danger-border text-danger-text",
+  info: "bg-info-surface border-info-border text-info-text",
 };
 
 const DOTS: Record<BadgeVariant, string> = {
@@ -54,11 +59,14 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border font-medium whitespace-nowrap",
-        "tracking-[0.04em] uppercase",
-        size === "sm"
-          ? "h-[18px] px-1.5 text-[10px]"
-          : "h-[22px] px-2 text-[11px]",
+        "inline-flex items-center gap-1.5 rounded-full border font-medium whitespace-nowrap",
+        "tracking-[0.05em] uppercase",
+        /* Pill, not a rounded rectangle. A badge is the smallest element in
+           the system and the only one that never contains another element,
+           so it is the one place a fully round end reads as finished rather
+           than as a mismatched radius. Horizontal padding grows with the
+           round end so the first glyph is not crowded by the curve. */
+        size === "sm" ? "h-[18px] px-2 text-[10px]" : "h-[22px] px-2.5 text-[11px]",
         VARIANTS[variant],
         className,
       )}

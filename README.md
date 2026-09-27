@@ -25,13 +25,17 @@ rules follow from that and are load-bearing everywhere in this repo:
 The code always outranks all three on the question of what exists. A requirement
 described in a document is not evidence that it is implemented.
 
-What is built today: every destination in the sidebar. All seventeen read
+What is built today: every destination in the sidebar. All **nineteen** read
 through `apps/web/lib/data/*`, so each one is either showing rows from your
 database or rendering `DemoFigures` to say it is not — there is no third state
-where invented numbers are presented as real. What is *not* built is the part
-that needs something outside the app: nothing scans a source on a timer,
-nothing sends an email, and nobody can be invited. Each of those says so where
-it would otherwise be a button. See [audit/BACKLOG.md](audit/BACKLOG.md).
+where invented numbers are presented as real. Nothing is marked "Soon";
+`NAV-01` fails the build if a nav item points at a route that does not exist.
+
+What is *not* built is the part that needs something outside the app: nothing
+scans a source until a clock calls `/api/jobs/tick`, and there is no payment
+path at all. Sending and inviting **do** work — `send_message` drives the
+Gmail and Outlook adapters, and `inviteMemberAction` enforces the seat quota.
+See [audit/BACKLOG.md](audit/BACKLOG.md).
 
 ## Stack
 
@@ -143,21 +147,40 @@ AI spend dashboard over `ai_runs`, and **the opportunity list and detail pages,
 which read the database** — the join, the evidence, the triggers, the buyers.
 
 What does not: the Command Center and sources screens still render illustrative
-figures, and now say so on the screen itself in every configuration — a check
-fails the build if one of them stops. Eleven of the seventeen nav destinations
-are not built and are marked "Soon" rather than linked. Nothing yet *finds*
-companies or computes a score — those screens display what is in the database
-faithfully, and nothing puts anything there but the seed.
+figures, and say so on the screen itself in every configuration — a check
+fails the build if one of them stops.
 
-Three things have never run, and it is worth knowing which:
+Four things have never run, and it is worth knowing which:
 
-- **No AI task has called the real API.** All four are tested against a
+- **No AI task has called the real API.** Every one is tested against a
   scripted client. Add `ANTHROPIC_API_KEY` and they run for the first time.
-- **No load test.** The rate limiter is proven by seven database-level tests
-  and by nothing driving it through HTTP.
+- **No load test.** The rate limiter is proven by database-level tests and by
+  nothing driving it through HTTP.
 - **The Content-Security-Policy is report-only.** It carries a per-request
   nonce and passes its whole suite under `CSP_ENFORCE=true`; enforcing it in
   production is a deliberate later step. See SETUP.md step 8.
+- **Nothing has ever been charged.** There is no payment path — the Stripe
+  variables in `.env.example` are read by zero lines of code. The pricing
+  page says so on the page rather than offering a button that would not work.
+
+### Before this is offered to anyone
+
+[PROJECT_AUDIT.md](PROJECT_AUDIT.md) is a design, UX, privacy and compliance
+audit of the whole repository. The engineering came out well; the gap it found
+is that the product's public promises were ahead of its deployment. Most of
+that is now closed — retention and erasure have controls, the quotas the
+pricing page names are enforced, an email cannot leave without an unsubscribe
+link and a postal address — but one thing is not, and cannot be from inside
+this repository:
+
+**The legal pages are drafts.** `/privacy`, `/terms` and `/acceptable-use`
+exist and everything in them about what the software does is accurate and
+checked. Seven facts only the business can supply — entity name, registered
+address, jurisdiction, contact addresses, the lawful basis for prospect data —
+are marked `REQUIRES LEGAL REVIEW` rather than guessed. Until they are filled
+in, `apps/web/lib/legal.ts` keeps the pages out of the index and out of the
+footer, and `LEGAL-02` fails the build if that stops being true. Fill in
+`IDENTITY` and they publish themselves.
 
 ### Verifying it
 
@@ -188,3 +211,27 @@ Environment Variables. `SUPABASE_SECRET_KEY` must never carry the
 Set `NEXT_PUBLIC_SITE_URL` to the production origin. Without it, canonical and
 Open Graph URLs fall back to the per-deployment Vercel host — or to
 `localhost:3100` — and get published that way. See `apps/web/lib/site-url.ts`.
+
+### The heartbeat
+
+`apps/web/vercel.json` schedules `/api/jobs/tick` every minute. Nothing in the
+engine runs without it: the sweepers that notice an overdue source, a due
+send, an unread reply or a stale signal are all enqueued by that endpoint, so
+a deployment without the cron is one that processes whatever it is handed and
+never notices anything — an engine that looks healthy in every log line and
+does nothing.
+
+It lives in `apps/web/`, not the repository root, because Vercel reads
+`vercel.json` from the **Root Directory** configured above. At the root it is
+silently ignored, which is the failure this paragraph exists to prevent.
+
+Two things it needs:
+
+- **`CRON_SECRET`** set on the project. The route refuses to run without it
+  rather than skipping the check — see the reasoning in `api/jobs/tick/route.ts`.
+  Vercel sends it automatically once the variable exists.
+- **A plan with minute-level cron.** Hobby projects are limited to one
+  invocation per day, which is not a heartbeat. If that is the plan, drive the
+  same endpoint from Inngest instead by setting `INNGEST_EVENT_KEY` and
+  `INNGEST_SIGNING_KEY` — `/api/inngest` serves the identical tick, and the
+  queue is in Postgres either way.

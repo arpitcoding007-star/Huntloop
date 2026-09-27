@@ -9,6 +9,7 @@ import {
   ClaimBadge,
   PriorityBadge,
   ScorePill,
+  ScrollRegion,
 } from "@huntloop/ui";
 import {
   Binoculars,
@@ -25,6 +26,8 @@ import {
 } from "lucide-react";
 import { DomainInput } from "./DomainInput";
 import { describeLimit, listPlans } from "../../lib/data/plans";
+import { publicResearchEnabled } from "@huntloop/jobs";
+import { IDENTITY, legalIsComplete } from "../../lib/legal";
 import { resolveDestination } from "../../lib/data/destination";
 import type { UseCase } from "./for/use-cases";
 
@@ -79,12 +82,16 @@ export default async function LandingPage() {
 
   const { data: plans } = await listPlans();
 
+  /* Whether the anonymous domain read is switched on. Both CTAs promise it
+     in the present tense, so both have to know. */
+  const canResearch = publicResearchEnabled();
+
   return (
     <div className="min-h-screen bg-canvas">
       <Nav />
 
       <main id="main">
-        <Hero />
+        <Hero canResearch={canResearch} />
         <Loop />
         <WhyNow />
         <Scoring />
@@ -94,7 +101,7 @@ export default async function LandingPage() {
         <Integrations />
         <Pricing plans={plans} />
         <Faq />
-        <FinalCta />
+        <FinalCta canResearch={canResearch} />
       </main>
 
       <Footer />
@@ -158,20 +165,29 @@ function Nav() {
 
 /* ── 2 · Hero ────────────────────────────────────────────────────────────── */
 
-function Hero() {
+function Hero({ canResearch }: { canResearch: boolean }) {
   return (
-    <section className="mx-auto max-w-[1100px] px-6 pt-16 pb-12 sm:pt-24">
+    <section className="mx-auto max-w-[1100px] px-6 pt-16 pb-20 sm:pt-28">
       <div className="grid items-start gap-12 min-[1000px]:grid-cols-[minmax(0,1fr)_420px]">
         <div>
-          <Badge variant="neutral">Discover → Qualify → Enrich → Reach out → Track → Learn</Badge>
+          {/* The loop, as an eyebrow rather than a badge. A pill with six
+              words in it is a badge doing a label's job — it draws the eye
+              to the chrome instead of to the sentence underneath, which is
+              the one thing on this page that has to land. */}
+          <p className="hl-label">
+            Discover · Qualify · Enrich · Reach out · Track · Learn
+          </p>
 
-          <h1 className="mt-4 text-[40px] leading-[1.1] font-semibold tracking-[-0.02em] text-fg sm:text-[52px]">
+          {/* `hl-hero` carries the size *and* its tracking: 56px set at body
+              letter-spacing reads loose, and the correction is not a
+              separate decision from the size. */}
+          <h1 className="hl-hero mt-5 text-fg">
             Know who needs you
             <br />
             before you reach out.
           </h1>
 
-          <p className="mt-5 max-w-xl text-[17px] leading-[1.6] text-fg-secondary">
+          <p className="hl-prose mt-6 text-[17px] leading-[1.6] text-fg-secondary">
             Huntloop watches your market, finds the companies that just became a
             fit, tells you why — with sources — and drafts the outreach. You
             approve.
@@ -180,13 +196,13 @@ function Hero() {
           {/* The proof line. Stated this high because it is the position, not a
               feature, and a visitor who reads only the top of the page should
               leave with it. */}
-          <p className="mt-4 max-w-xl text-[14px] leading-[1.6] text-fg-muted">
+          <p className="hl-prose mt-4 text-[14px] leading-[1.6] text-fg-muted">
             Every score shows its working. Every claim names its source. When we
             don&rsquo;t know, we say so.
           </p>
 
           <div className="mt-8">
-            <DomainInput />
+            <DomainInput canResearch={canResearch} />
           </div>
         </div>
 
@@ -238,7 +254,7 @@ function SampleOpportunity() {
         />
         <CardBody className="space-y-3">
           <div>
-            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Why now
             </p>
             <p className="mt-1 text-[13px] leading-[1.6] text-fg-secondary">
@@ -320,8 +336,8 @@ const STAGES = [
 function Loop() {
   return (
     <section id="how" className="border-y border-line-subtle bg-panel">
-      <div className="mx-auto max-w-[1100px] px-6 py-16">
-        <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+      <div className="mx-auto max-w-[1100px] px-6 py-24">
+        <h2 className="hl-display text-fg">
           One loop, not six tools
         </h2>
         <p className="mt-2 max-w-2xl text-[15px] leading-[1.6] text-fg-secondary">
@@ -334,7 +350,7 @@ function Loop() {
           {STAGES.map((stage, i) => (
             <li
               key={stage.name}
-              className="rounded-md border border-line-subtle bg-surface p-4"
+              className="rounded-lg border border-line-subtle bg-surface p-4"
             >
               <div className="flex items-center gap-2">
                 <stage.icon
@@ -361,56 +377,58 @@ function Loop() {
 
 function WhyNow() {
   return (
-    <section className="mx-auto max-w-[1100px] px-6 py-16">
-      <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
-        Every claim, or we don&rsquo;t make it
-      </h2>
-      <p className="mt-2 max-w-2xl text-[15px] leading-[1.6] text-fg-secondary">
-        Most tools give you a number and a confident sentence. Huntloop shows
-        you the three different kinds of thing it knows, and never lets them
-        look alike.
-      </p>
-
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Card flush>
-          <CardBody>
-            <ClaimBadge kind="fact" confidence="high" />
-            <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
-              Something a page actually said, with a link to the page. A fact
-              without a source is rejected by the database — it is a constraint,
-              not a convention.
-            </p>
-          </CardBody>
-        </Card>
-        <Card flush>
-          <CardBody>
-            <ClaimBadge kind="inference" confidence="medium" />
-            <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
-              A conclusion Huntloop drew. Labelled as one, carrying how sure it
-              is, and never quietly promoted to a fact.
-            </p>
-          </CardBody>
-        </Card>
-        <Card flush>
-          <CardBody>
-            <ClaimBadge kind="unknown" />
-            <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
-              What we could not establish. Shown rather than omitted, because an
-              absent gap looks exactly like a filled one.
-            </p>
-          </CardBody>
-        </Card>
-      </div>
-
-      <div className="mt-6 rounded-md border border-line-subtle bg-panel p-5">
-        <p className="text-[14px] leading-[1.7] text-fg-secondary">
-          <span className="font-medium text-fg">
-            It also knows when something happened, separately from when we saw
-            it.
-          </span>{" "}
-          A six-month-old funding round found yesterday is still six months old.
-          Most tools store one date and present stale news as a fresh trigger.
+    <section data-theme="dark" className="hl-band border-y border-line-subtle">
+      <div className="mx-auto max-w-[1100px] px-6 py-24">
+        <h2 className="hl-display text-fg">
+          Every claim, or we don&rsquo;t make it
+        </h2>
+        <p className="mt-2 max-w-2xl text-[15px] leading-[1.6] text-fg-secondary">
+          Most tools give you a number and a confident sentence. Huntloop shows
+          you the three different kinds of thing it knows, and never lets them
+          look alike.
         </p>
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <Card flush>
+            <CardBody>
+              <ClaimBadge kind="fact" confidence="high" />
+              <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
+                Something a page actually said, with a link to the page. A fact
+                without a source is rejected by the database — it is a constraint,
+                not a convention.
+              </p>
+            </CardBody>
+          </Card>
+          <Card flush>
+            <CardBody>
+              <ClaimBadge kind="inference" confidence="medium" />
+              <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
+                A conclusion Huntloop drew. Labelled as one, carrying how sure it
+                is, and never quietly promoted to a fact.
+              </p>
+            </CardBody>
+          </Card>
+          <Card flush>
+            <CardBody>
+              <ClaimBadge kind="unknown" />
+              <p className="mt-2 text-[13px] leading-[1.6] text-fg-secondary">
+                What we could not establish. Shown rather than omitted, because an
+                absent gap looks exactly like a filled one.
+              </p>
+            </CardBody>
+          </Card>
+        </div>
+
+        <div className="mt-6 rounded-lg border border-line-subtle bg-panel p-5">
+          <p className="text-[14px] leading-[1.7] text-fg-secondary">
+            <span className="font-medium text-fg">
+              It also knows when something happened, separately from when we saw
+              it.
+            </span>{" "}
+            A six-month-old funding round found yesterday is still six months old.
+            Most tools store one date and present stale news as a fresh trigger.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -420,10 +438,10 @@ function WhyNow() {
 
 function Scoring() {
   return (
-    <section className="border-y border-line-subtle bg-panel">
-      <div className="mx-auto grid max-w-[1100px] gap-10 px-6 py-16 lg:grid-cols-2">
+    <section data-theme="dark" className="hl-band border-y border-line-subtle">
+      <div className="mx-auto grid max-w-[1100px] gap-10 px-6 py-24 lg:grid-cols-2">
         <div>
-          <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+          <h2 className="hl-display text-fg">
             Not a black-box number
           </h2>
           <p className="mt-3 text-[15px] leading-[1.7] text-fg-secondary">
@@ -449,7 +467,7 @@ function Scoring() {
           ].map(([label, value, note]) => (
             <div
               key={String(label)}
-              className="flex items-center gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2.5"
+              className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface px-3 py-2.5"
             >
               <span className="w-28 shrink-0 text-[12px] text-fg-secondary">
                 {String(label)}
@@ -524,8 +542,8 @@ const LANDING_USE_CASES = [
 
 function UseCases() {
   return (
-    <section id="use-cases" className="mx-auto max-w-[1100px] px-6 py-16">
-      <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+    <section id="use-cases" className="mx-auto max-w-[1100px] px-6 py-24">
+      <h2 className="hl-display text-fg">
         Who it&rsquo;s for
       </h2>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -576,8 +594,8 @@ const COMPARISON: { row: string; huntloop: boolean; list: boolean; sdr: "yes" | 
 function Comparison() {
   return (
     <section className="border-y border-line-subtle bg-panel">
-      <div className="mx-auto max-w-[1100px] px-6 py-16">
-        <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+      <div className="mx-auto max-w-[1100px] px-6 py-24">
+        <h2 className="hl-display text-fg">
           What&rsquo;s actually different
         </h2>
         <p className="mt-2 max-w-2xl text-[15px] leading-[1.6] text-fg-secondary">
@@ -588,7 +606,7 @@ function Comparison() {
 
         {/* Wide content scrolls inside its own container rather than making the
             page scroll horizontally. */}
-        <div className="mt-8 overflow-x-auto">
+        <ScrollRegion label="How Huntloop compares" className="mt-8">
           <table className="w-full min-w-[560px] border-collapse text-left">
             <thead>
               <tr className="border-b border-line">
@@ -632,7 +650,7 @@ function Comparison() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       </div>
     </section>
   );
@@ -662,9 +680,9 @@ function Mark({ on }: { on: boolean }) {
  */
 function Proof() {
   return (
-    <section className="mx-auto max-w-[1100px] px-6 py-16">
-      <div className="rounded-md border border-line-subtle bg-panel p-6 sm:p-8">
-        <h2 className="text-[20px] leading-7 font-semibold text-fg">
+    <section className="mx-auto max-w-[1100px] px-6 py-24">
+      <div className="rounded-lg border border-line-subtle bg-panel p-6 sm:p-8">
+        <h2 className="hl-heading text-fg">
           We&rsquo;re early, and we&rsquo;d rather say so
         </h2>
         <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-fg-secondary">
@@ -693,9 +711,9 @@ function Proof() {
 function Integrations() {
   return (
     <section className="border-y border-line-subtle bg-panel">
-      <div className="mx-auto grid max-w-[1100px] gap-10 px-6 py-16 lg:grid-cols-2">
+      <div className="mx-auto grid max-w-[1100px] gap-10 px-6 py-24 lg:grid-cols-2">
         <div>
-          <h2 className="text-[22px] leading-8 font-semibold text-fg">
+          <h2 className="hl-heading text-fg">
             What it connects to
           </h2>
           <ul className="mt-4 space-y-2 text-[14px] leading-[1.6] text-fg-secondary">
@@ -727,7 +745,7 @@ function Integrations() {
         </div>
 
         <div>
-          <h2 className="text-[22px] leading-8 font-semibold text-fg">
+          <h2 className="hl-heading text-fg">
             How your data is handled
           </h2>
           <ul className="mt-4 space-y-2 text-[14px] leading-[1.6] text-fg-secondary">
@@ -758,13 +776,29 @@ function Integrations() {
 
 function Pricing({ plans }: { plans: Awaited<ReturnType<typeof listPlans>>["data"] }) {
   return (
-    <section id="pricing" className="mx-auto max-w-[1100px] px-6 py-16">
-      <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+    <section id="pricing" className="mx-auto max-w-[1100px] px-6 py-24">
+      <h2 className="hl-display text-fg">
         Pricing
       </h2>
       <p className="mt-2 max-w-2xl text-[15px] leading-[1.6] text-fg-secondary">
-        These are the limits the product actually enforces — read from the same
-        catalogue the metering reads, not typed into this page.
+        Read from the same catalogue the metering reads, not typed into this
+        page — so what is priced here is what the software measures.
+      </p>
+      {/* ── Why this paragraph exists ──────────────────────────────────────
+          The sentence above used to end "these are the limits the product
+          actually enforces", and for three of the five it was not true:
+          `emails` was counted after every send and checked nowhere,
+          `opportunities` was neither, and `enrich` was checked only inside a
+          job nothing enqueued. All three are enforced now — but a page whose
+          whole argument is that this product does not overstate what it
+          knows should say what it cannot do as plainly as what it can, and
+          "you cannot buy this yet" is the more important of the two. */}
+      <p className="mt-2 max-w-2xl rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[13px] leading-[1.6] text-fg-secondary">
+        <span className="font-medium text-warning">There is no checkout yet.</span>{" "}
+        Every account starts on Free, and the paid plans below are what we
+        intend to charge rather than something you can buy today. When billing
+        exists it will be a separate, explicit step — nothing here can charge
+        you.
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -806,13 +840,32 @@ function Pricing({ plans }: { plans: Awaited<ReturnType<typeof listPlans>>["data
               </ul>
 
               <div className="mt-5">
-                <Button
-                  variant={featured ? "primary" : "secondary"}
-                  href="/signup"
-                  linkComponent={Link}
-                >
-                  {plan.priceCents === 0 ? "Start free" : `Start on ${plan.name}`}
-                </Button>
+                {/* A paid tier's button used to read "Start on Growth" and
+                    create a Free account. That is a misleading commercial
+                    representation whether or not money changes hands, and it
+                    is the one dark pattern this page had. Free keeps its
+                    signup button because it is the thing you can actually
+                    start. */}
+                {plan.priceCents === 0 ? (
+                  <Button variant={featured ? "primary" : "secondary"} href="/signup" linkComponent={Link}>
+                    Start free
+                  </Button>
+                ) : IDENTITY.contactEmail ? (
+                  <Button
+                    variant={featured ? "primary" : "secondary"}
+                    href={`mailto:${IDENTITY.contactEmail}?subject=${encodeURIComponent(`Huntloop ${plan.name}`)}`}
+                  >
+                    Talk to us about {plan.name}
+                  </Button>
+                ) : (
+                  /* No contact address configured yet, so there is nothing
+                     honest for this button to do. A disabled control that
+                     says why beats a working one that goes somewhere else —
+                     the same rule `NAV-03` enforces inside the product. */
+                  <p className="text-[13px] text-fg-muted">
+                    Not available yet.
+                  </p>
+                )}
               </div>
             </div>
           );
@@ -854,8 +907,8 @@ const FAQ = [
 function Faq() {
   return (
     <section className="border-t border-line-subtle bg-panel">
-      <div className="mx-auto max-w-[820px] px-6 py-16">
-        <h2 className="text-[28px] leading-9 font-semibold tracking-[-0.01em] text-fg">
+      <div className="mx-auto max-w-[820px] px-6 py-24">
+        <h2 className="hl-display text-fg">
           Questions
         </h2>
         <dl className="mt-8 space-y-6">
@@ -875,19 +928,35 @@ function Faq() {
 
 /* ── 12 · Final CTA ──────────────────────────────────────────────────────── */
 
-function FinalCta() {
+function FinalCta({ canResearch }: { canResearch: boolean }) {
   return (
-    <section className="mx-auto max-w-[1100px] px-6 py-20">
-      <div className="flex flex-col items-center text-center">
-        <h2 className="max-w-2xl text-[32px] leading-10 font-semibold tracking-[-0.01em] text-fg">
-          See what Huntloop finds for you
-        </h2>
-        <p className="mt-3 max-w-lg text-[15px] leading-[1.6] text-fg-secondary">
-          Put in your domain. We&rsquo;ll read your site, work out who you should
-          be selling to, and show you. Two minutes, no card.
-        </p>
-        <div className="mt-8 flex w-full justify-center">
-          <DomainInput />
+    <section data-theme="dark" className="hl-band border-t border-line-subtle">
+      <div className="mx-auto max-w-[1100px] px-6 py-24">
+        <div className="flex flex-col items-center text-center">
+          <h2 className="hl-display max-w-2xl text-fg">
+            See what Huntloop finds for you
+          </h2>
+          <p className="mt-3 max-w-lg text-[15px] leading-[1.6] text-fg-secondary">
+            {canResearch ? (
+              <>
+                Put in your domain. We&rsquo;ll read your site, work out who you
+                should be selling to, and show you. Two minutes, no card.
+              </>
+            ) : (
+              /* The anonymous read is off on this deployment, so the promise
+                 changes rather than the visitor discovering it on the next
+                 screen. Still free, still no card — it just needs an account
+                 first, and saying so here is cheaper than an apology page. */
+              <>
+                Put in your domain and create a free account. Huntloop reads your
+                site as its first step, so you see what it understood before you
+                configure anything. No card.
+              </>
+            )}
+          </p>
+          <div className="mt-8 flex w-full justify-center">
+            <DomainInput canResearch={canResearch} />
+          </div>
         </div>
       </div>
     </section>
@@ -898,7 +967,7 @@ function FinalCta() {
 
 function Footer() {
   return (
-    <footer className="border-t border-line-subtle">
+    <footer data-theme="dark" className="hl-band border-t border-line-subtle">
       <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-8">
         <div className="flex items-center gap-2">
           <span className="flex size-5 items-center justify-center rounded bg-brand-surface text-[11px] font-bold text-brand">
@@ -934,6 +1003,35 @@ function Footer() {
           <Link href="/signup" className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary">
             Create an account
           </Link>
+          {/* The legal pages appear here only once every fact in
+              `lib/legal.ts` is supplied. They exist and are reviewable
+              before that; what they are not is *published*, and a footer
+              link is what publishing means to a reader. Linking a document
+              that says "draft — not in force" at the top would be worse than
+              linking nothing, because a visitor would reasonably read the
+              link as a claim that we have a privacy policy. */}
+          {legalIsComplete() && (
+            <>
+              <Link
+                href="/privacy"
+                className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
+              >
+                Privacy
+              </Link>
+              <Link
+                href="/terms"
+                className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
+              >
+                Terms
+              </Link>
+              <Link
+                href="/acceptable-use"
+                className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
+              >
+                Acceptable use
+              </Link>
+            </>
+          )}
         </nav>
         <p className="ml-auto text-[12px] text-fg-muted">
           © {new Date().getFullYear()} Huntloop

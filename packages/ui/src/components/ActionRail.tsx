@@ -57,7 +57,7 @@ export function ActionRailItem({
   linkComponent,
 }: ActionRailItemProps) {
   return (
-    <div className="rounded-md border border-line-subtle bg-surface p-3">
+    <div className="rounded-lg border border-line-subtle bg-surface p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-medium text-fg">{title}</div>
@@ -137,7 +137,7 @@ export function ActionRail({
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {title && (
-        <div className="text-[11px] leading-4 font-medium tracking-[0.06em] text-fg-muted uppercase">
+        <div className="text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase">
           {title}
         </div>
       )}

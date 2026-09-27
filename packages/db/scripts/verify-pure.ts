@@ -56,6 +56,7 @@ import {
   type ContactSubject,
   type PersonaSpec,
 } from "../src/contact.ts";
+import { decryptSecret, encryptSecret, isEncryptionConfigured } from "../src/crypto.ts";
 import {
   EMPTY_FILTERS,
   canonicalFilters,
@@ -689,6 +690,71 @@ console.log("\ndiscovery — the description is checkable by a person");
   // "no filters" must be conspicuous rather than an empty string.
   const nothing = describeFilters(EMPTY_FILTERS);
   expect("no filters says so loudly", /no filters are set/i.test(nothing), nothing);
+}
+
+/* ── crypto.ts — a credential that survives a database dump ──────────────── */
+
+/*
+ * This module has been in the repository since the mailbox work and had no
+ * unit tests: `verify-jobs.ts` set a key and used it, which exercises the
+ * happy path and nothing else. It now also protects
+ * `hubspot_connections.access_token`, which is what prompted writing these —
+ * every one of them asserts something that would keep *looking* correct if it
+ * silently broke, which is the standard the rest of this suite is held to.
+ */
+
+console.log("\ncrypto — what a stolen row is worth");
+{
+  const saved = process.env.MAILBOX_ENCRYPTION_KEY;
+  const keyA = "a".repeat(64);
+  const keyB = "b".repeat(64);
+
+  process.env.MAILBOX_ENCRYPTION_KEY = keyA;
+
+  const token = "mock-secret-token-00000000-1111-2222-3333-444444444444";
+  const sealed = encryptSecret(token);
+
+  expect("it round-trips", decryptSecret(sealed) === token);
+  expect("the plaintext is not in the stored value", !sealed.includes(token));
+  expect("it is versioned, so a future rotation is expressible", sealed.startsWith("v1."));
+
+  // The property that matters for a dump: two encryptions of the same secret
+  // must not be equal, or an attacker learns which orgs share a token — and,
+  // worse, that a token did not change when a customer believes they rotated it.
+  expect("the same secret encrypts differently every time", encryptSecret(token) !== sealed);
+
+  // GCM's authentication tag, doing the job it is there for. A ciphertext
+  // edited in the database must fail loudly rather than decrypting to
+  // plausible garbage that gets sent to a vendor as a bearer token.
+  const parts = sealed.split(".");
+  const flipped = Buffer.from(parts[3] ?? "", "base64url");
+  flipped[0] = (flipped[0] ?? 0) ^ 0xff;
+  const tampered = [parts[0], parts[1], parts[2], flipped.toString("base64url")].join(".");
+  expectThrows("a tampered ciphertext is refused, not decrypted", () => decryptSecret(tampered));
+
+  process.env.MAILBOX_ENCRYPTION_KEY = keyB;
+  expectThrows("and so is the right ciphertext under the wrong key", () => decryptSecret(sealed));
+
+  // The case a deployment will actually meet first: a row written before the
+  // column was encrypted. It must not be handed back as though it were fine —
+  // the token would be presented to a vendor and fail as a mysterious 401.
+  expectThrows("a bare, pre-encryption token is not silently accepted", () =>
+    decryptSecret("pat-na1-legacy-value"),
+  );
+
+  delete process.env.MAILBOX_ENCRYPTION_KEY;
+  expect("with no key configured, the deployment says so", isEncryptionConfigured() === false);
+  expectThrows("and refuses to store a secret rather than storing it bare", () =>
+    encryptSecret(token),
+  );
+
+  // A short key stretched to fit is a key that is not 256 bits while
+  // everything in the system says it is.
+  process.env.MAILBOX_ENCRYPTION_KEY = "too-short";
+  expect("a key of the wrong length is a configuration error", isEncryptionConfigured() === false);
+
+  if (saved === undefined) delete process.env.MAILBOX_ENCRYPTION_KEY;
+  else process.env.MAILBOX_ENCRYPTION_KEY = saved;
 }
 
 console.log(

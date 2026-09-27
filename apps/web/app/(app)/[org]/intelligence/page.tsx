@@ -51,7 +51,7 @@ export default async function IntelligencePage({
   return (
     <div className="mx-auto w-full max-w-[1000px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Intelligence</h1>
+        <h1 className="hl-heading text-fg">Intelligence</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
           {org} · what has been observed, and how much of it is established
         </p>
@@ -76,7 +76,7 @@ export default async function IntelligencePage({
            account looks like before anything has been verified at a source —
            and it changes how much weight the rest of the product's output
            deserves. */
-        <p className="mt-4 rounded-md border border-warning-border bg-warning-surface px-4 py-3 text-[13px] text-warning">
+        <p className="mt-4 rounded-md border border-warning-border bg-warning-surface px-4 py-3 text-[13px] text-warning-text">
           Nothing here is established at a source yet. Every claim below is an
           inference, so treat the priorities built on them as provisional.
         </p>
@@ -176,7 +176,7 @@ export default async function IntelligencePage({
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value}</p>

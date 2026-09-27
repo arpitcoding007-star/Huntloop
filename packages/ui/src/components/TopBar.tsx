@@ -52,7 +52,7 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "flex h-12 items-center justify-between gap-4 border-b border-line-subtle bg-panel px-3",
+        "flex h-12 items-center justify-between gap-4 border-b border-line-subtle bg-canvas px-3",
         className,
       )}
     >
@@ -127,7 +127,7 @@ export function TopBar({
             aria-label="Search"
             /* Collapses to a 32px icon button below md; the labelled field
                costs 224px, which a phone viewport cannot spare. */
-            className="hl-focusable flex size-8 items-center justify-center gap-2 rounded-md border border-line bg-surface text-[13px] text-fg-muted transition-colors duration-[120ms] hover:border-line-strong md:w-56 md:justify-start md:px-2.5"
+            className="hl-focusable flex size-8 items-center justify-center gap-2 rounded-md border border-line-subtle bg-panel text-[13px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary md:w-56 md:justify-start md:px-2.5"
           >
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
             <span className="hidden flex-1 text-left md:inline">Search…</span>

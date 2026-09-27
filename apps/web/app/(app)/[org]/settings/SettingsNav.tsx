@@ -17,6 +17,8 @@ const TABS = [
   { slug: "/product", label: "Product" },
   { slug: "/icp", label: "ICP" },
   { slug: "/scoring", label: "Scoring" },
+  { slug: "/integrations", label: "Integrations" },
+  { slug: "/privacy", label: "Data & privacy" },
 ];
 
 export function SettingsNav({ org }: { org: string }) {

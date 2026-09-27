@@ -144,6 +144,34 @@ export class OrgScope {
   }
 
   /**
+   * The tenant root row, which is the one table `select()` cannot reach.
+   *
+   * ── Why this exists ──────────────────────────────────────────────────
+   *
+   * `select()` filters on `org_id`, and `organizations` has no such column —
+   * its primary key *is* the org id. Two handlers had written
+   * `scope.select("organizations", …).eq("id", scope.orgId)`, which asks
+   * PostgREST for `?org_id=eq.X&id=eq.X` and gets a 400 for the unknown
+   * column. Both discarded the error and fell through to a default, so
+   * neither failed loudly: `advance_enrollments` silently composed every
+   * outreach message in the default voice no matter what the org had
+   * configured, and `sync_hubspot` silently lost the slug it builds deal
+   * links from.
+   *
+   * That is the failure mode `OrgScope` exists to prevent, arriving from the
+   * other direction — not a missing filter, but a filter applied to a table
+   * that cannot carry it. So the tenant root gets a named accessor rather
+   * than a convention, and the wrong spelling has somewhere obvious to be
+   * corrected to.
+   */
+  organization(columns = "*"): Query {
+    return (this.#db.from("organizations") as Query)
+      .select(columns)
+      .eq("id", this.orgId)
+      .is("deleted_at", null);
+  }
+
+  /**
    * The unscoped client, for the two reads that are legitimately global.
    *
    * Only the scheduler uses it: "which sources are due, across every org" and

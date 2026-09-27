@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   Field,
   FormMessage,
   Freshness,
@@ -379,13 +380,15 @@ function MemberRow({
       )}
 
       {canAdmin && (
-        <Button
-          size="sm"
-          variant="ghost"
+        <ConfirmButton
           icon={Trash2}
-          aria-label={`Remove ${name}`}
-          disabled={pending}
-          onClick={() =>
+          label={`Remove ${name}`}
+          /* Named rather than a bare "Confirm": this is the one control here
+             that changes somebody else's access, and the armed state should
+             say whose. */
+          confirmLabel={`Remove ${name}?`}
+          pending={pending}
+          onConfirm={() =>
             start(async () => {
               const res = await removeMemberAction(org, member.id);
               onResult(
@@ -426,13 +429,12 @@ function InvitationRow({
         </div>
       </div>
 
-      <Button
-        size="sm"
-        variant="ghost"
+      <ConfirmButton
         icon={X}
-        aria-label={`Revoke the invitation for ${invitation.email}`}
-        disabled={pending}
-        onClick={() =>
+        label={`Revoke the invitation for ${invitation.email}`}
+        confirmLabel="Revoke it"
+        pending={pending}
+        onConfirm={() =>
           start(async () => {
             const res = await revokeInvitationAction(org, invitation.id);
             onResult(

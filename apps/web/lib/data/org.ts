@@ -1,5 +1,5 @@
 import "server-only";
-import { canAdmin, currentViewer, type Viewer } from "./membership";
+import { canAdmin, canOwn, currentViewer, type Viewer } from "./membership";
 import { getDb, resolveDataSource, type DataSource } from "./source";
 import type { TenantClient } from "@huntloop/db";
 
@@ -75,12 +75,16 @@ export const fail = (
  * by Postgres and by nothing above it, and the user reads a policy violation
  * instead of a sentence. Defaulting to `"member"` keeps every existing call
  * site correct; the two modules that touch org-level rows ask for `"admin"`.
+ *
+ * `"owner"` is a third tier for the same reason, added when `0029` gave
+ * `delete_organization` an owner check. One action uses it, and it is the one
+ * that ends the workspace for everybody in it.
  */
 export async function mutate<T>(
   orgSlug: string,
   caller: string,
   run: (ctx: { db: TenantClient; orgId: string; viewer: Viewer }) => Promise<ActionResult<T>>,
-  options: { minRole?: "member" | "admin" } = {},
+  options: { minRole?: "member" | "admin" | "owner" } = {},
 ): Promise<ActionResult<T>> {
   const { db, source } = await resolveDataSource();
 
@@ -104,6 +108,12 @@ export async function mutate<T>(
       "Only an owner or an admin can change this. Your role is " +
         `${viewer.role}, which can work with opportunities but not with the ` +
         "organisation itself.",
+    );
+  }
+  if (options.minRole === "owner" && !canOwn(viewer)) {
+    return fail(
+      `Only an owner can do this, and your role is ${viewer.role}. ` +
+        "An existing owner can promote you under Members.",
     );
   }
 

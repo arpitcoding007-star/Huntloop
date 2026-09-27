@@ -8,6 +8,8 @@ import {
   CardBody,
   CardHeader,
   FormMessage,
+  Note,
+  ScrollRegion,
   SectionLabel,
   Textarea,
 } from "@huntloop/ui";
@@ -105,16 +107,16 @@ export function ImportForm({ org, canWrite }: { org: string; canWrite: boolean }
         />
         <CardBody className="space-y-5">
           {!canWrite && (
-            <p className="rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg-muted">
+            <Note>
               Your role is read-only, so importing is not available to you. An
               admin can change your role under Members.
-            </p>
+            </Note>
           )}
 
           <div>
             <label
               htmlFor="csv"
-              className="block text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase"
+              className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
             >
               CSV
             </label>
@@ -280,7 +282,7 @@ function Preview({ preview }: { preview: PreviewData }) {
         {preview.rows.length > 0 && (
           <div>
             <SectionLabel>First rows</SectionLabel>
-            <div className="mt-2 overflow-x-auto">
+            <ScrollRegion label="Import preview" className="mt-2">
               <table className="w-full min-w-[600px] border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-line-subtle">
@@ -306,7 +308,7 @@ function Preview({ preview }: { preview: PreviewData }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           </div>
         )}
       </CardBody>
@@ -339,7 +341,7 @@ function Result({ summary }: { summary: ImportSummary }) {
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value.toLocaleString()}</p>

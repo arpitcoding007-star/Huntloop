@@ -9,14 +9,19 @@ export interface CardProps {
 }
 
 /**
- * Supabase card: --hl-surface on --hl-canvas, 1px hairline border, radius 6.
- * No shadow — depth comes from the border and surface lightness.
+ * --hl-surface on --hl-canvas, one hairline border, radius `lg` (12px).
+ *
+ * Still no drop shadow: depth comes from the border and the surface's
+ * lightness, which is what keeps a screen with fourteen cards on it from
+ * looking like a pile of paper. The radius moved 6 → 12 with the rest of
+ * the system, and a card is the element that change is most visible on —
+ * it is the largest rounded rectangle on most screens.
  */
 export function Card({ children, className, flush }: CardProps) {
   return (
     <section
       className={cn(
-        "min-w-0 rounded-md border border-line-subtle bg-surface",
+        "min-w-0 rounded-lg border border-line-subtle bg-surface",
         !flush && "p-5",
         className,
       )}
@@ -45,7 +50,9 @@ export function CardHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 className="font-display text-base font-semibold text-fg">{title}</h2>
+        <h2 className="font-display text-base font-semibold tracking-heading text-fg">
+          {title}
+        </h2>
         {description && (
           <p className="mt-0.5 text-[13px] text-fg-muted">{description}</p>
         )}
@@ -76,7 +83,7 @@ export function SectionLabel({
   return (
     <div
       className={cn(
-        "text-[11px] leading-4 font-medium tracking-[0.06em] text-fg-muted uppercase",
+        "text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
         className,
       )}
     >

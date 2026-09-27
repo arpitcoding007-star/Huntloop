@@ -182,6 +182,56 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
       qualification.priorityReason
     : qualification.priorityReason;
 
+  /*
+   * ── The plan's opportunity allowance ───────────────────────────────────
+   *
+   * `opportunities` is the one quota in `plans.limits` that was neither
+   * checked nor counted anywhere — defined, priced on the landing page,
+   * rendered on the usage screen with a progress bar, and backed by nothing.
+   *
+   * ── Why existence is resolved first ────────────────────────────────────
+   *
+   * The write below is an upsert, so most of the time it re-scores an
+   * opportunity that already exists. Refusing on quota without knowing which
+   * case this is would stop a customer at their ceiling from ever updating a
+   * verdict again — their pipeline would freeze at whatever it said the day
+   * they hit the limit, which is worse than the missing limit was.
+   *
+   * So the quota gates *creation* only. One extra read per scoring run,
+   * which is trivial beside the model call that produced `qualification`.
+   */
+  const { data: existing } = await scope
+    .select("opportunities", "id")
+    .eq("company_id", companyId)
+    .eq("icp_id", icp.id)
+    .maybeSingle();
+
+  if (!existing) {
+    const { data: quotaData, error: quotaError } = await scope.rpc("check_quota_internal", {
+      p_org: scope.orgId,
+      p_metric: "opportunities",
+    });
+    const quota = (Array.isArray(quotaData) ? quotaData[0] : quotaData) as
+      | { allowed?: boolean; used?: number; quota?: number | null }
+      | undefined;
+
+    /* Fails open on a read error, like every other quota in this codebase —
+       see `withinBudget` in ai.ts. Skipped rather than failed when over:
+       the work was done correctly and the answer is "not this month", which
+       is not something a retry fixes. Same shape as `enrich_person`. */
+    if (!quotaError && quota && quota.allowed === false) {
+      return {
+        ok: true,
+        result: {
+          skipped:
+            `this organisation has used ${quota.used} of its ${quota.quota} ` +
+            `opportunities this month`,
+          companyId,
+        },
+      };
+    }
+  }
+
   /* §60's unique key is (org_id, company_id, icp_id) with NULLS NOT DISTINCT,
      so this is an upsert rather than an insert — a company rescanned next week
      updates its verdict instead of duplicating the row. `priority_reason` is
@@ -213,6 +263,18 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
   }
 
   const opportunityId = String(opportunity.id);
+
+  /* Counted only when the upsert actually created one. Incrementing on every
+     re-score would have the metric measuring scoring runs rather than
+     opportunities, and a customer would watch their "opportunities" bar fill
+     up without a single new company appearing. */
+  if (!existing) {
+    await scope.rpc("increment_usage_internal", {
+      p_org: scope.orgId,
+      p_metric: "opportunities",
+      p_amount: 1,
+    });
+  }
 
   /* A dimension the model could not establish is NULL, never 0. `0003` makes
      every dimension column nullable for this reason, and §78 states it: a zero

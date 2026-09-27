@@ -18,7 +18,8 @@
       "runtimeArgs": [
         "scripts/dev-demo.mjs"
       ],
-      "port": 3101
+      "port": 3101,
+      "autoPort": true
     }
   ]
 }

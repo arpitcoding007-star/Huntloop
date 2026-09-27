@@ -35,6 +35,6 @@ const env = {
 
 spawn(
   process.execPath,
-  [nextBin, "dev", "apps/web", "-p", process.env.DEMO_PORT ?? "3101"],
+  [nextBin, "dev", "apps/web", "-p", process.env.PORT ?? process.env.DEMO_PORT ?? "3101"],
   { stdio: "inherit", env },
 ).on("exit", (code) => process.exit(code ?? 0));

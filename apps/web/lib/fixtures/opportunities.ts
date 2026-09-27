@@ -55,6 +55,9 @@ export interface OpportunityFixture {
     email: string | null;
     emailConfidence: "high" | "medium" | "low" | null;
     linkedin: string | null;
+    /** `contact_fit_scores.score`; null where the ranker has not run. */
+    fitScore: number | null;
+    fitReason: string | null;
   }[];
   evidence: EvidenceItem[];
   triggers: { type: string; date: string; strength: number | null }[];
@@ -113,6 +116,8 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         email: "dana@alphio.ai",
         emailConfidence: "high",
         linkedin: "https://www.linkedin.com/",
+        fitScore: 86,
+        fitReason: "Named the custody blocker publicly and signs for infrastructure.",
       },
       {
         name: "Marta Kovacs",
@@ -121,6 +126,8 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         email: null,
         emailConfidence: null,
         linkedin: "https://www.linkedin.com/",
+        fitScore: 61,
+        fitReason: "Feels the operational cost, but does not own the budget line.",
       },
     ],
     evidence: [
@@ -223,6 +230,12 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         email: null,
         emailConfidence: null,
         linkedin: "https://www.linkedin.com/",
+        /* Deliberately unranked: this fixture is the "research the current
+           approach first" case, and a company whose contacts arrived before
+           the ranker ran is the ordinary day-one state the UI has to render
+           without inventing a number for it. */
+        fitScore: null,
+        fitReason: null,
       },
     ],
     evidence: [

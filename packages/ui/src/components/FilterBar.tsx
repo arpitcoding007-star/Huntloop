@@ -41,7 +41,7 @@ export function FilterBar({
     return (
       <div
         className={cn(
-          "flex h-12 items-center justify-between gap-3 rounded-md border border-brand-border bg-brand-surface px-3",
+          "flex h-12 items-center justify-between gap-3 rounded-lg border border-brand-border bg-brand-surface px-3",
           className,
         )}
       >
@@ -63,7 +63,7 @@ export function FilterBar({
               value={scope}
               onChange={(e) => onScopeChange?.(e.target.value)}
               className={cn(
-                "hl-focusable h-8 appearance-none rounded-md border border-line bg-surface pr-7 pl-2.5",
+                "hl-focusable h-8 appearance-none rounded-md border border-line bg-panel pr-7 pl-2.5",
                 "text-[13px] text-fg-secondary transition-colors duration-[120ms]",
                 "hover:border-line-strong focus:border-line-strong",
               )}
@@ -97,7 +97,7 @@ export function FilterBar({
             aria-label={placeholder}
             onChange={(e) => onChange(e.target.value)}
             className={cn(
-              "hl-focusable h-8 w-full rounded-md border border-line bg-surface pr-3 pl-8",
+              "hl-focusable h-8 w-full rounded-md border border-line bg-panel pr-3 pl-8",
               "text-[13px] text-fg placeholder:text-fg-muted",
               "transition-colors duration-[120ms] hover:border-line-strong focus:border-line-strong",
             )}

@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   EmptyState,
   Field,
   FormMessage,
@@ -189,7 +190,7 @@ export function OutreachManager({
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value}</p>
@@ -513,7 +514,7 @@ function StepEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-line-subtle bg-canvas px-3 py-3">
+    <div className="space-y-3 rounded-lg border border-line-subtle bg-canvas px-3 py-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Step">
           {(a) => (
@@ -613,12 +614,12 @@ function StepEditor({
           </Button>
 
           {step && (
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmButton
               icon={Trash2}
-              disabled={pending}
-              onClick={() =>
+              label="Remove this step"
+              confirmLabel="Remove it"
+              pending={pending}
+              onConfirm={() =>
                 start(async () => {
                   const res = await deleteStepAction(org, step.id);
                   onResult(
@@ -626,9 +627,7 @@ function StepEditor({
                   );
                 })
               }
-            >
-              Remove
-            </Button>
+            />
           )}
 
           <Button
@@ -682,12 +681,12 @@ function CampaignForm({
         }
         actions={
           campaign && canWrite ? (
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmButton
               icon={Trash2}
-              disabled={pending}
-              onClick={() =>
+              label={`Archive ${campaign.name}`}
+              confirmLabel="Archive it"
+              pending={pending}
+              onConfirm={() =>
                 start(async () => {
                   const res = await deleteCampaignAction(org, campaign.id);
                   onResult(
@@ -696,9 +695,7 @@ function CampaignForm({
                   if (res.ok) onDone();
                 })
               }
-            >
-              Archive
-            </Button>
+            />
           ) : null
         }
       />

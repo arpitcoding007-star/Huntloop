@@ -8,6 +8,7 @@ import {
   CardBody,
   CardHeader,
   ClaimBadge,
+  ConfirmButton,
   EmptyState,
   Field,
   FormMessage,
@@ -209,7 +210,7 @@ export function MemoryManager({
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value}</p>
@@ -266,13 +267,12 @@ function MemoryCard({
                   Edit
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="ghost"
+              <ConfirmButton
                 icon={Trash2}
-                aria-label="Remove this memory"
-                disabled={pending}
-                onClick={() =>
+                label="Remove this memory"
+                confirmLabel="Remove it"
+                pending={pending}
+                onConfirm={() =>
                   start(async () => {
                     const res = await deleteMemoryAction(org, memory.id);
                     onResult(

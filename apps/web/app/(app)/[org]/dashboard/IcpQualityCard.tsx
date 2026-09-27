@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@huntloop/ui";
-import { Sparkles, X } from "lucide-react";
+import { Gauge, X } from "lucide-react";
 import type { IcpQualityCard as Quality } from "../../../../lib/data/icp-quality";
 
 /**
@@ -57,10 +57,16 @@ export function IcpQualityCard({
   return (
     <section
       aria-labelledby="icp-nudge-heading"
-      className="mt-10 rounded-md border border-line-subtle bg-panel p-4"
+      className="mt-10 rounded-lg border border-line-subtle bg-panel p-4"
     >
       <div className="flex flex-wrap items-start gap-3">
-        <Sparkles aria-hidden className="mt-0.5 size-4 shrink-0 text-brand" strokeWidth={1.75} />
+        {/* Not `Sparkles`. That icon marks model output everywhere else in
+            this app and is always paired with `text-ai`; this score is
+            arithmetic over the weights in `packages/db/src/icp.ts`, which is
+            why it is green. Icon and colour were saying different things
+            about the same number, in a system whose whole point is that a
+            fact and an inference never look alike. */}
+        <Gauge aria-hidden className="mt-0.5 size-4 shrink-0 text-brand" strokeWidth={1.75} />
 
         <div className="min-w-0 flex-1">
           <h2 id="icp-nudge-heading" className="text-[13px] font-semibold text-fg">

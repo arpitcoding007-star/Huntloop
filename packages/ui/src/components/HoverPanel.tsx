@@ -236,7 +236,11 @@ export function HoverPanel({
           }}
           className={cn(
             "z-50 overflow-y-auto rounded-lg border border-line bg-panel p-3",
-            "shadow-[0_8px_24px_rgba(0,0,0,0.4)]",
+            /* Was a literal `0 8px 24px rgba(0,0,0,0.4)`, which is a dark-theme
+               shadow painted over the light theme's cream panels as a grey
+               smudge. `shadow-popover` is the two-part token — contact plus
+               distance — and it is tinted per theme. */
+            "shadow-popover",
             /* Only the pinned panel takes the pointer. A hover panel that did
                would trap a cursor merely passing over it, and would close
                itself the moment the pointer crossed the gap. */

@@ -145,7 +145,7 @@ export function Analyzer({ org }: { org: string }) {
   return (
     <div className="mx-auto w-full max-w-[900px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">Analyze a URL</h1>
+        <h1 className="hl-heading text-fg">Analyze a URL</h1>
         <p className="mt-1 max-w-xl text-[13px] leading-[1.5] text-fg-muted">
           Paste any company&rsquo;s website. Huntloop researches it against{" "}
           {org}&rsquo;s ICP and tells you whether it is worth contacting —{" "}
@@ -184,7 +184,7 @@ export function Analyzer({ org }: { org: string }) {
             onChange={(e) => setUrl(e.target.value)}
             aria-label="Company website"
             placeholder="https://company.com"
-            className="hl-focusable h-10 w-full rounded-md border border-line bg-surface pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted"
+            className="hl-focusable h-10 w-full rounded-md border border-line bg-panel pr-3 pl-9 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
           />
         </div>
         <Button
@@ -320,7 +320,7 @@ export function Analyzer({ org }: { org: string }) {
                           <Badge variant="brand">
                             {URGENCY_LABELS[timing.result.whyNow.urgency!]}
                           </Badge>
-                          <span className="text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+                          <span className="text-[11px] tracking-label text-fg-muted uppercase">
                             {timing.result.whyNow.confidence} confidence
                           </span>
                         </>
@@ -375,7 +375,7 @@ export function Analyzer({ org }: { org: string }) {
               inferred from an absence. This is the limit a reader would never
               guess — the verdict is drawn from one website, because the scan
               pipeline that reads everything else does not run yet. */}
-          <p className="rounded-md border border-line-subtle bg-surface px-4 py-3 text-[12px] leading-[1.6] text-fg-muted">
+          <p className="rounded-lg border border-line-subtle bg-surface px-4 py-3 text-[12px] leading-[1.6] text-fg-muted">
             <span className="text-fg-secondary">What this verdict could see:</span>{" "}
             <span className="font-mono text-[11px] text-fg-secondary">
               {result?.readDomains.join(", ")}

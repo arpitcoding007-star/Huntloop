@@ -6,13 +6,15 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   Field,
   FormMessage,
   Input,
-  ListInput,
-  Textarea,
   joinList,
+  ListInput,
+  Note,
   splitList,
+  Textarea,
 } from "@huntloop/ui";
 import { Save, Trash2 } from "lucide-react";
 import type { Product } from "../../../../../lib/data/product";
@@ -88,24 +90,22 @@ export function ProductForm({
         description="Everything downstream is judged against this — the ICP, what counts as a fit, and every why-now."
         actions={
           canWrite && product ? (
-            <Button
-              variant="ghost"
-              size="sm"
+            <ConfirmButton
               icon={Trash2}
-              onClick={remove}
-              disabled={pending}
-            >
-              Remove
-            </Button>
+              label="Remove this product"
+              confirmLabel="Remove it"
+              pending={pending}
+              onConfirm={remove}
+            />
           ) : null
         }
       />
       <CardBody className="space-y-5">
         {!canWrite && (
-          <p className="rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg-muted">
+          <Note>
             Your role is read-only. You can see what your opportunities are scored
             against, but not change it.
-          </p>
+          </Note>
         )}
 
         <Field label="Name" required error={fieldErrors.name}>

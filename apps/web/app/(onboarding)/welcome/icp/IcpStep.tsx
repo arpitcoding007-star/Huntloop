@@ -91,7 +91,7 @@ function ChipField({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+        <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
           {label}
         </span>
         {/* Only when the field was actually drafted. An empty field carries no
@@ -164,7 +164,7 @@ function ChipField({
               aria-label={`Add to ${label}`}
               placeholder={placeholder ?? "Add…"}
               maxLength={400}
-              className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 text-[13px] text-fg placeholder:text-fg-muted"
+              className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
             />
             <Button type="submit" size="sm" variant="secondary" icon={Plus}>
               Add
@@ -348,7 +348,7 @@ export function IcpStep({ org }: { org: string }) {
   if (phase === "loading") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Working out who you should be selling to…
         </h1>
         <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -363,7 +363,7 @@ export function IcpStep({ org }: { org: string }) {
   if (phase === "error") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Who should we hunt for?
         </h1>
         {/* No fallback profile. A plausible ICP substituted for a failed draft
@@ -400,7 +400,7 @@ export function IcpStep({ org }: { org: string }) {
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         Who should we hunt for?
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -693,7 +693,7 @@ function ReachBar({ reach, pending }: { reach: ReachState | null; pending: boole
   if (!reach && !pending) return null;
 
   return (
-    <div className="mt-4 max-w-2xl rounded-md border border-line-subtle bg-panel px-3 py-2.5">
+    <div className="mt-4 max-w-2xl rounded-lg border border-line-subtle bg-panel px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles aria-hidden className="size-4 text-brand" strokeWidth={1.75} />
         {pending ? (

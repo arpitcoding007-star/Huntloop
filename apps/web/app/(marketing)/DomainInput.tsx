@@ -30,7 +30,24 @@ import { ArrowRight, Globe } from "lucide-react";
  * this only refuses input that could not possibly be a hostname, so the button
  * does not navigate to a page that will immediately fail.
  */
-export function DomainInput({ size = "lg" }: { size?: "md" | "lg" }) {
+export function DomainInput({
+  size = "lg",
+  /**
+   * Whether the anonymous read is actually switched on.
+   *
+   * `PUBLIC_RESEARCH_ENABLED` is off by default and for a good reason — an
+   * unauthenticated endpoint that calls Opus with web fetching is the most
+   * expensive misconfiguration in this codebase. But with it off, this box
+   * sent people to a page that could only apologise. Sending them straight
+   * to sign-up with the domain already attached is the same destination
+   * `/discover` would have routed them to, one screen sooner and without
+   * the dead end in between.
+   */
+  canResearch = true,
+}: {
+  size?: "md" | "lg";
+  canResearch?: boolean;
+}) {
   const router = useRouter();
   const [value, setValue] = useState("");
   const [pending, setPending] = useState(false);
@@ -48,7 +65,11 @@ export function DomainInput({ size = "lg" }: { size?: "md" | "lg" }) {
         e.preventDefault();
         if (!plausible) return;
         setPending(true);
-        router.push(`/discover?d=${encodeURIComponent(cleaned)}`);
+        router.push(
+          canResearch
+            ? `/discover?d=${encodeURIComponent(cleaned)}`
+            : `/signup?d=${encodeURIComponent(cleaned)}`,
+        );
       }}
       className="w-full max-w-lg"
     >
@@ -72,7 +93,7 @@ export function DomainInput({ size = "lg" }: { size?: "md" | "lg" }) {
                to persuade them to use it. */
             autoComplete="url"
             className={[
-              "hl-focusable w-full rounded-md border border-line bg-surface pr-3 pl-9 text-fg placeholder:text-fg-muted",
+              "hl-focusable w-full rounded-md border border-line bg-panel pr-3 pl-9 text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface",
               size === "lg" ? "h-12 text-[15px]" : "h-10 text-[14px]",
             ].join(" ")}
           />

@@ -85,6 +85,21 @@ export interface OpportunityDetail {
     email: string | null;
     emailConfidence: "high" | "medium" | "low" | null;
     linkedin: string | null;
+    /**
+     * `contact_fit_scores.score`, 0–100, or null when this person has not
+     * been ranked yet.
+     *
+     * `0016` made `is_decision_maker` a *derived* summary maintained by the
+     * ranking job rather than the authoritative answer, and said so in the
+     * column's own comment. This is the authoritative answer: a number with
+     * an explanation beside it. Null is a real state — a company whose
+     * contacts arrived before the ranker ran has people and no scores — and
+     * it renders as no score rather than as a zero, for the same reason an
+     * unmeasured score dimension reads UNKNOWN.
+     */
+    fitScore: number | null;
+    /** Why that number. Never optional when a score exists — `0016` again. */
+    fitReason: string | null;
   }[];
   evidence: EvidenceItem[];
   triggers: { type: string; date: string; strength: number | null }[];
@@ -160,6 +175,7 @@ export interface DetailQueryRow {
     description: string | null;
     company_triggers: TriggerRow[];
     people: {
+      id: string;
       first_name: string | null;
       last_name: string | null;
       title: string | null;
@@ -367,10 +383,14 @@ export function mapListRow(
   };
 }
 
+/** `person_id` → the latest contact-fit score and its explanation. */
+export type ContactFit = Map<string, { score: number; explanation: string | null }>;
+
 export function mapDetail(
   r: DetailQueryRow,
   evidence: EvidenceItem[],
   viewerId: string | null,
+  fit: ContactFit = new Map(),
 ): OpportunityDetail {
   const score = latestScore(r.opportunity_scores);
   const triggers = liveTriggers(r.companies.company_triggers);
@@ -388,6 +408,7 @@ export function mapDetail(
         (c) => c.kind === "email" && c.verification_status === "verified",
       );
       const linkedin = contacts.find((c) => c.kind === "linkedin");
+      const ranked = fit.get(p.id);
       return {
         name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unnamed contact",
         title: p.title ?? "Title unknown",
@@ -395,10 +416,33 @@ export function mapDetail(
         email: email?.value ?? null,
         emailConfidence: email?.confidence ?? null,
         linkedin: linkedin?.value ?? null,
+        fitScore: ranked?.score ?? null,
+        fitReason: ranked?.explanation ?? null,
       };
     })
-    // Decision makers first: the page's job is to say who to talk to.
-    .sort((a, b) => Number(b.isDecisionMaker) - Number(a.isDecisionMaker));
+    /*
+     * Ranked first, by the score the ranking job actually produced; the
+     * decision-maker flag only breaks ties.
+     *
+     * This ordering is the page's whole answer to "who should I contact",
+     * and until now it was a boolean sort — which cannot separate two people
+     * who are both flagged, and cannot say why either of them is there.
+     * `0016` built `contact_fit_scores` precisely because "the VP of
+     * Engineering is the buyer here but the Head of Platform is the one who
+     * feels the pain" is not expressible in a boolean.
+     *
+     * An unranked person sorts last rather than as a zero. The two are not
+     * the same: zero means the ranker looked and found nobody worth
+     * contacting, and null means it has not run.
+     */
+    .sort((a, b) => {
+      if (a.fitScore !== b.fitScore) {
+        if (a.fitScore === null) return 1;
+        if (b.fitScore === null) return -1;
+        return b.fitScore - a.fitScore;
+      }
+      return Number(b.isDecisionMaker) - Number(a.isDecisionMaker);
+    });
 
   return {
     id: r.id,

@@ -73,7 +73,7 @@ export default async function UseCasePage({
       <main id="main" className="mx-auto max-w-[880px] px-6 py-14">
         <Badge variant="neutral">{useCase.label}</Badge>
 
-        <h1 className="mt-4 text-[36px] leading-[1.15] font-semibold tracking-[-0.02em] text-fg">
+        <h1 className="hl-display mt-4 text-fg">
           {useCase.headline}
         </h1>
         <p className="mt-4 max-w-xl text-[16px] leading-[1.6] text-fg-secondary">
@@ -132,10 +132,10 @@ export default async function UseCasePage({
             Huntloop drafts yours from your website and shows which sentence
             each line came from. This is the shape it aims for.
           </p>
-          <dl className="mt-5 divide-y divide-line-subtle rounded-md border border-line-subtle bg-panel">
+          <dl className="mt-5 divide-y divide-line-subtle rounded-lg border border-line-subtle bg-panel">
             {useCase.profile.map((row) => (
               <div key={row.label} className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3">
-                <dt className="w-40 shrink-0 text-[12px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                <dt className="w-40 shrink-0 text-[12px] font-medium tracking-label text-fg-muted uppercase">
                   {row.label}
                 </dt>
                 <dd className="min-w-0 flex-1 text-[13px] leading-[1.6] text-fg-secondary">
@@ -168,7 +168,7 @@ export default async function UseCasePage({
         </section>
 
         <nav aria-label="Other use cases" className="mt-14 border-t border-line-subtle pt-6">
-          <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
             Also for
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">

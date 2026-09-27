@@ -483,10 +483,7 @@ async function loadGuidance(scope: OrgScope): Promise<string[]> {
      a hand-written instruction should always beat a dropdown. `settings` is
      read here rather than passed in because a step that cannot read it should
      write in the default voice rather than fail to send. */
-  const { data: org } = await scope
-    .select("organizations", "settings")
-    .eq("id", scope.orgId)
-    .maybeSingle();
+  const { data: org } = await scope.organization("settings").maybeSingle();
 
   const voice = voiceGuidance(parseOrgProfile(org?.settings).voice);
   return [...voice, ...memories];

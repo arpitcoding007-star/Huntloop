@@ -9,9 +9,10 @@ import {
   Field,
   FormMessage,
   Input,
-  ListInput,
-  Select,
   joinList,
+  ListInput,
+  Note,
+  Select,
   splitList,
 } from "@huntloop/ui";
 import { Save } from "lucide-react";
@@ -99,9 +100,9 @@ export function OrgVoiceForm({
       />
       <CardBody className="space-y-5">
         {!canAdmin && (
-          <p className="rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg-muted">
+          <Note>
             Only an owner or an admin can change these. You can see them.
-          </p>
+          </Note>
         )}
 
         <Field

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AuthForm } from "../AuthForm";
 import { canonicalizeDomain } from "@huntloop/db/identity";
+import { legalIsComplete } from "../../../lib/legal";
 
 /**
  * `next` is read here for the reason given in ../login/page.tsx.
@@ -42,7 +43,7 @@ export default async function SignupPage({
 
   return (
     <>
-      <h1 className="text-[24px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         {domain ? "Keep going" : "Create your account"}
       </h1>
       <p className="mt-1.5 mb-6 text-[13px] leading-[1.5] text-fg-muted">
@@ -62,6 +63,42 @@ export default async function SignupPage({
       </p>
 
       <AuthForm mode="signup" next={next} />
+
+      {/*
+        The agreement line.
+        There was none — an account could be created with no reference to any
+        terms, which is both a contract-formation problem and the reason the
+        product had nowhere to point somebody asking what it does with their
+        data. It renders only once the documents are actually in force
+        (`lib/legal.ts`), because linking a draft from a signup flow would be
+        asserting that agreeing to it means something.
+      */}
+      {legalIsComplete() && (
+        <p className="mt-5 text-[12px] leading-[1.6] text-fg-muted">
+          By creating an account you agree to our{" "}
+          <Link
+            href="/terms"
+            className="hl-focusable rounded-sm text-fg-secondary underline underline-offset-2"
+          >
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/acceptable-use"
+            className="hl-focusable rounded-sm text-fg-secondary underline underline-offset-2"
+          >
+            Acceptable Use Policy
+          </Link>
+          , and confirm you have read our{" "}
+          <Link
+            href="/privacy"
+            className="hl-focusable rounded-sm text-fg-secondary underline underline-offset-2"
+          >
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      )}
 
       <p className="mt-6 text-[13px] text-fg-muted">
         Already have an account?{" "}

@@ -64,6 +64,28 @@ export default tseslint.config(
     name: "huntloop/accessibility",
     files: ["**/*.{jsx,tsx}"],
     ...jsxA11y.flatConfigs.recommended,
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      /*
+       * `region` added to the roles that may carry `tabIndex`.
+       *
+       * The rule is right in general — a focus stop on something you cannot
+       * interact with is a dead end in the tab order. A scrollable container
+       * is the documented exception: axe's `scrollable-region-focusable`
+       * *requires* `tabindex="0"` on it, because otherwise a keyboard user
+       * cannot scroll it at all. Both rules are about the same users and
+       * they disagree, so one of them has to be told about the other.
+       *
+       * Narrowed to `region` rather than disabled: the exception is for a
+       * labelled landmark wrapping overflow, which is exactly what
+       * `packages/ui/src/components/ScrollRegion.tsx` builds. A bare
+       * `tabIndex` on a `<div>` still fails.
+       */
+      "jsx-a11y/no-noninteractive-tabindex": [
+        "error",
+        { tags: [], roles: ["tabpanel", "region"], allowExpressionValues: true },
+      ],
+    },
   },
 
   {

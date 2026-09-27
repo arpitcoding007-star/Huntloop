@@ -112,6 +112,7 @@ export function SpendTable({
 
   return (
     <DataTable
+      label="AI spend by run"
       className="mt-3"
       rows={runs}
       columns={columns}

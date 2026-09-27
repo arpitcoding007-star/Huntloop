@@ -58,7 +58,7 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
       {items.map((item, i) => (
         <li
           key={`${item.claim}-${i}`}
-          className="rounded-md border border-line-subtle bg-surface p-3"
+          className="rounded-lg border border-line-subtle bg-surface p-3"
         >
           <div className="flex flex-wrap items-center gap-2">
             <ClaimBadge kind={item.kind} confidence={item.confidence} />

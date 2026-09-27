@@ -23,9 +23,12 @@ import { HANDLERS } from "../src/registry.ts";
 import { sendMessage } from "../src/handlers/send-message.ts";
 import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
 import { gmail } from "../src/mailbox/gmail.ts";
+import type { OutgoingMessage } from "../src/mailbox/provider.ts";
 import { ruleFacts } from "../src/handlers/score-opportunity.ts";
 import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
+import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
+import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
 
@@ -559,6 +562,11 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       "schedule_recomputes",
       "schedule_scans",
       "schedule_sends",
+      /* Added with the signal capability. Same reasoning as `schedule_discovery`
+         above: listed here by hand, not derived, because that is what makes
+         adding a credit-spending cross-tenant job to the sweep a change this
+         test actually has to notice. */
+      "schedule_signal_fetches",
       "schedule_syncs",
     ],
   );
@@ -681,6 +689,13 @@ const MESSAGE_ID = "11111111-1111-1111-1111-111111111111";
 const MAILBOX_ID = "22222222-2222-2222-2222-222222222222";
 
 process.env.MAILBOX_ENCRYPTION_KEY = "a".repeat(64);
+/*
+ * A send now refuses outright when no unsubscribe URL can be built, so the
+ * harness has to model a configured deployment for every other check in this
+ * section to reach the code it is aiming at. The unconfigured case gets its
+ * own test below, which unsets this deliberately.
+ */
+process.env.NEXT_PUBLIC_SITE_URL = "https://huntloop.test";
 const { encryptSecret } = await import("@huntloop/db");
 
 /** A message that would send, so each test can spoil exactly one thing. */
@@ -729,6 +744,18 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
     "rpc:can_contact": { data: [{ allowed: true, reason: "ok", detail: {} }], error: null },
     "rpc:claim_mailbox_send": { data: true, error: null },
     "insert:threads": { data: { id: "55555555-5555-5555-5555-555555555555" }, error: null },
+    /* A configured workspace. Both of these are now send preconditions, so
+       every other check in this section needs them satisfied to reach the
+       code it is aiming at — and each has its own test below that removes
+       exactly one of them. */
+    "select:organizations": {
+      data: { settings: { compliance: { postalAddress: "Acme Ltd\n1 Example Street\nLondon EC1A 1BB" } } },
+      error: null,
+    },
+    "rpc:check_quota_internal": {
+      data: [{ allowed: true, used: 12, quota: 5000 }],
+      error: null,
+    },
     ...responses,
   });
   setAdminClientForTests(client);
@@ -1009,6 +1036,232 @@ console.log("\nsend_message — §78: sent means sent, and failed means failed")
         (c.payload as { kind?: string }[])?.[0]?.kind === "failed",
     ),
   );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — a message with no way to opt out does not leave");
+
+/**
+ * `NEXT_PUBLIC_SITE_URL` is what turns an unsubscribe token into a URL. With
+ * it unset, `withFooter` returned the body unchanged and the provider was
+ * handed a null `List-Unsubscribe` — so the message went out with no opt-out
+ * mechanism of any kind, which is the one failure in this handler that breaks
+ * a law rather than a deliverability guideline.
+ *
+ * Unset here rather than in the handler's own test fixture, because the point
+ * is the *deployment* being misconfigured: the message row is perfectly
+ * valid, and every earlier check passes.
+ */
+{
+  const saved = process.env.NEXT_PUBLIC_SITE_URL;
+  delete process.env.NEXT_PUBLIC_SITE_URL;
+
+  const { ctx, calls } = sendContext(sendable());
+  const outcome = await sendMessage(ctx);
+
+  process.env.NEXT_PUBLIC_SITE_URL = saved;
+
+  expect("the send is refused", !outcome.ok);
+  expect("and nothing was marked sent", !markedSent(calls));
+  expect(
+    "the allowance is not claimed, so a misconfiguration costs no send budget",
+    !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
+  );
+  expect(
+    "the reason names the setting rather than the symptom",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /NEXT_PUBLIC_SITE_URL/.test(String((c.payload as { error?: string })?.error)),
+    ),
+  );
+  expect(
+    "and the failure is retryable — setting the variable fixes it",
+    (outcome as { permanent?: boolean }).permanent !== true,
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — a message with no sender address does not leave");
+
+/**
+ * CAN-SPAM §7704(a)(5) and CASL both require the sender's physical postal
+ * address on every commercial message. The footer carried an unsubscribe
+ * line and nothing else, and no column existed anywhere that could have held
+ * an address — so this was not a template omission, it was a missing field.
+ */
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    /* A workspace that has never filled the field in, which is every
+       workspace that existed before `OrgComplianceSettings` did. */
+    "select:organizations": { data: { settings: {} }, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("the send is refused", !outcome.ok);
+  expect("and nothing was marked sent", !markedSent(calls));
+  expect(
+    "the allowance is not claimed either",
+    !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
+  );
+  expect(
+    "the reason names the screen that fixes it, not the column",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /Settings → Organisation/.test(String((c.payload as { error?: string })?.error)),
+    ),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* An address too short to be one is the same as no address. The floor is
+     in `parseOrgProfile`, so the handler and the settings form cannot
+     disagree about what counts as set. */
+  const { ctx, calls } = sendContext(sendable(), {
+    "select:organizations": {
+      data: { settings: { compliance: { postalAddress: "London" } } },
+      error: null,
+    },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("a one-word address is not accepted as one", !outcome.ok);
+  expect("and nothing was sent", !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — what the recipient actually receives in the footer");
+
+/**
+ * The two elements every commercial message is required to carry, asserted
+ * against what the provider was handed rather than against the helper that
+ * builds it. `withFooter` being correct is not the same as it being called,
+ * and the bug this replaces was precisely a correct helper reached with a
+ * null argument.
+ */
+{
+  const original = gmail.send;
+  let sent: OutgoingMessage | null = null;
+  gmail.send = async (_token, input) => {
+    sent = input;
+    return {
+      providerMessageId: "gmail-footer",
+      providerThreadId: null,
+      messageIdHeader: "<footer@mail.gmail.com>",
+    };
+  };
+
+  const { ctx } = sendContext(sendable());
+  await sendMessage(ctx);
+  gmail.send = original;
+
+  const text = String((sent as OutgoingMessage | null)?.text ?? "");
+  expect("the body is still there", /How are you gating custody today\?/.test(text));
+  expect("the postal address is in the footer", /1 Example Street/.test(text));
+  expect(
+    "so is a link to the page that asks before unsubscribing",
+    /huntloop\.test\/unsubscribe\//.test(text),
+  );
+  expect(
+    "and the header carries the one-click endpoint, which is a different URL",
+    /huntloop\.test\/api\/unsubscribe\//.test(
+      String((sent as OutgoingMessage | null)?.unsubscribeUrl ?? ""),
+    ),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* The HTML part gets the same footer. Nothing writes `body_html` today,
+     so this covers a path that is latent rather than live — which is the
+     only reason the omission was not already a shipped defect. */
+  const original = gmail.send;
+  let sent: OutgoingMessage | null = null;
+  gmail.send = async (_token, input) => {
+    sent = input;
+    return {
+      providerMessageId: "gmail-html",
+      providerThreadId: null,
+      messageIdHeader: "<html@mail.gmail.com>",
+    };
+  };
+
+  const { ctx } = sendContext(sendable({ body_html: "<p>Hello &amp; welcome</p>" }));
+  await sendMessage(ctx);
+  gmail.send = original;
+
+  const html = String((sent as OutgoingMessage | null)?.html ?? "");
+  expect("the HTML body survives", /<p>Hello &amp; welcome<\/p>/.test(html));
+  expect("the HTML part carries the address too", /1 Example Street/.test(html));
+  expect("and an unsubscribe anchor", /<a href="[^"]*\/unsubscribe\/[^"]*">/.test(html));
+  expect(
+    "the address's newlines become line breaks rather than collapsing",
+    /Acme Ltd<br>1 Example Street/.test(html),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — the plan's email allowance, which was metered and never checked");
+
+/**
+ * `emails` is one of five quotas `plans.limits` defines and the pricing page
+ * prices. It was incremented after every successful send and checked
+ * nowhere, so a Free workspace — allowance zero — was counted and never
+ * stopped.
+ */
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:check_quota_internal": {
+      data: [{ allowed: false, used: 5000, quota: 5000 }],
+      error: null,
+    },
+  });
+  const outcome = await sendMessage(ctx);
+
+  expect("a workspace over its email quota does not send", !outcome.ok);
+  expect("and nothing was marked sent", !markedSent(calls));
+  expect(
+    "the allowance is not claimed, so the cap costs no mailbox budget",
+    !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
+  );
+  expect(
+    "the reason quotes the numbers rather than saying 'quota exceeded'",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        /5000 of its 5000 emails/.test(String((c.payload as { error?: string })?.error)),
+    ),
+  );
+  expect(
+    "and the failure is retryable — the allowance resets",
+    (outcome as { permanent?: boolean }).permanent !== true,
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* Fails open, like every other quota in this codebase. A quota that cannot
+     be read must not stop a customer's outreach — the cost of failing open
+     is a reconciliation and it is ours. */
+  const original = gmail.send;
+  gmail.send = async () => ({
+    providerMessageId: "gmail-open",
+    providerThreadId: null,
+    messageIdHeader: "<open@mail.gmail.com>",
+  });
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:check_quota_internal": { data: null, error: { message: "relation missing" } },
+  });
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+
+  expect("an unreadable quota does not stop the send", outcome.ok);
+  expect("and the message goes", markedSent(calls));
   setAdminClientForTests(null);
 }
 
@@ -2259,6 +2512,247 @@ console.log("\nresearch_competitor — the two pure decisions");
     icpOverlap(["Mid-market SaaS"], []),
     [],
   );
+}
+
+/* ── fetch_company_signals ─────────────────────────────────────────────── */
+
+console.log("\nfetch_company_signals — refuses to guess a provider id it does not have");
+{
+  const { client, calls } = fakeClient({
+    "select:companies": { data: { id: "co1", canonical_domain: "acme.com", name: "Acme" }, error: null },
+    "select:external_ids": { data: [], error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await fetchCompanySignals({
+    scope: new OrgScope(ORG_A, client),
+    payload: { companyId: "co1" },
+    job: { id: "job-1", org_id: ORG_A, job_name: "fetch_company_signals" } as never,
+    now: new Date(),
+  });
+
+  expect("no provider id means the job succeeds by skipping, not by failing", outcome.ok === true);
+  expect(
+    "and nothing was written to evidence — there is nothing to write yet",
+    !calls.some((c) => c.table === "evidence"),
+  );
+  setAdminClientForTests(null);
+}
+
+/* ── sync_hubspot ──────────────────────────────────────────────────────── */
+
+/* ── sync_hubspot, end to end ───────────────────────────────────────────────
+   The push path, with a fake HubSpot and a fake database. What is worth
+   holding down here is not "does fetch work" — `@huntloop/crm` tests that —
+   but the three decisions this handler owns and that would keep *looking*
+   correct if they broke: a second sync must update the deal it already
+   created rather than making another one, HubSpot's stage must come back as
+   evidence rather than as a status overwrite, and an undecryptable
+   credential must stop permanently instead of retrying a key that will not
+   change by itself. */
+
+/* `MAILBOX_ENCRYPTION_KEY` is already set at the top of the mailbox section —
+   one key covers every stored credential, which is the decision recorded in
+   `packages/db/src/crypto.ts`. These tests inherit it rather than setting a
+   second one, so if that decision is ever reversed they fail here too. */
+function hubspotWorld(options: { existingDealId?: string | null } = {}) {
+  const existing = options.existingDealId ?? null;
+
+  const { client, calls } = fakeClient({
+    "select:hubspot_connections": {
+      data: { access_token: encryptSecret("pat-na1-test"), hub_id: "4242", is_enabled: true },
+      error: null,
+    },
+    "select:organizations": { data: { slug: "acme-co" }, error: null },
+    "select:opportunities": {
+      data: {
+        id: "opp1",
+        company_id: "co1",
+        primary_person_id: "pp1",
+        why_now: "Posted three AE roles this week.",
+        status: "qualified",
+      },
+      error: null,
+    },
+    "select:companies": {
+      data: { id: "co1", name: "Acme", canonical_domain: "acme.com", industry: "SaaS", employee_count: 180 },
+      error: null,
+    },
+    "select:opportunity_scores": { data: { score: 78 }, error: null },
+    "select:people": { data: { id: "pp1", first_name: "Dana", last_name: "Reed", title: "VP Sales" }, error: null },
+    "select:contact_points": { data: [{ value: "dana@acme.com" }], error: null },
+    "select:external_ids": {
+      data: existing ? [{ provider_id: existing }] : [],
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+
+  const http: Array<{ method: string; url: string }> = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    const u = String(url);
+    http.push({ method, url: u });
+
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+    if (u.includes("/properties/deals")) return json({ message: "exists" }, 409);
+    if (u.includes("/search")) return json({ results: [] });
+    if (u.includes("/pipelines/deals")) {
+      return json({ results: [{ stages: [{ id: "presentationscheduled", label: "Demo scheduled" }] }] });
+    }
+    if (u.includes("/crm/v4/")) return new Response(null, { status: 204 });
+    if (method === "GET" && u.includes("/objects/deals/")) {
+      return json({ properties: { dealstage: "presentationscheduled" } });
+    }
+    if (u.includes("/objects/companies")) return json({ id: "hs-co-1" });
+    if (u.includes("/objects/contacts")) return json({ id: "hs-ct-1" });
+    if (u.includes("/objects/deals")) return json({ id: "hs-deal-1" });
+    return json({});
+  }) as typeof fetch;
+
+  return {
+    calls,
+    http,
+    restore: () => {
+      globalThis.fetch = original;
+      setAdminClientForTests(null);
+    },
+    ctx: {
+      scope: new OrgScope(ORG_A, client),
+      payload: { opportunityId: "opp1" },
+      job: { id: "job-1", org_id: ORG_A, job_name: "sync_hubspot" } as never,
+      now: new Date(),
+    },
+  };
+}
+
+console.log("\nsync_hubspot — the first push creates, and records what it created");
+{
+  const world = hubspotWorld();
+  const outcome = await syncHubspot(world.ctx);
+
+  expect("the sync succeeds", outcome.ok === true);
+  expect(
+    "a deal is created",
+    world.http.some((c) => c.method === "POST" && /\/objects\/deals$/.test(c.url)),
+    JSON.stringify(world.http),
+  );
+  expect(
+    "the company is associated to it",
+    world.http.some((c) => c.method === "PUT" && c.url.includes("/associations/default/companies/")),
+  );
+
+  /* `OrgScope.upsert` normalises a single row into an array before it reaches
+     the client — and injects `org_id` while it is there — so what a recorded
+     call carries is always a list, never the object the handler passed. */
+  const rowsOf = (verb: string, table: string) =>
+    world.calls
+      .filter((c) => c.table === table && c.verb === verb)
+      .flatMap((c) => (Array.isArray(c.payload) ? c.payload : [c.payload]) as Record<string, unknown>[]);
+
+  const linked = rowsOf("upsert", "external_ids");
+  expectEqual(
+    "every HubSpot id is remembered — company, contact and deal",
+    linked.map((row) => row.entity_type).sort(),
+    ["company", "opportunity", "person"],
+  );
+  expect(
+    "and remembered against the right provider, so the next sync finds them",
+    linked.every((row) => row.provider === "hubspot"),
+  );
+
+  const evidence = rowsOf("upsert", "evidence");
+  expectEqual("HubSpot's stage is written as one evidence row", evidence.length, 1);
+  expect(
+    "carrying the readable label rather than the raw stage id",
+    String(evidence[0]?.claim ?? "").includes("Demo scheduled"),
+    String(evidence[0]?.claim),
+  );
+  expect(
+    "and nothing wrote to opportunities — a CRM stage is recorded, not obeyed",
+    !world.calls.some((c) => c.table === "opportunities" && c.verb === "update"),
+  );
+
+  world.restore();
+}
+
+console.log("\nsync_hubspot — the second push updates, and never creates a twin");
+{
+  const world = hubspotWorld({ existingDealId: "hs-deal-1" });
+  const outcome = await syncHubspot(world.ctx);
+
+  expect("the sync succeeds", outcome.ok === true);
+  expect(
+    "no second deal is created",
+    !world.http.some((c) => c.method === "POST" && /\/objects\/deals$/.test(c.url)),
+    JSON.stringify(world.http),
+  );
+  expect(
+    "the existing one is patched instead",
+    world.http.some((c) => c.method === "PATCH" && c.url.includes("/objects/deals/hs-deal-1")),
+  );
+
+  world.restore();
+}
+
+console.log("\nsync_hubspot — a credential it cannot read stops, rather than retrying forever");
+{
+  const savedKey = process.env.MAILBOX_ENCRYPTION_KEY;
+  const world = hubspotWorld();
+  /* Rotate the key out from under the already-stored value — the real-world
+     shape of this is an operator regenerating MAILBOX_ENCRYPTION_KEY, or a
+     row that predates the column being encrypted at all. */
+  process.env.MAILBOX_ENCRYPTION_KEY = "b".repeat(64);
+
+  const outcome = await syncHubspot(world.ctx);
+
+  expect("it fails", outcome.ok === false);
+  expect(
+    "permanently, because a rotated key does not fix itself on attempt three",
+    outcome.ok === false && outcome.permanent === true,
+  );
+  expect("and nothing was sent to HubSpot", world.http.length === 0);
+  expect(
+    "the reason is written where the settings screen can show it",
+    world.calls.some(
+      (c) =>
+        c.table === "hubspot_connections" &&
+        c.verb === "update" &&
+        Boolean((c.payload as { last_sync_error?: string })?.last_sync_error),
+    ),
+  );
+
+  world.restore();
+  if (savedKey === undefined) delete process.env.MAILBOX_ENCRYPTION_KEY;
+  else process.env.MAILBOX_ENCRYPTION_KEY = savedKey;
+}
+
+console.log("\nsync_hubspot — an org that never connected HubSpot is a normal state, not a failure");
+{
+  const { client, calls } = fakeClient({
+    /* No `select:hubspot_connections` entry: the fake client's default,
+       `{ data: null, error: null }`, is exactly what "never connected"
+       looks like from the database's side — the same state a fresh org is
+       actually in, not a contrived one. */
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await syncHubspot({
+    scope: new OrgScope(ORG_A, client),
+    payload: { opportunityId: "opp1" },
+    job: { id: "job-1", org_id: ORG_A, job_name: "sync_hubspot" } as never,
+    now: new Date(),
+  });
+
+  expect("a missing connection succeeds by skipping", outcome.ok === true);
+  expect(
+    "and stops immediately — it never even reads the opportunity",
+    !calls.some((c) => c.table === "opportunities"),
+  );
+  setAdminClientForTests(null);
 }
 
 console.log(

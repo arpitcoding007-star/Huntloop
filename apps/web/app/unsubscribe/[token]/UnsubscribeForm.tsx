@@ -49,7 +49,7 @@ export function UnsubscribeForm({ token }: { token: string }) {
       {typeof state === "object" && (
         <p
           role="alert"
-          className="mt-3 rounded-md border border-danger-border bg-danger-surface px-3 py-2 text-[13px] text-danger"
+          className="mt-3 rounded-md border border-danger-border bg-danger-surface px-3 py-2 text-[13px] text-danger-text"
         >
           {state.error}
         </p>

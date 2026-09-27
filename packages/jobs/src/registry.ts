@@ -60,6 +60,9 @@ import { purgeContactData } from "./handlers/purge-contact-data.ts";
 import { enforceRetention } from "./handlers/enforce-retention.ts";
 import { recomputeScores } from "./handlers/recompute-scores.ts";
 import { scheduleRecomputes } from "./handlers/schedule-recomputes.ts";
+import { scheduleSignalFetches } from "./handlers/schedule-signal-fetches.ts";
+import { fetchCompanySignals } from "./handlers/fetch-company-signals.ts";
+import { syncHubspot } from "./handlers/sync-hubspot.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -85,4 +88,7 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   enforce_retention: enforceRetention,
   recompute_scores: recomputeScores,
   schedule_recomputes: scheduleRecomputes,
+  schedule_signal_fetches: scheduleSignalFetches,
+  fetch_company_signals: fetchCompanySignals,
+  sync_hubspot: syncHubspot,
 };

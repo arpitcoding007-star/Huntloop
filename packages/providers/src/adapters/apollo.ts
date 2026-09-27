@@ -19,7 +19,7 @@
  * guess into a finding — and the bounce lands on the customer's sending
  * domain, not ours. `providers.ts` made the same call for `people/match` and
  * the reasoning is unchanged; it is restated here because this file now
- * handles four endpoints and the temptation to normalise them together is
+ * handles five endpoints and the temptation to normalise them together is
  * exactly how the distinction gets lost.
  *
  * Only `verified` is trusted. Everything else is `low` and unverified,
@@ -41,6 +41,9 @@ import {
   type Capability,
   type CompanySearchQuery,
   type CompanySearchResult,
+  type CompanySignal,
+  type CompanySignalsQuery,
+  type CompanySignalsResult,
   type PersonMatchQuery,
   type PersonSearchQuery,
   type PersonSearchResult,
@@ -70,6 +73,12 @@ const CREDITS = {
   peopleSearch: 1,
   /** A revealed person costs more, because a contact point is the expensive part. */
   personMatch: 2,
+  /**
+   * Job postings bill per request like organization search, per Apollo's
+   * published documentation for the endpoint. Not reconciled against a real
+   * invoice — same caveat as every other number in this block.
+   */
+  jobPostings: 1,
 } as const;
 
 interface ApolloOrganization {
@@ -107,39 +116,38 @@ interface ApolloPerson {
   phone_numbers?: Array<{ sanitized_number?: string; raw_number?: string }>;
 }
 
+interface ApolloJobPosting {
+  id?: string;
+  title?: string;
+  /** Apollo's own department/category tag. Free text; not normalised further. */
+  department?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  /** The listing itself, when Apollo has one — a real address to cite. */
+  url?: string;
+  posted_at?: string;
+  last_seen_at?: string;
+}
+
 export function apolloAdapter(apiKey: string): ProviderAdapter {
   const capabilities: Capability[] = [
     "company.search",
     "company.enrich",
     "person.search",
     "person.match",
+    "company.signals",
   ];
 
-  async function post<T>(path: string, body: Record<string, unknown>): Promise<{ body: T; status: number }> {
-    let response: Response;
-    try {
-      response = await fetch(`${BASE}${path}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          /* Apollo accepts the key in a header rather than the body. Putting
-             it in the body would put a credential in anything that logs a
-             request payload, which is most things. */
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
-      });
-    } catch (e) {
-      /* Transport. Retryable, and deliberately NOT given an http status —
-         `null` is what distinguishes "never reached them" from "they said
-         something", which the health view reports separately. */
-      throw new ProviderError(NAME, e instanceof Error ? e.message : String(e), {
-        retryable: true,
-      });
-    }
-
+  /**
+   * The status-code policy, shared by every verb.
+   *
+   * Pulled out once `get` existed alongside `post`, so the 429/401/403/5xx
+   * classification — the part that decides what `call.ts` retries — cannot
+   * drift between the two into two slightly different opinions about the
+   * same vendor.
+   */
+  async function classify(response: Response): Promise<void> {
     if (response.status === 429) {
       throw new ProviderError(NAME, "Apollo rate limit reached.", {
         httpStatus: 429,
@@ -172,7 +180,64 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
         retryable: false,
       });
     }
+  }
 
+  async function post<T>(path: string, body: Record<string, unknown>): Promise<{ body: T; status: number }> {
+    let response: Response;
+    try {
+      response = await fetch(`${BASE}${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          /* Apollo accepts the key in a header rather than the body. Putting
+             it in the body would put a credential in anything that logs a
+             request payload, which is most things. */
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      /* Transport. Retryable, and deliberately NOT given an http status —
+         `null` is what distinguishes "never reached them" from "they said
+         something", which the health view reports separately. */
+      throw new ProviderError(NAME, e instanceof Error ? e.message : String(e), {
+        retryable: true,
+      });
+    }
+
+    await classify(response);
+    return { body: (await response.json()) as T, status: response.status };
+  }
+
+  /**
+   * `GET`, for the one Apollo endpoint that is not POST-shaped.
+   *
+   * Job postings is a resource read (`/organizations/{id}/job_postings`), not
+   * a search with a filter body, and Apollo documents it as `GET` — unlike
+   * every other capability this adapter calls, which are POST. Query
+   * parameters are appended rather than sent as a body for the same reason.
+   */
+  async function get<T>(path: string, query: Record<string, string | number>): Promise<{ body: T; status: number }> {
+    const qs = new URLSearchParams(
+      Object.entries(query).map(([k, v]) => [k, String(v)]),
+    ).toString();
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
+        method: "GET",
+        headers: { accept: "application/json", "x-api-key": apiKey },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      throw new ProviderError(NAME, e instanceof Error ? e.message : String(e), {
+        retryable: true,
+      });
+    }
+
+    await classify(response);
     return { body: (await response.json()) as T, status: response.status };
   }
 
@@ -276,6 +341,33 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
       country: person.country?.trim() || null,
       contacts,
       raw: truncate(person),
+    };
+  }
+
+  function toSignal(posting: ApolloJobPosting): CompanySignal | null {
+    const title = posting.title?.trim();
+    /* No title is not a posting worth citing — the same reasoning `toCompany`
+       applies to a missing id: an evidence row that names no title is a
+       claim with nothing to check it against. */
+    if (!title) return null;
+
+    const location = [posting.city, posting.state, posting.country]
+      .map((v) => v?.trim())
+      .filter((v): v is string => Boolean(v))
+      .join(", ") || null;
+
+    return {
+      providerId: posting.id?.trim() || null,
+      kind: "hiring",
+      title,
+      department: posting.department?.trim() || null,
+      location,
+      url: posting.url?.trim() || null,
+      /* Prefer when it was posted; fall back to when Apollo last confirmed it
+         is still live. Both are the provider's own timestamp, never ours —
+         §7's rule applies to a date exactly as much as to a claim. */
+      observedAt: posting.posted_at?.trim() || posting.last_seen_at?.trim() || null,
+      raw: truncate(posting),
     };
   }
 
@@ -445,6 +537,46 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
         data: response.person ? toPerson(response.person) : null,
         credits: CREDITS.personMatch,
         httpStatus: status,
+      };
+    },
+
+    async searchSignals(query: CompanySignalsQuery): Promise<RawCall<CompanySignalsResult>> {
+      if (!query.companyProviderId) {
+        /* Apollo's job-postings resource is scoped to an organization id —
+           unlike company search, it has no domain-lookup form. Refusing here
+           costs nothing; calling with a fabricated id would not. */
+        return { data: { items: [], total: null, cursor: null, partial: false }, credits: 0, httpStatus: null };
+      }
+
+      const perPage = Math.min(Math.max(query.limit, 1), MAX_PAGE);
+      const page = query.cursor ? Number(query.cursor) || 1 : 1;
+
+      const { body: response, status } = await get<{
+        job_postings?: ApolloJobPosting[];
+        pagination?: { total_entries?: number; total_pages?: number };
+      }>(`/organizations/${encodeURIComponent(query.companyProviderId)}/job_postings`, {
+        page,
+        per_page: perPage,
+      });
+
+      const items = (response.job_postings ?? [])
+        .map(toSignal)
+        .filter((s): s is CompanySignal => s !== null);
+
+      const total = response.pagination?.total_entries ?? null;
+      const totalPages = response.pagination?.total_pages ?? null;
+      const hasMore = totalPages !== null ? page < totalPages : items.length === perPage;
+
+      return {
+        data: {
+          items,
+          total,
+          cursor: hasMore ? String(page + 1) : null,
+          partial: hasMore,
+        },
+        credits: CREDITS.jobPostings,
+        httpStatus: status,
+        partial: hasMore,
       };
     },
   };

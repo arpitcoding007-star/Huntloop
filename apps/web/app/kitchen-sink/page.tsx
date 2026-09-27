@@ -14,19 +14,25 @@ import {
   EvidenceList,
   FilterBar,
   Freshness,
+  Menu,
+  Modal,
+  Note,
   PriorityBadge,
   ScorePill,
   SectionLabel,
   StatCard,
   StatGrid,
   StatusDot,
+  useToast,
   type Priority,
   type ScoreDimension,
 } from "@huntloop/ui";
 import {
   CalendarCheck,
   CheckCircle2,
+  Copy,
   Download,
+  MoreHorizontal,
   Inbox,
   MessageSquare,
   Plus,
@@ -335,7 +341,7 @@ export default function KitchenSink() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">
+            <h1 className="hl-heading text-fg">
               Command Center
             </h1>
             <Badge variant="brand" dot>
@@ -365,7 +371,7 @@ export default function KitchenSink() {
           links to a screen reader and move focus nowhere when activated.
           The trailing "→" goes too — it reads as "this navigates". */}
       <div className="mt-6 flex flex-wrap gap-2">
-        <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
+        <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning-text">
           <Zap className="size-3.5" strokeWidth={1.75} />
           9 new triggers in the last 24h
         </span>
@@ -701,6 +707,8 @@ export default function KitchenSink() {
         </Card>
       </section>
 
+      <OverlaysAndFeedback />
+
       <footer className="mt-12 border-t border-line-subtle pt-6 text-[12px] text-fg-muted">
         Huntloop design system · tokens in{" "}
         <span className="font-mono text-fg-secondary">
@@ -713,5 +721,137 @@ export default function KitchenSink() {
         </Link>
       </footer>
     </main>
+  );
+}
+
+/**
+ * Overlays and feedback.
+ *
+ * Its own component rather than more JSX in `KitchenSink`, because these
+ * three need state to demonstrate at all — a modal that is never open and a
+ * menu that never opens are two rectangles.
+ *
+ * They are in the gallery for the same reason everything else is: it is the
+ * page `e2e/a11y.spec.ts` runs axe against, so a component that appears
+ * here is a component whose contrast, labelling and roles are checked on
+ * every run. One that only exists on a screen behind a click is not.
+ */
+function OverlaysAndFeedback() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const { toast } = useToast();
+
+  return (
+    <section className="mt-12">
+      <SectionLabel>Overlays and feedback</SectionLabel>
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <Card flush>
+          <CardHeader
+            title="Notes"
+            description="An inline notice beside content that is there — not a state standing in for content that is not."
+          />
+          <CardBody className="flex flex-col gap-2.5">
+            <Note>
+              Your role is read-only. You can see what your opportunities are
+              scored against, but not change it.
+            </Note>
+            <Note tone="info">
+              Discovery runs once a day. The next pass is scheduled for 06:00.
+            </Note>
+            <Note tone="warning">
+              No model is connected, so drafting and scoring are paused.
+            </Note>
+            <Note tone="danger">
+              The last sync to HubSpot failed. Nothing has been written since.
+            </Note>
+          </CardBody>
+        </Card>
+
+        <Card flush>
+          <CardHeader
+            title="Modal, menu, toast"
+            description="Dismissal, focus and announcement — the three things these get wrong when hand-rolled."
+          />
+          <CardBody className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>
+              Open a modal
+            </Button>
+
+            <Menu
+              linkComponent={Link}
+              items={[
+                { label: "Copy link", icon: Copy, onSelect: () => {} },
+                { label: "Export CSV", icon: Download, onSelect: () => {} },
+                { label: "Open the Command Center", href: "/acme/dashboard" },
+                {
+                  label: "Delete",
+                  icon: Trash2,
+                  tone: "danger",
+                  separated: true,
+                  onSelect: () => {},
+                },
+              ]}
+              trigger={(props) => (
+                <Button variant="secondary" {...props} aria-label="Row actions">
+                  <MoreHorizontal className="size-4" strokeWidth={1.75} />
+                </Button>
+              )}
+            />
+
+            <Button
+              variant="ghost"
+              onClick={() =>
+                toast({
+                  tone: "success",
+                  title: "Opportunity archived",
+                  description: "Alphio AI has moved out of the queue.",
+                  action: { label: "Undo", onClick: () => {} },
+                })
+              }
+            >
+              Confirm something
+            </Button>
+
+            <Button
+              variant="ghost"
+              onClick={() =>
+                toast({
+                  tone: "danger",
+                  title: "Could not reach the model",
+                  description: "Nothing was drafted. Your text is unchanged.",
+                })
+              }
+            >
+              Fail at something
+            </Button>
+          </CardBody>
+        </Card>
+      </div>
+
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Delete this workspace?"
+        description="This cannot be undone."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => setModalOpen(false)}>
+              Delete workspace
+            </Button>
+          </>
+        }
+      >
+        <p>
+          Every opportunity, company, contact and message in this workspace is
+          removed, along with the evidence behind each score. Members lose
+          access immediately.
+        </p>
+        <Note tone="warning" className="mt-4">
+          Exports are not kept. Download anything you need before confirming.
+        </Note>
+      </Modal>
+    </section>
   );
 }

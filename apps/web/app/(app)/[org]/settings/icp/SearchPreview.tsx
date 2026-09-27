@@ -56,7 +56,7 @@ export function SearchPreview({ preview }: { preview: DiscoveryPreview | null })
             an expansion nobody can see is one nobody can disagree with. */}
         {preview.addedByExamples.length > 0 && (
           <div className="border-t border-line-subtle pt-3">
-            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Added from your example companies
             </p>
             <ul className="mt-2 space-y-1">
@@ -72,7 +72,7 @@ export function SearchPreview({ preview }: { preview: DiscoveryPreview | null })
 
         {preview.unmapped.length > 0 && (
           <div className="border-t border-line-subtle pt-3">
-            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Not searchable directly
             </p>
             <ul className="mt-2 space-y-1.5">

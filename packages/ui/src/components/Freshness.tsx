@@ -86,7 +86,7 @@ export function Freshness({ date, now, label, className }: FreshnessProps) {
         {elapsedLabel(days)}
       </time>
       {band === "stale" && (
-        <span className="rounded-sm border border-line px-1 text-[10px] tracking-[0.06em] uppercase">
+        <span className="rounded-sm border border-line px-1 text-[10px] tracking-label uppercase">
           Stale
         </span>
       )}

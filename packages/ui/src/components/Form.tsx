@@ -70,7 +70,7 @@ export function Field({
     <div className={className}>
       <label
         htmlFor={id}
-        className="block text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase"
+        className="block text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase"
       >
         {label}
         {required && (
@@ -103,9 +103,26 @@ export function Field({
   );
 }
 
+/*
+ * One control surface, four controls.
+ *
+ * `bg-panel` rather than `bg-surface`: a form sits inside a Card, which is
+ * already `--hl-surface`, and an input painted the same value as the card
+ * behind it is a rectangle defined entirely by its 1px border. Dropping the
+ * field one step down the ramp makes it read as a well — the thing you type
+ * into — in both themes, and it is the reason the light theme's white cards
+ * now have visibly recessed fields rather than outlined ones.
+ *
+ * The hover border and the transition are not decoration. A 1px hairline at
+ * rest is quiet by design, and `hover:border-line-strong` is what tells a
+ * pointer user the quiet rectangle is live before they commit a click.
+ */
 const CONTROL =
-  "hl-focusable mt-1.5 w-full rounded-md border border-line bg-surface px-3 text-[14px] text-fg placeholder:text-fg-muted " +
-  "disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger-border";
+  "hl-focusable mt-1.5 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted " +
+  "transition-[border-color,background-color,box-shadow] duration-[120ms] ease-out-hl " +
+  "hover:border-line-strong focus:bg-surface " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-line " +
+  "aria-[invalid=true]:border-danger-border aria-[invalid=true]:hover:border-danger";
 
 export function Input({
   className,
@@ -128,13 +145,33 @@ export function Textarea({
   );
 }
 
+/*
+ * The disclosure chevron, as a background image.
+ *
+ * `appearance-none` removes the platform's own arrow, which is the only way
+ * to stop a <select> looking like a different control from every <input>
+ * beside it — on Windows it renders a grey square button, on macOS a blue
+ * one. What replaces it has to be drawn by CSS rather than by a sibling
+ * element, because a <select> cannot contain one and an absolutely
+ * positioned overlay would swallow the click that opens the menu.
+ *
+ * `currentColor` in the data URI would be ideal and does not work — an SVG
+ * loaded as an image has no access to the document's computed colour. So the
+ * stroke is `--hl-text-muted`, read through a CSS variable at paint time,
+ * which does follow the theme. The URI is single-quoted so the inner
+ * attribute quotes survive.
+ */
+const SELECT_CHEVRON =
+  "appearance-none bg-[length:16px] bg-[right_0.625rem_center] bg-no-repeat " +
+  "bg-[image:var(--hl-select-chevron)]";
+
 export function Select({
   className,
   children,
   ...rest
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...rest} className={cn(CONTROL, "h-10 pr-8", className)}>
+    <select {...rest} className={cn(CONTROL, "h-10 pr-9", SELECT_CHEVRON, className)}>
       {children}
     </select>
   );
@@ -192,8 +229,8 @@ export function FormMessage({
       className={cn(
         "rounded-md border px-3 py-2 text-[13px]",
         good
-          ? "border-success-border bg-success-surface text-success"
-          : "border-danger-border bg-danger-surface text-danger",
+          ? "border-success-border bg-success-surface text-success-text"
+          : "border-danger-border bg-danger-surface text-danger-text",
         className,
       )}
     >

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { legalIsComplete } from "../lib/legal";
 import { siteUrl } from "../lib/site-url";
 
 /**
@@ -24,6 +25,10 @@ import { siteUrl } from "../lib/site-url";
  * wildcard-segment rule in the disallow list below instead. That rule is broad
  * on purpose: a new tenant route added later is disallowed by default, which
  * is the correct direction for a mistake to fail in.
+ *
+ * The public marketing prefixes are opened back up explicitly against that
+ * wildcard — see the note on the `allow` list, which is the whole reason it
+ * has five entries rather than three.
  */
 /**
  * Opts back out of the root layout's `force-dynamic`.
@@ -42,8 +47,47 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/$", "/login", "/signup"],
-        disallow: ["/kitchen-sink", "/auth/", "/welcome", "/*/"],
+        // `/for/` and `/compare/` are listed here because of the
+        // wildcard-segment rule below, not in spite of it.
+        //
+        // That rule matches any path with a second segment, which is every
+        // tenant route — and was also every marketing page. The eight URLs
+        // `sitemap.ts` submits (four use cases, four comparisons, both
+        // enumerated from the same lists that render them, both linked from
+        // the landing page footer) were all disallowed by it. The site was
+        // asking to be indexed and refusing to be crawled in one breath.
+        //
+        // Robots.txt resolves a conflict by the length of the rule's path,
+        // so `/for/` (5) and `/compare/` (9) beat the wildcard (3), and the
+        // two prefixes become crawlable while everything else with a second
+        // segment stays shut. That keeps the property the wildcard was
+        // written for: a tenant route added later is disallowed by default,
+        // because opening a prefix is now an explicit line in this file.
+        //
+        // Checked by SEO-AGREE in scripts/audit.mjs, which fails the build
+        // if the two files disagree again.
+        allow: [
+          "/$",
+          "/login",
+          "/signup",
+          "/for/",
+          "/compare/",
+          /* The legal pages, once they are actually in force. While any fact
+             in `lib/legal.ts` is still PENDING they stay out of the index —
+             a draft policy that a search engine has cached and is serving to
+             somebody looking for our privacy terms is the one way a
+             deliberately-unpublished document still gets published. Each
+             page carries `robots: noindex` as well, for crawlers that read
+             the page rather than this file. */
+          ...(legalIsComplete() ? ["/privacy", "/terms", "/acceptable-use"] : []),
+        ],
+        disallow: [
+          "/kitchen-sink",
+          "/auth/",
+          "/welcome",
+          "/*/",
+          ...(legalIsComplete() ? [] : ["/privacy", "/terms", "/acceptable-use"]),
+        ],
       },
     ],
     sitemap: new URL("/sitemap.xml", base).toString(),

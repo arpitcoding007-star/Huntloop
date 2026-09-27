@@ -65,7 +65,7 @@ export function YouForm({
       <div className="max-w-md">
         <label
           htmlFor="fullName"
-          className="block text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase"
+          className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
         >
           Your name
         </label>
@@ -82,7 +82,7 @@ export function YouForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alex Rivera"
-          className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-surface px-3 text-[14px] text-fg placeholder:text-fg-muted"
+          className="hl-focusable mt-1.5 h-10 w-full rounded-md border border-line bg-panel px-3 text-[14px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
         />
         {initialName && (
           <p className="mt-1.5 text-[12px] text-fg-muted">
@@ -97,7 +97,7 @@ export function YouForm({
       </div>
 
       <fieldset>
-        <legend className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+        <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
           What do you do?
         </legend>
         <p className="mt-1 text-[13px] text-fg-muted">

@@ -58,13 +58,13 @@ export function PriorityBadge({
       width={224}
       triggerClassName={cn(
         "inline-flex items-center gap-1.5 rounded-sm border",
-        "font-semibold tracking-[0.06em] whitespace-nowrap uppercase",
+        "font-semibold tracking-label whitespace-nowrap uppercase",
         size === "sm" ? "h-[18px] px-1.5 text-[10px]" : "h-[22px] px-2 text-[11px]",
         STYLES[priority],
       )}
       panel={
         <>
-          <span className="block text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <span className="block text-[11px] font-medium tracking-label text-fg-muted uppercase">
             {priority}
           </span>
           <span className="mt-1.5 block text-[12px] leading-[1.5] text-fg-secondary">
@@ -81,7 +81,11 @@ export function PriorityBadge({
         className={cn(
           "size-1.5 shrink-0 rounded-full",
           priority === "ignore" ? "border border-current" : DOTS[priority],
-          priority === "watch" && "opacity-70",
+          /* 80, not 70. The dot is meaningful non-text — the comment above
+             is explicit that it carries the ranking without the word — so
+             WCAG 1.4.11's 3:1 applies to it. At 70% it measured 2.92:1 on
+             the light theme's info surface, just under. 80% gives 3.49. */
+          priority === "watch" && "opacity-80",
         )}
       />
       {priority}

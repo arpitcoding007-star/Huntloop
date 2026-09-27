@@ -148,7 +148,7 @@ export function SourcesStep({ org }: { org: string }) {
   if (phase === "no-icp") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Where should we look?
         </h1>
         <EmptyState
@@ -172,7 +172,7 @@ export function SourcesStep({ org }: { org: string }) {
   if (phase === "loading") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Finding where your buyers show up…
         </h1>
         <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -186,7 +186,7 @@ export function SourcesStep({ org }: { org: string }) {
   if (phase === "error") {
     return (
       <>
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Where should we look?
         </h1>
         {/* No fallback list. A plausible-looking set of publication names
@@ -227,7 +227,7 @@ export function SourcesStep({ org }: { org: string }) {
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         Where should we look?
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
@@ -279,7 +279,7 @@ export function SourcesStep({ org }: { org: string }) {
                   return (
                     <li
                       key={key}
-                      className="flex flex-wrap items-center gap-3 rounded-md border border-line-subtle bg-surface px-3 py-2.5"
+                      className="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-surface px-3 py-2.5"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -370,7 +370,7 @@ export function SourcesStep({ org }: { org: string }) {
                 aria-label="Add your own source"
                 placeholder="https://example.com/blog"
                 maxLength={2048}
-                className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 text-[13px] text-fg placeholder:text-fg-muted"
+                className="hl-focusable h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg placeholder:text-fg-muted transition-[border-color,background-color] duration-[120ms] ease-out-hl hover:border-line-strong focus:bg-surface"
               />
               <Button type="submit" size="sm" variant="secondary" icon={Plus}>
                 Add

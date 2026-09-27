@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
+import { getShellChrome } from "../../../lib/data/chrome";
 import { resolveDataSource } from "../../../lib/data/source";
 import { currentViewer } from "../../../lib/data/membership";
 import { DataSourceBanner } from "./DataSourceBanner";
@@ -52,8 +53,15 @@ export default async function OrgLayout({
      Center. It returns null once there is nothing left to finish. */
   const onboarding = await getOnboardingState(org);
 
+  /* The workspace name, the plan, the opportunity count and the signed-in
+     person — everything the sidebar's header and footer state as fact.
+     Loaded here rather than inside OrgShell because OrgShell is a Client
+     Component (it owns the collapse and drawer state and builds the icon
+     list, which cannot cross the boundary as props). */
+  const chrome = await getShellChrome(org);
+
   return (
-    <OrgShell org={org}>
+    <OrgShell org={org} chrome={chrome}>
       <DataSourceBanner source={source} />
       {onboarding && <SetupCard state={onboarding} />}
       {children}

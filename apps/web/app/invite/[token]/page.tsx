@@ -87,7 +87,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
           </span>
           <span className="text-[15px] font-semibold text-fg">Huntloop</span>
         </div>
-        <h1 className="text-[24px] leading-8 font-semibold text-fg">{title}</h1>
+        <h1 className="hl-title text-fg">{title}</h1>
         <div className="mt-4 space-y-4">{children}</div>
       </div>
     </div>

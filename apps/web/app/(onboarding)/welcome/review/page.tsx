@@ -64,7 +64,7 @@ export default async function ReviewPage({
 
   return (
     <>
-      <h1 className="text-[26px] leading-8 font-semibold text-fg">
+      <h1 className="hl-title text-fg">
         {top.length > 0
           ? "Here's who to pursue next"
           : "Your workspace is set up"}
@@ -125,7 +125,7 @@ export default async function ReviewPage({
                     the difference between news and an anniversary. */}
                 {o.trigger && (
                   <div>
-                    <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                    <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                       Why now
                     </p>
                     <p className="mt-1 text-[13px] leading-[1.6] text-fg-secondary">
@@ -138,7 +138,7 @@ export default async function ReviewPage({
                     the score — a number repeated in words explains nothing. */}
                 {o.priorityReason && (
                   <div>
-                    <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                    <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                       Why a fit
                     </p>
                     <p className="mt-1 text-[13px] leading-[1.6] text-fg-secondary">
@@ -181,7 +181,7 @@ export default async function ReviewPage({
           proposals sitting in a settings page they have no reason to open.
           Saying it here, once, is the whole of the handover. */}
       {rules.proposed.length > 0 && (
-        <div className="mt-6 max-w-2xl rounded-md border border-line-subtle bg-panel p-4">
+        <div className="mt-6 max-w-2xl rounded-lg border border-line-subtle bg-panel p-4">
           <p className="text-[13px] leading-[1.6] text-fg-secondary">
             <span className="font-medium text-fg">
               We also drafted {rules.proposed.length} scoring{" "}

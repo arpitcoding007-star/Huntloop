@@ -1,4 +1,28 @@
-# Operations
+---
+description: >-
+  The original operations runbook — deployment, backup, recovery, schema drift,
+  and the API-surface decision. Preserved with its reasoning intact.
+---
+
+# Operations runbook
+
+{% hint style="warning" %}
+**Two sections of this page are superseded.** The rest is current and its
+reasoning is worth reading in full.
+
+1. **"Why there is no `vercel.json` fixing this"** and **"What drives the tick,
+   and why no cron is committed"** — written when the cron file had been removed
+   after a Hobby-plan deploy failure. **`apps/web/vercel.json` now exists** and
+   commits a one-minute cron. The argument about Hobby limits and about why a
+   daily cron would be a lie remains correct; only the statement that no file
+   exists is out of date. See [The heartbeat](operations/heartbeat.md).
+2. The **DB-02 backup** section still carries *"Status: not yet verified."* That
+   is still true as of 2026-09-16. A restore has never been rehearsed.
+
+Every other claim here was re-checked on 2026-09-16 and holds. See
+[Documentation vs. code](status/doc-vs-code.md) for the full list of
+discrepancies found across the repository.
+{% endhint %}
 
 Deployment, backup, recovery, schema drift, and the API-surface decision.
 Written because each of these is cheap to decide now and expensive to discover

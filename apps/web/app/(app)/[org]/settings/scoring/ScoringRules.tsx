@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmButton,
   EmptyState,
   Field,
   FormMessage,
@@ -312,13 +313,12 @@ function RuleCard({
             <Button size="sm" variant="ghost" onClick={onEdit} disabled={pending}>
               Edit
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmButton
               icon={Trash2}
-              aria-label={`Remove ${rule.name}`}
-              disabled={pending}
-              onClick={() =>
+              label={`Remove ${rule.name}`}
+              confirmLabel="Remove it"
+              pending={pending}
+              onConfirm={() =>
                 start(async () => {
                   const res = await deleteRuleAction(org, rule.id);
                   onResult(
@@ -460,8 +460,8 @@ function RuleForm({
         </Field>
 
         {nested ? (
-          <div className="rounded-md border border-line-subtle bg-surface px-3 py-2">
-            <p className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+          <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2">
+            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
               Condition
             </p>
             <p className="mt-1 text-[13px] text-fg">{rule?.summary}</p>

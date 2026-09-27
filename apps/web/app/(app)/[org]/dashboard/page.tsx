@@ -261,7 +261,7 @@ export default async function DashboardPage({
                   <div className="px-5 pt-3 pb-4">
                     <details className="group">
                       <summary className="hl-focusable inline-flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary">
-                        <span className="text-[11px] tracking-[0.06em] uppercase">
+                        <span className="text-[11px] tracking-label uppercase">
                           Evidence ({o.evidence.length})
                         </span>
                         <span aria-hidden className="group-open:hidden">
@@ -429,7 +429,7 @@ export default async function DashboardPage({
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="font-display text-[30px] leading-9 font-semibold text-fg">
+              <h1 className="hl-heading text-fg">
                 Command Center
               </h1>
               {/* No "Live" badge. It described the hunt, not the data, and
@@ -490,7 +490,7 @@ export default async function DashboardPage({
         */}
         <div className="mt-6 flex flex-wrap gap-2">
           {data.triggersLastDay > 0 && (
-            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning">
+            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-warning-border bg-warning-surface px-3 text-[13px] text-warning-text">
               <Zap className="size-3.5" strokeWidth={1.75} />
               {data.triggersLastDay} new{" "}
               {data.triggersLastDay === 1 ? "trigger" : "triggers"} in the last 24h

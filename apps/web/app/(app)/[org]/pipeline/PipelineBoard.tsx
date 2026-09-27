@@ -7,6 +7,7 @@ import {
   Card,
   FormMessage,
   PriorityBadge,
+  ScrollRegion,
   Select,
   type Priority,
 } from "@huntloop/ui";
@@ -118,14 +119,14 @@ export function PipelineBoard({
         viewport projects — which is what turns this from a comment into
         something that stays true. It was the mobile project that caught it.
       */}
-      <div className="relative overflow-x-auto pb-4">
+      <ScrollRegion label="Pipeline stages" className="relative pb-4">
         <div className="flex min-w-max gap-3">
           {[...STAGES, { key: "closed", label: "Closed" } as const].map((stage) => {
             const cards = columns.get(stage.key) ?? [];
             return (
               <section key={stage.key} className="w-[260px] shrink-0">
                 <header className="flex items-center justify-between px-1 pb-2">
-                  <h2 className="text-[11px] font-medium tracking-[0.06em] text-fg-muted uppercase">
+                  <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                     {stage.label}
                   </h2>
                   <span className="font-mono text-[12px] text-fg-muted">{cards.length}</span>
@@ -152,7 +153,7 @@ export function PipelineBoard({
             );
           })}
         </div>
-      </div>
+      </ScrollRegion>
     </div>
   );
 }

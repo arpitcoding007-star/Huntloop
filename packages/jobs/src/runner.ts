@@ -194,6 +194,14 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
      the claim (`for update skip locked`, one live request per profile) and in
      the per-org AI budget every child score asks for itself. */
   "schedule_recomputes",
+  /* The signal capability. Same shape as `schedule_discovery` — cross-tenant,
+     spends real credits, and its own guard (the 48-hour staleness check in
+     `schedule_signal_fetches` itself, plus `MAX_PER_TICK`) is what makes
+     listing it here safe rather than a way to spend a month's budget in one
+     sweep. Without this line the handler and its adapter are real and tested
+     but nothing ever calls them — exactly the silent gap `sweep()`'s own
+     header warns a missing entry here produces. */
+  "schedule_signal_fetches",
 ]);
 
 /**

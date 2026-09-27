@@ -1,0 +1,17 @@
+# GitBook sync configuration.
+#
+# GitBook reads this file from the repository root and treats `docs/` as the
+# book. `structure.summary` names the table of contents; every page in the
+# book must appear there or GitBook will not render it in the sidebar.
+#
+# The README at the docs root is the book's landing page, NOT the repository
+# README — those are two different audiences and are deliberately kept
+# separate. See docs/meta-documentation-conventions.
+root: ./docs/
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+redirects:
+  operations: OPERATIONS.md

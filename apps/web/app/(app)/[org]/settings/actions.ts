@@ -23,9 +23,30 @@ import { orgProfileSchema, orgSettingsSchema, parseForm } from "../../../../lib/
  * fixed rather than offering an input that quietly does the wrong thing.
  */
 
+/**
+ * ── Why three unrelated-looking fields share one action ──────────────────
+ *
+ * Name, postal address and retention window are one form because they are one
+ * question: what is this organisation, and how does it behave towards data
+ * about other people. Two of the three were promises the product made in
+ * public and had no way to keep — the landing page says contact data has "a
+ * retention window you set" while `contact_retention_days` had no writer
+ * anywhere in `apps/web`, and every outbound email is legally required to
+ * carry a postal address that nothing could store.
+ *
+ * The address lives in `settings` and the retention window in its own column,
+ * which is not an inconsistency: `contact_retention_days` was already a
+ * column with a CHECK constraint and SQL readers in `0017`, and moving it
+ * would break them. New configuration read once per message and never queried
+ * goes in the profile, per `saveOrgProfileAction` below.
+ */
 export async function saveOrgSettingsAction(
   org: string,
-  input: { name: string },
+  input: {
+    name: string;
+    postalAddress: string | null;
+    contactRetentionDays: number | null;
+  },
 ): Promise<ActionResult<{ name: string }>> {
   const parsed = parseForm(orgSettingsSchema, input);
   if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
@@ -35,19 +56,39 @@ export async function saveOrgSettingsAction(
     org,
     "saveOrgSettings",
     async ({ db, orgId }) => {
+      /* Read-modify-write on `settings` for the same reason
+         `saveOrgProfileAction` does it: the profile parser is the single
+         definition of what the column holds, and a blind write would drop
+         the voice block this form does not edit. */
+      const { data: current, error: readError } = await db
+        .from("organizations")
+        .select("settings")
+        .eq("id", orgId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (readError) return fail(`Those settings could not be read: ${readError.message}`);
+
+      const profile = parseOrgProfile(current?.settings);
+      profile.compliance.postalAddress = value.postalAddress?.trim() || null;
+
       const { error } = await db
         .from("organizations")
-        .update({ name: value.name })
+        .update({
+          name: value.name,
+          settings: serializeOrgProfile(profile),
+          contact_retention_days: value.contactRetentionDays,
+        })
         .eq("id", orgId)
         .is("deleted_at", null);
 
-      if (error) return fail(`That name could not be saved: ${error.message}`);
+      if (error) return fail(`Those settings could not be saved: ${error.message}`);
 
       /* "layout" rather than the settings page alone: the org name is in the
          topbar breadcrumb on every screen, so a page-scoped revalidate would
          leave the old name above the form that just changed it. */
       revalidatePath(`/${org}`, "layout");
-      return ok({ name: value.name }, "Organisation name saved.");
+      return ok({ name: value.name }, "Organisation settings saved.");
     },
     { minRole: "admin" },
   );

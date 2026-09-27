@@ -82,7 +82,7 @@ export default async function OrgsPage() {
       </header>
 
       <div className="mx-auto max-w-[720px] px-6 py-10">
-        <h1 className="text-[26px] leading-8 font-semibold text-fg">
+        <h1 className="hl-title text-fg">
           Which workspace?
         </h1>
         <p className="mt-1.5 text-[14px] leading-[1.6] text-fg-muted">

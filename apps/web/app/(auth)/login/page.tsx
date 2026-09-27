@@ -20,7 +20,7 @@ export default async function LoginPage({
 
   return (
     <>
-      <h1 className="text-[24px] leading-8 font-semibold text-fg">Sign in</h1>
+      <h1 className="hl-title text-fg">Sign in</h1>
       <p className="mt-1.5 mb-6 text-[13px] text-fg-muted">
         Know who needs you before you reach out.
       </p>

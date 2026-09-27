@@ -37,7 +37,7 @@ export default async function UnsubscribePage({
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[520px] flex-col justify-center px-6 py-16">
-      <h1 className="text-[24px] leading-8 font-semibold text-fg">Unsubscribe</h1>
+      <h1 className="hl-title text-fg">Unsubscribe</h1>
       <p className="mt-2 text-[14px] leading-[1.6] text-fg-secondary">
         Confirm below and this sender will stop emailing you. This also stops any
         follow-up messages already scheduled.

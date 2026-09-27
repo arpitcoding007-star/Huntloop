@@ -8,8 +8,9 @@ import {
   CardBody,
   CardHeader,
   EmptyState,
-  Freshness,
   FormMessage,
+  Freshness,
+  ScrollRegion,
   SectionLabel,
   StatCard,
   StatGrid,
@@ -69,7 +70,7 @@ export function OpsBoard({
   return (
     <div className="space-y-8 p-6 lg:p-8">
       <header>
-        <h1 className="text-[24px] leading-8 font-semibold text-fg">Engine</h1>
+        <h1 className="hl-heading text-fg">Engine</h1>
         <p className="mt-1.5 max-w-[70ch] text-[13px] text-fg-muted">
           Every piece of work this product does is a job. This is what is
           waiting, what is running, and what has been given up on — which is the
@@ -188,7 +189,7 @@ export function OpsBoard({
               healthy; a small one that is hours behind is not.
             </p>
 
-            <div className="mt-3 overflow-x-auto">
+            <ScrollRegion label="Recent job executions" className="mt-3">
               <table className="w-full min-w-[520px] text-[13px]">
                 <thead>
                   <tr className="border-b border-line text-left text-[11px] tracking-wide text-fg-muted uppercase">
@@ -221,7 +222,7 @@ export function OpsBoard({
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           </section>
 
           {snapshot.pressure?.shareOfQueue !== null &&

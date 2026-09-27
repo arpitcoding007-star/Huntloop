@@ -349,7 +349,11 @@ describe("mapDetail", () => {
     ...over,
   });
 
+  let personSeq = 0;
   const person = (over: Partial<DetailQueryRow["companies"]["people"][number]> = {}) => ({
+    /* Distinct per call, because the buyer list is now keyed on it: two
+       people sharing an id would silently collapse into one ranked row. */
+    id: `p-${(personSeq += 1)}`,
     first_name: "Dana",
     last_name: "Okonkwo",
     title: "CTO",
@@ -461,6 +465,65 @@ describe("mapDetail", () => {
     );
 
     expect(mapped.buyers[0]?.name).toBe("Dana Okonkwo");
+  });
+
+  it("ranks by the score the ranker produced, not by the decision-maker flag", () => {
+    // `0016`'s whole argument: a boolean cannot rank two people who are both
+    // true, and cannot say why either is there. The flag now only breaks ties.
+    const flagged = person({ first_name: "Marta", is_decision_maker: true });
+    const scored = person({ first_name: "Dana", is_decision_maker: false });
+
+    const mapped = mapDetail(
+      detail({ companies: { ...detail().companies, people: [flagged, scored] } }),
+      [],
+      null,
+      new Map([[scored.id, { score: 88, explanation: "Owns the budget line this touches." }]]),
+    );
+
+    expect(mapped.buyers[0]?.name).toBe("Dana Okonkwo");
+    expect(mapped.buyers[0]?.fitScore).toBe(88);
+    expect(mapped.buyers[0]?.fitReason).toBe("Owns the budget line this touches.");
+  });
+
+  it("sorts an unranked person last rather than treating them as a zero", () => {
+    // The two are different facts: zero means the ranker looked and found
+    // nobody worth contacting, null means it has not run. A null rendered as
+    // 0 would also sort a real low score above an unknown one, which reverses
+    // the honest order.
+    const unranked = person({ first_name: "Marta" });
+    const low = person({ first_name: "Dana" });
+
+    const mapped = mapDetail(
+      detail({ companies: { ...detail().companies, people: [unranked, low] } }),
+      [],
+      null,
+      new Map([[low.id, { score: 4, explanation: null }]]),
+    );
+
+    expect(mapped.buyers.map((b) => b.name)).toEqual(["Dana Okonkwo", "Marta Okonkwo"]);
+    expect(mapped.buyers[1]?.fitScore).toBeNull();
+  });
+
+  it("falls back to the old ordering when nothing has been ranked", () => {
+    // A company whose contacts arrived before the ranker ran is the common
+    // case on day one, and it must not lose the ordering it already had.
+    const mapped = mapDetail(
+      detail({
+        companies: {
+          ...detail().companies,
+          people: [
+            person({ first_name: "Marta", is_decision_maker: false }),
+            person({ first_name: "Dana", is_decision_maker: true }),
+          ],
+        },
+      }),
+      [],
+      null,
+      new Map(),
+    );
+
+    expect(mapped.buyers[0]?.name).toBe("Dana Okonkwo");
+    expect(mapped.buyers.every((b) => b.fitScore === null)).toBe(true);
   });
 
   it("names no colleague — an owner is 'You' or nobody in particular", () => {

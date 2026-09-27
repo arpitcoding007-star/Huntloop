@@ -57,20 +57,66 @@ export interface OrgEngineSettings {
   backlogCap: number | null;
 }
 
+/**
+ * Facts about the sender that the law requires every message to carry.
+ *
+ * ── Why the postal address lives here ────────────────────────────────────
+ *
+ * CAN-SPAM §7704(a)(5) requires a valid physical postal address in every
+ * commercial email; CASL requires the sender's mailing address alongside
+ * identification. `send_message` appended an unsubscribe line and nothing
+ * else, and no column anywhere in the schema could have held an address even
+ * if the footer had wanted one — so every message this product sent was
+ * missing a mandatory element, and the gap was in the data model rather than
+ * in the template.
+ *
+ * It sits in `settings` for exactly the reason `saveOrgProfileAction` gives
+ * for the voice block: it is read once per message and never queried, and a
+ * new column on the tenant root for that is the worse trade.
+ *
+ * Free text, and a single string rather than parsed lines, because postal
+ * formats are not a schema. Twelve countries order the parts differently and
+ * a structured address form would be wrong in most of them. The only rule
+ * enforced is that it is long enough to plausibly be an address, which is the
+ * most a validator can honestly assert about one.
+ */
+export interface OrgComplianceSettings {
+  /**
+   * The sender's physical postal address, rendered into every outbound
+   * message footer. Null means not configured, and `send_message` refuses to
+   * send rather than sending without it.
+   */
+  postalAddress: string | null;
+}
+
 export interface OrgProfile {
   voice: OrgVoice;
   engine: OrgEngineSettings;
+  compliance: OrgComplianceSettings;
 }
 
 export const EMPTY_ORG_PROFILE: OrgProfile = {
   voice: { tone: null, competitors: [], targetRegions: [] },
   engine: { backlogCap: null },
+  compliance: { postalAddress: null },
 };
+
+/**
+ * The shortest string this will accept as a postal address.
+ *
+ * Deliberately crude. A validator cannot tell a real address from a plausible
+ * one, and pretending otherwise would reject valid addresses in formats
+ * nobody here anticipated. What it can do is catch the empty string and the
+ * single word, which are the two ways this field gets filled in to make a
+ * form stop complaining.
+ */
+export const MIN_POSTAL_ADDRESS_LENGTH = 10;
 
 export function parseOrgProfile(settings: unknown): OrgProfile {
   const root = object(settings);
   const voice = object(root.voice);
   const engine = object(root.engine);
+  const compliance = object(root.compliance);
 
   const tone = typeof voice.tone === "string" && isOrgTone(voice.tone) ? voice.tone : null;
 
@@ -81,6 +127,7 @@ export function parseOrgProfile(settings: unknown): OrgProfile {
       targetRegions: strings(voice.targetRegions),
     },
     engine: { backlogCap: cap(engine.backlogCap) },
+    compliance: { postalAddress: address(compliance.postalAddress) },
   };
 }
 
@@ -103,9 +150,15 @@ export function serializeOrgProfile(profile: OrgProfile): Record<string, unknown
   const engine: Record<string, unknown> = {};
   if (profile.engine.backlogCap !== null) engine.backlogCap = profile.engine.backlogCap;
 
+  const compliance: Record<string, unknown> = {};
+  if (profile.compliance.postalAddress) {
+    compliance.postalAddress = profile.compliance.postalAddress;
+  }
+
   const out: Record<string, unknown> = {};
   if (Object.keys(voice).length) out.voice = voice;
   if (Object.keys(engine).length) out.engine = engine;
+  if (Object.keys(compliance).length) out.compliance = compliance;
   return out;
 }
 
@@ -181,6 +234,25 @@ function strings(value: unknown): string[] {
     out.push(s);
   }
   return out.slice(0, 20);
+}
+
+/**
+ * A postal address, or null.
+ *
+ * Whitespace is collapsed but newlines are kept: an address is a block, and
+ * flattening it to one line would make the footer read as a run-on. Anything
+ * shorter than `MIN_POSTAL_ADDRESS_LENGTH` after trimming is treated as
+ * absent rather than as a short address, so a stray character cannot satisfy
+ * the send precondition.
+ */
+function address(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+  return trimmed.length >= MIN_POSTAL_ADDRESS_LENGTH ? trimmed.slice(0, 500) : null;
 }
 
 function cap(value: unknown): number | null {

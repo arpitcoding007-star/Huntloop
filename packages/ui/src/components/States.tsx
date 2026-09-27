@@ -48,8 +48,8 @@ function StateFrame({
       <span
         className={cn(
           "flex size-10 items-center justify-center rounded-md",
-          tone === "danger" && "bg-danger-surface text-danger",
-          tone === "warning" && "bg-warning-surface text-warning",
+          tone === "danger" && "bg-danger-surface text-danger-text",
+          tone === "warning" && "bg-warning-surface text-warning-text",
           tone === "neutral" && "bg-surface-active text-fg-secondary",
         )}
       >
