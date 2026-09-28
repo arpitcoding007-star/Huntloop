@@ -144,6 +144,7 @@ export interface WorkspaceResult {
  */
 export async function createWorkspace(
   website: string,
+  preferredSlug?: string,
 ): Promise<ActionResult<WorkspaceResult>> {
   const target = parseInput(urlInputSchema, website, "address");
   if (!target.ok) return fail(target.error);
@@ -153,9 +154,64 @@ export async function createWorkspace(
     return fail("That doesn't look like a website address.");
   }
 
-  const base = slugify(rootLabel(domain) ?? domain);
+  return provision({ name: rootLabel(domain) ?? domain, domain, preferredSlug });
+}
+
+/**
+ * A workspace for a company described by hand — no website required.
+ *
+ * The "describe it yourself" path: pre-launch, stealth, or a site that says
+ * too little to read. The address comes from the website when one was given
+ * (it is what the user would have typed) and from the name otherwise.
+ */
+export async function createNamedWorkspace(
+  name: string,
+  website?: string,
+  preferredSlug?: string,
+): Promise<ActionResult<WorkspaceResult>> {
+  const trimmed = name.trim().slice(0, 200);
+  if (!trimmed) return fail("What's the company called?");
+
+  let domain: string | null = null;
+  if (website?.trim()) {
+    domain = canonicalizeDomain(website.trim());
+    if (!domain) return fail("That doesn't look like a website address.");
+  }
+
+  return provision({ name: trimmed, domain, preferredSlug });
+}
+
+/**
+ * The shared half: pick a slug, create the org and its owner membership.
+ *
+ * A slug the user typed is honoured exactly or refused — silently suffixing a
+ * name somebody chose on purpose would hand them an address they never saw.
+ * A derived slug keeps the silent suffix loop described above.
+ */
+async function provision({
+  name,
+  domain,
+  preferredSlug,
+}: {
+  name: string;
+  domain: string | null;
+  preferredSlug?: string;
+}): Promise<ActionResult<WorkspaceResult>> {
+  let chosen: string | null = null;
+  if (preferredSlug?.trim()) {
+    const parsed = parseInput(orgSlugSchema, preferredSlug.trim(), "workspace address");
+    if (!parsed.ok) {
+      return fail("Use lowercase letters, numbers and single hyphens for the workspace address.");
+    }
+    if (RESERVED_SLUGS.has(parsed.value)) {
+      return fail("That workspace address is reserved. Try another.");
+    }
+    chosen = parsed.value;
+  }
+
+  const base = chosen ?? slugify(domain ? (rootLabel(domain) ?? domain) : name);
   if (!base) {
-    return fail("We couldn't build a workspace name from that address.");
+    return fail("We couldn't build a workspace address from that. Type one below.");
   }
 
   const { db } = await resolveDataSource();
@@ -170,15 +226,17 @@ export async function createWorkspace(
   const { data: auth } = await db.auth.getUser();
   if (!auth.user) return fail("Your session expired. Sign in again.");
 
-
-  /* Already got one for this domain? Re-running step two must not create a
+  /* Already got one for this address? Re-running step two must not create a
      second workspace — which is what a refresh on this screen would otherwise
      do, and the user would never find out until they had two. */
   const memberships = await listMemberships();
-  const owned = memberships?.find((m) => m.slug === base || m.slug.startsWith(`${base}-`));
+  const owned = memberships?.find((m) =>
+    chosen ? m.slug === chosen : m.slug === base || m.slug.startsWith(`${base}-`),
+  );
   if (owned) return ok({ slug: owned.slug });
 
-  for (let attempt = 0; attempt < 12; attempt++) {
+  const attempts = chosen ? 1 : 12;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
     if (RESERVED_SLUGS.has(slug)) continue;
 
@@ -187,16 +245,18 @@ export async function createWorkspace(
        allow — no insert policy on organizations, and membership_write wants
        an admin of an org that does not exist yet. See migration 0030. */
     const { data: orgId, error } = await db.rpc("create_organization", {
-      p_name: rootLabel(domain) ?? domain,
+      p_name: name,
       p_slug: slug,
       p_domain: domain,
     });
 
     if (error) {
       // 23505 is unique_violation — the slug is taken by someone else's
-      // workspace. Try the next suffix rather than telling the user their
-      // company's domain is unavailable.
-      if (error.code === "23505") continue;
+      // workspace. A derived slug tries the next suffix; a chosen one says so.
+      if (error.code === "23505") {
+        if (chosen) return fail(`/${chosen} is already taken. Try another address.`);
+        continue;
+      }
       return fail(error.message);
     }
 
@@ -209,8 +269,7 @@ export async function createWorkspace(
   }
 
   return fail(
-    "We couldn't find a free workspace address for that domain. " +
-      "Contact support and we'll sort it out.",
+    "We couldn't find a free workspace address for that. Type one yourself below.",
   );
 }
 

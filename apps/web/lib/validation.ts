@@ -623,6 +623,27 @@ export const youStepSchema = z.object({
   role: z.enum(USER_ROLES),
 });
 
+/**
+ * Step two without a website: the company, in the owner's own words.
+ *
+ * The five answers mirror the research fields exactly (`RESEARCH_FIELDS`), so
+ * `draft_icp` can cite them the same way it cites a site reading. Only `sells`
+ * is required — it is what every later step is built from. The rest are
+ * optional because a blank is an honest "not stated", which the drafter
+ * already handles, and a required field would only invite filler.
+ */
+const answer = z.string().trim().max(1000, "Keep it under 1,000 characters.");
+
+export const describeCompanySchema = z.object({
+  companyName: z.string().trim().min(1, "What's the company called?").max(200),
+  website: z.string().trim().max(2048).optional().default(""),
+  sells: answer.min(10, "Say what you sell in a sentence — everything after this is built from it."),
+  buyers: answer.optional().default(""),
+  businessModel: answer.optional().default(""),
+  problem: answer.optional().default(""),
+  trigger: answer.optional().default(""),
+});
+
 export const goalsStepSchema = z.object({
   /* At least one, at most two. The floor matters as much as the cap: an empty
      selection tells the dashboard nothing and would leave the user with the

@@ -378,6 +378,12 @@ export async function saveCompanyStep(
   orgSlug: string,
   understanding: CompanyUnderstanding,
   isLive = false,
+  /* Where the five answers came from. "website" is a reading of the site;
+     "described" is the owner's own words, typed on the step-two form. Both
+     are real — `isLive` only separates either of them from the worked
+     example — but a screen that says "drafted from your website" about a
+     company that has none would be the product asserting something false. */
+  origin: CompanyOrigin = "website",
 ): Promise<ActionResult<{ productId: string }>> {
   // Demo mode walks the flow without persisting. See `isDemoMode`.
   if (await isDemoMode()) return ok({ productId: "demo-product" });
@@ -400,7 +406,7 @@ export async function saveCompanyStep(
     const base = {
       org_id: orgId,
       name: understanding.companyName,
-      website: understanding.url,
+      website: understanding.url || null,
       description,
       // `value_props` is a jsonb array of strings — the same shape
       // `productSchema` validates and the settings form writes.
@@ -419,7 +425,7 @@ export async function saveCompanyStep(
           ...base,
           // The whole reading, so `draft_icp` can cite all five sentences
           // rather than the two that fit in columns.
-          research: understanding as unknown as Record<string, unknown>,
+          research: { ...understanding, origin } as unknown as Record<string, unknown>,
           researched_at: new Date().toISOString(),
           /* False means "no model was configured and this is the labelled
              worked example". Storing it is what stops the demo profile being
@@ -901,8 +907,12 @@ export async function claimResearch(): Promise<ClaimedResearch | null> {
 
 /* ── What the ICP step drafts from ───────────────────────────────────────── */
 
+export type CompanyOrigin = "website" | "described";
+
 export interface StoredResearch {
   companyName: string;
+  /** Whether the answers were read off a site or typed by the owner. */
+  origin: CompanyOrigin;
   sells: string;
   buyers: string;
   problem: string;
@@ -933,6 +943,7 @@ const DEMO_RESEARCH: StoredResearch = {
     "Institutions will not let software hold unconstrained signing authority over capital.",
   trigger:
     "Shipping an autonomous agent that touches real funds, especially just after raising.",
+  origin: "website",
   isLive: false,
 };
 
@@ -1025,6 +1036,7 @@ export async function getStoredResearch(
     buyers: value("buyers"),
     problem: value("problem"),
     trigger: value("trigger"),
+    origin: research.origin === "described" ? "described" : "website",
     isLive: Boolean(row.research_is_live),
   };
 }
