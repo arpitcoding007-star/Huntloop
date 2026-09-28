@@ -235,3 +235,9 @@ Two things it needs:
   same endpoint from Inngest instead by setting `INNGEST_EVENT_KEY` and
   `INNGEST_SIGNING_KEY` — `/api/inngest` serves the identical tick, and the
   queue is in Postgres either way.
+
+## Credits
+
+Created and designed by **Chandra Mani Sharma** — the product thinking,
+design, architecture and connecting of the overall Huntloop system, including
+the Huntloop mark. Third-party licences are in [NOTICE](NOTICE).

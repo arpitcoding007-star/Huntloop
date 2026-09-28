@@ -81,7 +81,6 @@ export type { ActionRailItemProps, ActionRailProps } from "./components/ActionRa
 
 export {
   Sidebar,
-  SidebarAccount,
   SidebarCollapseButton,
   SidebarQuota,
 } from "./components/Sidebar";
@@ -92,6 +91,9 @@ export type { ScoreRingProps, ScoreRingSize, ScoreRingTone } from "./components/
 
 export { JumpTo } from "./components/JumpTo";
 export type { JumpToItem, JumpToProps } from "./components/JumpTo";
+
+export { BrandMark } from "./components/BrandMark";
+export { useShortcutLabel } from "./utils/shortcut";
 
 export { Avatar, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
@@ -105,12 +107,12 @@ export { Modal } from "./components/Modal";
 export type { ModalProps, ModalSize } from "./components/Modal";
 
 export { Menu } from "./components/Menu";
-export type { MenuItem, MenuProps } from "./components/Menu";
+export type { MenuChoice, MenuItem, MenuProps } from "./components/Menu";
 
 export { ToastProvider, useToast } from "./components/Toast";
 export type { ToastOptions, ToastTone } from "./components/Toast";
 
-export { ThemeToggle } from "./components/ThemeToggle";
+export { THEME_OPTIONS, ThemeToggle, useThemePreference } from "./components/ThemeToggle";
 export type { ThemePreference } from "./components/ThemeToggle";
 
 /* ── Form primitives ────────────────────────────────────────────────────── */

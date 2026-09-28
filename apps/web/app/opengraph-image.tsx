@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BRAND_MARK_DOT_R, BRAND_MARK_PATH, BRAND_MARK_STROKE } from "@huntloop/ui/brand";
 
 /**
  * The Open Graph card.
@@ -62,22 +63,19 @@ export default function OpengraphImage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 44,
-              height: 44,
-              borderRadius: 10,
-              background: BRAND_SURFACE,
-              color: BRAND,
-              fontSize: 26,
-              fontWeight: 700,
-            }}
-          >
-            H
-          </div>
+          {/* The mark itself, from the same geometry BrandMark renders —
+              not a letter in a tile standing in for it. */}
+          <svg width="44" height="44" viewBox="0 0 32 32">
+            <path
+              d={BRAND_MARK_PATH}
+              fill="none"
+              stroke={TEXT}
+              strokeWidth={BRAND_MARK_STROKE}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="16" cy="16" r={BRAND_MARK_DOT_R} fill={BRAND} />
+          </svg>
           <div style={{ color: TEXT, fontSize: 28, fontWeight: 600 }}>Huntloop</div>
         </div>
 

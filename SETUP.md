@@ -21,15 +21,18 @@ npm run db:doctor
 |---|---|
 | 1 · Which project | **Done.** `hnoycsbdddpmsivtmrws`, and it holds nothing but Huntloop — see the note in step 1 |
 | 2 · Keys in `.env.local` | **Three of five.** URL, publishable and secret keys are set. `DATABASE_URL` and `ANTHROPIC_API_KEY` are empty |
-| 3 · Create the tables | **Done.** All five applied, and `consume_rate_limit()` driven against the live project to confirm the deployed function is this repo's. **One check left: `select * from cron.job`** — see step 3 |
+| 3 · Create the tables | **Behind: 0001–0010 applied, 0011–0029 not** (checked 2026-09-28 with `db:doctor`). Run `npm run db:doctor -- --bundle` and paste `packages/db/pending-migrations.sql` into the SQL editor — one transaction. Also still to check: `select * from cron.job` |
 | 4 · Check it worked | **Done.** No orange banner; the app reads real rows |
 | 5 · Make a login work | **An account exists for `arpitcoding007@gmail.com`**, created by the seed. Sign in with a magic link — no password was ever set |
 | 6 · Set up your organisation | **Done by the seed**, not by hand — `acme`, with three worked opportunities |
 | 7 · CI | Runs on push. Branch protection still needs a repo admin |
 | 8 · Enforce the CSP | Not started — needs a Sentry DSN first |
 
-**Step 3 is done, and that was the thing blocking the AI features.** What is
-left is an **`ANTHROPIC_API_KEY`** (step 2). Without one, nothing refuses and
+**Step 3 is behind again.** Nineteen migrations were written after it was
+last applied — onboarding, the workspace directory, CRM, data rights and the
+discovery engine all read tables that do not exist on the live project yet,
+and each of those screens fails or falls back until the bundle above is run.
+After that, what is left is an **`ANTHROPIC_API_KEY`** (step 2). Without one, nothing refuses and
 nothing is charged — each AI screen shows a worked example *labelled as one*,
 because `isAiConfigured()` is checked before anything is spent or counted.
 That labelling is the §7 rule applied to ourselves: an app with no key must say
@@ -37,6 +40,49 @@ it has no key, not invent a company profile.
 
 Add the key and the same screens call Opus for real, metered against the
 counters step 3 just created.
+
+---
+
+## Production — one chain, and how to check it
+
+The intended chain is **GitHub `main` → one Vercel project → Supabase
+`hnoycsbdddpmsivtmrws` → integrations → `https://seefluence.com`**.
+
+As of the 2026-09-28 audit it was split: two Vercel projects deployed every
+push (`huntloop` in the *huntloop* team, which owns the domain but had never
+built successfully from Git, and `huntloop-web` in a personal account, which
+built fine but served only `*.vercel.app`). Pick one, give it every variable in
+`.env.example`, point the domain at it, and disconnect Git from the other.
+
+What the code now guarantees about production (`VERCEL_ENV=production`):
+
+- **No demo at the real domain.** Missing Supabase variables, an unmigrated
+  database, or a half-migrated one answers **503** on app, login and
+  onboarding routes instead of fixtures. The landing and legal pages stay up.
+  Previews and local builds still get the demo. See `SERVED_WHILE_NOT_READY`
+  in `apps/web/proxy.ts`.
+- **The job tick is reachable.** `/api/jobs/tick` and `/api/inngest` are no
+  longer behind the login redirect; they authenticate their own callers.
+- **`/kitchen-sink` is 404.**
+- **`GET /api/health`** reports the commit, the database state
+  (`unconfigured` / `none` / `partial` / `complete`) and which integrations
+  have keys — booleans only, never values. 200 when the core chain works,
+  503 when it does not. Point an uptime monitor at it.
+- **`npm run db:seed` refuses the production project** unless passed
+  `--i-know-this-is-production`.
+
+The job heartbeat is `.github/workflows/tick.yml`. It needs, on the GitHub
+repository (owner account — collaborators cannot set secrets):
+
+```bash
+gh secret set CRON_SECRET -R arpitcoding007-star/Huntloop
+```
+
+```bash
+gh variable set HUNTLOOP_URL -R arpitcoding007-star/Huntloop --body "https://seefluence.com"
+```
+
+`CRON_SECRET` must be the same value as on the production Vercel project.
 
 ---
 

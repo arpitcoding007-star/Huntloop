@@ -326,6 +326,12 @@
   --hl-ai-border: rgba(125, 151, 204, 0.32);
   --hl-ai-text: #aec2ea;
 
+  /* ── Brand mark ───────────────────────────────────────────────────────
+     The target dot in the Huntloop mark. Brighter than --hl-brand-vivid,
+     which is muted for large dark fills: the dot is a few pixels across,
+     and at that size the muted blue reads as grey. 7.0:1 on the canvas. */
+  --hl-mark-dot: #6e9bff;
+
   /* ── Status ───────────────────────────────────────────────────────────
      Kept, because each one means something; softened a notch where the
      old value glowed. All clear 4.5:1 on their own surfaces and on a card. */
@@ -471,6 +477,9 @@
   --hl-ai-surface: #e3ebff;
   --hl-ai-border: #c6d7fb;
   --hl-ai-text: #123999;
+
+  /* ── Brand mark — the target dot. The Meridian accent, graphics only. */
+  --hl-mark-dot: #2f6bff;
 
   /* ── Status ──────────────────────────────────────────────────────────── */
   --hl-success: #2e9e67;          /* --pos */
@@ -736,35 +745,11 @@ body {
   color: var(--hl-band-text-muted);
 }
 
-/* Theme-swapped raster brand marks. CSS can restyle a token but can't
-   reach into a PNG's pixels, so a raster lockup that needs different ink
-   per theme is two <img> elements, shown/hidden by data-theme — same
-   attribute the color tokens key off. */
-.hl-brand-light {
-  display: block;
-}
-.hl-brand-dark {
-  display: none;
-}
-[data-theme="dark"] .hl-brand-light {
-  display: none;
-}
-[data-theme="dark"] .hl-brand-dark {
-  display: block;
-}
-
-/* The standalone loop mark ships in one ink only — a deep green that all but
-   disappears on the dark canvas. Rather than a second raster that has to be
-   kept in step with the first, dark grounds lift it: brightness restores the
-   ribbon's shading against black and the hue stays the brand's. Any subtree
-   under `data-theme="dark"` — including an inverted band on a light page —
-   gets the same treatment. */
-.hl-mark {
-  transition: filter var(--hl-duration-base) var(--hl-ease-out);
-}
-[data-theme="dark"] .hl-mark {
-  filter: brightness(2.1) saturate(1.15);
-}
+/* The Huntloop mark (BrandMark in packages/ui) is inline SVG drawn in
+   `currentColor` and --hl-mark-dot, so it follows the theme by itself —
+   including inside an inverted `data-theme="dark"` band on a light page. It
+   replaced raster lockups that needed a light/dark <img> pair and a
+   brightness filter to survive dark grounds. */
 
 /* Focus ring — every interactive element, no exceptions. */
 .hl-focusable:focus-visible {

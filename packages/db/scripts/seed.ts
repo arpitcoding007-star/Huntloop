@@ -124,6 +124,26 @@ function arg(name: string, fallback: string): string {
   return (i !== -1 ? process.argv[i + 1] : undefined) ?? fallback;
 }
 
+/**
+ * The production project. Seeding writes a fixture organisation ("Acme") with
+ * invented companies and contacts, and `--reset` deletes one — neither belongs
+ * in the database real customers use. Until a separate staging project exists
+ * this is the only project there is, which is exactly when it is easiest to
+ * run this against it by accident. Override deliberately or not at all.
+ */
+const PRODUCTION_REFS = new Set(["hnoycsbdddpmsivtmrws"]);
+const target = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const targetRef = /^https:\/\/([a-z0-9]+)\.supabase\.co/.exec(target)?.[1] ?? "";
+if (PRODUCTION_REFS.has(targetRef) && !process.argv.includes("--i-know-this-is-production")) {
+  console.error(
+    `\n✗ Refusing to seed ${targetRef}: that is the production Supabase project.\n` +
+      `  Point apps/web/.env.local at a development or staging project instead.\n` +
+      `  (Pass --i-know-this-is-production only if you really mean it.)\n`,
+  );
+  process.exitCode = 1;
+  throw new Error("Refusing to seed production");
+}
+
 const RESET = process.argv.includes("--reset");
 const CREATE_USER = process.argv.includes("--create-user");
 const SLUG = arg("slug", "acme");

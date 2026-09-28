@@ -10,25 +10,15 @@ found several here whose terms nobody had written down.
 Fonts
 -----
 
-All three are served from Huntloop's own origin. `next/font/google`
+Both are served from Huntloop's own origin. `next/font/google`
 downloads them at build time rather than linking to a font CDN, so no
 request leaves the user's browser to a third party — see the reasoning in
 `apps/web/app/layout.tsx`.
 
-  Inter
+  Geist, Geist Mono
     SIL Open Font License 1.1
-    Copyright (c) 2016 The Inter Project Authors
-    https://github.com/rsms/inter
-
-  JetBrains Mono
-    SIL Open Font License 1.1
-    Copyright (c) 2020 The JetBrains Mono Project Authors
-    https://github.com/JetBrains/JetBrainsMono
-
-  Lora
-    SIL Open Font License 1.1
-    Copyright (c) 2011 The Lora Project Authors
-    https://github.com/cyrealtype/Lora-Cyrillic
+    Copyright (c) 2023 Vercel, in collaboration with basement.studio
+    https://github.com/vercel/geist-font
 
 The OFL asks that its copyright and licence notice travel with the font
 files. Build-time subsetting makes that awkward to do literally, and common
@@ -49,20 +39,25 @@ Icons
 Brand assets
 ------------
 
-  apps/web/public/brand/huntloop-mark.png
-  apps/web/public/brand/huntloop-lockup-light.png
-  apps/web/public/brand/huntloop-lockup-dark.png
-  HuntLoop_SVGs/*.svg
+  The Huntloop mark — the loop that spirals in and closes on its target
+    packages/ui/src/brand.ts            (geometry)
+    packages/ui/src/components/BrandMark.tsx
+    apps/web/app/icon.svg, apps/web/app/apple-icon.tsx,
+    apps/web/app/opengraph-image.tsx    (renderings of the same geometry)
 
-  **PROVENANCE NOT RECORDED.** These are presented as Huntloop's own marks
-  and most likely are, but nothing in this repository establishes who made
-  them or under what terms. If they were commissioned, the agreement should
-  say that copyright was assigned; if they were produced from a template,
-  stock library or generative tool, that tool's terms govern whether they can
-  be used as a trademark at all — several forbid exactly that.
+  Created and designed by Chandra Mani Sharma — the product thinking,
+  design, architecture and connecting of the overall Huntloop system.
+  Original work, drawn from first principles as an Archimedean spiral and
+  a centred dot — not derived from a template, stock library or
+  generative tool.
 
-  Whoever knows the answer should replace this paragraph with it. Until then
-  this is an open question, not a settled one.
+  Retired, not shipped:
+    HuntLoop_SVGs/*.svg
+
+  These are the earlier ribbon marks, which also shipped as PNGs under
+  apps/web/public/brand/ until the mark above replaced them. Their
+  provenance was never recorded — if they are ever brought back, whoever
+  knows who made them and on what terms should record it here first.
 
   The name "Huntloop" is used as a trademark. No registration is recorded
   here. Whether one is needed, and in which classes and territories, is a

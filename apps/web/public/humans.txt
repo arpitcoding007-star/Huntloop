@@ -1,0 +1,20 @@
+/* TEAM */
+
+  Created and designed by: Chandra Mani Sharma
+  Role: Product thinking, design, architecture, and the connecting of the
+        overall Huntloop system — from discovery and qualification through
+        enrichment, outreach, tracking and the learning loop.
+
+/* THE MARK */
+
+  The loop that spirals in and closes on its target: many companies at the
+  edge, narrowed as each is qualified, down to the one worth pursuing.
+  Designed by Chandra Mani Sharma.
+
+/* SITE */
+
+  Standards: HTML, CSS, TypeScript
+  Components: React, Next.js
+  Data: Supabase (Postgres, row-level security)
+  Type: Geist, Geist Mono
+  Icons: Lucide

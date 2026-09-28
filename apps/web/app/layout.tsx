@@ -64,6 +64,13 @@ export const metadata: Metadata = {
   description:
     "AI-powered closed-loop outbound growth engine — discover, qualify, enrich, reach out, track, learn, improve.",
   applicationName: "Huntloop",
+  /* Authorship, in the document head rather than the interface: emitted as
+     <meta name="author"> and <meta name="creator">, and restated with more
+     detail in /humans.txt. Chandra Mani Sharma created and designed
+     Huntloop — the product thinking, design, architecture and connecting of
+     the overall system. */
+  authors: [{ name: "Chandra Mani Sharma", url: "/humans.txt" }],
+  creator: "Chandra Mani Sharma",
   openGraph: {
     type: "website",
     siteName: "Huntloop",

@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { buildCsp, createNonce } from "./lib/csp";
+import {
+  isProductionDeployment,
+  probeSchema,
+  supabaseEnv,
+  type SchemaState,
+} from "./lib/schema";
 
 /**
  * Session refresh, route guard, and the per-request CSP nonce.
@@ -30,7 +36,9 @@ import { buildCsp, createNonce } from "./lib/csp";
  * that relies on this file alone to keep tenants apart is wrong.
  *
  * When Supabase is unconfigured the app runs on fixtures, and this passes
- * everything through — otherwise the demo mode would be unreachable.
+ * everything through — otherwise the demo mode would be unreachable. The
+ * exception is the production deployment, which answers 503 instead of
+ * showing fixtures at the real domain (see SERVED_WHILE_NOT_READY).
  */
 
 /**
@@ -69,7 +77,66 @@ const PUBLIC_PREFIXES = [
      invisible to exactly the audience they were written for. */
   "/for",
   "/compare",
+  /* The legal pages. Every outreach footer, the sign-up form and the
+     landing page link to them, and the people following those links are by
+     definition not signed in: a privacy policy behind a login is, for them,
+     no privacy policy at all. They were missing from this list, so on a
+     migrated deployment all three answered a 307 to /login. */
+  "/privacy",
+  "/terms",
+  "/acceptable-use",
+  /* Generated images, which have no file extension and so are not excluded
+     by the matcher below. Scrapers fetching the Open Graph card are never
+     signed in; before this, every shared link previewed as a login redirect. */
+  "/opengraph-image",
+  "/apple-icon",
+  /* Machine callers that authenticate themselves. The job tick is called by a
+     scheduler with `Authorization: Bearer $CRON_SECRET` and the Inngest route
+     checks an HMAC signature — neither carries a session, so behind the guard
+     both were answered with a 307 to /login and the engine never ran, on
+     every configured deployment, whatever the scheduler was. Each route
+     refuses unauthenticated callers itself (404 / 401), which is where that
+     check belongs. */
+  "/api/jobs/tick",
+  "/api/inngest",
+  /* Booleans about configuration, never values. See the route. */
+  "/api/health",
 ];
+
+/**
+ * What a *production* deployment may serve while its database is not ready.
+ *
+ * Everything else answers 503. Before this, production with no Supabase
+ * variables — or with a half-migrated schema — ran the demo: fixture
+ * companies, a fake workspace, no login, at the real domain. A visitor could
+ * not tell it from the product, and a customer who had signed up the day
+ * before would find their data "gone". Previews and local builds keep the
+ * demo; production says it is unavailable, which is true.
+ *
+ * `/` stays up because the landing page is static and renders without a
+ * database. The machine routes stay up so a health check and the scheduler
+ * report the real failure instead of a maintenance page.
+ */
+const SERVED_WHILE_NOT_READY = [
+  "/privacy",
+  "/terms",
+  "/acceptable-use",
+  "/for",
+  "/compare",
+  "/opengraph-image",
+  "/apple-icon",
+  "/api/csp-report",
+  "/api/health",
+  "/api/jobs/tick",
+  "/api/inngest",
+];
+
+/** Development-only pages. They are fixtures by design and have no place on the real domain. */
+const HIDDEN_IN_PRODUCTION = ["/kitchen-sink"];
+
+function matches(path: string, prefixes: string[]): boolean {
+  return prefixes.some((p) => path === p || path.startsWith(`${p}/`));
+}
 
 /**
  * Cached answer to "have the migrations been applied?".
@@ -79,28 +146,56 @@ const PUBLIC_PREFIXES = [
  * view a demo is friction with nothing behind it. Once the tables exist the
  * guard turns itself on.
  *
- * Cached per worker because the answer changes exactly once. A deploy or
- * restart re-probes, which is part of running a migration anyway.
+ * `complete` is cached per worker for good — it only ever changes forward.
+ * The other two are re-probed every 30 seconds, so applying the migrations
+ * takes effect without a redeploy. See lib/schema.ts for the three states.
  */
-let schemaApplied: boolean | null = null;
+let schemaState: { value: SchemaState; at: number } | null = null;
+const RETRY_MS = 30_000;
 
-async function isSchemaApplied(url: string, key: string): Promise<boolean> {
-  if (schemaApplied !== null) return schemaApplied;
+async function currentSchema(url: string, key: string): Promise<SchemaState> {
+  if (
+    schemaState &&
+    (schemaState.value === "complete" || Date.now() - schemaState.at < RETRY_MS)
+  ) {
+    return schemaState.value;
+  }
   try {
-    const res = await fetch(`${url}/rest/v1/organizations?select=id&limit=1`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` },
-      cache: "no-store",
-    });
-    // 404 with PGRST205 means the table isn't in PostgREST's schema cache.
-    // 401/403 mean the table exists and RLS is doing its job — which is a
-    // *yes*, not a no.
-    schemaApplied = res.status !== 404;
+    const value = await probeSchema(url, key);
+    schemaState = { value, at: Date.now() };
+    return value;
   } catch {
     // Network trouble is not evidence of a missing schema. Fail closed: keep
     // the guard on rather than opening the app because a probe timed out.
-    return true;
+    // Not cached, so the next request asks again.
+    return "complete";
   }
-  return schemaApplied;
+}
+
+/**
+ * The page a production deployment serves instead of the demo. Plain HTML,
+ * no framework, because the thing it reports is that the app cannot run.
+ */
+function unavailable(reason: string): NextResponse {
+  const body =
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<meta name="robots" content="noindex"><title>Huntloop is unavailable</title>` +
+    `<style>body{font:16px/1.6 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#1f2937}` +
+    `@media(prefers-color-scheme:dark){body{background:#0b0d12;color:#e5e7eb}}</style></head>` +
+    `<body><h1>Huntloop is temporarily unavailable</h1>` +
+    `<p>We're finishing setting this deployment up. Please try again shortly.</p>` +
+    `<p><a href="/">Back to the home page</a></p></body></html>`;
+  return new NextResponse(body, {
+    status: 503,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "300",
+      // For whoever is debugging it. Names the missing piece, never a value.
+      "x-huntloop-unavailable": reason,
+    },
+  });
 }
 
 /**
@@ -154,17 +249,35 @@ export async function proxy(request: NextRequest) {
       policy,
     );
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const path = request.nextUrl.pathname;
+  const production = isProductionDeployment();
+
+  if (production && matches(path, HIDDEN_IN_PRODUCTION)) {
+    return sealCsp(new NextResponse("Not found", { status: 404 }), responseHeader, policy);
+  }
+
+  /* Production refuses to run the demo. Everywhere else the two branches
+     below are the demo mode they always were. */
+  const notReady = (reason: string) =>
+    production && path !== "/" && !matches(path, SERVED_WHILE_NOT_READY)
+      ? sealCsp(unavailable(reason), responseHeader, policy)
+      : pass();
+
+  const env = supabaseEnv();
 
   // Not configured → demo mode. Guarding here would lock everyone out of an
   // app that has no way to log in yet.
-  if (!url || !key) return pass();
+  if (!env) return notReady("supabase-not-configured");
+  const { url, key } = env;
 
-  // Configured but not migrated → also demo mode. See isSchemaApplied.
-  if (!(await isSchemaApplied(url, key))) return pass();
+  // Configured but not migrated → also demo mode.
+  const schema = await currentSchema(url, key);
+  if (schema === "none") return notReady("schema-not-applied");
+
+  // Half-migrated. Outside production this stays live with the guard on, as
+  // before — a developer mid-migration wants to see which screens break.
+  // In production it is an outage with a name, not a product with holes.
+  if (schema === "partial" && production) return notReady("migrations-pending");
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
 
@@ -191,10 +304,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PREFIXES.some(
-    (p) => path === p || path.startsWith(`${p}/`),
-  );
+  const isPublic = matches(path, PUBLIC_PREFIXES);
 
   if (!user && !isPublic && path !== "/") {
     const login = request.nextUrl.clone();
@@ -234,6 +344,6 @@ export const config = {
      * safe to exclude because neither is generated from a session: see the
      * files themselves, which list only public paths.
      */
-    "/((?!_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots\\.txt|humans\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

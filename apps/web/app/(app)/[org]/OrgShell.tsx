@@ -4,18 +4,16 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Avatar,
-  Menu,
+  BrandMark,
   Sidebar,
-  SidebarAccount,
   SidebarCollapseButton,
   SidebarQuota,
-  ThemeToggle,
   TopBar,
   type NavGroup,
   type NavItem,
 } from "@huntloop/ui";
 import type { ShellChrome } from "../../../lib/data/chrome";
+import { AccountMenu } from "./AccountMenu";
 import {
   Activity,
   BarChart3,
@@ -23,8 +21,6 @@ import {
   Building2,
   ChevronsUpDown,
   Flame,
-  LogOut,
-  MoreHorizontal,
   Globe,
   GraduationCap,
   Inbox as InboxIcon,
@@ -282,16 +278,7 @@ export function OrgShell({
             title="Switch workspace"
             className="hl-focusable flex h-10 max-w-full min-w-0 items-center gap-2.5 rounded-[10px] pr-2 pl-1.5 transition-colors duration-[120ms] hover:bg-nav-hover"
           >
-            {/* The real mark (commit de3e50d). Intrinsic dimensions given so
-                the bar does not reflow when it decodes; CSS sizes it, these
-                only supply the aspect ratio the browser reserves space with. */}
-            <img
-              src="/brand/huntloop-mark.png"
-              alt=""
-              width={1343}
-              height={638}
-              className="hl-mark h-7 w-[42px] shrink-0 object-contain"
-            />
+            <BrandMark className="size-7 text-fg" />
             <span className="flex min-w-0 flex-col items-start leading-[1.15]">
               <span className="max-w-full truncate text-[16px] font-semibold tracking-[-0.02em] text-fg">
                 {chrome.orgName}
@@ -318,37 +305,24 @@ export function OrgShell({
         */
         onSearchClick={() => setJumpOpen(true)}
         /*
-            Both were `"#"` — a Feedback link and a Help button that looked
-            live, tabbed like links, and went nowhere (audit ANL-03).
-
-            There is no feedback system and no help site yet, so the fix is not
-            to invent a destination: `TopBar` already omits each control when
-            its href is undefined, so an unset variable renders no affordance
-            at all. Set them in the environment when the destinations exist and
-            the controls appear — same rule as the `unbuilt` nav flag, applied
-            to the topbar.
-
-            `NEXT_PUBLIC_` because this is a Client Component; the value is a
-            public URL, and there is nothing here worth hiding.
+            Was `"#"` — a Feedback link that looked live and went nowhere
+            (audit ANL-03). `TopBar` omits it while the variable is unset, so
+            it appears when a destination exists. Help used to sit beside it
+            under the same rule; it now lives in the account menu, with the
+            theme choice, rather than as two more icons in the bar.
           */
         feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
-        helpHref={process.env.NEXT_PUBLIC_HELP_URL}
-        /* The signed-in person when there is one; the workspace otherwise
-           (demo mode). It was the URL slug — "AC" for /acme — which named
-           neither. */
+        /* The account menu: identity, workspace, theme, shortcuts, help and
+           sign-out in one place, at every width — which is why the bar no
+           longer carries a theme toggle, and the sidebar no longer carries
+           an account row with a second, smaller copy of this menu. */
         avatar={
-          <Avatar
-            initials={chrome.account?.name ?? chrome.orgName}
-            className="size-9 text-[12px]"
+          <AccountMenu
+            org={org}
+            chrome={chrome}
+            onSignOut={() => signOutForm.current?.requestSubmit()}
           />
         }
-        /* Sign-out used to live here as well. It belongs with the
-             account it signs out of, which is now a real row at the foot of
-             the sidebar with its own menu — and two sign-out controls on one
-             screen is one more than any screen needs. */
-        /* Below sm the bar cannot fit the toggle beside the workspace name
-           and search; it moves into the drawer's footer instead (below). */
-        actions={<ThemeToggle className="max-sm:hidden" />}
       />
 
       <div className="relative flex min-h-0 flex-1">
@@ -413,76 +387,13 @@ export function OrgShell({
               )
             }
             footerAction={
-              <>
-                {/* The rail is only collapsible where it is in flow; inside
-                    the drawer the control would fight the drawer's own
-                    dismissal. */}
-                <SidebarCollapseButton
-                  collapsed={collapsed}
-                  onToggle={() => setCollapsed((c) => !c)}
-                  className="max-lg:hidden"
-                />
-                {/* The phone's theme control — the top bar drops its own
-                    below sm. */}
-                <ThemeToggle className="sm:hidden" />
-              </>
-            }
-            account={
-              /* Demo mode: there is no signed-in person, so the row that
-               would name one is not rendered at all. */
-              chrome.account && (
-                <SidebarAccount
-                  collapsed={collapsed}
-                  avatar={
-                    <Avatar
-                      initials={chrome.account.name}
-                      className={collapsed ? "size-8" : "size-[30px]"}
-                    />
-                  }
-                  name={chrome.account.name}
-                  secondary={chrome.account.email}
-                  action={
-                    <Menu
-                      align="start"
-                      side="top"
-                      linkComponent={Link}
-                      items={[
-                        {
-                          label: "Workspace settings",
-                          href: `/${org}/settings`,
-                        },
-                        { label: "Switch workspace", href: "/orgs" },
-                        {
-                          label: "Sign out",
-                          icon: LogOut,
-                          tone: "danger",
-                          separated: true,
-                          /* `requestSubmit` on the real form below rather
-                           than a fetch: sign-out changes state, so it
-                           has to be a POST, and submitting the form the
-                           browser already knows about keeps that true
-                           without this component learning how the
-                           endpoint works. */
-                          onSelect: () => signOutForm.current?.requestSubmit(),
-                        },
-                      ]}
-                      trigger={(props) => (
-                        <button
-                          type="button"
-                          {...props}
-                          aria-label="Account menu"
-                          className="hl-focusable flex size-7 shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
-                        >
-                          <MoreHorizontal
-                            className="size-[15px]"
-                            strokeWidth={1.6}
-                          />
-                        </button>
-                      )}
-                    />
-                  }
-                />
-              )
+              /* The rail is only collapsible where it is in flow; inside the
+                 drawer the control would fight the drawer's own dismissal. */
+              <SidebarCollapseButton
+                collapsed={collapsed}
+                onToggle={() => setCollapsed((c) => !c)}
+                className="max-lg:hidden"
+              />
             }
           />
         </div>

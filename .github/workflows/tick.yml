@@ -1,0 +1,57 @@
+name: Engine tick
+
+# The job queue's heartbeat, for a deployment on Vercel Hobby.
+#
+# Vercel Cron drove /api/jobs/tick every five minutes until commit 59f7942
+# removed it: Hobby refuses any schedule more frequent than daily, and the
+# deployment failed. A daily tick was rejected as the alternative because it
+# makes a five-minute queue look configured while doing a day's work at once.
+# That left the engine with no driver at all — jobs enqueued, never run.
+#
+# GitHub's scheduler is free and runs at five-minute granularity, so it calls
+# the same endpoint the same way Vercel Cron did: GET with
+# `Authorization: Bearer $CRON_SECRET`. Nothing in the app changes; the queue
+# is in Postgres either way. Retire this file when the project moves to a plan
+# with minute-level cron (put the `crons` block back in apps/web/vercel.json)
+# or to Inngest (set INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY).
+#
+# Needs two settings on the repository, and does nothing until both exist:
+#   Settings → Secrets and variables → Actions
+#     Secret    CRON_SECRET   the same value as on the Vercel project
+#     Variable  HUNTLOOP_URL  the production origin, e.g. https://huntloop.example
+#
+# GitHub may delay scheduled runs under load and pauses them on repositories
+# with no activity for 60 days. Both are acceptable for a heartbeat that each
+# tick catches up on; neither is acceptable for anything time-critical.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: engine-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/jobs/tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          HUNTLOOP_URL: ${{ vars.HUNTLOOP_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$HUNTLOOP_URL" ]; then
+            echo "::notice::CRON_SECRET or HUNTLOOP_URL is not configured; skipping."
+            exit 0
+          fi
+          status=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${HUNTLOOP_URL%/}/api/jobs/tick")
+          echo "HTTP $status"
+          head -c 2000 body.json; echo
+          # 200 even when a job fails — failures are in the body and in
+          # job_executions.error. Anything else means the tick itself did not run.
+          [ "$status" = "200" ]

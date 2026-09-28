@@ -38,15 +38,35 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   );
 
+  /*
+    Both values are inlined at build time, so on a hosted deployment this
+    branch means the *build* ran without them — the variables are missing
+    from that project's environment, or were added after the last deploy.
+    The fix there is the host's settings and a redeploy, not a local file,
+    so visitors to a deployed site get a plain statement rather than
+    instructions only the developer can follow.
+  */
   if (!configured) {
+    const local = process.env.NODE_ENV !== "production";
     return (
       <Note tone="warning">
-        <p className="font-medium">Supabase is not configured</p>
+        <p className="font-medium">
+          {local ? "Supabase is not configured" : "Sign-in isn’t available here yet"}
+        </p>
         <p className="mt-1.5 text-fg-secondary">
-          There is nothing to sign in to yet. Copy{" "}
-          <span className="font-mono text-[12px]">.env.example</span> to{" "}
-          <span className="font-mono text-[12px]">apps/web/.env.local</span>, fill
-          in the Supabase URL and publishable key, and restart the dev server.
+          {local ? (
+            <>
+              There is nothing to sign in to yet. Copy{" "}
+              <span className="font-mono text-[12px]">.env.example</span> to{" "}
+              <span className="font-mono text-[12px]">apps/web/.env.local</span>, fill
+              in the Supabase URL and publishable key, and restart the dev server.
+            </>
+          ) : (
+            <>
+              This deployment was built without its account service connected, so
+              there is no way to create an account or sign in on it yet.
+            </>
+          )}
         </p>
         <p className="mt-3 text-fg-secondary">
           Until then the app runs on demo data —{" "}

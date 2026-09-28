@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
-import { Button, ScoreRing, ThemeToggle } from "@huntloop/ui";
+import { BrandMark, Button, ScoreRing, ThemeToggle } from "@huntloop/ui";
 import {
   Activity,
   ArrowRight,
@@ -33,6 +33,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { DomainInput } from "./DomainInput";
+import { LoopDiagram } from "./LoopDiagram";
 import { describeLimit, listPlans } from "../../lib/data/plans";
 import { publicResearchEnabled } from "@huntloop/jobs";
 import { IDENTITY, legalIsComplete } from "../../lib/legal";
@@ -115,8 +116,22 @@ export default async function LandingPage() {
       <Nav />
 
       <main id="main">
-        <Hero />
-        <FeatureStrip />
+        {/*
+          The first screen: the hero and the proof strip as one unit, at
+          least one viewport tall below the sticky nav. The hero takes the
+          space and centres its content; the strip sits on the unit's bottom
+          edge, so it lands on the fold on every screen instead of being cut
+          in half by it after a band of empty padding.
+
+          `min-h`, never `h`: where the hero is taller than the viewport (a
+          short laptop, a phone) the unit grows and nothing inside it — the
+          product mock above all — is ever clipped or overlapped. `dvh` so a
+          phone's collapsing URL bar does not push the strip off-screen.
+        */}
+        <div className="flex min-h-[calc(100dvh-68px)] flex-col">
+          <Hero />
+          <FeatureStrip />
+        </div>
         <ListIsNotTheAnswer />
         <TheLoop />
         <Discover />
@@ -149,7 +164,7 @@ function Frame({ className, children }: { className?: string; children: ReactNod
   );
 }
 
-/** The mark and the wordmark. The real mark (commit de3e50d) in the comp's tile slot. */
+/** The mark and the wordmark. The mark itself is BrandMark (packages/ui). */
 function Logo({ size = "md" }: { size?: "md" | "sm" }) {
   const md = size === "md";
   return (
@@ -159,13 +174,7 @@ function Logo({ size = "md" }: { size?: "md" | "sm" }) {
         md ? "gap-[9px] text-[18px] tracking-[-0.03em]" : "gap-2 text-[16px] tracking-[-0.02em]"
       }`}
     >
-      <img
-        src="/brand/huntloop-mark.png"
-        alt=""
-        width={1343}
-        height={638}
-        className={`hl-mark ${md ? "size-[26px]" : "size-[22px]"} shrink-0 object-contain`}
-      />
+      <BrandMark className={md ? "size-[26px]" : "size-[22px]"} />
       Huntloop
     </Link>
   );
@@ -302,8 +311,8 @@ function Nav() {
 
 function Hero() {
   return (
-    <section>
-      <Frame className="grid items-center gap-14 pt-16 pb-20 lg:pt-24 lg:pb-[100px] xl:grid-cols-[520px_minmax(0,1fr)] xl:gap-16">
+    <section className="flex flex-1 items-center">
+      <Frame className="grid items-center gap-14 py-14 lg:py-16 xl:grid-cols-[520px_minmax(0,1fr)] xl:gap-16">
         <div className="flex flex-col gap-[26px]">
           <Eyebrow>Intelligence for outbound</Eyebrow>
           {/* `hl-hero` carries the size *and* its tracking — 62 / 1.04 /
@@ -348,7 +357,7 @@ function HeroMock() {
     <div className="overflow-hidden rounded-xl border border-line-subtle bg-surface shadow-modal">
       <div className="flex h-[52px] items-center gap-3.5 border-b border-line-subtle px-[18px]">
         <span className="flex items-center gap-[7px] text-[13px] font-semibold">
-          <img src="/brand/huntloop-mark.png" alt="" width={1343} height={638} className="hl-mark size-[18px] object-contain" />
+          <BrandMark className="size-[18px]" />
           Huntloop
         </span>
         <span className="flex h-[30px] min-w-0 flex-1 items-center truncate rounded-[7px] bg-canvas px-3 text-[12.5px] text-fg-muted">
@@ -452,7 +461,8 @@ function ListIsNotTheAnswer() {
         </div>
 
         <div className="min-w-0 overflow-hidden rounded-[24px_24px_0_24px] border border-line bg-surface shadow-[0_60px_120px_-40px_rgba(0,0,0,0.7)]">
-          <div className="flex h-12 items-center border-b border-line px-[18px] text-[13px] text-fg-secondary">
+          <div className="flex h-12 items-center gap-[7px] border-b border-line px-[18px] text-[13px] text-fg-secondary">
+            <BrandMark className="size-4 text-fg" />
             Huntloop
           </div>
           <div className="grid sm:grid-cols-[120px_minmax(0,1fr)]">
@@ -773,15 +783,6 @@ function ClaimKinds() {
 /* ── 10 · 04 You stay in control ─────────────────────────────────────────── */
 
 function InControl() {
-  /* The six stage labels around the ring, at the comp's own offsets. */
-  const around: { stage: (typeof STAGES)[number]; at: string }[] = [
-    { stage: "Discover", at: "top-2 left-1/2 -translate-x-1/2" },
-    { stage: "Qualify", at: "top-[72px] right-1.5" },
-    { stage: "Enrich", at: "bottom-[72px] right-3" },
-    { stage: "Reach out", at: "bottom-2 left-1/2 -translate-x-1/2" },
-    { stage: "Track", at: "bottom-[72px] left-3.5" },
-    { stage: "Learn", at: "top-[72px] left-[18px]" },
-  ];
   const rules = ["ICP industry", "Company size", "Recent funding", "Hiring activity", "Pain signal"];
   return (
     <section className="border-t border-line-subtle">
@@ -802,33 +803,7 @@ function InControl() {
           </p>
         </div>
 
-        <div className="relative mx-auto flex size-[300px] items-center justify-center">
-          <svg width="300" height="300" viewBox="0 0 300 300" aria-hidden className="absolute inset-0">
-            <circle
-              cx="150"
-              cy="150"
-              r="120"
-              fill="none"
-              strokeWidth="1.5"
-              strokeDasharray="2 6"
-              strokeLinecap="round"
-              className="stroke-line"
-            />
-            <path
-              d="M150 30 a120 120 0 0 1 104 60"
-              fill="none"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="stroke-brand-vivid"
-            />
-          </svg>
-          <p className="text-[22px] font-semibold tracking-[-0.03em]">Huntloop</p>
-          {around.map(({ stage, at }) => (
-            <span key={stage} className={`hl-label absolute ${at}`}>
-              {stage}
-            </span>
-          ))}
-        </div>
+        <LoopDiagram />
 
         <div className="flex flex-col gap-6">
           <div>
@@ -1148,7 +1123,10 @@ function Footer() {
 }
 
 export const metadata = {
-  title: "Huntloop — know who needs you before you reach out",
+  /* `absolute`: the root layout's template appends "· Huntloop", which on the
+     one page whose title already opens with the name read "Huntloop — … ·
+     Huntloop" in every tab and search result. */
+  title: { absolute: "Huntloop — know who needs you before you reach out" },
   description:
     "Huntloop finds the companies becoming a fit, shows you why with sources, and drafts the outreach. Every score shows its working.",
   alternates: { canonical: "/" },

@@ -28,22 +28,26 @@ function applyPreference(pref: ThemePreference) {
   document.cookie = `${COOKIE_NAME}=${pref}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
 }
 
-const OPTIONS: { value: ThemePreference; label: string; icon: typeof Monitor }[] = [
+export const THEME_OPTIONS: { value: ThemePreference; label: string; icon: typeof Monitor }[] = [
   { value: "system", label: "Match system", icon: Monitor },
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
 ];
+const OPTIONS = THEME_OPTIONS;
 
 /**
- * System / Light / Dark switcher. Applies instantly via the DOM + cookie
- * (see applyPreference) — no reload, no server round trip, since the theme
- * is a display preference rather than anything the server needs to know.
+ * The current theme preference and a setter that applies it.
+ *
+ * Starts `null` and hydrates from the `data-theme-preference` attribute the
+ * server (or the pre-paint bootstrap script, for "system") already set on
+ * <html> — reading `document` during render would fight SSR, and guessing a
+ * default would flash the wrong option briefly.
+ *
+ * Shared by the toggle and the account menu's theme row. Every instance
+ * follows the attribute rather than its own state, so two controls on one
+ * screen can never disagree about which option is chosen.
  */
-export function ThemeToggle({ className }: { className?: string }) {
-  /* Starts unknown and hydrates from the `data-theme-preference` attribute
-     the server (or the pre-paint bootstrap script, for "system") already
-     set on <html> — reading `document` during render would fight SSR, and
-     guessing a default here would flash the wrong option briefly. */
+export function useThemePreference(): [ThemePreference | null, (pref: ThemePreference) => void] {
   const [preference, setPreference] = useState<ThemePreference | null>(null);
 
   useEffect(() => {
@@ -53,13 +57,27 @@ export function ThemeToggle({ className }: { className?: string }) {
       setPreference(current === "light" || current === "dark" ? current : "system");
     };
     read();
-    /* A page can carry more than one toggle (the app shell has one in the
-       top bar and one in the phone drawer). Following the attribute rather
-       than local state keeps every instance showing the same choice. */
     const observer = new MutationObserver(read);
     observer.observe(root, { attributes: true, attributeFilter: ["data-theme-preference"] });
     return () => observer.disconnect();
   }, []);
+
+  return [
+    preference,
+    (pref) => {
+      applyPreference(pref);
+      setPreference(pref);
+    },
+  ];
+}
+
+/**
+ * System / Light / Dark switcher. Applies instantly via the DOM + cookie
+ * (see applyPreference) — no reload, no server round trip, since the theme
+ * is a display preference rather than anything the server needs to know.
+ */
+export function ThemeToggle({ className }: { className?: string }) {
+  const [preference, setPreference] = useThemePreference();
 
   if (!preference) {
     return <div className={cn("h-9 w-[96px] rounded-[10px]", className)} aria-hidden />;
@@ -86,10 +104,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             role="radio"
             aria-checked={active}
             title={label}
-            onClick={() => {
-              applyPreference(value);
-              setPreference(value);
-            }}
+            onClick={() => setPreference(value)}
             className={cn(
               "hl-focusable flex size-7 items-center justify-center rounded-[7px] transition-colors duration-[120ms]",
               active

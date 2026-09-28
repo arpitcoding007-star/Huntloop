@@ -112,8 +112,6 @@ export interface SidebarProps {
   footerItems?: NavItem[];
   /** Sits on the footer row beside `footerItems` — the collapse control. */
   footerAction?: ReactNode;
-  /** The account row at the very bottom — see {@link SidebarAccount}. */
-  account?: ReactNode;
   /**
    * Router-aware link component, e.g. `next/link`. Defaults to a plain `<a>`.
    * See utils/link.ts — this is the seam that keeps the package
@@ -154,7 +152,6 @@ export function Sidebar({
   quota,
   footerItems,
   footerAction,
-  account,
   linkComponent: Link = Anchor,
   className,
 }: SidebarProps) {
@@ -314,7 +311,7 @@ export function Sidebar({
           ))}
         </div>
 
-        {(quota || footerItems?.length || footerAction || account) && (
+        {(quota || footerItems?.length || footerAction) && (
           <div
             className={cn(
               "flex shrink-0 flex-col gap-2",
@@ -334,7 +331,6 @@ export function Sidebar({
                 {footerAction}
               </div>
             )}
-            {account}
           </div>
         )}
       </nav>
@@ -499,7 +495,7 @@ function CountPill({ value, tone }: { value: number; tone: CountTone }) {
 
 /* ── Footer pieces ───────────────────────────────────────────────────────
    Exported because the app composes the footer, but the shapes belong to
-   the design system — a quota readout and an account row invented per-app
+   the design system — a quota readout invented per-app
    are how two products that share a component library stop looking alike. */
 
 /** The plan/usage readout at the top of the footer. */
@@ -567,48 +563,6 @@ export function SidebarQuota({
           style={{ width: `${pct}%` }}
         />
       </div>
-    </div>
-  );
-}
-
-/** The account row at the very bottom. */
-export function SidebarAccount({
-  avatar,
-  name,
-  secondary,
-  action,
-  collapsed,
-  className,
-}: {
-  avatar: ReactNode;
-  name: string;
-  secondary?: string;
-  /** The "…" overflow control. */
-  action?: ReactNode;
-  collapsed?: boolean;
-  className?: string;
-}) {
-  if (collapsed) {
-    return (
-      <div
-        title={secondary ? `${name} · ${secondary}` : name}
-        className={cn("flex justify-center", className)}
-      >
-        {avatar}
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn("flex items-center gap-2.5 rounded-[10px] p-1.5", className)}>
-      {avatar}
-      <div className="min-w-0 flex-1 leading-[1.25]">
-        <div className="truncate text-[13px] font-medium text-fg">{name}</div>
-        {secondary && (
-          <div className="truncate font-mono text-[11px] text-fg-muted">{secondary}</div>
-        )}
-      </div>
-      {action}
     </div>
   );
 }

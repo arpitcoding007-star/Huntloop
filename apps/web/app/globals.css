@@ -35,3 +35,59 @@
   scrollbar-color: var(--hl-border-strong) transparent;
   scrollbar-width: thin;
 }
+
+/* ── The landing page's loop diagram (app/(marketing)/LoopDiagram.tsx) ─────
+   One arrival, not a loop: the arc draws from Discover toward Qualify, and
+   the node fills with a single halo when the line reaches it. The node's
+   response is delayed by the arc's duration so it happens *on* arrival.
+   `transform-box: fill-box` scales the halo about its own centre — the
+   default origin for an SVG element is the canvas corner. */
+.hl-loop-arc {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1100ms cubic-bezier(0.65, 0, 0.35, 1) 200ms;
+}
+.hl-loop-target {
+  transition:
+    fill 260ms var(--hl-ease-out) 1250ms,
+    stroke 260ms var(--hl-ease-out) 1250ms;
+}
+.hl-loop-halo {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.hl-loop[data-run] .hl-loop-arc {
+  stroke-dashoffset: 0;
+}
+.hl-loop[data-run] .hl-loop-target {
+  fill: var(--hl-brand-vivid);
+  stroke: var(--hl-brand-vivid);
+}
+.hl-loop[data-run] .hl-loop-halo {
+  animation: hl-loop-halo 900ms var(--hl-ease-out) 1250ms both;
+}
+@keyframes hl-loop-halo {
+  from {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl-loop-arc {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .hl-loop-target {
+    fill: var(--hl-brand-vivid);
+    stroke: var(--hl-brand-vivid);
+    transition: none;
+  }
+  .hl-loop[data-run] .hl-loop-halo {
+    animation: none;
+  }
+}

@@ -1,6 +1,7 @@
 {
   "name": "@huntloop/jobs",
   "version": "0.0.0",
+  "author": "Chandra Mani Sharma",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

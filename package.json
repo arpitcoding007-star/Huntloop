@@ -2,6 +2,7 @@
   "name": "huntloop",
   "private": true,
   "version": "0.0.0",
+  "author": "Chandra Mani Sharma",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,7 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint .",
-    "db:doctor": "npm run doctor --workspace @huntloop/db",
+    "db:doctor": "npm run doctor --workspace @huntloop/db --",
     "db:seed": "npm run seed --workspace @huntloop/db --",
     "audit:site": "node scripts/audit.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run audit:site && npm run build && npm run audit:bundle",
