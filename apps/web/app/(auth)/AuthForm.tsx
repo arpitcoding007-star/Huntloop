@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, Note } from "@huntloop/ui";
-import { initialAuthState, sendMagicLink } from "./actions";
+import { sendMagicLink } from "./actions";
+import { initialAuthState } from "./auth-state";
 import { DEMO_HOME } from "../../lib/demo";
 
 /**

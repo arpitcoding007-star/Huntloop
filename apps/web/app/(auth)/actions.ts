@@ -6,6 +6,7 @@ import { createTenantClient } from "@huntloop/db";
 import { authModeSchema, emailSchema, parseInput } from "../../lib/validation";
 import { safeNextPath } from "../../lib/safe-next";
 import { siteUrl } from "../../lib/site-url";
+import type { AuthFormState } from "./auth-state";
 
 /**
  * Sign-in, moved off the client.
@@ -39,20 +40,6 @@ import { siteUrl } from "../../lib/site-url";
  * See audit API-02b, and the trap recorded there: moving to custom SMTP, which
  * you must, makes the email cap yours to set.
  */
-
-export interface AuthFormState {
-  status: "idle" | "sent" | "error";
-  /** Shown to the user. Never carries a provider message — see below. */
-  message: string;
-  /** Echoed back so the "check your email" screen can name the address. */
-  email: string;
-}
-
-export const initialAuthState: AuthFormState = {
-  status: "idle",
-  message: "",
-  email: "",
-};
 
 function client() {
   return cookies().then((store) =>
