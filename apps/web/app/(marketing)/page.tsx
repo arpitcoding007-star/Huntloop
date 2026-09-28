@@ -34,10 +34,10 @@ import {
 } from "lucide-react";
 import { DomainInput } from "./DomainInput";
 import { LoopDiagram } from "./LoopDiagram";
-import { describeLimit, listPlans } from "../../lib/data/plans";
+import { describeLimit, listPublicPlans } from "../../lib/data/plans";
 import { publicResearchEnabled } from "@huntloop/jobs";
 import { IDENTITY, legalIsComplete } from "../../lib/legal";
-import { resolveDestination } from "../../lib/data/destination";
+import { resolveVisitorDestination } from "../../lib/data/destination";
 import type { UseCase } from "./for/use-cases";
 
 /**
@@ -87,7 +87,7 @@ import type { UseCase } from "./for/use-cases";
  * fastest route into the workspace for anybody who already has one.
  */
 export default async function LandingPage() {
-  const destination = await resolveDestination();
+  const destination = await resolveVisitorDestination();
 
   /*
    * Signed-in visitors go where they were going. Everyone else gets the page.
@@ -105,7 +105,7 @@ export default async function LandingPage() {
     redirect(destination.path);
   }
 
-  const { data: plans } = await listPlans();
+  const plans = await listPublicPlans();
 
   /* Whether the anonymous domain read is switched on. The closing CTA
      promises it in the present tense, so it has to know. */
@@ -854,7 +854,7 @@ function InControl() {
 
 /* ── 11 · Data + Pricing ─────────────────────────────────────────────────── */
 
-function DataAndPricing({ plans }: { plans: Awaited<ReturnType<typeof listPlans>>["data"] }) {
+function DataAndPricing({ plans }: { plans: Awaited<ReturnType<typeof listPublicPlans>> }) {
   /* Each of these is true of the product today: row-level security on every
      tenant table, the AI provider's no-training terms (privacy page), the
      per-workspace contact retention setting, and the suppression list the

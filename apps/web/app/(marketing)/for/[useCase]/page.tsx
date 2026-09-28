@@ -5,7 +5,7 @@ import { Badge, Button, Card, CardBody, ThemeToggle } from "@huntloop/ui";
 import { Check } from "lucide-react";
 import { DomainInput } from "../../DomainInput";
 import { USE_CASES, findUseCase } from "../use-cases";
-import { resolveDestination } from "../../../../lib/data/destination";
+import { resolveVisitorDestination } from "../../../../lib/data/destination";
 import { BrandLink } from "../../../BrandLink";
 
 /**
@@ -39,7 +39,7 @@ export default async function UseCasePage({
   /* Signed-in visitors go to their workspace, exactly as on the landing page.
      A marketing page is a wall between somebody and their work. Demo stays,
      because a deployment with no database is where this most needs reviewing. */
-  const destination = await resolveDestination();
+  const destination = await resolveVisitorDestination();
   if (destination.kind !== "anonymous" && destination.kind !== "demo") {
     redirect(destination.path);
   }

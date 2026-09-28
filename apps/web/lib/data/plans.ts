@@ -123,3 +123,18 @@ export function describeLimit(value: number | null): string {
   if (value === null) return "Unlimited";
   return value.toLocaleString();
 }
+
+/**
+ * `listPlans`, for the public pricing section: the seeded catalogue when the
+ * database cannot be reached, rather than an error page in front of visitors.
+ * The strict `listPlans` stays for signed-in screens, where hiding an outage
+ * behind plausible numbers would be worse.
+ */
+export async function listPublicPlans(): Promise<Plan[]> {
+  try {
+    return (await listPlans()).data;
+  } catch (error) {
+    console.error("[marketing] plans unavailable; using the seeded catalogue", error);
+    return SEEDED;
+  }
+}

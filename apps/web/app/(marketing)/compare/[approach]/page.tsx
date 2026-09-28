@@ -5,7 +5,7 @@ import { Badge, Button, ScrollRegion, ThemeToggle } from "@huntloop/ui";
 import { DomainInput } from "../../DomainInput";
 import { APPROACHES, findApproach } from "../approaches";
 import { USE_CASES } from "../../for/use-cases";
-import { resolveDestination } from "../../../../lib/data/destination";
+import { resolveVisitorDestination } from "../../../../lib/data/destination";
 import { BrandLink } from "../../../BrandLink";
 
 /**
@@ -32,7 +32,7 @@ export default async function ComparePage({
   const approach = findApproach(slug);
   if (!approach) notFound();
 
-  const destination = await resolveDestination();
+  const destination = await resolveVisitorDestination();
   if (destination.kind !== "anonymous" && destination.kind !== "demo") {
     redirect(destination.path);
   }

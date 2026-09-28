@@ -14,7 +14,7 @@ import {
 import { ArrowRight, Lock } from "lucide-react";
 import { discoverAction } from "./actions";
 import { DomainInput } from "../DomainInput";
-import { resolveDestination } from "../../../lib/data/destination";
+import { resolveVisitorDestination } from "../../../lib/data/destination";
 import { BrandLink } from "../../BrandLink";
 
 /**
@@ -55,7 +55,7 @@ export default async function DiscoverPage({
      need their own research step, which saves. `demo` is excluded for the same
      reason it is on the landing page: a deployment with no database is where
      this screen most needs to be reviewable. */
-  const destination = await resolveDestination();
+  const destination = await resolveVisitorDestination();
   if (destination.kind !== "anonymous" && destination.kind !== "demo") {
     redirect(destination.path);
   }

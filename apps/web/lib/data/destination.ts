@@ -231,3 +231,23 @@ export async function resolveDestination(preferredSlug?: string): Promise<Destin
 
 /** The cookie the org picker writes so a returning user skips it. */
 export const LAST_ORG_COOKIE = "huntloop.org";
+
+/**
+ * `resolveDestination`, for the public marketing pages.
+ *
+ * Those pages exist to render for people with no account, and they only ask
+ * the database whether to redirect a signed-in visitor away. When the database
+ * cannot be reached — a wrong project URL, an outage — `resolveDataSource`
+ * throws, which is right for a workspace screen and wrong here: it turned the
+ * front door into the error boundary for every visitor. Here an unanswerable
+ * question means "treat them as anonymous". The failure is still logged, and
+ * `/api/health` and every app route still report it.
+ */
+export async function resolveVisitorDestination(): Promise<Destination> {
+  try {
+    return await resolveDestination();
+  } catch (error) {
+    console.error("[marketing] destination unresolved; rendering as anonymous", error);
+    return { kind: "anonymous", path: "/login" };
+  }
+}
