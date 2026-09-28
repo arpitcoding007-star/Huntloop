@@ -9,10 +9,10 @@ import { OrgVoiceForm } from "./OrgVoiceForm";
 /**
  * Settings root — the organisation itself.
  *
- * The sidebar's Settings entry and the first tab of `SettingsNav` both point
- * here, and until this page existed both of them 404'd. `NAV-01` did not
- * catch it: it only inspects the sidebar, where the entry was still marked
- * `unbuilt`, and the tab bar is a separate component it never reads.
+ * The Settings rail entry and the first row of its panel both point here.
+ * Until this page existed both 404'd, which `NAV-01` missed while the
+ * settings tabs were a separate component it never read. They are sidebar
+ * items in OrgShell now, which it does read.
  */
 export default async function SettingsPage({
   params,

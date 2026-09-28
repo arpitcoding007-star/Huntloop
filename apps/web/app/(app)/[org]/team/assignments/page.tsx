@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { listAssignments, listMembers } from "../../../../../lib/data/team";
 import { DemoFigures } from "../../DemoFigures";
-import { TeamNav } from "../TeamNav";
 import { AssignmentBoard } from "./AssignmentBoard";
 
 /**
@@ -32,15 +31,11 @@ export default async function AssignmentsPage({
   return (
     <div className="mx-auto w-full max-w-[1000px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="hl-heading text-fg">Team</h1>
+        <h1 className="hl-heading text-fg">Assignments</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Who is in {org}, and which opportunities they own.
+          Which opportunities each person in {org} owns.
         </p>
       </header>
-
-      <div className="mt-6">
-        <TeamNav org={org} />
-      </div>
 
       {source !== "live" && (
         <div className="mt-6">

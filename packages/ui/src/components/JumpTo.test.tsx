@@ -70,10 +70,12 @@ describe("the palette", () => {
   });
 });
 
-describe("the sidebar's search row", () => {
-  const groups = [
+describe("the sidebar's ⌘K palette", () => {
+  const sections = [
     {
+      id: "hunt",
       label: "Hunt",
+      icon: Flame,
       items: [
         { label: "Opportunities", href: "/acme/opportunities", icon: Flame },
         { label: "Companies", href: "/acme/companies", icon: Flame, unbuilt: true },
@@ -81,14 +83,14 @@ describe("the sidebar's search row", () => {
     },
   ];
 
-  it("is not rendered without a palette to open — the NAV-03 rule", () => {
-    render(<Sidebar groups={groups} activeHref="" />);
-    expect(screen.queryByRole("button", { name: /search or jump to/i })).toBeNull();
+  it("binds nothing without a palette to open — the NAV-03 rule", () => {
+    render(<Sidebar sections={sections} activeHref="" />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("option")).toBeNull();
   });
 
   it("opens on ⌘K / Ctrl+K and offers only built destinations", () => {
-    render(<Sidebar groups={groups} activeHref="" jumpTo={{ onNavigate: () => {} }} />);
-    expect(screen.getByRole("button", { name: /search or jump to/i })).toBeTruthy();
+    render(<Sidebar sections={sections} activeHref="" jumpTo={{ onNavigate: () => {} }} />);
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 

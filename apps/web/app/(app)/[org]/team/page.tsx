@@ -4,7 +4,6 @@ import { listInvitations, listMembers } from "../../../../lib/data/team";
 import { listPendingJoinRequests } from "../../../../lib/data/directory";
 import { DemoFigures } from "../DemoFigures";
 import { MemberList } from "./MemberList";
-import { TeamNav } from "./TeamNav";
 import { JoinRequests } from "./JoinRequests";
 
 /**
@@ -36,15 +35,11 @@ export default async function TeamPage({
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
       <header>
-        <h1 className="hl-heading text-fg">Team</h1>
+        <h1 className="hl-heading text-fg">Members</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Who is in {org}, and which opportunities they own.
+          Who is in {org}, and what each of them can do.
         </p>
       </header>
-
-      <div className="mt-6">
-        <TeamNav org={org} />
-      </div>
 
       {source !== "live" && (
         <div className="mt-6">

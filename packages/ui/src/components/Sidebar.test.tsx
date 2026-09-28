@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Flame } from "lucide-react";
-import { Sidebar, type NavGroup } from "./Sidebar";
+import { Sidebar, type NavSection } from "./Sidebar";
 
 /** Explicit cleanup, because `globals: false`. See the note in DataTable.test.tsx. */
 afterEach(cleanup);
@@ -28,9 +28,11 @@ afterEach(cleanup);
  * now vacuously true and will start meaning something again on its own.
  */
 
-const groups: NavGroup[] = [
+const sections: NavSection[] = [
   {
+    id: "hunt",
     label: "Hunt",
+    icon: Flame,
     // `icon` is required on NavItem — the rail renders it when collapsed, so
     // an item without one has nothing to show at the width where the label
     // is gone. One icon for both items is enough; none of this is about which.
@@ -48,7 +50,7 @@ const groups: NavGroup[] = [
  * to be disturbed.
  */
 const renderSidebar = () =>
-  render(<Sidebar groups={groups} activeHref="/acme/opportunities" />);
+  render(<Sidebar sections={sections} activeHref="/acme/opportunities" />);
 
 describe("an unbuilt destination", () => {
   it("is not a link", () => {
@@ -56,7 +58,7 @@ describe("an unbuilt destination", () => {
     // asserting a capability it does not have.
     renderSidebar();
 
-    expect(screen.getByRole("link", { name: /opportunities/i })).toHaveProperty("href");
+    expect(screen.getByRole("link", { name: /^opportunities$/i })).toHaveProperty("href");
     expect(screen.queryByRole("link", { name: /companies/i })).toBeNull();
   });
 
@@ -89,7 +91,83 @@ describe("an unbuilt destination", () => {
   it("leaves built destinations alone", () => {
     renderSidebar();
 
-    const link = screen.getByRole("link", { name: /opportunities/i });
+    const link = screen.getByRole("link", { name: /^opportunities$/i });
     expect(link.getAttribute("aria-disabled")).toBeNull();
+  });
+});
+
+/* ── Two levels ────────────────────────────────────────────────────────── */
+
+const Icon = Flame;
+const twoLevel: NavSection[] = [
+  { id: "home", label: "Home", icon: Icon, items: [{ label: "Command Center", href: "/a/dashboard", icon: Icon }] },
+  {
+    id: "company",
+    label: "Company",
+    icon: Icon,
+    items: [
+      { label: "Product", href: "/a/settings/product", icon: Icon },
+      { label: "ICP", href: "/a/settings/icp", icon: Icon },
+    ],
+  },
+];
+const settings: NavSection[] = [
+  {
+    id: "settings",
+    label: "Settings",
+    icon: Icon,
+    items: [
+      { label: "Organisation", href: "/a/settings", icon: Icon },
+      { label: "ICP", href: "/a/settings/icp", icon: Icon },
+    ],
+  },
+];
+const panel = () => screen.queryByRole("list", { name: /company|settings/i });
+const railCurrent = () =>
+  document.querySelector('a[aria-current="page"][title]')?.getAttribute("title");
+
+describe("the two-level sidebar", () => {
+  it("rail entries lead to their section's first page", () => {
+    render(<Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/dashboard" />);
+    expect(screen.getByTitle("Company").getAttribute("href")).toBe("/a/settings/product");
+    expect(screen.getByTitle("Settings").getAttribute("href")).toBe("/a/settings");
+  });
+
+  it("gives a single-page section no panel", () => {
+    render(<Sidebar sections={twoLevel} activeHref="/a/dashboard" />);
+    expect(panel()).toBeNull();
+  });
+
+  it("shows the current section's pages beside the rail", () => {
+    render(<Sidebar sections={twoLevel} activeHref="/a/settings/icp" />);
+    const list = within(panel()!);
+    expect(list.getByRole("link", { name: "ICP" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("hides the panel, not the rail, when closed", () => {
+    render(<Sidebar sections={twoLevel} activeHref="/a/settings/icp" panelOpen={false} />);
+    expect(screen.getByTitle("Company")).toBeTruthy();
+    expect(screen.getByText("ICP").closest("[inert]")).not.toBeNull();
+  });
+
+  it("keeps the section you came from when a page sits in two", () => {
+    const { rerender } = render(
+      <Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/settings" />,
+    );
+    rerender(<Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/settings/icp" />);
+    expect(railCurrent()).toBe("Settings");
+
+    rerender(<Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/settings/product" />);
+    rerender(<Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/settings/icp" />);
+    expect(railCurrent()).toBe("Company");
+  });
+
+  it("previews a section instead of navigating when the rail selects", () => {
+    render(
+      <Sidebar sections={twoLevel} footerSections={settings} activeHref="/a/dashboard" railSelects />,
+    );
+    const tap = fireEvent.click(screen.getByTitle("Settings"));
+    expect(tap).toBe(false); // default prevented
+    expect(within(panel()!).getByRole("link", { name: "Organisation" })).toBeTruthy();
   });
 });

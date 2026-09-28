@@ -9,8 +9,7 @@ import {
   SidebarCollapseButton,
   SidebarQuota,
   TopBar,
-  type NavGroup,
-  type NavItem,
+  type NavSection,
 } from "@huntloop/ui";
 import type { ShellChrome } from "../../../lib/data/chrome";
 import { AccountMenu } from "./AccountMenu";
@@ -18,23 +17,34 @@ import {
   Activity,
   BarChart3,
   Brain,
+  Building,
   Building2,
   ChevronsUpDown,
+  Crosshair,
   Flame,
+  Gauge,
   Globe,
   GraduationCap,
+  House,
   Inbox as InboxIcon,
   KanbanSquare,
   Lightbulb,
+  MessagesSquare,
+  Package,
+  Plug,
   Radar,
   Send,
   Settings,
+  ShieldCheck,
+  Sparkles,
   Target,
   Upload,
   UserCheck,
   Users,
   Zap,
 } from "lucide-react";
+
+const PANEL_KEY = "hl:sidebar-panel";
 
 /**
  * Client-side nav shell. Icon components (lucide-react) can't cross the
@@ -54,8 +64,27 @@ export function OrgShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  /** Icon-rail collapse — desktop only, where the sidebar is in flow. */
+  /** Section panel hidden — desktop only, where the sidebar is in flow.
+      Remembered per browser: it is a preference about this screen, not
+      state anyone else needs. Read after mount so the server render and
+      the first client render agree. */
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(PANEL_KEY) === "hidden") setCollapsed(true);
+    } catch {
+      /* Storage blocked — the panel simply starts open. */
+    }
+  }, []);
+  const togglePanel = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(PANEL_KEY, next ? "hidden" : "shown");
+    } catch {
+      /* Not remembered; still toggled. */
+    }
+  };
   /** Off-canvas drawer — below lg, where 264px of nav would leave ~110px of content. */
   const [navOpen, setNavOpen] = useState(false);
   /** Submitted by the account menu's "Sign out". See the item for why. */
@@ -105,19 +134,25 @@ export function OrgShell({
    * the link" the cheaper option rather than a discipline to remember.
    */
   /*
-   * Command Center is pinned above the groups rather than sitting inside
-   * Hunt. It is the one destination that is not a stage of the loop — it is
-   * the view *of* the loop — and giving it its own row at the top is what
-   * makes the five groups below read as five equal stages instead of one
-   * lopsided first group.
+   * Two levels, as sections: the rail carries the stages of the loop, the
+   * panel beside it the pages of whichever stage you are in.
+   *
+   * Home comes first and on its own. It is the one destination that is not a
+   * stage of the loop — it is the view *of* the loop — and as a single-item
+   * section it has no panel, so the Command Center gets the full width.
    */
-  const pinned: NavItem[] = [
-    { label: "Command Center", href: `/${org}/dashboard`, icon: Zap },
-  ];
-
-  const groups: NavGroup[] = [
+  const sections: NavSection[] = [
     {
+      id: "home",
+      label: "Home",
+      icon: House,
+      items: [{ label: "Command Center", href: `/${org}/dashboard`, icon: Zap }],
+    },
+    {
+      id: "hunt",
       label: "Hunt",
+      description: "Find and qualify the accounts worth pursuing.",
+      icon: Crosshair,
       items: [
         { label: "Opportunities", href: `/${org}/opportunities`, icon: Flame },
         { label: "Companies", href: `/${org}/companies`, icon: Building2 },
@@ -126,7 +161,10 @@ export function OrgShell({
       ],
     },
     {
+      id: "engage",
       label: "Engage",
+      description: "Reach out, follow up and move deals forward.",
+      icon: MessagesSquare,
       items: [
         { label: "Outreach", href: `/${org}/outreach`, icon: Send },
         // No count until something counts it. "12" was a fixture, and an
@@ -138,7 +176,10 @@ export function OrgShell({
       ],
     },
     {
+      id: "learn",
       label: "Learn",
+      description: "What the loop is teaching you.",
+      icon: Sparkles,
       items: [
         // The flag goes in the same commit that adds the page — this one.
         { label: "Analytics", href: `/${org}/analytics`, icon: BarChart3 },
@@ -162,9 +203,12 @@ export function OrgShell({
       ],
     },
     {
+      id: "company",
       label: "Company",
+      description: "What you sell, and who you sell it to.",
+      icon: Building2,
       items: [
-        { label: "Product", href: `/${org}/settings/product`, icon: Building2 },
+        { label: "Product", href: `/${org}/settings/product`, icon: Package },
         {
           label: "ICP",
           href: `/${org}/settings/icp`,
@@ -175,7 +219,10 @@ export function OrgShell({
       ],
     },
     {
+      id: "team",
       label: "Team",
+      description: "Who is in this workspace, and who owns what.",
+      icon: Users,
       items: [
         { label: "Members", href: `/${org}/team`, icon: Users },
         {
@@ -186,21 +233,38 @@ export function OrgShell({
       ],
     },
     {
+      id: "operate",
       label: "Operate",
+      icon: Activity,
       items: [
-        /* `JOB-01`. Grouped rather than top-level: it answers "why has
-           nothing happened", which is a question asked occasionally and
-           urgently, not a workflow of its own. */
+        /* `JOB-01`. It answers "why has nothing happened", which is a
+           question asked occasionally and urgently, not a workflow of its
+           own — so a single page, and no panel. */
         { label: "Engine", href: `/${org}/ops`, icon: Activity },
       ],
     },
   ];
 
-  /* Settings sits in the footer beside the collapse control, as in the
-     Meridian sidebar, rather than in a group: it is where you go to change
-     the loop, not a stage of it. Same row, same active treatment. */
-  const footerItems: NavItem[] = [
-    { label: "Settings", href: `/${org}/settings`, icon: Settings },
+  /* Settings sits at the foot of the rail rather than among the stages: it
+     is where you go to change the loop, not a stage of it. Its panel
+     replaces the tab row the settings pages used to carry, so Product and
+     ICP appear here and under Company — the Sidebar keeps whichever section
+     you came from lit. */
+  const footerSections: NavSection[] = [
+    {
+      id: "settings",
+      label: "Settings",
+      description: "How this workspace is set up.",
+      icon: Settings,
+      items: [
+        { label: "General", href: `/${org}/settings`, icon: Building },
+        { label: "Product", href: `/${org}/settings/product`, icon: Package },
+        { label: "ICP", href: `/${org}/settings/icp`, icon: Target },
+        { label: "Scoring", href: `/${org}/settings/scoring`, icon: Gauge },
+        { label: "Integrations", href: `/${org}/settings/integrations`, icon: Plug },
+        { label: "Data & privacy", href: `/${org}/settings/privacy`, icon: ShieldCheck },
+      ],
+    },
   ];
 
   /* Stable across renders, because the Sidebar binds ⌘K against it. The
@@ -214,12 +278,25 @@ export function OrgShell({
       },
       open: jumpOpen,
       onOpenChange: setJumpOpen,
-      /* The top bar carries the search field, as in the reference; a second
-         one in the sidebar would be two controls for one palette. */
-      trigger: false,
     }),
     [router, jumpOpen],
   );
+
+  /* Longest matching prefix, so a detail route (/opportunities/alphio-ai)
+     still lights up its page, while /settings/icp does not also light up
+     /settings. An exact match alone would leave detail pages unlit. */
+  const activeHref =
+    [...sections, ...footerSections]
+      .flatMap((s) => s.items.map((i) => i.href))
+      .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+      .sort((a, b) => b.length - a.length)[0] ?? "";
+
+  /* The drawer closes once a page is chosen: below lg it covers the page. */
+  const [drawnAt, setDrawnAt] = useState(pathname);
+  if (pathname !== drawnAt) {
+    setDrawnAt(pathname);
+    setNavOpen(false);
+  }
 
   return (
     /*
@@ -348,33 +425,22 @@ export function OrgShell({
           ].join(" ")}
         >
           <Sidebar
-            groups={groups}
+            sections={sections}
+            footerSections={footerSections}
             /* The app-side half of the framework-agnostic `<a>` in packages/ui.
-             Without it every one of these seventeen items reloaded the whole
-             document — the single largest user-perceived performance cost in
-             the app (audit PERF-01). */
+             Without it every item reloaded the whole document — the single
+             largest user-perceived performance cost in the app (audit
+             PERF-01). */
             linkComponent={Link}
-            /* Longest matching prefix, so a detail route
-             (/opportunities/alphio-ai) still lights up its section, while
-             /settings/icp does not also light up /settings. An exact match
-             alone would leave every detail page with no active item. */
-            activeHref={
-              [...pinned, ...groups.flatMap((g) => g.items), ...footerItems]
-                .map((i) => i.href)
-                .filter(
-                  (href) =>
-                    pathname === href || pathname.startsWith(`${href}/`),
-                )
-                .sort((a, b) => b.length - a.length)[0] ?? ""
-            }
-            // The rail is only collapsible where it is in flow; inside the
-            // drawer the control would fight the drawer's own dismissal.
-            collapsed={collapsed}
-            pinned={pinned}
-            footerItems={footerItems}
+            activeHref={activeHref}
+            /* Inside the drawer the panel is always open — hiding it there
+               would leave a rail of captions and nowhere to go — and a rail
+               tap chooses a section rather than navigating away from it. */
+            panelOpen={navOpen || !collapsed}
+            railSelects={navOpen}
             jumpTo={jumpTo}
             className="h-full"
-            quota={
+            panelFooter={
               /* Omitted, not zeroed, when the plan is unlimited or unknown —
                a meter with no maximum is a bar that can only be empty. */
               chrome.quota && (
@@ -382,16 +448,15 @@ export function OrgShell({
                   label={chrome.quota.label}
                   used={chrome.quota.used}
                   limit={chrome.quota.limit}
-                  collapsed={collapsed}
                 />
               )
             }
-            footerAction={
-              /* The rail is only collapsible where it is in flow; inside the
-                 drawer the control would fight the drawer's own dismissal. */
+            railFooter={
+              /* Only where the sidebar is in flow; inside the drawer the
+                 control would fight the drawer's own dismissal. */
               <SidebarCollapseButton
                 collapsed={collapsed}
-                onToggle={() => setCollapsed((c) => !c)}
+                onToggle={togglePanel}
                 className="max-lg:hidden"
               />
             }

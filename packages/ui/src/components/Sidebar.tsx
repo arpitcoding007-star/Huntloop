@@ -8,10 +8,9 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "../utils/cn";
 import { Anchor, type LinkComponent } from "../utils/link";
-import { useShortcutLabel } from "../utils/shortcut";
 import { Badge, type BadgeVariant } from "./Badge";
 import { JumpTo, type JumpToItem } from "./JumpTo";
 
@@ -25,93 +24,89 @@ import { JumpTo, type JumpToItem } from "./JumpTo";
  *
  *  · `attention` — something is waiting on the user. Solid blue pill.
  *  · `muted` — this is simply how many there are. Grey numeral, no pill.
- *
- * Blue because blue is the one accent, and it is spent only on "act on
- * this" — see tokens.css.
  */
 export type CountTone = "attention" | "muted";
+
+type Icon = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
-  /** e.g. AI / NEW / BETA — trailing tag from the reference nav. */
+  icon: Icon;
+  /** e.g. AI / NEW / BETA — a trailing tag. */
   badge?: { label: string; variant?: BadgeVariant };
   /** A number at the end of the row. See {@link CountTone}. */
   count?: number;
   /** Defaults to `muted`: a bare number claims nothing until it says so. */
   countTone?: CountTone;
-  /**
-   * Single-key shortcut hint, rendered as a dim glyph at the end of the row
-   * (the reference nav shows `U` beside "Analyze a URL"). Display only —
-   * binding the key is the caller's job, and a hint for a key nothing binds
-   * is the same broken promise as a link onto a 404.
-   */
+  /** Single-key shortcut hint. Display only — binding it is the caller's job. */
   hint?: string;
-  /** Bare presence dot with no number, e.g. "Command ●". */
+  /** Bare presence dot with no number. */
   dot?: boolean;
   /**
    * The destination does not exist yet.
    *
    * Renders the item as a non-interactive label instead of a link. The nav is
-   * a deliberate surface map — it shows the shape of the product while it is
-   * being built — but an item that *looks* like a link and returns a 404 is
-   * not a map, it is a broken app. This keeps the entry visible and stops it
-   * lying about being reachable.
+   * a deliberate surface map, but an item that *looks* like a link and
+   * returns a 404 is not a map, it is a broken app.
    */
   unbuilt?: boolean;
 }
 
-export interface NavGroup {
+/**
+ * One entry in the primary rail, and the contents of the panel beside it.
+ *
+ * The rail entry links to the section's first built item, so a section is
+ * never a dead click: choosing "Hunt" lands on Opportunities and opens the
+ * Hunt panel in the same motion. A section with a single item has no panel —
+ * a list of one is a heading, not navigation — and the page gets the width.
+ */
+export interface NavSection {
+  /** Stable key. Also what the rail reports as selected. */
+  id: string;
+  /** The rail caption — one short word. */
   label: string;
+  /** The panel's title, when it should say more than the caption. */
+  title?: string;
+  /** One line under the panel title. */
+  description?: string;
+  icon: Icon;
   items: NavItem[];
 }
 
 export interface SidebarProps {
-  groups: NavGroup[];
+  /** The rail, top to bottom. */
+  sections: NavSection[];
+  /** Pinned to the bottom of the rail — Settings. */
+  footerSections?: NavSection[];
+  /** The current route's nav href — see OrgShell for the prefix rule. */
   activeHref: string;
-  collapsed?: boolean;
   /**
-   * Items shown above the first group, with no group label of their own —
-   * the reference nav's "Command Center" row. Rendered with the same row
-   * component as everything else, so the active treatment is identical.
+   * Whether the secondary panel is shown. The rail always is. Hiding the
+   * panel is the "collapse": the page gains 240px and the rail still says
+   * where you are.
    */
-  pinned?: NavItem[];
+  panelOpen?: boolean;
   /**
-   * "Search or jump to". When given, the sidebar renders the search row (an
-   * icon button in the rail), binds ⌘K / Ctrl+K, and opens {@link JumpTo}
-   * over every built destination in the nav. `onNavigate` performs the jump —
-   * pass the router's `push`.
-   *
-   * Omitted entirely when absent, the same rule TopBar follows: a search box
-   * for a palette that does not exist teaches a habit and then breaks it.
+   * Rail taps choose a section instead of navigating. For the mobile drawer,
+   * where navigating would close the drawer before the user could pick the
+   * page they wanted inside the section.
+   */
+  railSelects?: boolean;
+  /**
+   * "Search or jump to". When given, the sidebar binds ⌘K / Ctrl+K and opens
+   * {@link JumpTo} over every built destination. Controlled when `open` is
+   * passed — the app's top-bar search field opens the same palette.
    */
   jumpTo?: {
     onNavigate: (href: string) => void;
-    /**
-     * Controlled mode, for a shell that opens the palette from somewhere
-     * else too — the app's top-bar search field. The sidebar still owns the
-     * ⌘K binding and the item list; it just reports instead of deciding.
-     */
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
-    /** `false` hides the sidebar's own search row, when the shell has one. */
-    trigger?: boolean;
   };
-  /** The workspace switcher at the top. */
-  header?: ReactNode;
-  /** The 32px icon control at the right of the header. Hidden in the rail. */
-  headerAction?: ReactNode;
-  /** The plan readout at the top of the footer — see {@link SidebarQuota}. */
-  quota?: ReactNode;
-  /**
-   * Rows pinned to the footer rather than to a group — the reference puts
-   * Settings here, beside the collapse control. Same row component, so the
-   * active treatment is identical.
-   */
-  footerItems?: NavItem[];
-  /** Sits on the footer row beside `footerItems` — the collapse control. */
-  footerAction?: ReactNode;
+  /** Pinned to the bottom of the panel — the plan meter. */
+  panelFooter?: ReactNode;
+  /** Pinned to the bottom of the rail, under the footer sections. */
+  railFooter?: ReactNode;
   /**
    * Router-aware link component, e.g. `next/link`. Defaults to a plain `<a>`.
    * See utils/link.ts — this is the seam that keeps the package
@@ -121,41 +116,70 @@ export interface SidebarProps {
   className?: string;
 }
 
-const EXPANDED_W = "w-[272px]";
-const RAIL_W = "w-[72px]";
+const firstHref = (s: NavSection) => s.items.find((i) => !i.unbuilt)?.href ?? null;
+const hasPanel = (s: NavSection | undefined) => !!s && s.items.length > 1;
 
 /**
- * The primary nav, in its three states: light expanded, the 72px rail, and
- * dark (the same markup; the tokens flip).
+ * Two-level navigation: a 76px rail of sections, and a 240px panel listing
+ * the selected section's pages.
  *
- * ── The shape ───────────────────────────────────────────────────────────
+ * ── Why two levels ──────────────────────────────────────────────────────
  *
- * The reference screenshot's flat column: full height under the app's top
- * bar, one hairline on the right, a ground a step darker than the page.
+ * Seventeen destinations in one column made every page start with a scroll
+ * through the whole product. The rail holds the seven stages of the loop —
+ * few enough to learn by position — and the panel holds only what belongs to
+ * the stage you are in.
  *
  * ── Quiet by default ────────────────────────────────────────────────────
  *
- * Seventeen destinations is a lot to put on one surface, so the row at rest
- * is plain ink with a muted icon. Exactly two things are allowed to be
- * louder — where you are (a blue tint with blue ink) and what needs you (a
- * blue count). Everything else, including every merely informational
- * number, stays grey.
+ * Exactly two things are louder than ink: where you are (a tinted capsule
+ * and brand ink) and what needs you (a blue count). Everything else stays
+ * grey, so both still mean something.
  */
 export function Sidebar({
-  groups,
+  sections,
+  footerSections = [],
   activeHref,
-  collapsed = false,
-  pinned,
+  panelOpen = true,
+  railSelects = false,
   jumpTo,
-  header,
-  headerAction,
-  quota,
-  footerItems,
-  footerAction,
+  panelFooter,
+  railFooter,
   linkComponent: Link = Anchor,
   className,
 }: SidebarProps) {
-  const tip = useTooltip(collapsed);
+  const all = [...sections, ...footerSections];
+
+  /*
+   * Which section owns the current page.
+   *
+   * A page can sit in two sections — ICP is both a Company page and a
+   * Settings page — so the section the user came from wins while it still
+   * contains the page. Otherwise the first section that does. Without the
+   * sticky rule, choosing ICP under Settings would jump the rail to Company.
+   *
+   * A rail tap in `railSelects` mode previews a section without leaving the
+   * page; it wins the tie too, since a page picked from a previewed panel was
+   * picked *from* that section. Cleared when the route moves, so a preview
+   * can never outlive the drawer it was made in.
+   *
+   * Derived during render (React's "adjust state on prop change" pattern)
+   * rather than in effects, so the rail never paints one frame behind.
+   */
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [stickyId, setStickyId] = useState<string | null>(null);
+  const [seenHref, setSeenHref] = useState(activeHref);
+  const owners = all.filter((s) => s.items.some((i) => i.href === activeHref));
+  const routeSection =
+    owners.find((s) => s.id === previewId) ?? owners.find((s) => s.id === stickyId) ?? owners[0];
+  if (activeHref !== seenHref) {
+    setSeenHref(activeHref);
+    setPreviewId(null);
+  }
+  if (routeSection && routeSection.id !== stickyId) setStickyId(routeSection.id);
+  const shown = all.find((s) => s.id === previewId) ?? routeSection;
+
+  /* ── ⌘K ─────────────────────────────────────────────────────────────── */
   const [ownJumpOpen, setOwnJumpOpen] = useState(false);
   const controlled = jumpTo?.open !== undefined;
   const jumpOpen = controlled ? !!jumpTo?.open : ownJumpOpen;
@@ -164,15 +188,8 @@ export function Sidebar({
     (next: boolean) => (controlled ? onOpenChange?.(next) : setOwnJumpOpen(next)),
     [controlled, onOpenChange],
   );
-  /* Read by the key handler, so toggling does not rebind it on every open. */
   const jumpOpenRef = useRef(jumpOpen);
   jumpOpenRef.current = jumpOpen;
-  const shortcut = useShortcutLabel();
-  const showTrigger = jumpTo?.trigger !== false;
-
-  /* ⌘K / Ctrl+K toggles the palette from anywhere in the app. The row
-     advertises the shortcut, so the shortcut has to work wherever the row
-     is on screen — and is bound only while the palette exists. */
   const hasJump = !!jumpTo;
   useEffect(() => {
     if (!hasJump) return;
@@ -186,156 +203,106 @@ export function Sidebar({
     return () => window.removeEventListener("keydown", onKey);
   }, [hasJump, setJumpOpen]);
 
-  const jumpItems: JumpToItem[] = [
-    ...(pinned ?? []).map((item) => ({ item, group: undefined })),
-    ...groups.flatMap((g) => g.items.map((item) => ({ item, group: g.label }))),
-    ...(footerItems ?? []).map((item) => ({ item, group: undefined })),
-  ]
-    .filter(({ item }) => !item.unbuilt)
+  /* Deduplicated by href: a page listed in two sections is one destination. */
+  const seen = new Set<string>();
+  const jumpItems: JumpToItem[] = all
+    .flatMap((s) => s.items.map((item) => ({ item, group: s.title ?? s.label })))
+    .filter(({ item }) => !item.unbuilt && !seen.has(item.href) && !!seen.add(item.href))
     .map(({ item, group }) => ({ label: item.label, href: item.href, icon: item.icon, group }));
 
-  const renderItem = (item: NavItem) => (
-    <SidebarRow
-      key={item.href}
-      item={item}
-      active={item.href === activeHref && !item.unbuilt}
-      collapsed={collapsed}
-      Link={Link}
-      tip={tip}
-    />
-  );
+  const renderRail = (s: NavSection) => {
+    const href = firstHref(s);
+    const selected = s.id === shown?.id;
+    return (
+      <RailItem
+        key={s.id}
+        section={s}
+        href={href}
+        selected={selected}
+        current={s.id === routeSection?.id}
+        Link={Link}
+        onSelect={
+          railSelects && hasPanel(s)
+            ? (e) => {
+                e.preventDefault();
+                setPreviewId(s.id);
+              }
+            : undefined
+        }
+      />
+    );
+  };
 
-  const openJump = () => setJumpOpen(true);
-  const rowList = cn("flex flex-col gap-0.5", collapsed && "items-center gap-0.5");
+  const panelVisible = panelOpen && hasPanel(shown);
 
   return (
     <>
-      <nav
-        aria-label="Primary"
-        className={cn(
-          "flex h-full flex-col overflow-hidden border-r border-line-subtle bg-sidebar",
-          "transition-[width] duration-[180ms] ease-out-hl motion-reduce:transition-none",
-          collapsed ? RAIL_W : EXPANDED_W,
-          className,
-        )}
-      >
-        {collapsed ? (
-          <div className="flex shrink-0 flex-col items-center gap-0.5 pt-3">
-            {header && <div className="mb-3 flex justify-center">{header}</div>}
-            {jumpTo && showTrigger && (
-              <button
-                type="button"
-                onClick={openJump}
-                aria-label="Search or jump to"
-                className="hl-focusable flex size-10 items-center justify-center rounded-[10px] text-fg-muted transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg"
-                {...tip.bind("Search or jump to")}
-              >
-                <Search className="size-[18px]" strokeWidth={1.6} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            {(header || headerAction) && (
-              <div className="flex h-[58px] shrink-0 items-center justify-between gap-2 pr-2.5 pl-3">
-                <div className="min-w-0 flex-1">{header}</div>
-                {headerAction}
-              </div>
-            )}
-            {jumpTo && showTrigger && (
-              <div className="shrink-0 px-3 pb-2.5">
-                <button
-                  type="button"
-                  onClick={openJump}
-                  className="hl-focusable flex h-[34px] w-full items-center gap-[9px] rounded-[9px] border border-line-subtle bg-sidebar-raised pr-2 pl-[11px] text-left text-[13px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary"
-                >
-                  <Search aria-hidden className="size-[15px] shrink-0" strokeWidth={1.7} />
-                  <span className="min-w-0 flex-1 truncate">Search or jump to</span>
-                  <kbd className="shrink-0 rounded-[5px] border border-line-subtle bg-canvas px-[5px] py-px font-mono text-[10.5px] font-normal text-fg-muted">
-                    {shortcut}
-                  </kbd>
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* `overscroll-contain` so flicking past the end of a long nav does
-            not start scrolling the page behind it. `relative` so this
-            scroller is the containing block for any absolutely positioned
-            descendant (an `sr-only` label, say) — otherwise it escapes the
-            clip and lengthens the document. `min-h-0` lets it shrink below
-            its content inside the column instead of pushing the footer out. */}
-        <div
-          className={cn(
-            "relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
-            collapsed
-              ? "flex flex-col items-center pt-2 pb-2"
-              : cn(
-                  "px-3 pb-2",
-                  /* Flush under a header or search row; given its own inset
-                     when the nav is the first thing in the panel. */
-                  header || headerAction || (jumpTo && showTrigger) ? "pt-1" : "pt-4",
-                ),
-          )}
-        >
-          {pinned && pinned.length > 0 && (
-            <>
-              {collapsed && <RailRule />}
-              <ul className={rowList}>{pinned.map((i) => renderItem(i))}</ul>
-            </>
-          )}
-
-          {groups.map((group) => (
-            <div key={group.label} className={cn(collapsed && "flex flex-col items-center")}>
-              {collapsed ? (
-                /* In the rail the group label has nowhere to go, so the
-                   grouping is carried by a rule instead. Presentational —
-                   every link still carries its own name. */
-                <RailRule />
-              ) : (
-                /* 10.5px eyebrow. The design sets it in --ink-4, which is
-                   2.7:1 — `hl-label`'s muted grey is the next step up. */
-                <div
-                  className={cn(
-                    /* `!` because `.hl-label` is unlayered CSS and outranks utilities. */
-                    "hl-label mx-3 mt-5 mb-1.5 text-[11.5px]!",
-                    !pinned?.length && "first:mt-1",
-                  )}
-                >
-                  {group.label}
-                </div>
+      <nav aria-label="Primary" className={cn("flex h-full", className)}>
+        {/* ── Rail ── */}
+        <div className="flex h-full w-[76px] shrink-0 flex-col items-center border-r border-line-subtle bg-sidebar">
+          <ul
+            className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-x-hidden overflow-y-auto overscroll-contain pt-2.5 pb-2"
+            /* The rail scrolls only on very short windows, and a scrollbar
+               would eat a third of its width when it does. */
+            style={{ scrollbarWidth: "none" }}
+          >
+            {sections.map(renderRail)}
+          </ul>
+          {(footerSections.length > 0 || railFooter) && (
+            <div className="flex w-full shrink-0 flex-col items-center gap-0.5 pt-1.5 pb-2.5">
+              <span aria-hidden className="mb-1 block h-px w-8 bg-line-subtle" />
+              {footerSections.length > 0 && (
+                <ul className="flex w-full flex-col items-center gap-0.5">
+                  {footerSections.map(renderRail)}
+                </ul>
               )}
-              <ul className={rowList}>{group.items.map((i) => renderItem(i))}</ul>
+              {railFooter}
             </div>
-          ))}
+          )}
         </div>
 
-        {(quota || footerItems?.length || footerAction) && (
-          <div
-            className={cn(
-              "flex shrink-0 flex-col gap-2",
-              collapsed
-                ? "items-center pt-2 pb-3"
-                : "border-t border-line-subtle px-3 pt-2.5 pb-3",
-            )}
-          >
-            {quota}
-            {(footerItems?.length || footerAction) && (
-              <div className={cn("flex items-center gap-1", collapsed && "flex-col gap-2")}>
-                {footerItems?.length ? (
-                  <ul className={cn("flex min-w-0 flex-1 flex-col", collapsed && "items-center")}>
-                    {footerItems.map((i) => renderItem(i))}
-                  </ul>
-                ) : null}
-                {footerAction}
+        {/* ── Panel ──
+            Width animates so the page slides rather than jumps; the inner
+            column keeps its width so text never reflows mid-transition. */}
+        <div
+          className={cn(
+            "h-full shrink-0 overflow-hidden bg-sidebar",
+            "transition-[width] duration-[220ms] ease-out-hl motion-reduce:transition-none",
+            panelVisible ? "w-[240px] border-r border-line-subtle" : "w-0",
+          )}
+          aria-hidden={!panelVisible || undefined}
+          inert={!panelVisible || undefined}
+        >
+          {shown && hasPanel(shown) && (
+            <div className="flex h-full w-[240px] flex-col">
+              <div className="shrink-0 px-5 pt-5 pb-3">
+                <h2 className="truncate text-[19px] leading-[1.2] font-semibold tracking-[-0.022em] text-fg">
+                  {shown.title ?? shown.label}
+                </h2>
+                {shown.description && (
+                  <p className="mt-1 text-[12px] leading-[1.45] text-fg-muted">
+                    {shown.description}
+                  </p>
+                )}
               </div>
-            )}
-          </div>
-        )}
+              <ul
+                aria-label={shown.title ?? shown.label}
+                className="relative flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overscroll-contain px-3 pb-3"
+              >
+                {shown.items.map((item) => (
+                  <PanelRow
+                    key={item.href}
+                    item={item}
+                    active={item.href === activeHref && !item.unbuilt}
+                    Link={Link}
+                  />
+                ))}
+              </ul>
+              {panelFooter && <div className="shrink-0 px-3 pt-2 pb-3">{panelFooter}</div>}
+            </div>
+          )}
+        </div>
       </nav>
-
-      {tip.node}
 
       {jumpTo && (
         <JumpTo
@@ -349,40 +316,114 @@ export function Sidebar({
   );
 }
 
-function RailRule() {
-  return <span aria-hidden className="my-1.5 block h-px w-7 shrink-0 bg-line-subtle" />;
+/* ── Rail item ───────────────────────────────────────────────────────────
+   An icon in a capsule with a caption beneath — the caption is what lets a
+   76px rail be learned rather than hovered. The selected section fills the
+   capsule; the label goes to full ink. A summons anywhere in the section
+   survives as a dot on the icon, so it is visible from every other page. */
+
+function RailItem({
+  section,
+  href,
+  selected,
+  current,
+  Link,
+  onSelect,
+}: {
+  section: NavSection;
+  href: string | null;
+  selected: boolean;
+  current: boolean;
+  Link: LinkComponent;
+  onSelect?: (e: { preventDefault: () => void }) => void;
+}) {
+  const Icon = section.icon;
+  const summons = section.items.some(
+    (i) => !i.unbuilt && ((i.count ?? 0) > 0 && i.countTone === "attention"),
+  );
+
+  const body = (
+    <>
+      <span
+        className={cn(
+          "relative flex h-8 w-11 items-center justify-center rounded-[10px]",
+          "transition-[background-color,color,transform] duration-[160ms] ease-out-hl",
+          "group-active:scale-[0.94] motion-reduce:group-active:scale-100",
+          selected
+            ? "bg-nav-active text-brand-text"
+            : "text-fg-muted group-hover:bg-nav-hover group-hover:text-fg",
+        )}
+      >
+        <Icon className="size-[19px]" strokeWidth={selected ? 1.9 : 1.6} />
+        {summons && (
+          <span
+            aria-hidden
+            className="absolute top-1 right-2 size-[7px] rounded-full bg-attention ring-2 ring-sidebar"
+          />
+        )}
+      </span>
+      <span
+        className={cn(
+          "max-w-full truncate px-1 text-[10.5px] leading-none tracking-[-0.005em]",
+          selected ? "font-semibold text-fg" : "font-medium text-fg-muted group-hover:text-fg",
+        )}
+      >
+        {section.label}
+      </span>
+    </>
+  );
+
+  const shared = "group flex w-[68px] flex-col items-center gap-1 rounded-[12px] py-[5px]";
+
+  if (!href) {
+    return (
+      <li>
+        <span
+          title={`${section.label} — not built yet`}
+          aria-disabled="true"
+          className={cn(shared, "cursor-default opacity-60")}
+        >
+          {body}
+        </span>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <Link
+        href={href}
+        aria-current={current ? "page" : undefined}
+        title={section.title ?? section.label}
+        className={cn(shared, "hl-focusable")}
+        onClick={onSelect}
+      >
+        {body}
+      </Link>
+    </li>
+  );
 }
 
-/* ── Row ─────────────────────────────────────────────────────────────────
-   One component for links, pinned items and unbuilt labels, so the three
-   cannot drift apart. The geometry is the reference screenshot: every row
-   40px tall at radius 10, an 18px icon, a 14.5px label, and the active row
-   a blue tint with blue ink. In the rail: a 40px square target.
+/* ── Panel row ───────────────────────────────────────────────────────────
+   32px tall at radius 8, a 16px icon and a 13.5px label: the density of a
+   Finder or Mail sidebar, which is the density of a list you scan rather
+   than read. One component for links and unbuilt labels, so the two cannot
+   drift apart. */
 
-   Any active ring is a box-shadow rather than a border, so becoming
-   active cannot shift the label by a pixel. */
-
-function SidebarRow({
+function PanelRow({
   item,
   active,
-  collapsed,
   Link,
-  tip,
 }: {
   item: NavItem;
   active: boolean;
-  collapsed: boolean;
   Link: LinkComponent;
-  tip: Tooltip;
 }) {
   const Icon = item.icon;
   const count = typeof item.count === "number" && item.count > 0 ? item.count : 0;
-  const attention = count > 0 && item.countTone === "attention";
 
-  /* The trailing slot, in priority order. A row shows one of these, never
-     two — "Soon", a tag, a count, a shortcut hint and a presence dot all
-     compete for the same 40px, and a row carrying three of them is how a
-     nav stops being scannable. */
+  /* One trailing mark, never two — a row carrying three is how a nav stops
+     being scannable. */
   const trailing = item.unbuilt ? (
     <span className="shrink-0 text-[10px] tracking-[0.06em] text-fg-muted uppercase">Soon</span>
   ) : item.badge ? (
@@ -401,52 +442,24 @@ function SidebarRow({
     <>
       <Icon
         className={cn(
-          "shrink-0 transition-colors duration-[120ms]",
-          "size-[18px]",
+          "size-4 shrink-0 transition-colors duration-[120ms]",
           active ? "text-brand-text" : "text-fg-muted group-hover:text-fg",
         )}
-        strokeWidth={1.7}
+        strokeWidth={active ? 1.9 : 1.7}
       />
-      {!collapsed && (
-        <>
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-          {trailing}
-        </>
-      )}
-      {/* In the rail there is no label, so "something is waiting" has to
-          survive as a mark on the icon itself — a ringed count where there
-          is a number, a dot where there is only presence. Otherwise
-          collapsing the sidebar silently hides every summons in the app. */}
-      {collapsed && !item.unbuilt && attention && (
-        <span
-          aria-hidden
-          className="hl-tabular absolute top-[3px] right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-attention px-1 text-[10px] font-semibold text-attention-ink ring-2 ring-sidebar"
-        >
-          {count}
-        </span>
-      )}
-      {collapsed && !item.unbuilt && !attention && item.dot && (
-        <span
-          aria-hidden
-          className="absolute top-1.5 right-1.5 size-[7px] rounded-full bg-attention ring-2 ring-sidebar"
-        />
-      )}
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {trailing}
     </>
   );
 
   const shared = cn(
-    "group relative flex items-center rounded-[10px] text-[14.5px]",
-    "transition-[background-color,color,box-shadow] duration-[120ms] ease-out-hl",
-    collapsed
-      ? "size-10 justify-center rounded-[10px]"
-      : "h-10 gap-3 px-3",
+    "group relative flex h-8 items-center gap-2.5 rounded-[8px] px-2.5 text-[13.5px] tracking-[-0.006em]",
+    "transition-[background-color,color] duration-[120ms] ease-out-hl",
   );
 
   if (item.unbuilt) {
-    /* A span, not a disabled link: there is no destination to disable. Kept
-       out of the tab order for the same reason — a keyboard user landing on
-       it would have nowhere to go. `title` carries the explanation at every
-       width, since the "Soon" marker is hidden while collapsed. */
+    /* A span, not a disabled link: there is no destination to disable. Out
+       of the tab order for the same reason. `title` names it at every width. */
     return (
       <li>
         <span
@@ -469,10 +482,9 @@ function SidebarRow({
           shared,
           "hl-focusable",
           active
-            ? "bg-nav-active font-medium text-brand-text shadow-nav-active"
-            : "text-fg hover:bg-nav-hover",
+            ? "bg-nav-active font-medium text-brand-text"
+            : "text-fg-secondary hover:bg-nav-hover hover:text-fg",
         )}
-        {...tip.bind(collapsed ? item.label : undefined, item.count, item.countTone)}
       >
         {inner}
       </Link>
@@ -482,12 +494,10 @@ function SidebarRow({
 
 function CountPill({ value, tone }: { value: number; tone: CountTone }) {
   if (tone === "muted") {
-    /* The design sets this numeral in --ink-4 (2.7:1); it is real text, so
-       it reads one step up the ramp. */
     return <span className="hl-tabular shrink-0 text-[12px] text-fg-muted">{value}</span>;
   }
   return (
-    <span className="hl-tabular flex h-5 min-w-5 shrink-0 items-center justify-center rounded-[10px] bg-attention px-1.5 text-[11px] font-semibold text-attention-ink">
+    <span className="hl-tabular flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-attention px-1.5 text-[10.5px] font-semibold text-attention-ink">
       {value}
     </span>
   );
@@ -495,46 +505,27 @@ function CountPill({ value, tone }: { value: number; tone: CountTone }) {
 
 /* ── Footer pieces ───────────────────────────────────────────────────────
    Exported because the app composes the footer, but the shapes belong to
-   the design system — a quota readout invented per-app
-   are how two products that share a component library stop looking alike. */
+   the design system. */
 
-/** The plan/usage readout at the top of the footer. */
+/** The plan/usage readout at the bottom of the panel. */
 export function SidebarQuota({
   label,
   used,
   limit,
-  collapsed,
   className,
 }: {
   label: string;
   used: number;
   limit: number;
-  collapsed?: boolean;
   className?: string;
 }) {
   const pct = limit > 0 ? Math.min(100, Math.max(0, (used / limit) * 100)) : 0;
   const text = `${used.toLocaleString()} / ${limit.toLocaleString()}`;
 
-  if (collapsed) {
-    /* At 72px there is no room for the numbers, and a bare track with no
-       scale is decoration. The title carries the whole fact instead. */
-    return (
-      <div
-        title={`${label}: ${text}`}
-        className={cn("mx-auto h-1 w-8 overflow-hidden rounded-[2px] bg-surface-active", className)}
-      >
-        <div
-          className={cn("h-full rounded-[2px] bg-brand-vivid", used > 0 && "min-w-[3px]")}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-[10px] border border-line-subtle bg-sidebar-raised px-3 py-2.5",
+        "flex flex-col gap-2 rounded-[12px] bg-sidebar-raised px-3 py-2.5 shadow-raised ring-1 ring-line-subtle",
         className,
       )}
     >
@@ -542,8 +533,7 @@ export function SidebarQuota({
         <span className="truncate font-medium text-fg">{label}</span>
         <span className="hl-tabular shrink-0 text-fg-muted">{text}</span>
       </div>
-      {/* `role="meter"` rather than `progressbar`: this is a level within a
-          known range, not the progress of a task that completes. */}
+      {/* `role="meter"`: a level within a known range, not task progress. */}
       <div
         role="meter"
         aria-label={label}
@@ -551,13 +541,13 @@ export function SidebarQuota({
         aria-valuemin={0}
         aria-valuemax={limit}
         aria-valuetext={text}
-        className="h-1 w-full overflow-hidden rounded-[2px] bg-surface-active"
+        className="h-1 w-full overflow-hidden rounded-full bg-surface-active"
       >
-        {/* A 5px floor once anything is used, as in the design: 8 of 1,000
-            is real usage, and a 0.8% bar is invisible. Zero stays empty. */}
+        {/* A floor once anything is used: 8 of 1,000 is real usage, and a
+            0.8% bar is invisible. Zero stays empty. */}
         <div
           className={cn(
-            "h-full rounded-[2px] bg-brand-vivid transition-[width] duration-[280ms] ease-out-hl motion-reduce:transition-none",
+            "h-full rounded-full bg-brand-vivid transition-[width] duration-[280ms] ease-out-hl motion-reduce:transition-none",
             used > 0 && "min-w-[5px]",
           )}
           style={{ width: `${pct}%` }}
@@ -567,7 +557,7 @@ export function SidebarQuota({
   );
 }
 
-/** The rail toggle. Lives in the footer beside Settings, as in the reference. */
+/** Shows or hides the section panel. Lives at the foot of the rail. */
 export function SidebarCollapseButton({
   collapsed,
   onToggle,
@@ -577,7 +567,7 @@ export function SidebarCollapseButton({
   onToggle: () => void;
   className?: string;
 }) {
-  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  const label = collapsed ? "Show sidebar" : "Hide sidebar";
   return (
     <button
       type="button"
@@ -586,95 +576,16 @@ export function SidebarCollapseButton({
       title={label}
       aria-expanded={!collapsed}
       className={cn(
-        /* Muted rather than the design's --ink-4: this icon is the control's
-           only label, so it is held to the 3:1 non-text floor. */
-        "hl-focusable flex shrink-0 items-center justify-center text-fg-muted",
+        "hl-focusable flex h-8 w-11 shrink-0 items-center justify-center rounded-[10px] text-fg-muted",
         "transition-colors duration-[120ms] hover:bg-nav-hover hover:text-fg",
-        collapsed ? "size-10 rounded-[10px]" : "size-8 rounded-[8px]",
         className,
       )}
     >
       {collapsed ? (
-        <PanelLeftOpen className="size-4" strokeWidth={1.6} />
+        <PanelLeftOpen className="size-[17px]" strokeWidth={1.6} />
       ) : (
-        <PanelLeftClose className="size-4" strokeWidth={1.6} />
+        <PanelLeftClose className="size-[17px]" strokeWidth={1.6} />
       )}
     </button>
   );
-}
-
-/* ── Rail tooltip ────────────────────────────────────────────────────────
-   In the rail the label is gone, so hovering an icon has to say what it is.
-   `title` alone is not enough — it waits a second, it is unstyled, and it
-   never appears for a keyboard user at all.
-
-   Why this needs JavaScript. The natural implementation is an absolutely
-   positioned sibling inside the row, and it does not work here: the nav
-   scrolls, `overflow-y: auto` computes `overflow-x` to `auto` as well, and
-   the tooltip is clipped at the rail's 72px edge. So there is one fixed
-   element outside the scroll container, positioned from the hovered row's
-   own rect — 14px off its right edge, which is the design's `left: 54px`
-   from a 40px target.
-
-   It is decoration, not content: `aria-hidden`, with the accessible name
-   still carried by the link text (visually hidden at this width is not the
-   same as absent — the label element is simply not rendered, so the link's
-   name comes from `title`). Pointer-events off, so it can never intercept
-   the click it is describing. */
-
-interface Tooltip {
-  node: ReactNode;
-  bind: (label: string | undefined, count?: number, tone?: CountTone) => Record<string, unknown>;
-}
-
-function useTooltip(enabled: boolean): Tooltip {
-  const [state, setState] = useState<{
-    text: string;
-    note?: string;
-    top: number;
-    left: number;
-  } | null>(null);
-  const frame = useRef<number | null>(null);
-
-  const show = useCallback((el: HTMLElement, text: string, note?: string) => {
-    const rect = el.getBoundingClientRect();
-    if (frame.current !== null) cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() =>
-      setState({ text, note, top: rect.top + rect.height / 2, left: rect.right + 14 }),
-    );
-  }, []);
-
-  const hide = useCallback(() => {
-    if (frame.current !== null) cancelAnimationFrame(frame.current);
-    setState(null);
-  }, []);
-
-  const bind: Tooltip["bind"] = (label, count, tone) => {
-    if (!enabled || !label) return {};
-    const note =
-      tone === "attention" && typeof count === "number" && count > 0 ? `${count} new` : undefined;
-    return {
-      title: label,
-      onPointerEnter: (e: { currentTarget: HTMLElement }) => show(e.currentTarget, label, note),
-      onPointerLeave: hide,
-      onFocus: (e: { currentTarget: HTMLElement }) => show(e.currentTarget, label, note),
-      onBlur: hide,
-    };
-  };
-
-  const node =
-    enabled && state ? (
-      <div
-        aria-hidden
-        style={{ top: state.top, left: state.left }}
-        className="pointer-events-none fixed z-[70] flex -translate-y-1/2 items-center gap-2.5 rounded-[8px] bg-band px-2.5 py-[7px] text-[12.5px] font-medium whitespace-nowrap text-band-fg shadow-popover ring-1 ring-band-line"
-      >
-        {state.text}
-        {state.note && (
-          <span className="hl-tabular font-normal text-band-fg-secondary">{state.note}</span>
-        )}
-      </div>
-    ) : null;
-
-  return { node, bind };
 }

@@ -84,7 +84,7 @@ export {
   SidebarCollapseButton,
   SidebarQuota,
 } from "./components/Sidebar";
-export type { CountTone, NavGroup, NavItem, SidebarProps } from "./components/Sidebar";
+export type { CountTone, NavItem, NavSection, SidebarProps } from "./components/Sidebar";
 
 export { ScoreRing, SCORE_RING_THRESHOLD } from "./components/ScoreRing";
 export type { ScoreRingProps, ScoreRingSize, ScoreRingTone } from "./components/ScoreRing";
