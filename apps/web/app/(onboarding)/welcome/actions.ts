@@ -3,7 +3,6 @@
 import { cookies } from "next/headers";
 import { canonicalizeDomain, rootLabel } from "@huntloop/db/identity";
 import { resolveDataSource } from "../../../lib/data/source";
-import { hasOnboardingSchema } from "../../../lib/data/onboarding-schema";
 import { listMemberships, LAST_ORG_COOKIE } from "../../../lib/data/destination";
 import {
   completeOnboarding,
@@ -171,7 +170,6 @@ export async function createWorkspace(
   const { data: auth } = await db.auth.getUser();
   if (!auth.user) return fail("Your session expired. Sign in again.");
 
-  const migrated = await hasOnboardingSchema(db);
 
   /* Already got one for this domain? Re-running step two must not create a
      second workspace — which is what a refresh on this screen would otherwise
@@ -184,23 +182,15 @@ export async function createWorkspace(
     const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
     if (RESERVED_SLUGS.has(slug)) continue;
 
-    const { data: org, error } = await db
-      .from("organizations")
-      /* `primary_domain` is what lets a colleague find this workspace instead
-         of building a second one for the same company (`0027`). Written here
-         rather than derived later because this is the one moment the domain is
-         unambiguously known — it is what the slug was built from.
-
-         Gated on the migration, like every other new column: writing one
-         PostgREST has not seen fails the whole insert, and this insert is the
-         workspace. */
-      .insert(
-        migrated
-          ? { name: rootLabel(domain) ?? domain, slug, primary_domain: domain }
-          : { name: rootLabel(domain) ?? domain, slug },
-      )
-      .select("id")
-      .single();
+    /* One call creates the workspace and the owner membership together.
+       Through the tenant client this was two inserts that RLS could never
+       allow — no insert policy on organizations, and membership_write wants
+       an admin of an org that does not exist yet. See migration 0030. */
+    const { data: orgId, error } = await db.rpc("create_organization", {
+      p_name: rootLabel(domain) ?? domain,
+      p_slug: slug,
+      p_domain: domain,
+    });
 
     if (error) {
       // 23505 is unique_violation — the slug is taken by someone else's
@@ -210,23 +200,9 @@ export async function createWorkspace(
       return fail(error.message);
     }
 
-    const { error: memberError } = await db.from("memberships").insert({
-      org_id: org.id,
-      user_id: auth.user.id,
-      role: "owner",
-    });
-
-    if (memberError) {
-      /* The org exists but nobody can reach it — an orphan row that also holds
-         its slug hostage. Clean it up rather than leaving the user stuck on a
-         domain that now silently fails. */
-      await db.from("organizations").delete().eq("id", org.id);
-      return fail(`Could not add you to the workspace: ${memberError.message}`);
-    }
-
     await capture("onboarding_step_completed", auth.user.id, {
       step: "organisation",
-      orgId: org.id as string,
+      orgId: String(orgId),
     });
 
     return ok({ slug });

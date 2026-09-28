@@ -2788,6 +2788,83 @@ console.log("\nCombined paste — the migrations it claims, and in order");
   else fail("and commits it", "no bare 'commit;' line");
 }
 
+// ── 0030 — create_organization ──────────────────────────────────────────────
+// Onboarding could never create a workspace through the tenant client: no
+// insert policy on organizations, and membership_write needs an admin of an
+// org that does not exist yet. The function is the only way in.
+console.log("\n0030 — creating a workspace");
+{
+  const NEWCOMER = "30303030-0030-0030-0030-000000000030";
+  await db.query(`insert into auth.users (id, email) values ($1, 'founder-0030@c.test')`, [NEWCOMER]);
+
+  const asUser = async (user: string, sql: string, params: unknown[] = []) => {
+    await db.exec("begin");
+    try {
+      await db.exec("set local role authenticated");
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [user]);
+      const r = await db.query<Record<string, unknown>>(sql, params);
+      await db.exec("commit");
+      return { rows: r.rows, error: null as string | null };
+    } catch (e) {
+      await db.exec("rollback");
+      return { rows: [], error: (e as Error).message };
+    }
+  };
+
+  const direct = await asUser(
+    NEWCOMER,
+    `insert into organizations (name, slug) values ('Direct', 'direct-0030')`,
+  );
+  if (direct.error) ok("a direct insert is still refused by RLS");
+  else fail("a direct insert is still refused by RLS", "insert succeeded");
+
+  const created = await asUser(
+    NEWCOMER,
+    `select public.create_organization('Kima', 'kima-0030', 'Kima.Finance') as id`,
+  );
+  const orgId = created.rows[0]?.id as string | undefined;
+  if (orgId) ok("an authenticated caller creates a workspace");
+  else fail("an authenticated caller creates a workspace", created.error);
+
+  const role = await db.query<{ role: string }>(
+    `select role from memberships where org_id = $1 and user_id = $2`,
+    [orgId, NEWCOMER],
+  );
+  if (role.rows[0]?.role === "owner") ok("and is made its owner in the same call");
+  else fail("and is made its owner in the same call", role.rows);
+
+  const domain = await db.query<{ primary_domain: string }>(
+    `select primary_domain from organizations where id = $1`,
+    [orgId],
+  );
+  if (domain.rows[0]?.primary_domain === "kima.finance") ok("the domain is stored lower-cased");
+  else fail("the domain is stored lower-cased", domain.rows);
+
+  const visible = await asUser(NEWCOMER, `select id from organizations where id = $1`, [orgId]);
+  if (visible.rows.length === 1) ok("the creator can read it back through RLS");
+  else fail("the creator can read it back through RLS", visible.error ?? "no row");
+
+  const taken = await asUser(
+    NEWCOMER,
+    `select public.create_organization('Org A again', 'org-a', null)`,
+  );
+  if (taken.error && /duplicate|unique/i.test(taken.error)) ok("a taken slug raises unique_violation");
+  else fail("a taken slug raises unique_violation", taken.error ?? "created");
+
+  const badSlug = await asUser(
+    NEWCOMER,
+    `select public.create_organization('Bad', 'Not A Slug', null)`,
+  );
+  if (badSlug.error) ok("a malformed slug is refused");
+  else fail("a malformed slug is refused", "created");
+
+  // No session: auth.uid() is null, exactly as for an anonymous request.
+  const anonymous = await asUser("", `select public.create_organization('Anon', 'anon-0030', null)`);
+  if (anonymous.error) ok("a caller with no session cannot create one");
+  else fail("a caller with no session cannot create one", "created");
+}
+
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );

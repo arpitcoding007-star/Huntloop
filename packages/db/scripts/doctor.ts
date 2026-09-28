@@ -96,6 +96,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0027_org_directory.sql", probe: "join_requests", kind: "table" },
   { file: "0028_signals_and_crm.sql", probe: "hubspot_connections", kind: "table" },
   { file: "0029_data_rights.sql", probe: "delete_own_account", kind: "rpc" },
+  { file: "0030_create_organization.sql", probe: "create_organization", kind: "rpc" },
 ];
 
 /**
