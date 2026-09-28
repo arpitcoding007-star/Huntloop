@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
  * the rehearsal this file exists for.
  */
 
-const ORG = "acme";
+const ORG = "demo";
 
 /**
  * Whichever of the two headers carries the real policy, plus which one it was.

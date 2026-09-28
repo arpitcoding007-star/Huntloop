@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Badge, Button, Card, CardBody } from "@huntloop/ui";
+import { Badge, Button, Card, CardBody, ThemeToggle } from "@huntloop/ui";
 import { Check } from "lucide-react";
 import { DomainInput } from "../../DomainInput";
 import { USE_CASES, findUseCase } from "../use-cases";
 import { resolveDestination } from "../../../../lib/data/destination";
+import { BrandLink } from "../../../BrandLink";
 
 /**
  * One page per audience.
@@ -50,13 +51,9 @@ export default async function UseCasePage({
           aria-label="Main"
           className="mx-auto flex max-w-[880px] items-center gap-4 px-6 py-3"
         >
-          <Link href="/" className="hl-focusable flex items-center gap-2 rounded-sm">
-            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
-              H
-            </span>
-            <span className="text-[14px] font-semibold text-fg">Huntloop</span>
-          </Link>
+          <BrandLink href="/" />
           <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle className="mr-2" />
             <Link
               href="/login"
               className="hl-focusable rounded-sm px-3 py-1.5 text-[13px] text-fg-secondary hover:text-fg"

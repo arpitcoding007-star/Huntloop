@@ -15,7 +15,7 @@ import { expect, test } from "@playwright/test";
  * happily answer 200 while a client component fails to hydrate.
  */
 
-const ORG = "acme";
+const ORG = "demo";
 
 const ROUTES = [
   "/login",

@@ -228,7 +228,7 @@ export function DataTable<T>({
                   }
                   className={cn(
                     "border-b border-line-subtle transition-colors duration-[120ms] last:border-b-0",
-                    isSelected ? "bg-surface-hover" : "hover:bg-surface-hover",
+                    isSelected ? "bg-nav-active" : "hover:bg-hover",
                     onRowClick && "hl-focusable-row cursor-pointer",
                   )}
                 >

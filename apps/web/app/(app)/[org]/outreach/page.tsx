@@ -62,7 +62,7 @@ export default async function OutreachPage({
       <header>
         <h1 className="hl-heading text-fg">Outreach</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · what would go out, and who approves it first
+          What would go out, and who approves it first
         </p>
       </header>
 

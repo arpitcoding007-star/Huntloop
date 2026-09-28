@@ -151,7 +151,7 @@ export function CompanyManager({
         <div>
           <h1 className="hl-heading text-fg">Companies</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
-            {org} · {companies.length} {companies.length === 1 ? "company" : "companies"} ·
+            {companies.length} {companies.length === 1 ? "company" : "companies"} ·
             the accounts your opportunities are about
           </p>
         </div>

@@ -152,7 +152,7 @@ export function AgentPanel({
               type="button"
               disabled={pending}
               onClick={() => setDraft(s)}
-              className="hl-focusable rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg disabled:opacity-60"
+              className="hl-focusable rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg disabled:opacity-60"
             >
               {s}
             </button>

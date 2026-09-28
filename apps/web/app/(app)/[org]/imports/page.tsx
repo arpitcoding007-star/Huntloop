@@ -33,7 +33,7 @@ export default async function ImportsPage({
       <header>
         <h1 className="hl-heading text-fg">Imports</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · {companies.length}{" "}
+          {companies.length}{" "}
           {companies.length === 1 ? "company" : "companies"} on your list · bring
           your own in from a spreadsheet
         </p>

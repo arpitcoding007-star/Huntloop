@@ -9,11 +9,13 @@ import {
   ClaimBadge,
   ErrorState,
   Freshness,
+  ThemeToggle,
 } from "@huntloop/ui";
 import { ArrowRight, Lock } from "lucide-react";
 import { discoverAction } from "./actions";
 import { DomainInput } from "../DomainInput";
 import { resolveDestination } from "../../../lib/data/destination";
+import { BrandLink } from "../../BrandLink";
 
 /**
  * "Here's what we understood about you" — before there is an account.
@@ -66,13 +68,9 @@ export default async function DiscoverPage({
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle">
         <div className="mx-auto flex max-w-[820px] items-center gap-2 px-6 py-3">
-          <Link href="/" className="hl-focusable flex items-center gap-2 rounded-sm">
-            <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
-              H
-            </span>
-            <span className="text-[14px] font-semibold text-fg">Huntloop</span>
-          </Link>
-          <div className="ml-auto">
+          <BrandLink href="/" />
+          <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             <Button variant="secondary" size="sm" href="/login" linkComponent={Link}>
               Sign in
             </Button>

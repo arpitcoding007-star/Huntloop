@@ -47,8 +47,18 @@ export function ThemeToggle({ className }: { className?: string }) {
   const [preference, setPreference] = useState<ThemePreference | null>(null);
 
   useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme-preference");
-    setPreference(current === "light" || current === "dark" ? current : "system");
+    const root = document.documentElement;
+    const read = () => {
+      const current = root.getAttribute("data-theme-preference");
+      setPreference(current === "light" || current === "dark" ? current : "system");
+    };
+    read();
+    /* A page can carry more than one toggle (the app shell has one in the
+       top bar and one in the phone drawer). Following the attribute rather
+       than local state keeps every instance showing the same choice. */
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme-preference"] });
+    return () => observer.disconnect();
   }, []);
 
   if (!preference) {
@@ -59,8 +69,11 @@ export function ThemeToggle({ className }: { className?: string }) {
     <div
       role="radiogroup"
       aria-label="Theme"
+      /* A raised pill on the chrome, with the chosen option sitting in the
+         toolbar-hover tint — the same value a hover lands on, so selecting
+         an option reads as the hover staying put. */
       className={cn(
-        "inline-flex h-9 items-center gap-0.5 rounded-[10px] bg-surface-active p-1",
+        "inline-flex h-9 items-center gap-0.5 rounded-[10px] border border-line-subtle bg-surface p-[3px] shadow-raised",
         className,
       )}
     >
@@ -79,7 +92,9 @@ export function ThemeToggle({ className }: { className?: string }) {
             }}
             className={cn(
               "hl-focusable flex size-7 items-center justify-center rounded-[7px] transition-colors duration-[120ms]",
-              active ? "bg-surface text-fg shadow-raised" : "text-fg-muted hover:text-fg",
+              active
+                ? "bg-toolbar-hover text-fg"
+                : "text-fg-muted hover:bg-toolbar-hover hover:text-fg",
             )}
           >
             <Icon className="size-4" strokeWidth={1.75} />

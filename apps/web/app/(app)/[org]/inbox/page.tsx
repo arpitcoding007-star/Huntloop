@@ -29,7 +29,7 @@ export default async function InboxPage({
       <header>
         <h1 className="hl-heading text-fg">Inbox</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · replies, and what happened to what you sent
+          Replies, and what happened to what you sent
         </p>
       </header>
 

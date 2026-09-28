@@ -290,7 +290,7 @@ export function OrgShell({
               alt=""
               width={1343}
               height={638}
-              className="h-7 w-[42px] shrink-0 object-contain"
+              className="hl-mark h-7 w-[42px] shrink-0 object-contain"
             />
             <span className="flex min-w-0 flex-col items-start leading-[1.15]">
               <span className="max-w-full truncate text-[16px] font-semibold tracking-[-0.02em] text-fg">
@@ -333,12 +333,22 @@ export function OrgShell({
           */
         feedbackHref={process.env.NEXT_PUBLIC_FEEDBACK_URL}
         helpHref={process.env.NEXT_PUBLIC_HELP_URL}
-        avatar={<Avatar initials={org} className="size-9 text-[12px]" />}
+        /* The signed-in person when there is one; the workspace otherwise
+           (demo mode). It was the URL slug — "AC" for /acme — which named
+           neither. */
+        avatar={
+          <Avatar
+            initials={chrome.account?.name ?? chrome.orgName}
+            className="size-9 text-[12px]"
+          />
+        }
         /* Sign-out used to live here as well. It belongs with the
              account it signs out of, which is now a real row at the foot of
              the sidebar with its own menu — and two sign-out controls on one
              screen is one more than any screen needs. */
-        actions={<ThemeToggle />}
+        /* Below sm the bar cannot fit the toggle beside the workspace name
+           and search; it moves into the drawer's footer instead (below). */
+        actions={<ThemeToggle className="max-sm:hidden" />}
       />
 
       <div className="relative flex min-h-0 flex-1">
@@ -403,13 +413,19 @@ export function OrgShell({
               )
             }
             footerAction={
-              // The rail is only collapsible where it is in flow; inside the
-              // drawer the control would fight the drawer's own dismissal.
-              <SidebarCollapseButton
-                collapsed={collapsed}
-                onToggle={() => setCollapsed((c) => !c)}
-                className="max-lg:hidden"
-              />
+              <>
+                {/* The rail is only collapsible where it is in flow; inside
+                    the drawer the control would fight the drawer's own
+                    dismissal. */}
+                <SidebarCollapseButton
+                  collapsed={collapsed}
+                  onToggle={() => setCollapsed((c) => !c)}
+                  className="max-lg:hidden"
+                />
+                {/* The phone's theme control — the top bar drops its own
+                    below sm. */}
+                <ThemeToggle className="sm:hidden" />
+              </>
             }
             account={
               /* Demo mode: there is no signed-in person, so the row that

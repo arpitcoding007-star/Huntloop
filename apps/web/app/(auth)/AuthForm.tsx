@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, Note } from "@huntloop/ui";
 import { initialAuthState, sendMagicLink } from "./actions";
+import { DEMO_HOME } from "../../lib/demo";
 
 /**
  * Login / signup form.
@@ -50,7 +51,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
         <p className="mt-3 text-fg-secondary">
           Until then the app runs on demo data —{" "}
           <Link
-            href="/acme/dashboard"
+            href={DEMO_HOME}
             className="hl-focusable rounded-sm text-brand-text underline underline-offset-2"
           >
             open the Command Center

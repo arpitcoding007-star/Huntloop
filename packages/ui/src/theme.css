@@ -63,6 +63,10 @@
   --color-sidebar: var(--hl-sidebar);
   --color-sidebar-raised: var(--hl-sidebar-raised);
   --color-nav-hover: var(--hl-nav-hover);
+  --color-toolbar-hover: var(--hl-toolbar-hover);
+  --color-toolbar: var(--hl-toolbar);
+  --color-toolbar-well: var(--hl-toolbar-well);
+  --color-hover: var(--hl-hover);
   --color-nav-active: var(--hl-nav-active);
   --shadow-nav-active: var(--hl-nav-active-ring);
 

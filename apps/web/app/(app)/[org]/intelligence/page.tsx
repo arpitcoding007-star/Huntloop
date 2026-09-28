@@ -53,7 +53,7 @@ export default async function IntelligencePage({
       <header>
         <h1 className="hl-heading text-fg">Intelligence</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · what has been observed, and how much of it is established
+          What has been observed, and how much of it is established
         </p>
       </header>
 

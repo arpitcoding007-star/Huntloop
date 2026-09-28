@@ -141,7 +141,7 @@ export function SourceManager({
         <div>
           <h1 className="hl-heading text-fg">Sources</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
-            {org} · {monitored.length} monitored · where Huntloop looks for signals
+            {monitored.length} monitored · where Huntloop looks for signals
           </p>
         </div>
         <div className="flex items-center gap-2">

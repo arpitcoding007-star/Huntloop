@@ -716,7 +716,7 @@ export default function KitchenSink() {
         </span>{" "}
         · color and chrome from Supabase, dashboard IA from Kima BD OS
         <br />
-        <Link href="/acme/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
+        <Link href="/demo/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
           View the assembled Command Center →
         </Link>
       </footer>
@@ -781,7 +781,7 @@ function OverlaysAndFeedback() {
               items={[
                 { label: "Copy link", icon: Copy, onSelect: () => {} },
                 { label: "Export CSV", icon: Download, onSelect: () => {} },
-                { label: "Open the Command Center", href: "/acme/dashboard" },
+                { label: "Open the Command Center", href: "/demo/dashboard" },
                 {
                   label: "Delete",
                   icon: Trash2,

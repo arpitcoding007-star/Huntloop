@@ -2,6 +2,7 @@ import "server-only";
 import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
+import { DEMO_ORG_NAME, DEMO_ORG_SLUG } from "../demo";
 
 /**
  * The organisation itself — the tenant root of §38.
@@ -95,8 +96,8 @@ function mapOrganization(row: any): Organization {
  */
 const DEMO: Organization = {
   id: "demo-org",
-  name: "Acme",
-  slug: "acme",
+  name: DEMO_ORG_NAME,
+  slug: DEMO_ORG_SLUG,
   planId: null,
   trialEndsAt: null,
   createdAt: null,

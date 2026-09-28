@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { Badge, Button, Card, CardBody } from "@huntloop/ui";
+import { Badge, Button, Card, CardBody, ThemeToggle } from "@huntloop/ui";
 import { Plus } from "lucide-react";
 import {
   LAST_ORG_COOKIE,
@@ -9,6 +9,8 @@ import {
   stepPath,
 } from "../../../lib/data/destination";
 import { listWorkspaceUsage } from "../../../lib/data/directory";
+import { BrandLink } from "../../BrandLink";
+import { DEMO_HOME } from "../../../lib/demo";
 
 /**
  * Which workspace?
@@ -42,7 +44,7 @@ export default async function OrgsPage() {
   // No database. There is nothing to choose between, and the demo workspace is
   // the only thing that exists — sending a reviewer to an empty picker would
   // be a dead end where a working screen is one redirect away.
-  if (memberships === null) redirect("/acme/dashboard");
+  if (memberships === null) redirect(DEMO_HOME);
 
   if (memberships.length === 0) redirect("/welcome");
   if (memberships.length === 1) {
@@ -74,10 +76,8 @@ export default async function OrgsPage() {
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle bg-panel">
         <div className="mx-auto flex max-w-[720px] items-center gap-2 px-6 py-3">
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
-            H
-          </span>
-          <span className="text-[13px] font-semibold text-fg">Huntloop</span>
+          <BrandLink />
+          <ThemeToggle className="ml-auto" />
         </div>
       </header>
 

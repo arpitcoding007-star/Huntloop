@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { OnboardingProgress } from "./OnboardingProgress";
+import { BrandLink } from "../../BrandLink";
+import { ThemeToggle } from "@huntloop/ui";
 
 /**
  * Onboarding shell — master context §8 → §9 → §10, in that order.
@@ -14,10 +16,8 @@ export default function WelcomeLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle bg-panel">
         <div className="mx-auto flex max-w-[860px] items-center gap-2 px-6 py-3">
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand-surface text-[13px] font-bold text-brand-text">
-            H
-          </span>
-          <span className="text-[13px] font-semibold text-fg">Huntloop</span>
+          <BrandLink />
+          <ThemeToggle className="ml-auto" />
         </div>
       </header>
 

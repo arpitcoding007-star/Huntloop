@@ -124,7 +124,7 @@ export function YouForm({
                   "hl-focusable-within grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 rounded-md border p-3 transition-colors duration-[120ms]",
                   selected
                     ? "border-brand-border bg-brand-surface"
-                    : "border-line bg-surface hover:border-line-strong",
+                    : "border-line bg-surface hover:border-brand-border hover:bg-hover",
                 ].join(" ")}
               >
                 <input

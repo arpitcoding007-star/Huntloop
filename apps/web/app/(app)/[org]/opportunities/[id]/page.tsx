@@ -312,7 +312,7 @@ export default async function OpportunityPage({
                         {b.email ? (
                           <a
                             href={`mailto:${b.email}`}
-                            className="hl-focusable inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-[12px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+                            className="hl-focusable inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-[12px] text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
                           >
                             <Mail className="size-3" strokeWidth={1.75} />
                             {b.email}
@@ -336,7 +336,7 @@ export default async function OpportunityPage({
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label={`${b.name} on LinkedIn`}
-                            className="hl-focusable inline-flex size-7 items-center justify-center rounded-md border border-line bg-surface text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+                            className="hl-focusable inline-flex size-7 items-center justify-center rounded-md border border-line bg-surface text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
                           >
                             <Linkedin className="size-3" strokeWidth={1.75} />
                           </a>

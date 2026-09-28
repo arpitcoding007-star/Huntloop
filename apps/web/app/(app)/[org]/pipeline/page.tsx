@@ -30,7 +30,7 @@ export default async function PipelinePage({
       <header>
         <h1 className="hl-heading text-fg">Pipeline</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · {opportunities.length}{" "}
+          {opportunities.length}{" "}
           {opportunities.length === 1 ? "opportunity" : "opportunities"} · where
           each one has got to
         </p>

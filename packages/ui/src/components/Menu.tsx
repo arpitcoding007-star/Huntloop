@@ -250,7 +250,7 @@ export function Menu({
                 ? "cursor-not-allowed text-fg-muted/60"
                 : item.tone === "danger"
                   ? "text-danger hover:bg-danger-surface"
-                  : "text-fg-secondary hover:bg-surface-hover hover:text-fg",
+                  : "text-fg-secondary hover:bg-hover hover:text-fg focus-visible:bg-hover",
             );
 
             return (

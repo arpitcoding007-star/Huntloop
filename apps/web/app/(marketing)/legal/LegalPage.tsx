@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { ThemeToggle } from "@huntloop/ui";
 import { legalIsComplete, missingLegalFacts } from "../../../lib/legal";
 
 /**
@@ -28,12 +29,15 @@ export function LegalPage({
 
   return (
     <main id="main" className="mx-auto max-w-[760px] px-6 py-12">
-      <Link
-        href="/"
-        className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
-      >
-        ← Huntloop
-      </Link>
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href="/"
+          className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
+        >
+          ← Huntloop
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <h1 className="hl-heading mt-6 text-fg">
         {title}

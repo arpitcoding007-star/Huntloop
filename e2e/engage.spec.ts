@@ -12,7 +12,7 @@ import { expect, test } from "@playwright/test";
  * throws underneath is still broken. See the header there for why.
  */
 
-const ORG = "acme";
+const ORG = "demo";
 
 /** Fails the test on any uncaught error, not just a missing element. */
 function watchForErrors(page: import("@playwright/test").Page): string[] {

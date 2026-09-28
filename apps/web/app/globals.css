@@ -10,6 +10,26 @@
   color: var(--hl-text);
 }
 
+/* Visually hidden text can never lengthen the page.
+
+   Tailwind's `sr-only` is `position: absolute` with no offsets, so it sits
+   at its in-flow position but is laid out against the nearest *positioned*
+   ancestor — usually none, i.e. the document. A clipping ancestor that is
+   not itself positioned (an `overflow: hidden` shell, an `overflow: auto`
+   <main> or table wrapper) therefore does not clip it. On a page whose
+   content scrolls inside <main>, every fact/inference label below the fold
+   was being placed ~2000px down the *document*, which gave the window a
+   second scrollbar that dragged the whole shell into empty canvas.
+
+   Fixed-position boxes never contribute to the document's scrollable
+   overflow, so the text stays in the accessibility tree and out of the
+   layout, wherever it is used. `:not(:focus)` leaves focusable sr-only
+   elements (the skip link) to their own focus styles. Unlayered on purpose,
+   so it outranks the utility. */
+.sr-only:not(:focus, :focus-within) {
+  position: fixed;
+}
+
 /* Scrollbars, tuned to the Supabase chrome. */
 * {
   scrollbar-color: var(--hl-border-strong) transparent;

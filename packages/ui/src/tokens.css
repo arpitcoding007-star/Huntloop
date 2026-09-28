@@ -211,22 +211,21 @@
      Dark — every band painted the same value as the section it was there to
      punctuate.
 
-     Meridian's --black, #08090A, rather than #000: pure black switches OLED
-     pixels fully off and the band reads as a hole cut in the page. A hair of
-     lift keeps the surface a surface. It is also the canvas Dark itself is
-     built on, below — so a band and the dark app agree. */
-  --hl-band: #08090a;
-  --hl-band-raised: #101113;
-  --hl-band-hover: #17181b;
-  --hl-band-border: #232427;
-  --hl-band-border-strong: #54575d;
-  --hl-band-text: #f5f5f6;
-  --hl-band-text-secondary: #a0a3aa;
-  /* 5.99:1 on --hl-band — the eyebrows and captions in the bands are
-     11–13px, so they are held to the small-text floor. The design's own
-     #6C6F76 (3.96) is kept for decoration only. */
-  --hl-band-text-muted: #8a8d94;
-  --hl-band-brand: #6e9bff;
+     #111111 rather than #000: pure black switches OLED pixels fully off and
+     the band reads as a hole cut in the page. It is also the canvas Dark
+     itself is built on, below — so a band and the dark app agree, and every
+     value here mirrors the dark block's ramp. */
+  --hl-band: #111111;
+  --hl-band-raised: #20201f;
+  --hl-band-hover: #262625;
+  --hl-band-border: #2e2e2c;
+  --hl-band-border-strong: #5a5a57;
+  --hl-band-text: #ececea;
+  --hl-band-text-secondary: #b4b4b0;
+  /* 6.1:1 on --hl-band — the eyebrows and captions in the bands are
+     11–13px, so they are held to the small-text floor. */
+  --hl-band-text-muted: #939390;
+  --hl-band-brand: #aec2ea;
 
   /* The <select> disclosure chevron, as a data URI. Declared here rather
      than in the component so both themes resolve `--hl-text-muted` at paint
@@ -249,94 +248,104 @@
 }
 
 /* ============================================================================
-   Dark — Meridian true black. Both theme blocks carry the design's own
-   values (`design/dir-prem.css`, `design/PremiumSidebar.dc.html`); where a
-   design value fails WCAG AA as text it is kept for decoration and the text
-   role steps up the same ramp — see each block.
+   Dark — a calm, warm-neutral ground in the manner of Claude's own UI, with
+   one muted blue for everything interactive. Designed as its own theme, not
+   as Light inverted: Light lifts with white cards and soft shadows on a
+   cool-grey page; Dark lifts by *value* — each layer a measured step lighter
+   than the one beneath it — because a shadow on near-black has nowhere left
+   to fall.
+
+   ── The layers (user-specified grounds) ─────────────────────────────────
+     #111111  base       the page itself, marketing bands, the deepest ground
+     #151515  chrome     top bar, sidebar, drawers — the frame around work
+     #20201F  elevated   cards, panels, menus, modals — the work itself
+     #262625  raised     a card's own hover/inset, a tile, a track
+     #2B2B29  pressed    the step past that — pressed secondary buttons
+
+   ── One muted blue ───────────────────────────────────────────────────────
+   #7D97CC — a desaturated periwinkle, deliberately not the electric #2F6BFF
+   of Light. It is never a fill on its own in Dark; it is always a *wash*
+   laid over whichever layer the pointer is on, so a hover in the sidebar
+   and a hover inside a card read as the same gesture while each stays one
+   quiet step above its own ground:
+     hover   13%  → #23262D on chrome · #2C2F35 on a card
+     active  22%  → #2C323D on chrome, carrying #AEC2EA text at 7.2:1
+   Blue text (links, the active row, AI chips) is #AEC2EA; blue graphics
+   (the focus ring, the active nav icon, quota fills) are #8AA5DC.
+
+   Every text value below is measured against the lightest ground it can
+   land on, not the darkest — see each note.
    ========================================================================= */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* ── Surfaces ─────────────────────────────────────────────────────────
-     Meridian's true black, #08090A, is both the dark page and the marketing
-     band (`--hl-band`), so a visitor moving from a black section of the
-     landing page into the dark workspace crosses no seam. The ramp above it
-     is taken from the design files rather than stepped by eye:
-       #101113 the dark product mock's card
-       #111214 the dark sidebar's search field
-       #17181B the dark sidebar's active row
-       #1D1E21 the evidence ring's track */
-  --hl-canvas: #08090a;
-  --hl-panel: #08090a;
-  --hl-surface: #101113;
-  --hl-surface-hover: #17181b;
-  --hl-surface-active: #1d1e21;
-  --hl-overlay: rgba(0, 0, 0, 0.72);
+  /* ── Surfaces ──────────────────────────────────────────────────────── */
+  --hl-canvas: #111111;
+  --hl-panel: #151515;
+  --hl-surface: #20201f;
+  --hl-surface-hover: #262625;
+  --hl-surface-active: #2b2b29;
+  --hl-overlay: rgba(0, 0, 0, 0.62);
 
-  /* The inside of a text input, one step below the card it sits in. */
-  --hl-field: #111214;
-  --hl-field-hover: #17181b;
+  /* An input is an inset well: one step *below* the card it sits in, so it
+     reads as a place to type rather than another card. */
+  --hl-field: #181818;
+  --hl-field-hover: #1c1c1b;
 
-  /* ── Borders ─────────────────────────────────────────────────────────── */
-  --hl-border-subtle: #1c1d20;  /* the dark sidebar's border */
-  --hl-border-default: #232427; /* --black-line */
-  --hl-border-strong: #54575d;  /* the dark group label — decoration here */
+  /* ── Borders ──────────────────────────────────────────────────────────
+     Hairlines carry most of Dark's structure. Subtle separates chrome from
+     the page; default outlines cards and controls; strong is decoration. */
+  --hl-border-subtle: #232322;
+  --hl-border-default: #2e2e2c;
+  --hl-border-strong: #5a5a57;
 
-  /* ── Text ─────────────────────────────────────────────────────────────
-     The design's dark muted grey, #6C6F76, is 3.96:1 on black and its group
-     label #54575D is 2.75:1 — both are kept, but as decoration only
-     (`--hl-text-faint`). Muted text reads #8A8D94 instead, the design's own
-     --unk grey: 5.99 on canvas · 5.68 on surface · 5.34 on surface-hover ·
-     5.01 on surface-active. That keeps it a clear step below --on-black-2,
-     where stepping straight up the ramp would have merged the two. */
-  --hl-text: #f5f5f6;           /* --on-black */
-  --hl-text-secondary: #a0a3aa; /* --on-black-2 */
-  --hl-text-muted: #8a8d94;
-  --hl-text-faint: #6c6f76;
-  --hl-text-inverse: #0a0b0c;
+  /* ── Text — warm neutrals ─────────────────────────────────────────────
+     Muted #939390: 6.1 on canvas · 5.2 on a card · 4.8 on surface-hover.
+     Faint is decoration only (icons, chevrons) — 3.2 on a card. */
+  --hl-text: #ececea;
+  --hl-text-secondary: #b4b4b0;
+  --hl-text-muted: #939390;
+  --hl-text-faint: #6f6f6c;
+  --hl-text-inverse: #111111;
 
-  /* ── Brand blue ───────────────────────────────────────────────────────
-     Same split as Light (see there). A white label on #1F58F0 is 5.65:1 in
-     either theme, so the fill does not change. Blue *text* and blue
-     graphics on black — the active nav icon, the quota fill, the focus
-     ring — are the design's accent-on-dark, #6E9BFF (7.40:1). */
-  --hl-brand-vivid: #6e9bff;
-  --hl-brand: #1f58f0;
-  --hl-brand-hover: color-mix(in srgb, #1f58f0 86%, #0a0b0c);
-  --hl-brand-active: color-mix(in srgb, #1f58f0 76%, #0a0b0c);
-  /* What sits *on* a brand fill. White in both themes — `--hl-text-inverse`
-     is near-black in Dark. */
+  /* ── Brand blue, muted ────────────────────────────────────────────────
+     The primary fill steps down from Light's electric #1F58F0 to #3F63BD:
+     on a near-black page the brighter value glows. White on it is 5.63:1. */
+  --hl-brand-vivid: #8aa5dc;
+  --hl-brand: #3f63bd;
+  --hl-brand-hover: color-mix(in srgb, #3f63bd 86%, #111111);
+  --hl-brand-active: color-mix(in srgb, #3f63bd 76%, #111111);
   --hl-brand-ink: #ffffff;
-  --hl-brand-surface: rgba(47, 107, 255, 0.16);
-  --hl-brand-border: rgba(47, 107, 255, 0.35);
-  --hl-brand-text: #6e9bff;
+  --hl-brand-surface: rgba(125, 151, 204, 0.16);
+  --hl-brand-border: rgba(125, 151, 204, 0.32);
+  --hl-brand-text: #aec2ea;
 
-  /* ── AI — the dark sidebar's chip: rgba(47,107,255,.16) under #6E9BFF,
-     6.05:1 on the composite even over --hl-surface. */
-  --hl-ai: #6e9bff;
-  --hl-ai-surface: rgba(47, 107, 255, 0.16);
-  --hl-ai-border: rgba(47, 107, 255, 0.35);
-  --hl-ai-text: #6e9bff;
+  /* ── AI — the same blue as a tint; #AEC2EA on it is ≥ 8:1 ────────────── */
+  --hl-ai: #8aa5dc;
+  --hl-ai-surface: rgba(125, 151, 204, 0.16);
+  --hl-ai-border: rgba(125, 151, 204, 0.32);
+  --hl-ai-text: #aec2ea;
 
   /* ── Status ───────────────────────────────────────────────────────────
-     Success is the dark mock's score ring: #4BC98A on #243027. */
-  --hl-success: #4bc98a;
-  --hl-success-surface: #243027;
-  --hl-success-border: #2f5a42;
+     Kept, because each one means something; softened a notch where the
+     old value glowed. All clear 4.5:1 on their own surfaces and on a card. */
+  --hl-success: #5bbf8e;
+  --hl-success-surface: #1f2b24;
+  --hl-success-border: #2f5140;
 
-  --hl-warning: #f5a623;
-  --hl-warning-surface: #2b1f08;
-  --hl-warning-border: #6b4a12;
+  --hl-warning: #e0a44a;
+  --hl-warning-surface: #2a2217;
+  --hl-warning-border: #5c4520;
 
-  --hl-danger: #ff6369;
-  --hl-danger-surface: #2b1113;
-  --hl-danger-border: #6b2226;
+  --hl-danger: #ec7a7a;
+  --hl-danger-surface: #2c1c1c;
+  --hl-danger-border: #5c2d2d;
 
-  --hl-info: #3b9eff;
-  --hl-info-surface: #0d1f33;
-  --hl-info-border: #1e4a75;
+  --hl-info: #8aa5dc;
+  --hl-info-surface: #1f2533;
+  --hl-info-border: #34425f;
 
-  --hl-score-excellent-leaf: #22d3a6;  /* 90+, --hl-score-excellent's source */
+  --hl-score-excellent-leaf: #4fc4a8;  /* 90+, --hl-score-excellent's source */
 
   /* Dark's statuses clear 4.5:1 against their own surfaces already, so the
      text leaves Light needs are aliases here. Declared rather than omitted:
@@ -350,37 +359,47 @@
 
   /* ── Chart ramp ───────────────────────────────────────────────────────
      Accent first, then hues chosen to stay separable for the common
-     colour-vision deficiencies. */
-  --hl-chart-1: #6e9bff;
-  --hl-chart-2: #2dd4bf;
-  --hl-chart-3: #f5a623;
-  --hl-chart-4: #e5484d;
-  --hl-chart-5: #a78bfa;
-  --hl-chart-6: #8a8d94;
+     colour-vision deficiencies — desaturated to sit on the warm ground. */
+  --hl-chart-1: #8aa5dc;
+  --hl-chart-2: #5fb8aa;
+  --hl-chart-3: #e0a44a;
+  --hl-chart-4: #ec7a7a;
+  --hl-chart-5: #b09ae0;
+  --hl-chart-6: #939390;
 
   /* ── Elevation ────────────────────────────────────────────────────────
-     A black ground has no darker value left to cast, so Dark leans on the
-     hairline first; these are for things that float free of the layout. */
-  --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -4px rgba(0, 0, 0, 0.55);
-  --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 64px -12px rgba(0, 0, 0, 0.7);
-  --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+     Value does the lifting in Dark; shadows are kept for things that float
+     free of the layout (menus, modals), where they separate a layer from
+     whatever happens to be under it. */
+  --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.45), 0 32px 72px -16px rgba(0, 0, 0, 0.7);
+  --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
   --hl-shadow-card: none;
-  --hl-violet-surface: rgba(167, 139, 250, 0.16);
-  --hl-violet-text: #a78bfa;
-  --hl-tile-neutral: #1d1e21;
-  --hl-tile-neutral-text: #a0a3aa;
+  --hl-violet-surface: rgba(176, 154, 224, 0.14);
+  --hl-violet-text: #c3b3ea;
+  --hl-tile-neutral: #2b2b29;
+  --hl-tile-neutral-text: #b4b4b0;
 
-  /* ── Sidebar — PremiumSidebar.dc.html, dark ─────────────────────────
-     The nav has its own small palette because the design gives it one:
-     the panel, the raised wells inside it (search, quota), and the active
-     chip are each a specific value, not a step on the surface ramp. */
-  --hl-sidebar: #08090a;
-  --hl-sidebar-raised: #111214;
-  --hl-nav-hover: rgba(255, 255, 255, 0.06);
-  --hl-nav-active: rgba(47, 107, 255, 0.16);
+  /* ── Chrome — top bar and sidebar ─────────────────────────────────────
+     One ground for the whole frame, #151515, a step above the page so the
+     work area reads as recessed into it. Wells inside the chrome (search,
+     quota) take the card value. Hover and active are the blue wash. */
+  --hl-sidebar: #151515;
+  --hl-sidebar-raised: #20201f;
+  --hl-toolbar: #151515;
+  --hl-toolbar-well: #20201f;
+  --hl-nav-hover: rgba(125, 151, 204, 0.13);
+  --hl-toolbar-hover: rgba(125, 151, 204, 0.13);
+  /* `--hl-hover` is the one hover for anything clickable that is not a nav
+     row — buttons, menu items, table rows, close controls. Same value as
+     the chrome hover, so a pointer lands on one colour everywhere. Declared
+     per theme (not as a :root alias) so an inverted band resolves its own. */
+  --hl-hover: rgba(125, 151, 204, 0.13);
+  --hl-nav-active: rgba(125, 151, 204, 0.22);
   --hl-nav-active-ring: none;
 
-  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8d94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  /* #939390 is --hl-text-muted. */
+  --hl-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23939390' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   --hl-font-display: var(--hl-font-sans);
 }
@@ -396,7 +415,7 @@
      #F6F6F7 band. The page is the band and everything that floats —
      cards, menus, modals — is white above it, so elevation is carried by
      the hairline and the shadow rather than by a hue. */
-  --hl-canvas: #f8fafb;      /* the reference's page ground — cool, not neutral */
+  --hl-canvas: #f7f8fa;      /* the page ground on every light page — user-specified */
   --hl-panel: #ffffff;       /* --card */
   --hl-surface: #ffffff;     /* --paper */
   --hl-surface-hover: #f4f6fa;
@@ -517,10 +536,20 @@
   /* ── Sidebar — the reference screenshot, light ──────────────────────
      A flat column a step darker than the page. The active row is a blue
      tint with blue ink rather than a raised white chip. */
-  --hl-sidebar: #f4f6fa;
+  --hl-sidebar: #f2f5f9;       /* the column at rest — user-specified */
   --hl-sidebar-raised: #ffffff;
-  --hl-nav-hover: #edf1f4;
-  --hl-nav-active: #e7eefc;
+  /* One hover for all chrome — sidebar rows and top-bar controls alike —
+     so both halves of the shell answer a pointer the same way. */
+  --hl-nav-hover: #e6eefa;
+  --hl-toolbar-hover: #e6eefa;
+  --hl-hover: #e6eefa;
+  /* The top bar sits on the page ground in Light — the frame is drawn by
+     its hairline, not a fill — and its search well is one grey step down. */
+  --hl-toolbar: #f7f8fa;
+  --hl-toolbar-well: #edf1f4;
+  /* A step deeper than the hover, so the current page never reads as a row
+     the pointer happens to be resting on. Brand text on it is 5.71:1. */
+  --hl-nav-active: #dce6fa;
   --hl-nav-active-ring: none;
 
   /* The chevron has to be re-declared rather than inherited, because the
@@ -722,6 +751,19 @@ body {
 }
 [data-theme="dark"] .hl-brand-dark {
   display: block;
+}
+
+/* The standalone loop mark ships in one ink only — a deep green that all but
+   disappears on the dark canvas. Rather than a second raster that has to be
+   kept in step with the first, dark grounds lift it: brightness restores the
+   ribbon's shading against black and the hue stays the brand's. Any subtree
+   under `data-theme="dark"` — including an inverted band on a light page —
+   gets the same treatment. */
+.hl-mark {
+  transition: filter var(--hl-duration-base) var(--hl-ease-out);
+}
+[data-theme="dark"] .hl-mark {
+  filter: brightness(2.1) saturate(1.15);
 }
 
 /* Focus ring — every interactive element, no exceptions. */

@@ -187,7 +187,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastRecord; onDismiss: () => 
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="hl-focusable -mt-0.5 -mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
+        className="hl-focusable -mt-0.5 -mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-hover hover:text-fg"
       >
         <X className="size-3.5" strokeWidth={1.75} />
       </button>

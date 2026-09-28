@@ -28,7 +28,7 @@ export default async function MemoryPage({
       <header>
         <h1 className="hl-heading text-fg">Memory</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          {org} · standing instructions, and what Huntloop has concluded
+          Standing instructions, and what Huntloop has concluded
         </p>
       </header>
 

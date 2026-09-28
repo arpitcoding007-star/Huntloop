@@ -119,7 +119,7 @@ function ChipField({
                   "hl-focusable h-8 rounded-md border px-3 text-[13px] transition-colors duration-[120ms]",
                   on
                     ? "border-brand-border bg-brand-surface text-brand-text"
-                    : "border-line bg-surface text-fg-secondary hover:border-line-strong hover:text-fg",
+                    : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
                 ].join(" ")}
               >
                 {option}

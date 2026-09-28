@@ -279,7 +279,7 @@ export function OpportunityTable({
               "transition-colors duration-[120ms]",
               priority === f.value
                 ? "border-brand-border bg-brand-surface text-brand-text"
-                : "border-line bg-surface text-fg-secondary hover:border-line-strong hover:text-fg",
+                : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
             ].join(" ")}
           >
             <f.icon className="size-3.5" strokeWidth={1.75} />

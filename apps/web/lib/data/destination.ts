@@ -1,6 +1,7 @@
 import "server-only";
 import { ONBOARDING_STEPS, type OnboardingStep } from "./onboarding";
 import { resolveDataSource } from "./source";
+import { DEMO_HOME } from "../demo";
 import { hasOnboardingSchema } from "./onboarding-schema";
 
 /**
@@ -191,12 +192,11 @@ export async function listMemberships(): Promise<Membership[] | null> {
  * the cost is one click on the first visit and none afterwards.
  */
 export async function resolveDestination(preferredSlug?: string): Promise<Destination> {
-  const { db, source } = await resolveDataSource();
+  const { db } = await resolveDataSource();
 
   if (!db) {
-    // `acme` is the fixture workspace every demo screen renders. Named here
-    // rather than guessed by the caller so there is one definition of it.
-    return { kind: "demo", path: source === "unconfigured" ? "/acme/dashboard" : "/acme/dashboard" };
+    // The fixture workspace every demo screen renders; see lib/demo.ts.
+    return { kind: "demo", path: DEMO_HOME };
   }
 
   const { data: auth } = await db.auth.getUser();

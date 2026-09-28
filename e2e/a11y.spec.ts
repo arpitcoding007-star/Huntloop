@@ -45,8 +45,8 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const PAGES: { path: string; name: string }[] = [
   { path: "/", name: "the landing page" },
   { path: "/login", name: "sign-in" },
-  { path: "/acme/dashboard", name: "the Command Center" },
-  { path: "/acme/opportunities", name: "the opportunity list" },
+  { path: "/demo/dashboard", name: "the Command Center" },
+  { path: "/demo/opportunities", name: "the opportunity list" },
   { path: "/kitchen-sink", name: "the design-system gallery" },
 ];
 
@@ -78,7 +78,7 @@ test.describe("accessibility", () => {
    * the binding the search row advertises is exercised at the same time.
    */
   test("the jump-to palette has no detectable WCAG A/AA violation", async ({ page }) => {
-    await page.goto("/acme/dashboard");
+    await page.goto("/demo/dashboard");
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("combobox", { name: /search pages/i })).toBeFocused();
 
@@ -108,7 +108,7 @@ test.describe("accessibility", () => {
      subtrees inside a light page, and in the dark theme the whole page
      inverts around them — two contrast situations one theme cannot show. */
   const THEMED: { path: string; name: string }[] = [
-    { path: "/acme/opportunities", name: "the opportunity list" },
+    { path: "/demo/opportunities", name: "the opportunity list" },
     { path: "/", name: "the landing page" },
   ];
 

@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
  * migrations, and what CI builds), not a test-only bypass.
  */
 
-const ORG = "acme";
+const ORG = "demo";
 
 test.describe("navigation", () => {
   test("the demo-data banner says the numbers are not real", async ({ page }) => {

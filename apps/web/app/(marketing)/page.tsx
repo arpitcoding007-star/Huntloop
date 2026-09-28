@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
-import { Button, ScoreRing } from "@huntloop/ui";
+import { Button, ScoreRing, ThemeToggle } from "@huntloop/ui";
 import {
   Activity,
   ArrowRight,
@@ -164,7 +164,7 @@ function Logo({ size = "md" }: { size?: "md" | "sm" }) {
         alt=""
         width={1343}
         height={638}
-        className={`${md ? "size-[26px]" : "size-[22px]"} shrink-0 object-contain`}
+        className={`hl-mark ${md ? "size-[26px]" : "size-[22px]"} shrink-0 object-contain`}
       />
       Huntloop
     </Link>
@@ -237,7 +237,7 @@ const COMPANIES: {
 }[] = [
   { name: "Northwind Systems", sector: "Infrastructure · Series B", score: 92, source: "LinkedIn", tone: "brand", icon: Layers },
   { name: "Vertex Labs", sector: "Software · Growth", score: 89, source: "News", tone: "success", icon: Building2 },
-  { name: "Acme Infrastructure", sector: "Cloud · Series A", score: 84, source: "Job boards", tone: "neutral", icon: Cloud },
+  { name: "Halcyon Cloud", sector: "Infrastructure · Series A", score: 84, source: "Job boards", tone: "neutral", icon: Cloud },
   { name: "Pioneer Tech", sector: "Fintech · Growth", score: 78, source: "Web", tone: "brand", icon: Landmark },
   { name: "Summit Health", sector: "Healthcare · Seed", score: 72, source: "News", tone: "warning", icon: HeartPulse },
 ];
@@ -282,6 +282,7 @@ function Nav() {
           </a>
         </nav>
         <div className="flex items-center gap-5">
+          <ThemeToggle className="max-sm:hidden" />
           <Link
             href="/login"
             className="hl-focusable rounded-sm text-[14.5px] text-fg-secondary transition-colors hover:text-fg"
@@ -347,7 +348,7 @@ function HeroMock() {
     <div className="overflow-hidden rounded-xl border border-line-subtle bg-surface shadow-modal">
       <div className="flex h-[52px] items-center gap-3.5 border-b border-line-subtle px-[18px]">
         <span className="flex items-center gap-[7px] text-[13px] font-semibold">
-          <img src="/brand/huntloop-mark.png" alt="" width={1343} height={638} className="size-[18px] object-contain" />
+          <img src="/brand/huntloop-mark.png" alt="" width={1343} height={638} className="hl-mark size-[18px] object-contain" />
           Huntloop
         </span>
         <span className="flex h-[30px] min-w-0 flex-1 items-center truncate rounded-[7px] bg-canvas px-3 text-[12.5px] text-fg-muted">
@@ -374,7 +375,7 @@ function HeroMock() {
             {COMPANIES.map((c) => (
               <li
                 key={c.name}
-                className="grid grid-cols-[30px_minmax(0,1fr)_44px_20px] items-center gap-3 rounded-[8px] px-2 py-2.5 transition-colors duration-[140ms] hover:bg-canvas sm:grid-cols-[30px_minmax(0,1fr)_44px_96px_20px]"
+                className="grid grid-cols-[30px_minmax(0,1fr)_44px_20px] items-center gap-3 rounded-[8px] px-2 py-2.5 transition-colors duration-[140ms] hover:bg-hover sm:grid-cols-[30px_minmax(0,1fr)_44px_96px_20px]"
               >
                 <CompanyTile tone={c.tone} icon={c.icon} />
                 <span className="min-w-0">
@@ -583,7 +584,7 @@ function Discover() {
               {COMPANIES.map((c) => (
                 <li
                   key={c.name}
-                  className="grid grid-cols-[30px_minmax(0,1fr)_56px] items-center gap-3.5 rounded-[8px] border-t border-line-subtle px-2 py-[11px] transition-colors duration-[140ms] hover:bg-canvas sm:grid-cols-[30px_minmax(0,1fr)_70px_90px]"
+                  className="grid grid-cols-[30px_minmax(0,1fr)_56px] items-center gap-3.5 rounded-[8px] border-t border-line-subtle px-2 py-[11px] transition-colors duration-[140ms] hover:bg-hover sm:grid-cols-[30px_minmax(0,1fr)_70px_90px]"
                 >
                   <CompanyTile tone={c.tone} icon={c.icon} />
                   <span className="min-w-0">
@@ -1079,7 +1080,11 @@ function Footer() {
         </div>
 
         <div className="grid gap-8 border-t border-line-subtle pt-7 text-[13px] sm:grid-cols-2 md:grid-flow-col md:grid-cols-[minmax(0,1fr)] md:auto-cols-[180px] md:gap-6">
-          <p className="text-fg-muted">© {new Date().getFullYear()} Huntloop</p>
+          <div className="flex flex-col items-start gap-4">
+            <p className="text-fg-muted">© {new Date().getFullYear()} Huntloop</p>
+            {/* The header drops its toggle on phones; this one is always there. */}
+            <ThemeToggle />
+          </div>
           <FooterColumn label="Product">
             <a href="#how" className={footerLink}>
               How it works

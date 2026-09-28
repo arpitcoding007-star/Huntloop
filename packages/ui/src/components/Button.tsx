@@ -53,9 +53,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary:
     "bg-brand text-brand-ink border border-transparent shadow-raised hover:bg-brand-hover active:bg-brand-active",
   secondary:
-    "bg-surface text-fg border border-line shadow-raised hover:bg-surface-hover hover:border-fg-faint active:bg-surface-active",
+    "bg-surface text-fg border border-line shadow-raised hover:bg-hover hover:border-brand-border active:bg-nav-active",
   ghost:
-    "bg-transparent text-fg-secondary border border-transparent hover:bg-nav-hover hover:text-fg active:bg-nav-hover",
+    "bg-transparent text-fg-secondary border border-transparent hover:bg-nav-hover hover:text-fg active:bg-nav-active",
   // Hover fills with --hl-danger, so the label flips to the inverse ink:
   // near-white on that red is 2.5:1, while #0f0f0f on it is 6.6:1. Mirrors
   // how `primary` treats its brand fill.

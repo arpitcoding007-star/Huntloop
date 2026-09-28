@@ -85,7 +85,7 @@ export function StatCard({
       className={cn(
         "hl-focusable group relative flex flex-col justify-between rounded-lg border border-line-subtle bg-surface p-5 shadow-card",
         "min-h-[150px] transition-[border-color,box-shadow] duration-[120ms] ease-out-hl",
-        href && "hover:border-line hover:shadow-raised",
+        href && "hover:border-brand-border hover:shadow-raised",
         className,
       )}
     >
@@ -125,7 +125,7 @@ export function StatCard({
         {href && (
           <ChevronRight
             aria-hidden
-            className="mb-0.5 size-4 shrink-0 text-fg-faint transition-colors duration-[120ms] group-hover:text-fg-muted"
+            className="mb-0.5 size-4 shrink-0 text-fg-faint transition-colors duration-[120ms] group-hover:text-brand-vivid"
             strokeWidth={1.75}
           />
         )}

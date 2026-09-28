@@ -59,7 +59,7 @@ export function TopBar({
        where the page does. */
     <header
       className={cn(
-        "flex h-16 shrink-0 items-center gap-4 border-b border-line-subtle bg-canvas px-4",
+        "flex h-16 shrink-0 items-center gap-4 border-b border-line-subtle bg-toolbar px-4",
         className,
       )}
     >
@@ -69,13 +69,13 @@ export function TopBar({
             type="button"
             onClick={onMenuClick}
             aria-label="Open navigation"
-            className="hl-focusable -ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg lg:hidden"
+            className="hl-focusable -ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-toolbar-hover hover:text-fg lg:hidden"
           >
             <Menu className="size-4" strokeWidth={1.75} />
           </button>
         )}
 
-        {logo && <div className="mr-1 flex shrink-0 items-center">{logo}</div>}
+        {logo && <div className="mr-1 flex min-w-0 items-center">{logo}</div>}
 
         {breadcrumbs.map((crumb, i) => (
           <div
@@ -102,7 +102,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={crumb.onClick}
-                className="hl-focusable flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-surface-hover"
+                className="hl-focusable flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg transition-colors duration-[120ms] hover:bg-toolbar-hover"
               >
                 <span className="max-w-[160px] truncate">{crumb.label}</span>
                 {crumb.badge && (
@@ -134,7 +134,7 @@ export function TopBar({
             aria-label="Search or jump to"
             /* Collapses to a 36px icon button below md; the labelled field
                cannot share a phone's width with the brand and controls. */
-            className="hl-focusable flex size-9 shrink-0 items-center justify-center gap-2.5 rounded-[10px] border border-transparent bg-surface-active text-[14px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:text-fg-secondary md:w-full md:max-w-[660px] md:justify-start md:px-3.5"
+            className="hl-focusable flex size-9 shrink-0 items-center justify-center gap-2.5 rounded-[10px] border border-transparent bg-toolbar-well text-[14px] text-fg-muted transition-colors duration-[120ms] ease-out-hl hover:border-line hover:bg-toolbar-hover hover:text-fg-secondary md:w-full md:max-w-[660px] md:justify-start md:px-3.5"
           >
             <Search className="size-4 shrink-0 text-fg" strokeWidth={1.75} />
             <span className="hidden flex-1 truncate text-left md:inline">Search or jump to…</span>
@@ -152,7 +152,7 @@ export function TopBar({
         {feedbackHref && (
           <a
             href={feedbackHref}
-            className="hl-focusable hidden h-8 items-center rounded-md px-2.5 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg sm:inline-flex"
+            className="hl-focusable hidden h-8 items-center rounded-md px-2.5 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:bg-toolbar-hover hover:text-fg sm:inline-flex"
           >
             Feedback
           </a>
@@ -162,7 +162,7 @@ export function TopBar({
           <a
             href={helpHref}
             aria-label="Help"
-            className="hl-focusable flex size-8 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg"
+            className="hl-focusable flex size-8 items-center justify-center rounded-md text-fg-secondary transition-colors duration-[120ms] hover:bg-toolbar-hover hover:text-fg"
           >
             <HelpCircle className="size-4" strokeWidth={1.75} />
           </a>
@@ -174,6 +174,16 @@ export function TopBar({
       </div>
     </header>
   );
+}
+
+/** "Dana Whitfield" → "DW", "dana@acme.com" → "DA", "Demo workspace" → "DW". */
+function toInitials(name: string): string {
+  const words = name.split(/[\s@._-]+/).filter(Boolean);
+  const letters =
+    words.length >= 2 && !name.includes("@")
+      ? words[0]![0]! + words[1]![0]!
+      : name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2);
+  return letters.toUpperCase();
 }
 
 export function Avatar({
@@ -190,7 +200,7 @@ export function Avatar({
         className,
       )}
     >
-      {initials.slice(0, 2).toUpperCase()}
+      {toInitials(initials)}
     </div>
   );
 }

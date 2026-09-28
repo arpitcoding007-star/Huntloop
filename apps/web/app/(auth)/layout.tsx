@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { ThemeToggle } from "@huntloop/ui";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-6 py-12">
+    <div className="relative flex min-h-screen items-center justify-center bg-canvas px-6 py-12">
+      <ThemeToggle className="absolute top-4 right-4" />
       <div className="w-full max-w-[380px]">
         <div className="mb-8">
           {/* Intrinsic dimensions, so the sign-in card does not jump when a

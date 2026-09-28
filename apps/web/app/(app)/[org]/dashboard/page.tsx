@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { getDashboard } from "../../../../lib/data/dashboard";
+import { getShellChrome } from "../../../../lib/data/chrome";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
 import { personalize, type DashboardSection } from "../../../../lib/data/personalization";
 import { getIcpQuality } from "../../../../lib/data/icp-quality";
@@ -86,12 +87,15 @@ export default async function DashboardPage({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
-  const [viewer, { data }, onboarding, icpQuality, nudge] = await Promise.all([
+  /* `chrome` is the layout's own request-cached lookup, so the eyebrow can
+     name the workspace — not echo the URL slug — at no extra cost. */
+  const [viewer, { data }, onboarding, icpQuality, nudge, chrome] = await Promise.all([
     currentViewer(org),
     getDashboard(org),
     getOnboardingState(org),
     getIcpQuality(org),
     getNudge(org),
+    getShellChrome(org),
   ]);
 
   /* The layout this person gets. Order and defaults only — never capability;
@@ -437,7 +441,7 @@ export default async function DashboardPage({
       <div className="min-w-0">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="hl-label">{org}</div>
+            <div className="hl-label">{chrome.orgName}</div>
             <div className="mt-1 flex items-center gap-2.5">
               <h1 className="hl-heading text-fg">
                 Command Center
@@ -447,8 +451,8 @@ export default async function DashboardPage({
                   real — the §7 failure this screen is most exposed to. */}
             </div>
             <p className="mt-2 text-[15px] text-fg-muted">
-              {org} · {totalOpportunities === 0
-                ? "no opportunities yet"
+              {totalOpportunities === 0
+                ? "No opportunities yet"
                 : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
             </p>
             {/* What this arrangement leads with, said out loud. A dashboard
@@ -464,7 +468,7 @@ export default async function DashboardPage({
               "New hunt" it replaced, its destination exists: scheduled hunting
               is the sources screen's scan interval, and one-off qualification
               is Analyze. There was never a third thing for that button to do. */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <RefreshButton size="lg" />
             <Button
               icon={Database}
@@ -521,7 +525,7 @@ export default async function DashboardPage({
           )}
           <Link
             href={`/${org}/analyze`}
-            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+            className="hl-focusable inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
           >
             <Search className="size-3.5" strokeWidth={1.75} />
             Analyze a company URL →

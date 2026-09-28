@@ -27,7 +27,7 @@ export default function NotFound() {
         action={
           <Link
             href="/"
-            className="hl-focusable inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-line-strong hover:text-fg"
+            className="hl-focusable inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
           >
             Go back
           </Link>
