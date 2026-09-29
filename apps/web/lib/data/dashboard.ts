@@ -52,7 +52,7 @@ export interface WhyNow {
   confidence: "high" | "medium" | "low";
   dimensions: ScoreDimension[];
   trigger: string;
-  triggerDate: string;
+  triggerDate: string | null;
   evidence: EvidenceItem[];
 }
 
@@ -252,7 +252,7 @@ async function whyNowCards(db: TenantClient, orgId: string): Promise<WhyNow[]> {
         confidence: (score?.confidence ?? "low") as "high" | "medium" | "low",
         dimensions: dimensionsOf(score),
         trigger: trigger ? String(trigger.trigger_type) : "",
-        triggerDate: trigger ? String(trigger.event_date) : "",
+        triggerDate: trigger ? String(trigger.event_date) : null,
         evidence: [] as EvidenceItem[],
       };
     })

@@ -189,7 +189,7 @@ export async function getOpportunity(
       const { data, error } = await db
         .from("opportunities")
         .select(
-          `id, priority, priority_reason, status, confidence, first_seen_at,
+          `id, company_id, priority, priority_reason, status, confidence, first_seen_at,
            owner_id, why_this_company, identified_problem, potential_gap,
            why_now, current_approach, potential_use_case, outreach_angle,
            companies!inner(name, canonical_domain, industry, region,
@@ -218,7 +218,7 @@ export async function getOpportunity(
         .map((p) => p.id);
 
       const [evidence, viewerId, fit] = await Promise.all([
-        evidenceFor(db, orgId, id),
+        evidenceFor(db, orgId, id, (data as { company_id: string }).company_id),
         currentUserId(db),
         contactFitFor(db, orgId, personIds),
       ]);
@@ -279,18 +279,29 @@ async function contactFitFor(
   return fit;
 }
 
-/** Full evidence for one opportunity, newest event first. */
+/**
+ * Full evidence for one opportunity, newest event first.
+ *
+ * TRUST-002. Both subjects: the opportunity's own claims (the qualifier's)
+ * and the company's — enrichment, hiring signals, research findings, scanned
+ * news with its excerpt. The scorer reasons over the company's; showing only
+ * the opportunity's made "every claim above traces to one of these" untrue
+ * of the evidence the verdict was actually built from.
+ */
 async function evidenceFor(
   db: TenantClient,
   orgId: string,
   opportunityId: string,
+  companyId: string,
 ): Promise<EvidenceItem[]> {
   const { data, error } = await db
     .from("evidence")
-    .select("claim, kind, confidence, source_url, excerpt, event_date, observed_at")
+    .select("claim, kind, confidence, source_url, excerpt, event_date, observed_at, reliability")
     .eq("org_id", orgId)
-    .eq("subject_type", "opportunity")
-    .eq("subject_id", opportunityId)
+    .or(
+      `and(subject_type.eq.opportunity,subject_id.eq.${opportunityId}),` +
+        `and(subject_type.eq.company,subject_id.eq.${companyId})`,
+    )
     .is("deleted_at", null)
     // A superseded claim is history, not evidence. Showing both would present
     // a corrected fact and its correction as two independent findings.

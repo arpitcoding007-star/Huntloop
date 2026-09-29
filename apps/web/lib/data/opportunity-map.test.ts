@@ -302,13 +302,13 @@ describe("mapListRow", () => {
     expect(mapped.triggerDate).toBe("2026-08-08T00:00:00Z");
   });
 
-  it("says so when there is no trigger, and dates the row from first sight", () => {
+  it("says so when there is no trigger, and gives it no date", () => {
     // A blank cell would read as "nothing worth showing"; the honest answer is
-    // that nothing has been seen. The date still has to refer to something
-    // real, or the freshness beside it is meaningless.
+    // that nothing has been seen. TRUST-005: the first-seen date used to stand
+    // in, so discovery time was displayed as the age of a buying signal.
     const mapped = mapListRow(row(), []);
     expect(mapped.trigger).toBe("No trigger on file");
-    expect(mapped.triggerDate).toBe("2026-08-09T00:00:00Z");
+    expect(mapped.triggerDate).toBeNull();
   });
 
   it("does not claim a score for an unscored opportunity", () => {
@@ -591,5 +591,12 @@ describe("mapDetail", () => {
     // Null, not a placeholder string: the page renders its own "not
     // established" and marks the section UNKNOWN.
     expect(mapped.whatTheyDo).toBeNull();
+  });
+});
+
+describe("TRUST-005 — a missing trigger is absent, not old", () => {
+  it("never calls a trigger fresh when none is on file", () => {
+    expect(recommendedAction("hot", true, false)).not.toMatch(/fresh/i);
+    expect(recommendedAction("hot", true, true)).toMatch(/fresh/i);
   });
 });

@@ -157,7 +157,11 @@ export default async function OpportunityPage({
       <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-surface px-4 py-3">
         <SectionLabel>Recommended</SectionLabel>
         <span className="text-[14px] text-fg">{o.recommendedAction}</span>
-        <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
+        {o.triggerDate ? (
+          <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
+        ) : (
+          <span className="ml-auto text-[12px] text-fg-muted">No trigger on file</span>
+        )}
       </div>
 
       {streakNudge && <LearningNudge org={org} nudge={streakNudge} />}
@@ -165,13 +169,16 @@ export default async function OpportunityPage({
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* ── Main column ──────────────────────────────────────────────── */}
         <div className="min-w-0 space-y-6">
-          <Prose title="Why this company" body={o.whyThisCompany} />
+          {/* TRUST-003: the model wrote these, and they say so — the same badge
+              the evidence list uses, rather than prose that reads like fact. */}
+          <Prose title="Why this company" body={o.whyThisCompany} inferred />
           <Prose title="What they do" body={o.whatTheyDo} />
-          <Prose title="Identified problem" body={o.identifiedProblem} />
-          <Prose title="Potential gap" body={o.potentialGap} />
+          <Prose title="Identified problem" body={o.identifiedProblem} inferred />
+          <Prose title="Potential gap" body={o.potentialGap} inferred />
           <Prose
             title="Current approach"
             body={o.currentApproach}
+            inferred
             /* §78: an unknown current approach is a finding, not a blank. */
             fallback="Not established. No evidence on file describes how they solve this today."
           />
@@ -231,8 +238,8 @@ export default async function OpportunityPage({
             </CardBody>
           </Card>
 
-          <Prose title="Why now" body={o.whyNow} emphasis />
-          <Prose title="Potential use case" body={o.potentialUseCase} />
+          <Prose title="Why now" body={o.whyNow} emphasis inferred />
+          <Prose title="Potential use case" body={o.potentialUseCase} inferred />
 
           <Card flush>
             <CardHeader
@@ -383,11 +390,14 @@ function Prose({
   body,
   fallback,
   emphasis,
+  inferred,
 }: {
   title: string;
   body: string | null;
   fallback?: string;
   emphasis?: boolean;
+  /** Written by a model, so labelled an inference once it says anything. */
+  inferred?: boolean;
 }) {
   const established = body !== null && body.trim() !== "";
   return (
@@ -395,6 +405,7 @@ function Prose({
       <div className="flex items-center gap-2">
         <SectionLabel>{title}</SectionLabel>
         {!established && <ClaimBadge kind="unknown" />}
+        {established && inferred && <ClaimBadge kind="inference" />}
       </div>
       <p
         className={

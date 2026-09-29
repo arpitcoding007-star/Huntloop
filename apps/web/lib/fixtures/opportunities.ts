@@ -37,7 +37,7 @@ export interface OpportunityFixture {
   status: string;
   owner: string | null;
   trigger: string;
-  triggerDate: string;
+  triggerDate: string | null;
   whyThisCompany: string;
   whatTheyDo: string;
   identifiedProblem: string;

@@ -154,8 +154,11 @@ export function OpportunityTable({
       }
       if (sort.key === "score") return (a.score - b.score) * dir;
       if (sort.key === "company") return a.company.localeCompare(b.company) * dir;
-      if (sort.key === "trigger")
+      if (sort.key === "trigger") {
+        // No trigger sorts last in either direction: it is not old, it is absent.
+        if (!a.triggerDate || !b.triggerDate) return a.triggerDate ? -1 : b.triggerDate ? 1 : 0;
         return (Date.parse(a.triggerDate) - Date.parse(b.triggerDate)) * dir;
+      }
       return 0;
     });
   }, [all, priority, query, scope, sort]);
@@ -206,7 +209,7 @@ export function OpportunityTable({
       render: (o) => (
         <div className="min-w-0">
           <div className="truncate text-fg-secondary">{o.trigger}</div>
-          <Freshness date={o.triggerDate} now={now} />
+          {o.triggerDate && <Freshness date={o.triggerDate} now={now} />}
         </div>
       ),
     },

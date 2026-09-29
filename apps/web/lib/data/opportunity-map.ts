@@ -49,7 +49,8 @@ export interface OpportunityRow {
   dimensions: ScoreDimension[];
   status: string;
   trigger: string;
-  triggerDate: string;
+  /** Null when no trigger is on file — never the date the company was first seen. */
+  triggerDate: string | null;
   evidence: { kind: "fact" | "inference" | "unknown" }[];
   industry: string;
 }
@@ -78,7 +79,8 @@ export interface OpportunityDetail {
    * the select is bound to, and those are different questions.
    */
   ownerId: string | null;
-  triggerDate: string;
+  /** Null when no trigger is on file — never the date the company was first seen. */
+  triggerDate: string | null;
   whyThisCompany: string | null;
   whatTheyDo: string | null;
   identifiedProblem: string | null;
@@ -219,6 +221,8 @@ export interface EvidenceQueryRow {
   excerpt: string | null;
   event_date: string | null;
   observed_at: string | null;
+  /** 0020's reliability band; absent on loaders that do not select it. */
+  reliability?: string | null;
 }
 
 /* ── Guards and small rules ──────────────────────────────────────────────── */
@@ -345,13 +349,20 @@ export function hostOf(url: string): string | undefined {
  * When there is a model in the loop this becomes its output, with the
  * reasoning attached. Until then it says only what the data supports.
  */
-export function recommendedAction(priority: Priority, hasBuyer: boolean): string {
+export function recommendedAction(
+  priority: Priority,
+  hasBuyer: boolean,
+  hasTrigger = true,
+): string {
   if (priority === "ignore") return "No action — this one is out of scope.";
   if (priority === "watch") return "Keep monitoring — no reason to contact today.";
   if (!hasBuyer) return "Identify a decision maker before reaching out.";
-  return priority === "hot"
+  if (priority !== "hot") return "Research the current approach before contacting.";
+  /* TRUST-005: "while the trigger is fresh" was said of HOT opportunities
+     with no trigger on file at all. */
+  return hasTrigger
     ? "Reach out now, while the trigger is fresh."
-    : "Research the current approach before contacting.";
+    : "Reach out — the fit is strong, though no dated trigger is on file yet.";
 }
 
 /* ── Mappers ─────────────────────────────────────────────────────────────── */
@@ -363,7 +374,13 @@ export function mapEvidence(rows: EvidenceQueryRow[]): EvidenceItem[] {
     confidence: e.confidence ?? undefined,
     // The table stores the URL; the label is derived from it rather than
     // stored twice, so the two can never disagree.
-    source: e.source_url ? hostOf(e.source_url) : undefined,
+    /* TRUST-006: a provider's record is what the provider says, not what
+       anyone observed, and the label says which. */
+    source: e.source_url
+      ? e.reliability === "provider_attested"
+        ? `${hostOf(e.source_url)} · provider-reported`
+        : hostOf(e.source_url)
+      : undefined,
     sourceUrl: e.source_url ?? undefined,
     excerpt: e.excerpt ?? undefined,
     eventDate: e.event_date ?? undefined,
@@ -391,11 +408,10 @@ export function mapListRow(
     dimensions: dimensionsOf(score),
     status: statusLabel(r.status),
     /* The "Why now" column. With no trigger on file the honest answer is that
-       nothing has been seen, not a blank cell — and the date falls back to
-       first_seen_at so the freshness beside it still refers to something
-       real. */
+       nothing has been seen, and no date: TRUST-005 — the first-seen date
+       used to stand in, so discovery time read as the age of a buying signal. */
     trigger: newest?.trigger_type ?? "No trigger on file",
-    triggerDate: newest?.event_date ?? r.first_seen_at,
+    triggerDate: newest?.event_date ?? null,
     evidence,
   };
 }
@@ -489,7 +505,7 @@ export function mapDetail(
     owner:
       r.owner_id === null ? null : r.owner_id === viewerId ? "You" : "another member",
     ownerId: r.owner_id,
-    triggerDate: triggers[0]?.event_date ?? r.first_seen_at,
+    triggerDate: triggers[0]?.event_date ?? null,
     whyThisCompany: r.why_this_company,
     whatTheyDo: r.companies.description,
     identifiedProblem: r.identified_problem,
@@ -498,7 +514,7 @@ export function mapDetail(
     whyNow: r.why_now,
     potentialUseCase: r.potential_use_case,
     outreachAngle: r.outreach_angle,
-    recommendedAction: recommendedAction(r.priority, buyers.length > 0),
+    recommendedAction: recommendedAction(r.priority, buyers.length > 0, triggers.length > 0),
     buyers,
     evidence,
     triggers: triggers.map((t) => ({
