@@ -16,7 +16,9 @@
  *   npm test --workspace @huntloop/jobs
  */
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
-import { assertFetchable, FetchRefused } from "../src/fetch.ts";
+import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
+import { fetch as undiciFetch } from "undici";
+import { createServer } from "node:http";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
@@ -230,10 +232,46 @@ console.log("\nfetchPage — the addresses a scan must never be talked into");
     ["http://192.168.1.1/", /private network/],
     ["http://172.16.4.4/", /private network/],
     ["http://[::1]/", /private network/],
+    // SEC-003: every spelling of a private address, not only the dotted one.
+    ["http://[::ffff:7f00:1]/", /private network/],
+    ["http://[::ffff:a9fe:a9fe]/", /private network/],
+    ["http://[64:ff9b::a9fe:a9fe]/", /private network/],
+    ["http://[2002:7f00:1::]/", /private network/],
+    ["http://[0:0:0:0:0:0:0:1]/", /private network/],
+    ["http://[fd00::1]/", /private network/],
     ["not a url at all", /is not a URL/],
   ];
   for (const [url, pattern] of refusals) {
     await expectThrows(`${url} is refused`, () => assertFetchable(url), pattern);
+  }
+
+  const publicAddresses = ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946", "::ffff:5db8:d822", "64:ff9b::5db8:d822"];
+  expect(
+    "public addresses, however written, are not private",
+    publicAddresses.every((a) => !isPrivateAddress(a)),
+  );
+  expect("an address that cannot be read is treated as private", isPrivateAddress("1::2::3"));
+}
+
+{
+  /* SEC-003, the rebinding half. A real server on loopback, reached by name,
+     through the agent fetchPage uses: the lookup at connect time must refuse
+     it even though no earlier check ran. No network needed. */
+  const server = createServer((_req, res) => res.end("internal"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  try {
+    await undiciFetch(`http://localhost:${port}/`, { dispatcher: guardedAgent });
+    fail("a connection that resolves to loopback is refused at connect time", "it connected");
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    expectEqual(
+      "a connection that resolves to loopback is refused at connect time",
+      code,
+      "EHUNTLOOP_PRIVATE_ADDRESS",
+    );
+  } finally {
+    server.close();
   }
 }
 

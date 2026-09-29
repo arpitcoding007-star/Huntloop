@@ -207,73 +207,74 @@ export async function ingestMemoryAction(
   if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
   const value = parsed.value;
 
-  let content = "";
-  let sourceUrl: string | null = null;
-  let sourceLabel: string | null = null;
-
-  if (value.sourceType === "url") {
-    if (!value.url) {
-      return fail("Which page should Huntloop read?", { url: "Paste a link." });
-    }
-
-    try {
-      const page = await fetchPage(value.url);
-      const extraction = extract(page);
-      /* The extractor returns one document for a page and many for a feed.
-         Joining them is right for a feed pointed at deliberately — somebody
-         ingesting a changelog wants the entries — and the titles are kept so
-         the resulting memory reads as a document rather than as a wall. */
-      content = extraction.documents
-        .map((doc) => (doc.title ? `${doc.title}\n${doc.text}` : doc.text))
-        .join("\n\n")
-        .trim();
-      sourceUrl = page.url;
-      sourceLabel = extraction.documents[0]?.title ?? null;
-    } catch (e) {
-      if (e instanceof FetchRefused) {
-        return fail(e.message, { url: e.message });
-      }
-      if (e instanceof UnreadableContent) {
-        return fail(e.message, { url: e.message });
-      }
-      return fail(
-        `That page could not be read: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-
-    if (!content) {
-      /* A page that fetched fine and yielded nothing is a real outcome — a
-         JavaScript-rendered app, usually — and it must not become an empty
-         memory that silently contributes nothing to every future prompt. */
-      return fail(
-        "That page fetched, but there was no readable text in it. Sites that render " +
-          "in the browser often look like this. Paste the text instead.",
-        { url: "No readable text." },
-      );
-    }
-  } else {
-    content = (value.text ?? "").trim();
-    if (!content) {
-      return fail("That file had no readable text in it.", { text: "Nothing to store." });
-    }
-    sourceLabel = value.filename ?? null;
-  }
-
-  const characters = content.length;
-  const truncated = characters > MAX_INGESTED_CHARS;
-  if (truncated) {
-    /* Cut at a paragraph where one is close, so the stored text ends at a
-       thought rather than mid-word — and marked in the content itself as well
-       as in the column, because the column is not in the prompt and the model
-       reading this should know it is holding an excerpt. */
-    const cut = content.slice(0, MAX_INGESTED_CHARS);
-    const lastBreak = cut.lastIndexOf("\n\n");
-    content =
-      (lastBreak > MAX_INGESTED_CHARS * 0.6 ? cut.slice(0, lastBreak) : cut).trimEnd() +
-      "\n\n[This is an excerpt. The rest of the document was not stored.]";
-  }
-
   return mutate(org, "ingestMemory", async ({ db, orgId }) => {
+    /* SEC-003: membership and role are checked by mutate() before anything
+       leaves this server. The fetch used to run first, so a caller with no
+       access to this org could still make it request a URL. */
+    let content = "";
+    let sourceUrl: string | null = null;
+    let sourceLabel: string | null = null;
+
+    if (value.sourceType === "url") {
+      if (!value.url) {
+        return fail("Which page should Huntloop read?", { url: "Paste a link." });
+      }
+
+      try {
+        const page = await fetchPage(value.url);
+        const extraction = extract(page);
+        /* The extractor returns one document for a page and many for a feed.
+           Joining them is right for a feed pointed at deliberately — somebody
+           ingesting a changelog wants the entries — and the titles are kept so
+           the resulting memory reads as a document rather than as a wall. */
+        content = extraction.documents
+          .map((doc) => (doc.title ? `${doc.title}\n${doc.text}` : doc.text))
+          .join("\n\n")
+          .trim();
+        sourceUrl = page.url;
+        sourceLabel = extraction.documents[0]?.title ?? null;
+      } catch (e) {
+        if (e instanceof FetchRefused) {
+          return fail(e.message, { url: e.message });
+        }
+        if (e instanceof UnreadableContent) {
+          return fail(e.message, { url: e.message });
+        }
+        return fail("That page could not be read. Check the address, or paste the text instead.");
+      }
+
+      if (!content) {
+        /* A page that fetched fine and yielded nothing is a real outcome — a
+           JavaScript-rendered app, usually — and it must not become an empty
+           memory that silently contributes nothing to every future prompt. */
+        return fail(
+          "That page fetched, but there was no readable text in it. Sites that render " +
+            "in the browser often look like this. Paste the text instead.",
+          { url: "No readable text." },
+        );
+      }
+    } else {
+      content = (value.text ?? "").trim();
+      if (!content) {
+        return fail("That file had no readable text in it.", { text: "Nothing to store." });
+      }
+      sourceLabel = value.filename ?? null;
+    }
+
+    const characters = content.length;
+    const truncated = characters > MAX_INGESTED_CHARS;
+    if (truncated) {
+      /* Cut at a paragraph where one is close, so the stored text ends at a
+         thought rather than mid-word — and marked in the content itself as well
+         as in the column, because the column is not in the prompt and the model
+         reading this should know it is holding an excerpt. */
+      const cut = content.slice(0, MAX_INGESTED_CHARS);
+      const lastBreak = cut.lastIndexOf("\n\n");
+      content =
+        (lastBreak > MAX_INGESTED_CHARS * 0.6 ? cut.slice(0, lastBreak) : cut).trimEnd() +
+        "\n\n[This is an excerpt. The rest of the document was not stored.]";
+    }
+
     const { data, error } = await db
       .from("memories")
       .insert({
