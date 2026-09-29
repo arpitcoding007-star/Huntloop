@@ -461,13 +461,10 @@ export async function stageContacts(orgId: string): Promise<StageResult> {
   /* The top opportunities rather than the newest companies. A contact reveal
      costs credits, and spending them on the companies the user is least likely
      to open is the wrong three. */
-  const { data } = await scope
-    .select("opportunities", "id, company_id, score")
-    .is("deleted_at", null)
-    .order("score", { ascending: false, nullsFirst: false })
-    .limit(FIRST_RUN_CONTACTS);
+  const top = await topOpportunities(scope, FIRST_RUN_CONTACTS);
+  if (!top.ok) return { stage: "contacts", status: "failed", detail: top.detail, count: 0 };
 
-  const rows = (data ?? []) as { id: string; company_id: string }[];
+  const rows = top.rows;
   if (rows.length === 0) {
     return {
       stage: "contacts",
@@ -514,13 +511,10 @@ export async function stageContacts(orgId: string): Promise<StageResult> {
  */
 export async function stageExplain(orgId: string): Promise<StageResult> {
   const scope = new OrgScope(orgId, adminClient());
-  const { data } = await scope
-    .select("opportunities", "id, company_id")
-    .is("deleted_at", null)
-    .order("score", { ascending: false, nullsFirst: false })
-    .limit(3);
+  const top = await topOpportunities(scope, 3);
+  if (!top.ok) return { stage: "explain", status: "failed", detail: top.detail, count: 0 };
 
-  const rows = (data ?? []) as { id: string; company_id: string }[];
+  const rows = top.rows;
   if (rows.length === 0) {
     return { stage: "explain", status: "skipped", detail: "Nothing to explain yet.", count: 0 };
   }
@@ -529,7 +523,11 @@ export async function stageExplain(orgId: string): Promise<StageResult> {
   let lastDetail = "";
   for (const row of rows) {
     const run = await runHandler(orgId, "research_company", { companyId: row.company_id });
-    if (run.ok) explained++;
+    /* FLOW-003: a run that returned "skipped" researched nothing, and
+       counting it is how onboarding said "Worked out why now" about companies
+       nobody had looked at. */
+    if (run.ok && !run.result.skipped) explained++;
+    else if (run.ok) lastDetail = String(run.result.skipped);
     else lastDetail = run.detail;
   }
 
@@ -545,6 +543,49 @@ export async function stageExplain(orgId: string): Promise<StageResult> {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
+
+const PRIORITY_RANK: Record<string, number> = { hot: 0, warm: 1, watch: 2, ignore: 3 };
+
+type RankedOpportunity = { id: string; company_id: string };
+
+/**
+ * The opportunities worth spending on first: priority, then latest score.
+ *
+ * FLOW-002. Both callers used to `order("score")` on `opportunities`, which
+ * has no such column — scores are append-only rows in `opportunity_scores`.
+ * PostgREST answered with an error, `data` was null, and each stage reported
+ * "No opportunities…" right after scoring ten, so contact discovery never ran.
+ * The score is embedded and the sort done here (PostgREST cannot order a
+ * parent by an embedded child), and an error is returned rather than read as
+ * an empty list. IGNORE verdicts are not worth a credit.
+ */
+export async function topOpportunities(
+  scope: OrgScope,
+  limit: number,
+): Promise<{ ok: true; rows: RankedOpportunity[] } | { ok: false; detail: string }> {
+  const { data, error } = await scope
+    .select("opportunities", "id, company_id, priority, opportunity_scores(score, computed_at)")
+    .is("deleted_at", null)
+    .neq("priority", "ignore")
+    .order("first_seen_at", { ascending: false })
+    .limit(200);
+
+  if (error) return { ok: false, detail: `Could not read opportunities: ${error.message}` };
+
+  type Row = RankedOpportunity & {
+    priority: string;
+    opportunity_scores: { score: number; computed_at: string }[] | null;
+  };
+  const latest = (r: Row) =>
+    [...(r.opportunity_scores ?? [])].sort((a, b) => b.computed_at.localeCompare(a.computed_at))[0]
+      ?.score ?? -1;
+
+  const rows = [...((data ?? []) as Row[])].sort(
+    (a, b) =>
+      (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) || latest(b) - latest(a),
+  );
+  return { ok: true, rows: rows.slice(0, limit).map((r) => ({ id: r.id, company_id: r.company_id })) };
+}
 
 function emptyFilters(): DiscoveryFilters {
   return {

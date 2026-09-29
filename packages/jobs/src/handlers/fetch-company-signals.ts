@@ -118,10 +118,14 @@ export async function fetchCompanySignals(ctx: JobContext): Promise<JobOutcome> 
     };
   });
 
-  await scope.upsert("evidence", rows, {
-    onConflict: "org_id,subject_type,subject_id,field,source_id,source_url",
+  const { error: evidenceError } = await scope.upsert("evidence", rows, {
+    // evidence_live_source_key_uidx (0032); see TRUST-001.
+    onConflict: "org_id,subject_type,subject_id,field,live_source_key",
     ignoreDuplicates: false,
   });
+  if (evidenceError) {
+    return { ok: false, error: `fetch_company_signals evidence: ${evidenceError.message}` };
+  }
 
   await scope.rpc("flag_contradictions", {
     p_org: scope.orgId,

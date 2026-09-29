@@ -115,7 +115,7 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
   const { data: company, error: companyError } = await scope.select(
     "companies",
     "id, name, canonical_domain, website, industry, country, region, " +
-      "business_model, description, employee_count, tech_stack",
+      "business_model, description, employee_count, tech_stack, discovered_via",
   )
     .eq("id", companyId)
     .is("deleted_at", null)
@@ -201,7 +201,7 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
    * which is trivial beside the model call that produced `qualification`.
    */
   const { data: existing } = await scope
-    .select("opportunities", "id")
+    .select("opportunities", "id, priority_set_by")
     .eq("company_id", companyId)
     .eq("icp_id", icp.id)
     .maybeSingle();
@@ -242,12 +242,20 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
       {
         company_id: companyId,
         icp_id: icp.id,
-        priority: ruled.priority,
-        priority_reason: priorityReason,
+        /* FLOW-004: a priority a person set stays set. The score history is
+           still appended below, so the disagreement remains visible and the
+           learning loop can read it; only the verdict the user overrode is
+           left alone. Omitted keys are untouched by the upsert's update. */
+        ...(existing?.priority_set_by === "user"
+          ? {}
+          : { priority: ruled.priority, priority_reason: priorityReason }),
+        /* FLOW-013: origin is set once, from how the company arrived. It used
+           to be overwritten with "scan" on every rescore, which erased the
+           comparison the learning loop runs by origin. */
+        ...(existing ? {} : { discovered_via: String(company.discovered_via ?? "scan") }),
         why_this_company: qualification.summary,
         outreach_angle: qualification.recommendation,
         confidence: qualification.scoreConfidence,
-        discovered_via: "scan",
         last_scored_at: new Date().toISOString(),
       },
       { onConflict: "org_id,company_id,icp_id" },
@@ -374,6 +382,7 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
     result: {
       opportunity_id: opportunityId,
       priority: ruled.priority,
+      priority_kept: existing?.priority_set_by === "user",
       score: ruled.score,
       model_score: ruled.modelScore,
       rules_fired: ruled.trace.length,

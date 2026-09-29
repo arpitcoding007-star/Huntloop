@@ -54,6 +54,8 @@ export interface OpportunityFixture {
     /** null where no verified contact exists — §78 forbids fabricating one. */
     email: string | null;
     emailConfidence: "high" | "medium" | "low" | null;
+    unverifiedEmail: string | null;
+    emailStatus: string | null;
     linkedin: string | null;
     /** `contact_fit_scores.score`; null where the ranker has not run. */
     fitScore: number | null;
@@ -115,6 +117,8 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         isDecisionMaker: true,
         email: "dana@alphio.ai",
         emailConfidence: "high",
+        unverifiedEmail: null,
+        emailStatus: "verified",
         linkedin: "https://www.linkedin.com/",
         fitScore: 86,
         fitReason: "Named the custody blocker publicly and signs for infrastructure.",
@@ -125,6 +129,8 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         isDecisionMaker: false,
         email: null,
         emailConfidence: null,
+        unverifiedEmail: null,
+        emailStatus: null,
         linkedin: "https://www.linkedin.com/",
         fitScore: 61,
         fitReason: "Feels the operational cost, but does not own the budget line.",
@@ -229,6 +235,8 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         isDecisionMaker: false,
         email: null,
         emailConfidence: null,
+        unverifiedEmail: null,
+        emailStatus: null,
         linkedin: "https://www.linkedin.com/",
         /* Deliberately unranked: this fixture is the "research the current
            approach first" case, and a company whose contacts arrived before

@@ -1,4 +1,14 @@
 import type { EvidenceItem, Priority, ScoreDimension } from "@huntloop/ui";
+import {
+  isPlaceholderEmail,
+  isSendableEmail,
+  isVerifiedEmail,
+  verificationLabel,
+} from "@huntloop/db/contact";
+
+function verificationLabelFor(c: { verification_status: string | null } | undefined): string | null {
+  return c ? verificationLabel(c.verification_status) : null;
+}
 
 /**
  * Database rows → what the opportunity screens render.
@@ -84,6 +94,13 @@ export interface OpportunityDetail {
     isDecisionMaker: boolean;
     email: string | null;
     emailConfidence: "high" | "medium" | "low" | null;
+    /**
+     * An address outreach would still send to but nobody has checked — shown
+     * as text with its status, never as a link. Null when `email` is set.
+     */
+    unverifiedEmail: string | null;
+    /** The status word for whichever address is shown. */
+    emailStatus: string | null;
     linkedin: string | null;
     /**
      * `contact_fit_scores.score`, 0–100, or null when this person has not
@@ -404,9 +421,13 @@ export function mapDetail(
          `verification_status` says whether it was checked. An unverified
          address is not shown as a mailto — it is a guess, and a guess rendered
          as a link is a guess that gets sent. */
-      const email = contacts.find(
-        (c) => c.kind === "email" && c.verification_status === "verified",
-      );
+      const emails = contacts.filter((c) => c.kind === "email" && !isPlaceholderEmail(c.value));
+      const email = emails.find((c) => isVerifiedEmail(c.verification_status));
+      /* TRUST-004: the sender mails unverified addresses, so hiding them here
+         told the user "no address" about the one that would be used. */
+      const unverified = email
+        ? undefined
+        : emails.find((c) => isSendableEmail(c.value, c.verification_status));
       const linkedin = contacts.find((c) => c.kind === "linkedin");
       const ranked = fit.get(p.id);
       return {
@@ -415,6 +436,8 @@ export function mapDetail(
         isDecisionMaker: p.is_decision_maker,
         email: email?.value ?? null,
         emailConfidence: email?.confidence ?? null,
+        unverifiedEmail: unverified?.value ?? null,
+        emailStatus: verificationLabelFor(email ?? unverified),
         linkedin: linkedin?.value ?? null,
         fitScore: ranked?.score ?? null,
         fitReason: ranked?.explanation ?? null,

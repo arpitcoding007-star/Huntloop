@@ -341,11 +341,11 @@ create index if not exists contact_points_person_idx
 
 -- ── A probe for `db:doctor` ──────────────────────────────────────────────
 -- Everything above is a policy, trigger or redefined function, none of which
--- PostgREST exposes, so doctor had nothing to look for. This returns the
--- latest applied migration's number; later migrations replace it.
-create or replace function public.schema_version()
-returns integer
+-- PostgREST lists, so doctor had nothing to look for. One marker per
+-- migration, because doctor tells migrations apart by name.
+create or replace function public.migration_0031_applied()
+returns boolean
 language sql
 immutable
 set search_path = public, pg_catalog
-as $$ select 31 $$;
+as $$ select true $$;

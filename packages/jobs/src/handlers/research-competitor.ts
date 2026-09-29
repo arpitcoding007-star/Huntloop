@@ -218,7 +218,7 @@ export async function researchCompetitorJob(ctx: JobContext): Promise<JobOutcome
       {
         // `evidence_one_per_source_field` from `0020`: re-researching updates
         // the row for a field rather than appending a second answer to it.
-        onConflict: "org_id,subject_type,subject_id,field,source_id,source_url",
+        onConflict: "org_id,subject_type,subject_id,field,live_source_key",
         ignoreDuplicates: false,
       },
     )

@@ -3069,6 +3069,83 @@ console.log("\n0031 — tenant write hardening");
   else fail("and the claimer skips it", "claimed");
 }
 
+// ── 0032 — evidence keys and provenance ─────────────────────────────────────
+// TRUST-001: PostgREST names an on_conflict target as plain columns. The 0020
+// index was an expression + partial index, which no plain list can infer, so
+// every provider evidence upsert failed. These run the exact statement shape
+// the handlers now send.
+console.log("\n0032 — evidence keys and provenance");
+{
+  const ORG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const SUBJECT = "32323232-0032-0032-0032-000000000032";
+  const upsert = (claim: string) =>
+    db.query(
+      `insert into evidence (org_id, subject_type, subject_id, claim, kind, source_url, field)
+       values ($1, 'company', $2, $3, 'fact', 'https://app.apollo.io/x', 'employee_count')
+       on conflict (org_id, subject_type, subject_id, field, live_source_key)
+       do update set claim = excluded.claim`,
+      [ORG_A, SUBJECT, claim],
+    );
+
+  try {
+    await upsert("180 employees");
+    await upsert("190 employees");
+    const r = await db.query<{ n: number; claim: string }>(
+      `select count(*)::int as n, max(claim) as claim from evidence
+        where subject_id = $1 and deleted_at is null`,
+      [SUBJECT],
+    );
+    if (r.rows[0]!.n === 1 && r.rows[0]!.claim === "190 employees")
+      ok("a provider evidence upsert updates its row instead of failing");
+    else fail("a provider evidence upsert updates its row instead of failing", JSON.stringify(r.rows));
+  } catch (e) {
+    fail("a provider evidence upsert updates its row instead of failing", e);
+  }
+
+  try {
+    await db.query(`update evidence set deleted_at = now() where subject_id = $1`, [SUBJECT]);
+    await upsert("200 employees");
+    const r = await db.query<{ n: number }>(
+      `select count(*)::int as n from evidence where subject_id = $1`,
+      [SUBJECT],
+    );
+    if (r.rows[0]!.n === 2) ok("a soft-deleted row never blocks a fresh claim");
+    else fail("a soft-deleted row never blocks a fresh claim", `${r.rows[0]!.n} rows`);
+  } catch (e) {
+    fail("a soft-deleted row never blocks a fresh claim", e);
+  }
+
+  // TRUST-004.
+  const PERSON = "32323232-0032-0032-0032-0000000000aa";
+  await db.query(
+    `insert into people (id, org_id, company_id, first_name)
+     select $1, $2, id, '0032' from companies where org_id = $2 limit 1`,
+    [PERSON, ORG_A],
+  );
+  await expectReject(
+    db,
+    "an unknown verification status is refused",
+    `insert into contact_points (org_id, person_id, kind, value, verification_status)
+     values ($1, $2, 'email', 'x-0032@a.test', 'verified')`,
+    [ORG_A, PERSON],
+  );
+
+  // FLOW-004 / FLOW-003.
+  const cols = await db.query<{ column_name: string }>(
+    `select column_name from information_schema.columns
+      where (table_name = 'opportunities' and column_name = 'priority_set_by')
+         or (table_name = 'companies' and column_name = 'last_enriched_at')`,
+  );
+  if (cols.rows.length === 2) ok("priority_set_by and last_enriched_at exist");
+  else fail("priority_set_by and last_enriched_at exist", JSON.stringify(cols.rows));
+
+  await expectReject(
+    db,
+    "priority_set_by is system or user",
+    `update opportunities set priority_set_by = 'robot'`,
+  );
+}
+
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,

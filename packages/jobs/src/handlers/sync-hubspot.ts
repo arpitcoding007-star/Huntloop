@@ -183,7 +183,7 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
           observed_at: new Date().toISOString(),
           field: "hubspot_stage",
         },
-        { onConflict: "org_id,subject_type,subject_id,field,source_id,source_url", ignoreDuplicates: false },
+        { onConflict: "org_id,subject_type,subject_id,field,live_source_key", ignoreDuplicates: false },
       );
     }
 

@@ -643,3 +643,68 @@ export function rankContacts<T extends ContactSubject>(
       return an.localeCompare(bn);
     });
 }
+
+/* ── Email verification: one vocabulary (TRUST-004) ───────────────────────
+ *
+ * `contact_points.verification_status` had four writer vocabularies and three
+ * readers that each assumed a different one: the detail page showed an email
+ * only when the status was "verified", which nothing wrote, so every address
+ * was hidden; the ranker counted only "deliverable"; the sender mailed
+ * anything not "undeliverable" or "risky". 0032 constrains the column to the
+ * values below, and these helpers are the only interpretation of them.
+ */
+
+export const VERIFICATION_STATUSES = [
+  "unverified",
+  "provider_verified",
+  "deliverable",
+  "risky",
+  "undeliverable",
+  "unknown",
+] as const;
+
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+
+/**
+ * A provider's placeholder for an address it has not revealed. Apollo search
+ * returns `email_not_unlocked@domain.com` until a credit is spent; storing or
+ * mailing it is a bounce at best (PROV-004).
+ */
+export function isPlaceholderEmail(value: string | null | undefined): boolean {
+  if (!value) return true;
+  const v = value.trim().toLowerCase();
+  return !v.includes("@") || v.startsWith("email_not_unlocked@") || v.endsWith("@domain.com");
+}
+
+/** Checked by a verifier, or attested by the provider that found it. */
+export function isVerifiedEmail(status: string | null | undefined): boolean {
+  return status === "deliverable" || status === "provider_verified";
+}
+
+/**
+ * Whether outreach may send to this address. Known-bad and risky addresses
+ * are refused, as are placeholders; an unverified address the user imported
+ * themselves is theirs to send to, and the screen says it is unverified.
+ */
+export function isSendableEmail(value: string | null | undefined, status: string | null | undefined): boolean {
+  if (isPlaceholderEmail(value)) return false;
+  return status !== "undeliverable" && status !== "risky";
+}
+
+/** The words a person reads for each status. */
+export function verificationLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "deliverable":
+      return "verified";
+    case "provider_verified":
+      return "provider-verified";
+    case "risky":
+      return "risky";
+    case "undeliverable":
+      return "undeliverable";
+    case "unverified":
+      return "unverified";
+    default:
+      return "not checked";
+  }
+}

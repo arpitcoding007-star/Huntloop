@@ -316,12 +316,20 @@ export default async function OpportunityPage({
                           >
                             <Mail className="size-3" strokeWidth={1.75} />
                             {b.email}
-                            {b.emailConfidence && (
+                            {(b.emailStatus || b.emailConfidence) && (
                               <span className="text-fg-muted">
-                                · {b.emailConfidence}
+                                · {[b.emailStatus, b.emailConfidence].filter(Boolean).join(" · ")}
                               </span>
                             )}
                           </a>
+                        ) : b.unverifiedEmail ? (
+                          /* TRUST-004: an address outreach would use, shown for
+                             what it is — text, not a link, with its status. */
+                          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-warning-border px-2 text-[12px] text-fg-secondary">
+                            <Mail className="size-3" strokeWidth={1.75} />
+                            {b.unverifiedEmail}
+                            <span className="text-warning-text">· {b.emailStatus ?? "unverified"}</span>
+                          </span>
                         ) : (
                           /* No address is a real answer. Rendering a guessed
                              one would be the §78 failure this avoids. */

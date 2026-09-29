@@ -37,6 +37,8 @@
 import { ProviderRefused, searchPeople } from "@huntloop/providers";
 import {
   classifyTitle,
+  isPlaceholderEmail,
+  isVerifiedEmail,
   rankContacts as rank,
   type ContactSubject,
   type PersonaSpec,
@@ -277,7 +279,7 @@ async function loadPeople(scope: OrgScope, companyId: string): Promise<LoadedPer
         title: (row.title as string) ?? null,
         bestContactKind: (best?.kind as "email" | "phone" | "linkedin" | undefined) ?? null,
         bestContactConfidence: (best?.confidence as "low" | "medium" | "high" | null) ?? null,
-        emailVerified: email?.verification_status === "deliverable",
+        emailVerified: isVerifiedEmail(email?.verification_status),
         employmentStatus:
           (row.employment_status as "current" | "departed" | "unknown") ?? "unknown",
         lastVerifiedAt: row.last_verified_at ? new Date(String(row.last_verified_at)) : null,
@@ -389,6 +391,9 @@ async function discoverPeople(
     }
 
     for (const contact of person.contacts) {
+      /* PROV-004: search results carry locked placeholders until a credit is
+         spent. Storing one makes it a recipient. */
+      if (contact.kind === "email" && isPlaceholderEmail(contact.value)) continue;
       await scope.upsert(
         "contact_points",
         {

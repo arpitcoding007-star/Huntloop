@@ -401,6 +401,32 @@ describe("mapDetail", () => {
 
     expect(mapped.buyers[0]?.email).toBeNull();
     expect(mapped.buyers[0]?.emailConfidence).toBeNull();
+    // TRUST-004: shown as the unverified address it is, never as a link.
+    expect(mapped.buyers[0]?.unverifiedEmail).toBe("guess@alphio.ai");
+    expect(mapped.buyers[0]?.emailStatus).toBe("unverified");
+  });
+
+  it("never surfaces a provider placeholder or an undeliverable address", () => {
+    const mapped = mapDetail(
+      detail({
+        companies: {
+          ...detail().companies,
+          people: [
+            person({
+              contact_points: [
+                { kind: "email", value: "email_not_unlocked@domain.com", confidence: null, verification_status: "provider_verified", deleted_at: null },
+                { kind: "email", value: "gone@alphio.ai", confidence: null, verification_status: "undeliverable", deleted_at: null },
+              ],
+            }),
+          ],
+        },
+      }),
+      [],
+      null,
+    );
+
+    expect(mapped.buyers[0]?.email).toBeNull();
+    expect(mapped.buyers[0]?.unverifiedEmail).toBeNull();
   });
 
   it("shows a verified address with the confidence it was recorded at", () => {
@@ -415,7 +441,7 @@ describe("mapDetail", () => {
                   kind: "email",
                   value: "dana@alphio.ai",
                   confidence: "high",
-                  verification_status: "verified",
+                  verification_status: "deliverable",
                   deleted_at: null,
                 },
               ],
@@ -428,6 +454,7 @@ describe("mapDetail", () => {
     );
 
     expect(mapped.buyers[0]?.email).toBe("dana@alphio.ai");
+    expect(mapped.buyers[0]?.emailStatus).toBe("verified");
     expect(mapped.buyers[0]?.emailConfidence).toBe("high");
   });
 

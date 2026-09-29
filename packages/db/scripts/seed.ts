@@ -1032,7 +1032,7 @@ for (const c of COMPANIES) {
         person_id: person.id,
         kind: "email",
         value: p.email,
-        verification_status: "verified",
+        verification_status: "deliverable",
         confidence: p.email_confidence,
         provider: "seed",
         verified_at: new Date().toISOString(),

@@ -60,7 +60,7 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     .select(
       "companies",
       "id, canonical_domain, name, industry, employee_count, revenue_band, country, " +
-        "region, description, tech_stack, funding, website, last_researched_at",
+        "region, description, tech_stack, funding, website, last_enriched_at",
     )
     .eq("id", companyId)
     .is("deleted_at", null)
@@ -116,7 +116,7 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
        stops the same question being paid for again next week. The cache
        already holds it; this marks the row so a scheduled sweep skips it. */
     await scope
-      .update("companies", { last_researched_at: new Date().toISOString() })
+      .update("companies", { last_enriched_at: new Date().toISOString() })
       .eq("id", companyId);
     return { ok: true, result: { found: false, provider: result.meta.provider, credits: result.meta.credits } };
   }
@@ -151,7 +151,9 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     patch.funding = found.funding;
   }
 
-  patch.last_researched_at = new Date().toISOString();
+  /* FLOW-003: its own column. Writing `last_researched_at` here marked the
+     company as researched, and research_company then skipped it for 30 days. */
+  patch.last_enriched_at = new Date().toISOString();
 
   await scope.update("companies", patch).eq("id", companyId);
 
@@ -189,7 +191,7 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     const recordUrl = providerRecordUrl(result.meta.provider, found.providerId);
     const observedAt = new Date().toISOString();
 
-    await scope.upsert(
+    const { error: evidenceError } = await scope.upsert(
       "evidence",
       claims.map(([field, claim]) => ({
         subject_type: "company",
@@ -203,13 +205,20 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
         field,
       })),
       {
-        /* Matches `evidence_one_per_source_field` from `0020`. Re-enriching
-           updates the same rows rather than appending a fourth copy of
-           "180 employees" every month. */
-        onConflict: "org_id,subject_type,subject_id,field,source_id,source_url",
+        /* `evidence_live_source_key_uidx` (0032). Re-enriching updates the
+           same rows rather than appending a fourth copy of "180 employees"
+           every month. The 0020 index could not be named here (TRUST-001). */
+        onConflict: "org_id,subject_type,subject_id,field,live_source_key",
         ignoreDuplicates: false,
       },
     );
+
+    /* TRUST-001: this failed silently for months. The attributes above are
+       already written, so the job reports rather than retries — but it
+       reports, because a provider claim with no evidence row has no source. */
+    if (evidenceError) {
+      return { ok: false, error: `enrich_company evidence: ${evidenceError.message}` };
+    }
 
     /* Two sources disagreeing about one field is the interesting case, and
        it is flagged after the batch rather than by a trigger — a trigger
@@ -228,7 +237,7 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
       provider: result.meta.provider,
       credits: result.meta.credits,
       cached: result.meta.outcome === "cache_hit",
-      filled: Object.keys(patch).filter((k) => k !== "last_researched_at"),
+      filled: Object.keys(patch).filter((k) => k !== "last_enriched_at"),
       claims: claims.length,
     },
   };

@@ -1,6 +1,6 @@
 import "server-only";
 import type { EvidenceItem, Priority, ScoreDimension } from "@huntloop/ui";
-import type { TenantClient } from "@huntloop/db";
+import type { OpportunityStatus, TenantClient } from "@huntloop/db";
 import { OPPORTUNITIES } from "../fixtures/opportunities";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
@@ -88,6 +88,21 @@ export interface Dashboard {
 
 const PRIORITIES: readonly Priority[] = ["hot", "warm", "watch", "ignore"];
 
+/**
+ * The statuses nobody has acted on yet: before anyone is assigned or contacted.
+ *
+ * FLOW-001. Both queries below used to filter on `status = 'new'`, a value
+ * `opportunity_status` has never had (0003). Postgres rejects the literal
+ * before reading a row, so on any real database the Command Center — the page
+ * every user lands on after sign-in — threw, while demo fixtures hid it. Typed
+ * against the enum so a status the schema lacks is a compile error.
+ */
+export const UNTRIAGED_STATUSES: readonly OpportunityStatus[] = [
+  "discovered",
+  "researching",
+  "qualified",
+];
+
 /** How many why-now cards the screen shows. The rest are one click away. */
 const WHY_NOW_LIMIT = 3;
 
@@ -104,7 +119,9 @@ export async function getDashboard(orgSlug: string): Promise<Loaded<Dashboard>> 
         await Promise.all([
           priorityCounts(db, orgId),
           countRows(db, orgId, "company_triggers", (q) => q.gte("event_date", dayAgo)),
-          countRows(db, orgId, "opportunities", (q) => q.eq("status", "new")),
+          countRows(db, orgId, "opportunities", (q) =>
+            q.in("status", UNTRIAGED_STATUSES).is("deleted_at", null),
+          ),
           whyNowCards(db, orgId),
           loopCounts(db, orgId, weekAgo),
           outcomeCounts(db, orgId, weekAgo),
@@ -207,9 +224,9 @@ async function whyNowCards(db: TenantClient, orgId: string): Promise<WhyNow[]> {
     /* Not `.limit(3)`. The ordering that decides which three matter is
        priority then score, and score lives in an embedded row PostgREST
        cannot order by — so the shortlist is taken after sorting here. The
-       bound is `status = new`, which is what keeps this from reading the
-       whole table: these are the ones nobody has triaged. */
-    .eq("status", "new")
+       bound is the untriaged statuses, which is what keeps this from reading
+       the whole table: these are the ones nobody has acted on. */
+    .in("status", UNTRIAGED_STATUSES)
     .order("first_seen_at", { ascending: false })
     .limit(60);
 

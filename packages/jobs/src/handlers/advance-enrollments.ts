@@ -31,6 +31,7 @@
  */
 import { personalizeMessage, type MessageEvidence } from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
+import { isSendableEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
 import { enqueue } from "../queue.ts";
@@ -315,11 +316,11 @@ async function resolveRecipient(
         value: string;
         verification_status: string;
       }[];
+      /* One rule for "may we send here", shared with the screen that shows
+         the address (TRUST-004), and it refuses provider placeholders such as
+         email_not_unlocked@domain.com (PROV-004). */
       const email = points.find(
-        (p) =>
-          p.kind === "email" &&
-          p.verification_status !== "undeliverable" &&
-          p.verification_status !== "risky",
+        (p) => p.kind === "email" && isSendableEmail(p.value, p.verification_status),
       );
       if (!email) return null;
       return {

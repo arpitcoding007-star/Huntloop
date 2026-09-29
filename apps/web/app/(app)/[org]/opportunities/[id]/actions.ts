@@ -258,7 +258,8 @@ export async function overridePriorityAction(
 
     const { error } = await db
       .from("opportunities")
-      .update({ priority: parsed.data })
+      /* FLOW-004: marked as the user's, so the next rescore keeps it. */
+      .update({ priority: parsed.data, priority_set_by: "user" })
       .eq("id", id.data)
       .eq("org_id", orgId);
 

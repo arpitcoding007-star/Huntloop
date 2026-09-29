@@ -25,6 +25,7 @@
  * string with no evidence behind it, and §7 does not have an exception for
  * "everybody does it".
  */
+import { isPlaceholderEmail } from "@huntloop/db/contact";
 import { embedded } from "../scope.ts";
 import { verifyEmail, findContacts, enrichmentProvider } from "../providers.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
@@ -118,6 +119,9 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
   let verified = 0;
 
   for (const candidate of candidates) {
+    // PROV-004: a locked placeholder is not an address.
+    if (candidate.kind === "email" && isPlaceholderEmail(candidate.value)) continue;
+
     /* Every answer, from every provider, as its own row (§58). The read side
        resolves them; the write side never clobbers, because a later provider
        being wrong would silently erase an earlier one that was right. */
