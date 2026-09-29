@@ -350,6 +350,17 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
     }));
 
   if (rows.length) {
+    /* FLOW-010. The previous verdict's claims are history, and stay as rows —
+       but they must not render beside this one. Every rescore used to append
+       a full set, so the list and its "N facts" grew with stale and
+       contradictory restatements. The analyze screen's save already retires
+       them the same way. */
+    await scope
+      .update("evidence", { deleted_at: new Date().toISOString() })
+      .eq("subject_type", "opportunity")
+      .eq("subject_id", opportunityId)
+      .is("deleted_at", null);
+
     const { error: evidenceError } = await scope.insert("evidence", rows);
     if (evidenceError) {
       /* The verdict is already stored and is the valuable part. Losing the

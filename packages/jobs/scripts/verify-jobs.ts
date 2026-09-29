@@ -1629,16 +1629,27 @@ function stopped(calls: Recorded[]): boolean {
 }
 
 {
-  const calls = await classify("bounce");
+  /* OUT-005: the bounce arrives from the mail system; the address that failed
+     is the recipient of our outbound message on the thread. */
+  const calls = await classify("bounce", {
+    "select:messages": { data: { to_email: "Prospect@Acme.co" }, error: null },
+  });
 
+  const marked = calls.find(
+    (c) =>
+      c.table === "contact_points" &&
+      c.verb === "update" &&
+      (c.payload as { verification_status?: string })?.verification_status === "undeliverable",
+  );
+  expect("a bounce marks the address undeliverable, which stops every future campaign", Boolean(marked));
   expect(
-    "a bounce marks the address undeliverable, which stops every future campaign",
-    calls.some(
-      (c) =>
-        c.table === "contact_points" &&
-        c.verb === "update" &&
-        (c.payload as { verification_status?: string })?.verification_status === "undeliverable",
-    ),
+    "and it is the address we sent to, not the one the bounce came from",
+    JSON.stringify(marked?.filters ?? []).includes("prospect@acme.co") &&
+      !JSON.stringify(marked?.filters ?? []).includes("dana@acme.co"),
+  );
+  expect(
+    "and the address is suppressed",
+    calls.some((c) => c.table === "suppressions" && JSON.stringify(c.payload).includes("prospect@acme.co")),
   );
   expect("it stops this enrollment too", stopped(calls));
   expect(

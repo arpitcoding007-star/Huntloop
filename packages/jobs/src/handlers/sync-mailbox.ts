@@ -28,6 +28,7 @@
 import { classifyReply, type ReplyClassification } from "@huntloop/ai";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { MailboxUnavailable, authorize, type IncomingMessage } from "../mailbox/index.ts";
+import type { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SyncPayload {
@@ -262,10 +263,21 @@ export async function applyClassification(
   /* A bounce is a fact about the address, and the most useful one this system
      ever learns: it stops every future send to it, across every campaign. */
   if (label === "bounce") {
-    await scope
-      .update("contact_points", { verification_status: "undeliverable" })
-      .eq("kind", "email")
-      .eq("value", input.from);
+    /* OUT-005. A bounce comes *from* mailer-daemon@…; the address that failed
+       is the one we sent to. This marked the daemon undeliverable and left
+       the prospect's address live, so the next step mailed it again. */
+    const bounced = await bouncedRecipient(scope, input.threadId);
+    if (bounced) {
+      await scope
+        .update("contact_points", { verification_status: "undeliverable" })
+        .eq("kind", "email")
+        .eq("value", bounced);
+      await scope.upsert(
+        "suppressions",
+        { kind: "email", value: bounced, reason: summary.slice(0, 500), source: "bounce" },
+        { onConflict: "org_id,kind,value", ignoreDuplicates: true },
+      );
+    }
   }
 
   if (label === "unsubscribe") {
@@ -336,4 +348,19 @@ async function opportunityFor(ctx: JobContext, threadId: string): Promise<string
     .eq("id", threadId)
     .maybeSingle();
   return data?.opportunity_id ?? null;
+}
+
+/** The recipient of our latest outbound message on this thread — the address a bounce is about. */
+async function bouncedRecipient(scope: OrgScope, threadId: string | null | undefined): Promise<string | null> {
+  if (!threadId) return null;
+  const { data } = await scope
+    .select("messages", "to_email")
+    .eq("thread_id", threadId)
+    .eq("direction", "outbound")
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const to = (data as { to_email?: string | null } | null)?.to_email;
+  return to ? String(to).toLowerCase() : null;
 }
