@@ -15,7 +15,7 @@ import {
 } from "@huntloop/ui";
 import { ArrowLeft, ExternalLink, Linkedin, Mail } from "lucide-react";
 import { getOpportunity } from "../../../../../lib/data/opportunities";
-import { listCampaignTargets } from "../../../../../lib/data/outreach";
+import { hasHubspot, listCampaignTargets } from "../../../../../lib/data/outreach";
 import { listMembers } from "../../../../../lib/data/team";
 import { canSpend, canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { getConversation } from "../../../../../lib/data/conversation";
@@ -51,7 +51,7 @@ export default async function OpportunityPage({
 }) {
   const { org, id } = await params;
 
-  const [{ data: o }, viewer, { data: members }, { data: campaigns }, { data: conversation }] =
+  const [{ data: o }, viewer, { data: members }, { data: campaigns }, { data: conversation }, { data: crmConnected }] =
     await Promise.all([
       getOpportunity(org, id),
       currentViewer(org),
@@ -67,6 +67,7 @@ export default async function OpportunityPage({
       listMembers(org),
       listCampaignTargets(org),
       getConversation(org, id),
+      hasHubspot(org),
     ]);
 
   /*
@@ -146,6 +147,7 @@ export default async function OpportunityPage({
             members={members}
             campaigns={campaigns}
             canWrite={canWrite(viewer)}
+            crmConnected={crmConnected}
           />
         </div>
       </header>

@@ -2,12 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { Badge, Button, Field, FormMessage, Input, Select } from "@huntloop/ui";
-import { Send, ThumbsDown, UserPlus } from "lucide-react";
+import { Send, ThumbsDown, UploadCloud, UserPlus } from "lucide-react";
 import type { Member } from "../../../../../lib/data/team";
 import type { CampaignTarget } from "../../../../../lib/data/outreach";
 import { assignOpportunityAction } from "../../team/actions";
 import { enrollOpportunitiesAction } from "../actions";
-import { overridePriorityAction } from "./actions";
+import { overridePriorityAction, requestCrmPushAction } from "./actions";
 
 /**
  * The three things a person does from this page: give it an owner, put it into
@@ -49,6 +49,7 @@ export function OpportunityActions({
   members,
   campaigns,
   canWrite,
+  crmConnected = false,
 }: {
   org: string;
   opportunityId: string;
@@ -60,7 +61,10 @@ export function OpportunityActions({
   members: Member[];
   campaigns: CampaignTarget[];
   canWrite: boolean;
+  /** HubSpot is connected, so a push means something (CRM-001). */
+  crmConnected?: boolean;
 }) {
+  const [pushing, startPush] = useTransition();
   const [assigning, setAssigning] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [disagreeing, setDisagreeing] = useState(false);
@@ -116,6 +120,21 @@ export function OpportunityActions({
       >
         Disagree
       </Button>
+      {crmConnected && (
+        <Button
+          variant="ghost"
+          icon={UploadCloud}
+          disabled={pushing}
+          onClick={() =>
+            startPush(async () => {
+              const outcome = await requestCrmPushAction(org, opportunityId);
+              setResult(outcome.ok ? { ok: true, message: outcome.message } : outcome);
+            })
+          }
+        >
+          {pushing ? "Queuing…" : "Push to HubSpot"}
+        </Button>
+      )}
 
       {/* Full-width, so the panels sit under the header rather than squeezing
           the score and status badges beside them. `basis-full` inside the

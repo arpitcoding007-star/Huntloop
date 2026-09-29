@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { verifyHubspotToken } from "@huntloop/crm";
+import { getHubId, verifyHubspotToken } from "@huntloop/crm";
 import { EncryptionUnavailable, encryptSecret } from "@huntloop/db";
 import { fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
 import { currentUserId } from "../../../../../lib/data/org";
@@ -30,38 +30,42 @@ export async function connectHubspotAction(org: string, token: string): Promise<
   if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
   const trimmed = parsed.value.token;
 
-  const check = await verifyHubspotToken(trimmed);
-  if (!check.ok) {
-    return fail(
-      `HubSpot rejected that token: ${check.detail}. Check it was copied in full and that the private app has CRM read/write scopes.`,
-      { token: "Rejected by HubSpot." },
-    );
-  }
-
-  /* Encrypted before it reaches the database, and before `mutate` opens a
-     write — a deployment with no encryption key must fail here with a
-     sentence naming the variable, not store a bare token and look like it
-     worked. Same module, same key and the same reasoning as the mailbox
-     tokens in `0004`: these are the customer's credentials, not ours. */
-  let sealed: string;
-  try {
-    sealed = encryptSecret(trimmed);
-  } catch (e) {
-    if (e instanceof EncryptionUnavailable) {
-      return fail(`HubSpot cannot be connected on this deployment yet: ${e.message}`);
-    }
-    throw e;
-  }
-
   return mutate(
     org,
     "connectHubspot",
     async ({ db, orgId }) => {
+      /* CRM-006: the admin check in mutate() runs before the token is sent
+         anywhere or encrypted, not after. */
+      const check = await verifyHubspotToken(trimmed);
+      if (!check.ok) {
+        return fail(
+          `HubSpot rejected that token: ${check.detail}. Check it was copied in full and that the private app has CRM read/write scopes.`,
+          { token: "Rejected by HubSpot." },
+        );
+      }
+
+      /* Encrypted before it reaches the database, and before `mutate` opens a
+         write — a deployment with no encryption key must fail here with a
+         sentence naming the variable, not store a bare token and look like it
+         worked. Same module, same key and the same reasoning as the mailbox
+         tokens in `0004`: these are the customer's credentials, not ours. */
+      let sealed: string;
+      try {
+        sealed = encryptSecret(trimmed);
+      } catch (e) {
+        if (e instanceof EncryptionUnavailable) {
+          return fail(`HubSpot cannot be connected on this deployment yet: ${e.message}`);
+        }
+        throw e;
+      }
+
+      const hubId = await getHubId(trimmed);
       const userId = await currentUserId(db);
       const { error } = await db.from("hubspot_connections").upsert(
         {
           org_id: orgId,
           access_token: sealed,
+          hub_id: hubId,
           connected_by: userId,
           connected_at: new Date().toISOString(),
           is_enabled: true,

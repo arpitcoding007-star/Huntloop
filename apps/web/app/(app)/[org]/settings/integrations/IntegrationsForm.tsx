@@ -96,7 +96,7 @@ export function IntegrationsForm({
             <p>
               {connection.lastSyncedAt
                 ? `Last synced ${new Date(connection.lastSyncedAt).toLocaleString()}.`
-                : "Not synced yet — push an opportunity to start."}
+                : "Not synced yet — use Push to HubSpot on any opportunity."}
             </p>
             {connection.lastSyncError && (
               <p className="text-danger">Last attempt failed: {connection.lastSyncError}</p>

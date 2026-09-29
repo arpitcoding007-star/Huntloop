@@ -296,3 +296,43 @@ export async function overridePriorityAction(
     );
   });
 }
+
+/**
+ * Ask for this opportunity to be pushed to HubSpot.
+ *
+ * CRM-001. The integrations screen told users to "push an opportunity", and
+ * there was no way to. The request path may not enqueue, so this sets
+ * `crm_sync_requested_at` (0034) and `schedule_followups` turns it into a
+ * `sync_hubspot` job on the next tick — the same seam scans and recomputes
+ * use. Pushing twice before the tick is one request, not two deals.
+ */
+export async function requestCrmPushAction(
+  org: string,
+  opportunityId: string,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(opportunityId);
+  if (!id.success) return fail("That opportunity reference isn't valid.");
+
+  return mutate(org, "requestCrmPush", async ({ db, orgId }) => {
+    const { data: connected } = await db.rpc("org_has_hubspot", { p_org: orgId });
+    if (connected !== true) {
+      return fail("HubSpot isn't connected. An admin can connect it under Settings → Integrations.");
+    }
+
+    const { data, error } = await db
+      .from("opportunities")
+      .update({ crm_sync_requested_at: new Date().toISOString() })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id");
+
+    if (error) return fail(`That push could not be requested: ${error.message}`);
+    if (!data?.length) return fail("That opportunity no longer exists.");
+
+    return ok(
+      undefined,
+      "Queued for HubSpot. It is pushed on the engine's next run, usually within a few minutes.",
+    );
+  });
+}

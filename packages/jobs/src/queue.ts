@@ -74,7 +74,10 @@ export type JobName =
   | "schedule_signal_fetches"
   | "fetch_company_signals"
   /* CRM sync: push an opportunity to HubSpot and record what came back. */
-  | "sync_hubspot";
+  | "sync_hubspot"
+  /* MAP-001: the producer for CRM pushes, contact discovery and enrichment
+     refresh after onboarding. */
+  | "schedule_followups";
 
 export interface JobRow {
   id: string;

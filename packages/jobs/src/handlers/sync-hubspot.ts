@@ -33,6 +33,7 @@ import {
   associate,
   createDeal,
   ensureDealProperties,
+  getHubId,
   getDealStage,
   updateDealHuntloopFields,
   upsertCompany,
@@ -79,7 +80,14 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
     await scope.update("hubspot_connections", { last_sync_error: message.slice(0, 1000) });
     return { ok: false, permanent: true, error: `sync_hubspot: ${message}` };
   }
-  const hubId = (connection as { hub_id: string | null }).hub_id;
+  /* CRM-004: connections saved before the portal id was recorded have none,
+     and without it the stage read-back has no source URL and cannot be
+     stored as a fact. Looked up once and kept. */
+  let hubId = (connection as { hub_id: string | null }).hub_id;
+  if (!hubId) {
+    hubId = await getHubId(token);
+    if (hubId) await scope.update("hubspot_connections", { hub_id: hubId });
+  }
 
   const { data: org } = await scope.organization("slug").maybeSingle();
   const slug = org ? String((org as { slug: string }).slug) : scope.orgId;

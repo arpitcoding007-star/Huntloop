@@ -63,6 +63,7 @@ import { scheduleRecomputes } from "./handlers/schedule-recomputes.ts";
 import { scheduleSignalFetches } from "./handlers/schedule-signal-fetches.ts";
 import { fetchCompanySignals } from "./handlers/fetch-company-signals.ts";
 import { syncHubspot } from "./handlers/sync-hubspot.ts";
+import { scheduleFollowups } from "./handlers/schedule-followups.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -91,4 +92,5 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_signal_fetches: scheduleSignalFetches,
   fetch_company_signals: fetchCompanySignals,
   sync_hubspot: syncHubspot,
+  schedule_followups: scheduleFollowups,
 };

@@ -328,3 +328,20 @@ function mapTarget(row: any): CampaignTarget {
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * Whether this workspace has HubSpot connected — for any member, through
+ * `org_has_hubspot()` (0034), since the connection table itself is admin-only.
+ * Decides whether "Push to HubSpot" is offered at all (CRM-001).
+ */
+export async function hasHubspot(orgSlug: string): Promise<Loaded<boolean>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "hasHubspot");
+      const { data, error } = await db.rpc("org_has_hubspot", { p_org: orgId });
+      if (error) return false;
+      return data === true;
+    },
+    () => false,
+  );
+}

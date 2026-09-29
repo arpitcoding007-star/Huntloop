@@ -9,6 +9,7 @@
  */
 export {
   verifyHubspotToken,
+  getHubId,
   ensureDealProperties,
   upsertCompany,
   upsertContact,

@@ -114,6 +114,27 @@ export async function verifyHubspotToken(token: string): Promise<{ ok: boolean; 
 }
 
 /**
+ * The portal (hub) id this token belongs to, or null if it cannot be read.
+ *
+ * CRM-004. Nothing ever stored `hub_id`, so the deal URL the stage read-back
+ * cites was always null — and a fact with no source fails
+ * `evidence_fact_needs_source`, so every read-back was silently dropped.
+ * Never throws: a portal id is useful, not required to connect.
+ */
+export async function getHubId(token: string): Promise<string | null> {
+  try {
+    const details = await request<{ portalId?: number | string }>(
+      token,
+      "GET",
+      "/account-info/v3/details",
+    );
+    return details?.portalId !== undefined && details?.portalId !== null ? String(details.portalId) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Creates the three `huntloop_*` deal properties if the portal does not
  * already have them. Idempotent: a 409 (property already exists) is treated
  * as success, not an error — the common case on every call after the first.

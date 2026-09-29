@@ -596,6 +596,9 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
          change — the set is the most consequential list in the engine, and a
          test that read it from the source would assert nothing about it. */
       "schedule_discovery",
+      /* MAP-001: the producer for CRM pushes, contact discovery and
+         enrichment refresh. Spends credits, so it is listed by hand. */
+      "schedule_followups",
       "schedule_learning",
       "schedule_recomputes",
       "schedule_scans",
@@ -2869,6 +2872,50 @@ console.log("\nsync_hubspot — an org that never connected HubSpot is a normal 
   expect(
     "and stops immediately — it never even reads the opportunity",
     !calls.some((c) => c.table === "opportunities"),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nschedule_followups — MAP-001: the producer the orphans never had");
+{
+  const OPP = "11111111-0034-0034-0034-000000000001";
+  const COMPANY = "22222222-0034-0034-0034-000000000002";
+  const { client, calls } = fakeClient({
+    "select:opportunities": { data: [{ id: OPP, org_id: ORG_A, company_id: COMPANY }], error: null },
+    "insert:job_executions": { data: { id: "job_1" }, error: null },
+  });
+  setAdminClientForTests(client);
+
+  const outcome = await HANDLERS.schedule_followups({
+    scope: new OrgScope(ORG_A, client),
+    payload: {},
+    job: {} as never,
+    now: new Date(),
+  });
+
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => (Array.isArray(c.payload) ? c.payload[0] : c.payload) as Record<string, unknown>);
+  const names = enqueued.map((row) => row.job_name).sort();
+
+  expect("the sweep succeeds", outcome.ok, JSON.stringify(outcome));
+  expectEqual(
+    "a requested push, an unsearched opportunity and a stale company each become a job",
+    names,
+    ["enrich_company", "rank_contacts", "sync_hubspot"],
+  );
+  expect(
+    "every job carries the org it belongs to",
+    enqueued.every((row) => row.org_id === ORG_A),
+  );
+  const updates = calls.filter((c) => c.table === "opportunities" && c.verb === "update");
+  expect(
+    "a push request is cleared once its job exists",
+    updates.some((c) => (c.payload as Record<string, unknown>).crm_sync_requested_at === null),
+  );
+  expect(
+    "and an opportunity is marked searched, so it costs one search, not one per tick",
+    updates.some((c) => typeof (c.payload as Record<string, unknown>).contacts_sought_at === "string"),
   );
   setAdminClientForTests(null);
 }

@@ -202,6 +202,11 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
      but nothing ever calls them — exactly the silent gap `sweep()`'s own
      header warns a missing entry here produces. */
   "schedule_signal_fetches",
+  /* MAP-001. The producer of sync_hubspot, rank_contacts and enrichment
+     refresh. Spends through the provider seam, which enforces each org's
+     budget; bounded per tick, and every branch sets a marker so it never asks
+     twice for the same thing. */
+  "schedule_followups",
 ]);
 
 /**
