@@ -99,6 +99,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0030_create_organization.sql", probe: "create_organization", kind: "rpc" },
   { file: "0031_tenant_write_hardening.sql", probe: "migration_0031_applied", kind: "rpc" },
   { file: "0032_evidence_keys_and_provenance.sql", probe: "migration_0032_applied", kind: "rpc" },
+  { file: "0033_send_claim_and_provider_ceiling.sql", probe: "migration_0033_applied", kind: "rpc" },
 ];
 
 /**

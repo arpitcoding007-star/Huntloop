@@ -1456,16 +1456,18 @@ console.log("\n0011 — a provider budget is a control, not a number");
 {
   await db.exec("begin");
 
-  // No account configured → no limit → allowed. The pre-existing behaviour
-  // for every deployment, and the one this must not change.
+  // No account limit configured → the plan's enrich allowance, never
+  // unlimited. 0011 failed open here, and nothing in the product ever set an
+  // account limit, so every workspace could spend without a ceiling (PROV-002,
+  // closed by 0033).
   const open = await db.query<{ allowed: boolean; limit: number | null }>(
     `select allowed, "limit" from public.provider_budget_state($1, 'apollo')`,
     [ORG_A],
   );
-  if (open.rows[0]?.allowed === true && open.rows[0]?.limit === null) {
-    ok("with no limit configured, spending is allowed and says so");
+  if (open.rows[0]?.allowed === true && Number(open.rows[0]?.limit) > 0) {
+    ok("with no account limit, the plan's allowance applies — never unlimited");
   } else {
-    fail("with no limit configured, spending is allowed and says so", JSON.stringify(open.rows[0]));
+    fail("with no account limit, the plan's allowance applies — never unlimited", JSON.stringify(open.rows[0]));
   }
 
   await db.query(

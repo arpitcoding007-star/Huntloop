@@ -743,6 +743,9 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
        must be able to catch. */
     "rpc:can_contact": { data: [{ allowed: true, reason: "ok", detail: {} }], error: null },
     "rpc:claim_mailbox_send": { data: true, error: null },
+    /* OUT-001: the at-most-once claim on the message. One row back means this
+       run won it; the tests for losing it override this. */
+    "update:messages": { data: [{ id: "claimed" }], error: null },
     "insert:threads": { data: { id: "55555555-5555-5555-5555-555555555555" }, error: null },
     /* A configured workspace. Both of these are now send preconditions, so
        every other check in this section needs them satisfied to reach the
@@ -1035,6 +1038,83 @@ console.log("\nsend_message — §78: sent means sent, and failed means failed")
         /* `scope.insert` normalises to a list, so the row is payload[0]. */
         (c.payload as { kind?: string }[])?.[0]?.kind === "failed",
     ),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — OUT-001: at most once");
+
+{
+  let sends = 0;
+  const original = gmail.send;
+  gmail.send = async () => {
+    sends++;
+    return { providerMessageId: "x", providerThreadId: "t", messageIdHeader: "<x@y>" };
+  };
+
+  // An earlier run claimed the send and never recorded it.
+  const earlier = sendContext({ ...sendable(), send_attempted_at: new Date().toISOString() });
+  const stale = await sendMessage(earlier.ctx);
+  expect("a send an earlier run started is never re-sent", sends === 0 && !stale.ok);
+  expect(
+    "and it is left for a person, not retried",
+    (stale as { permanent?: boolean }).permanent === true,
+  );
+  setAdminClientForTests(null);
+
+  // Two runs at once: the one that loses the claim does not send.
+  const lost = sendContext(sendable(), { "update:messages": { data: [], error: null } });
+  const outcome = await sendMessage(lost.ctx);
+  expect("a run that loses the claim does not send", sends === 0 && outcome.ok);
+  setAdminClientForTests(null);
+
+  gmail.send = original;
+}
+
+{
+  const original = gmail.send;
+  gmail.send = async () => {
+    throw new Error("The operation was aborted due to timeout");
+  };
+  const { ctx, calls } = sendContext(sendable());
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+
+  expect(
+    "an ambiguous failure is not retried — it may have been delivered",
+    !outcome.ok && (outcome as { permanent?: boolean }).permanent === true,
+  );
+  expect(
+    "and the claim is kept",
+    !calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        (c.payload as { send_attempted_at?: unknown })?.send_attempted_at === null,
+    ),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const original = gmail.send;
+  gmail.send = async () => {
+    throw new Error("Gmail 400 on /gmail/v1/users/me/messages/send: invalid To header");
+  };
+  const { ctx, calls } = sendContext(sendable());
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+
+  expect(
+    "a definite refusal releases the claim so the send can be retried",
+    !outcome.ok &&
+      (outcome as { permanent?: boolean }).permanent !== true &&
+      calls.some(
+        (c) =>
+          c.table === "messages" &&
+          c.verb === "update" &&
+          (c.payload as { send_attempted_at?: unknown })?.send_attempted_at === null,
+      ),
   );
   setAdminClientForTests(null);
 }

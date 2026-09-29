@@ -54,7 +54,8 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     .select(
       "messages",
       `id, enrollment_id, mailbox_id, thread_id, direction, subject, body_text, body_html,
-       to_email, sent_at, scheduled_at, unsubscribe_token, provider_message_id`,
+       to_email, sent_at, scheduled_at, unsubscribe_token, provider_message_id,
+       send_attempted_at`,
     )
     .eq("id", messageId)
     .is("deleted_at", null)
@@ -67,6 +68,19 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     /* Step 1. Not an error: the queue is at-least-once by design, and this is
        the branch that makes that safe. A message with a send time has gone. */
     return { ok: true, result: { skipped: "already sent", provider_message_id: message.provider_message_id } };
+  }
+
+  if (message.send_attempted_at) {
+    /* OUT-001. An earlier run claimed this send and did not finish recording
+       it: it may have reached the inbox. Sending again on that guess is the
+       one mistake outreach cannot undo, so this stops and asks a person. */
+    return {
+      ok: false,
+      permanent: true,
+      error:
+        "Delivery unknown: an earlier attempt to send this message did not finish. " +
+        "Check the mailbox's Sent folder before sending it again.",
+    };
   }
 
   if (message.direction !== "outbound") {
@@ -268,6 +282,19 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
   const thread = message.thread_id ? await loadThread(ctx, String(message.thread_id)) : null;
 
+  /* OUT-001. Step 5 is at-most-once. Only one run can move
+     `send_attempted_at` from null, and a run that loses does not send. */
+  const { data: won, error: claimError } = await scope
+    .update("messages", { send_attempted_at: new Date().toISOString() })
+    .eq("id", messageId)
+    .is("sent_at", null)
+    .is("send_attempted_at", null)
+    .select("id");
+  if (claimError) return { ok: false, error: `send_message: ${claimError.message}` };
+  if (!Array.isArray(won) || won.length === 0) {
+    return { ok: true, result: { skipped: "another run is sending this message" } };
+  }
+
   try {
     // Step 5.
     const sent = await mailbox.provider.send(mailbox.accessToken, {
@@ -304,7 +331,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
     // Step 6. Both columns in one update: the CHECK constraint refuses a
     // `sent_at` without a provider id, so they cannot be written separately.
-    await scope
+    const { error: recordError } = await scope
       .update("messages", {
         sent_at: new Date().toISOString(),
         provider_message_id: sent.providerMessageId,
@@ -314,6 +341,20 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
         error: null,
       })
       .eq("id", messageId);
+
+    if (recordError) {
+      /* The message left. Not recording it must never become a retry: the
+         claim above stays set, so a rerun stops at "delivery unknown". */
+      await recordEvent(ctx, messageId, "delivered", {
+        provider_message_id: sent.providerMessageId,
+        record_error: recordError.message.slice(0, 500),
+      });
+      return {
+        ok: false,
+        permanent: true,
+        error: `Sent, but the send could not be recorded: ${recordError.message}`,
+      };
+    }
 
     const threadId = await ensureThread(ctx, {
       messageId,
@@ -367,14 +408,35 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     /* §78, exactly. The allowance was already claimed and is not given back:
        over-counting by one is the safe direction, and the alternative — a
        refund that races with a send that actually left — is not. */
-    await scope.update("messages", { error: reason.slice(0, 2000) }).eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason: reason.slice(0, 500) });
+    /* OUT-001. Only a definite refusal releases the claim and allows a retry.
+       A timeout, a 5xx or an accepted request with no id may have delivered,
+       and is left for a person rather than re-sent. */
+    const refused = isDefiniteRefusal(reason);
+    await scope
+      .update("messages", {
+        error: (refused ? reason : `Delivery unknown — check the Sent folder. ${reason}`).slice(0, 2000),
+        ...(refused ? { send_attempted_at: null } : {}),
+      })
+      .eq("id", messageId);
+    await recordEvent(ctx, messageId, "failed", { reason: reason.slice(0, 500), refused });
 
-    return { ok: false, error: reason };
+    return refused ? { ok: false, error: reason } : { ok: false, permanent: true, error: reason };
   }
 }
 
 /* ── Pieces ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Did the provider answer "no" — so nothing was sent?
+ *
+ * The Gmail and Graph adapters throw `Gmail 4xx …` / `Graph 4xx …` when the
+ * API answered with a client error. That is a definite refusal. Everything
+ * else — a 5xx, an abort, a network error, "accepted but returned no id" — is
+ * ambiguous about whether the message left.
+ */
+export function isDefiniteRefusal(reason: string): boolean {
+  return /^(Gmail|Graph) 4\d\d\b/.test(reason);
+}
 
 /**
  * `can_contact`'s reason code as a sentence somebody can act on.
