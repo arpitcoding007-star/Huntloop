@@ -21,6 +21,7 @@ import {
   resolveDataSource,
   type ActionResult,
 } from "../../../../lib/data/org";
+import { limitRefusal } from "../../../../lib/rate-limit";
 import {
   icpStepSchema,
   orgSlugSchema,
@@ -158,6 +159,9 @@ export async function estimateReachAction(
      it safe to hand that id to `estimateReach`, which runs under the
      service-role client and would otherwise be a way to bill another tenant. */
   return mutate(slug.value, "estimateReach", async ({ orgId }) => {
+    const refused = await limitRefusal(orgId, "estimate_reach");
+    if (refused) return fail(refused);
+
     if (translation.empty) {
       return ok({
         total: null,
@@ -224,7 +228,9 @@ export async function previewLookAlikesAction(
   /* `mutate` for the reason `estimateReachAction` gives: this spends a
      provider credit, and the org id must come from a verified membership
      before it reaches code running under the service-role client. */
-  return mutate(slug.value, "previewLookAlikes", async ({ orgId }) =>
-    ok(await previewLookAlikes(orgId, stepIcp(v))),
-  );
+  return mutate(slug.value, "previewLookAlikes", async ({ orgId }) => {
+    const refused = await limitRefusal(orgId, "lookup_example_companies");
+    if (refused) return fail(refused);
+    return ok(await previewLookAlikes(orgId, stepIcp(v)));
+  });
 }

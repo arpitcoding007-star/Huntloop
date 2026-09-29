@@ -11,6 +11,7 @@ import {
 import type { EngineStage, FirstRunStage } from "../../../../lib/onboarding/steps";
 import { draftRulesAction } from "../../../(app)/[org]/settings/scoring/actions";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import { limitRefusal } from "../../../../lib/rate-limit";
 import { resolveDataSource } from "../../../../lib/data/source";
 import { firstRunStageSchema, orgSlugSchema, parseInput } from "../../../../lib/validation";
 
@@ -176,6 +177,8 @@ export async function runStageAction(
      the org id from a *verified membership*, which is what makes it safe to
      hand that id to code running under the service-role client. */
   return mutate(slug.value, "runFirstRunStage", async ({ orgId }) => {
+    const refused = await limitRefusal(orgId, "first_run_stage");
+    if (refused) return fail(refused);
     const result = await RUNNERS[resolved](orgId);
     return ok(result);
   });

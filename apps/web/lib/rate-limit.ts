@@ -1,5 +1,16 @@
 import * as Sentry from "@sentry/nextjs";
 import type { TaskName } from "@huntloop/ai";
+
+/**
+ * What a limit can be set on: every model task, plus the actions that spend
+ * provider credits without a model (SEC-004). Those had no limit at all, and
+ * signup is open, so any account could loop them against the platform's key.
+ */
+export type LimitedAction =
+  | TaskName
+  | "lookup_example_companies"
+  | "estimate_reach"
+  | "first_run_stage";
 import { resolveDataSource } from "./data/source";
 
 /**
@@ -104,7 +115,15 @@ interface Limit {
  * Twenty company analyses in an hour is a heavy day of real work; it is four
  * seconds of a loop.
  */
-const LIMITS: Partial<Record<TaskName, Limit>> = {
+const LIMITS: Partial<Record<LimitedAction, Limit>> = {
+  /* SEC-004. Provider credits, no model. Reading example companies and
+     estimating reach are live previews on the ICP screen, so a person does
+     them a few dozen times while editing; a script does them thousands. */
+  lookup_example_companies: { perUser: 30, perOrg: 90, windowSeconds: 3600 },
+  estimate_reach: { perUser: 60, perOrg: 180, windowSeconds: 3600 },
+  /* Onboarding runs five stages once, and a person may retry a failed one.
+     Thirty an hour is every stage six times over. */
+  first_run_stage: { perUser: 30, perOrg: 30, windowSeconds: 3600 },
   // ~8 page fetches + Opus high. The most expensive thing the product does.
   research_company: { perUser: 20, perOrg: 100, windowSeconds: 3600 },
   qualify_opportunity: { perUser: 20, perOrg: 100, windowSeconds: 3600 },
@@ -145,7 +164,7 @@ const LIMITS: Partial<Record<TaskName, Limit>> = {
  */
 export async function consumeRateLimit(
   orgId: string,
-  task: TaskName,
+  task: LimitedAction,
 ): Promise<RateLimitDecision> {
   const limit = LIMITS[task];
   if (!limit) return { allowed: true, remaining: Infinity, resetAt: null };
@@ -203,7 +222,7 @@ type Db = NonNullable<Awaited<ReturnType<typeof resolveDataSource>>["db"]>;
 async function consumeOne(
   db: Db,
   orgId: string,
-  task: TaskName,
+  task: LimitedAction,
   max: number,
   windowSeconds: number,
   perUser: boolean,
@@ -318,4 +337,14 @@ export function rateLimitMessage(decision: RateLimitDecision): string {
     `You've reached the limit for this action. It resets in ` +
     `${minutes} minute${minutes === 1 ? "" : "s"}.`
   );
+}
+
+/**
+ * The refusal sentence when `action` is over its limit for this org, or null
+ * to proceed. For Server Actions that return `fail(message)` — the provider
+ * previews and first-run stages (SEC-004).
+ */
+export async function limitRefusal(orgId: string, action: LimitedAction): Promise<string | null> {
+  const decision = await consumeRateLimit(orgId, action);
+  return decision.allowed ? null : refusal(decision).error;
 }

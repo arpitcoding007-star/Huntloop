@@ -1,5 +1,6 @@
 import { nullRecorder, type RunFinish, type RunRecorder, type RunStart } from "@huntloop/ai";
 import { resolveDataSource } from "../data/source";
+import { canSpend, currentViewer } from "../data/membership";
 import type { TenantClient } from "@huntloop/db";
 
 /**
@@ -88,6 +89,17 @@ export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome>
   }
   const orgId = org.id as string;
 
+  /* SEC-008. Reading the org proved membership, not the right to spend: a
+     viewer passed, and the `ai_runs` insert RLS refused them was then
+     treated as "run unmetered". Checked here, once, for every model path. */
+  if (!canSpend(await currentViewer(orgSlug))) {
+    return {
+      ok: false,
+      error:
+        "Your role is read-only, so this can't run a model. An admin can change your role under Members.",
+    };
+  }
+
   const recorder: RunRecorder = {
     async started(run: RunStart) {
       const { data, error } = await db
@@ -105,12 +117,11 @@ export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome>
         .select("id")
         .single();
 
-      // A failure to record must not cancel the work. It is logged rather than
-      // thrown because the alternative — a model outage caused by a broken cost
-      // table — trades a reporting problem for a product one.
+      /* SEC-008. This used to log and run unmetered. The run is the unit
+         the monthly quota counts, so an unrecorded run is an unbilled one —
+         and the path RLS refuses is exactly the caller who may not spend. */
       if (error) {
-        console.error("ai_runs insert failed; running unmetered", error.message);
-        return null;
+        throw new Error(`This run could not be recorded, so it was not started: ${error.message}`);
       }
       return data.id as string;
     },

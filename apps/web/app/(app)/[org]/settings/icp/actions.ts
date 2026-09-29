@@ -10,6 +10,7 @@ import {
   resolveDataSource,
   type ActionResult,
 } from "../../../../../lib/data/org";
+import { limitRefusal } from "../../../../../lib/rate-limit";
 import {
   previewLookAlikes,
   type LookAlikePreview,
@@ -362,6 +363,9 @@ export async function previewLookAlikesAction(
      from a verified membership. `previewLookAlikes` runs under the
      service-role client and would otherwise be a way to bill another tenant. */
   return mutate(org, "previewLookAlikes", async ({ orgId }) => {
+    const refused = await limitRefusal(orgId, "lookup_example_companies");
+    if (refused) return fail(refused);
+
     /* Built through `parseIcp` rather than as a literal, for two reasons.
        `IcpCriteria` distinguishes "not stated" (null) from "stated as none"
        ([]), so spelling out fifteen nulls here is how this drifts from the
