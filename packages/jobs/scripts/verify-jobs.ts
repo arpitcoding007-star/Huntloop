@@ -2890,6 +2890,15 @@ console.log("\nschedule_followups — MAP-001: the producer the orphans never ha
   const COMPANY = "22222222-0034-0034-0034-000000000002";
   const { client, calls } = fakeClient({
     "select:opportunities": { data: [{ id: OPP, org_id: ORG_A, company_id: COMPANY }], error: null },
+    /* FLOW-007: one company never researched and with no opportunity (an
+       import), and one that already has an opportunity and must be left. */
+    "select:companies": {
+      data: [
+        { id: "33333333-0036-0036-0036-000000000003", org_id: ORG_A, opportunities: [] },
+        { id: "44444444-0036-0036-0036-000000000004", org_id: ORG_A, opportunities: [{ id: OPP }] },
+      ],
+      error: null,
+    },
     "insert:job_executions": { data: { id: "job_1" }, error: null },
   });
   setAdminClientForTests(client);
@@ -2908,9 +2917,22 @@ console.log("\nschedule_followups — MAP-001: the producer the orphans never ha
 
   expect("the sweep succeeds", outcome.ok, JSON.stringify(outcome));
   expectEqual(
-    "a requested push, an unsearched opportunity and a stale company each become a job",
+    "a requested push, an unsearched opportunity, a stale company and an unqualified import each become a job",
     names,
-    ["enrich_company", "rank_contacts", "sync_hubspot"],
+    ["enrich_company", "rank_contacts", "research_company", "sync_hubspot"],
+  );
+  expect(
+    "a company that already has an opportunity is not re-researched",
+    !enqueued.some((row) => JSON.stringify(row.payload ?? {}).includes("44444444-0036")),
+  );
+  expect(
+    "and an import is marked requested, so a refused run is retried daily, not every tick",
+    calls.some(
+      (c) =>
+        c.table === "companies" &&
+        c.verb === "update" &&
+        typeof (c.payload as Record<string, unknown>).research_requested_at === "string",
+    ),
   );
   expect(
     "every job carries the org it belongs to",

@@ -104,7 +104,14 @@ const FIRST_RUN_CONTACTS = 3;
  */
 export async function ensureDiscoveryQuery(
   orgId: string,
-  options: { enabled: boolean } = { enabled: true },
+  options: {
+    enabled: boolean;
+    /**
+     * Whether an unchanged search is due now. A new search always is. False
+     * lets an ICP save that changed nothing searchable cost nothing.
+     */
+    runNow?: boolean;
+  } = { enabled: true },
 ): Promise<{
   queryId: string | null;
   filters: DiscoveryFilters;
@@ -203,9 +210,10 @@ export async function ensureDiscoveryQuery(
         icp_id: icpRow.id,
         icp_version_id: icpRow.current_version_id ?? null,
         unmappable: translation.unmapped,
-        next_run_at: new Date().toISOString(),
+        ...(options.runNow === false ? {} : { next_run_at: new Date().toISOString() }),
       })
       .eq("id", existing.id);
+    await retireSuperseded(scope, String(existing.id));
     return { queryId: String(existing.id), filters: lookAlike.filters, empty: false, lookAlike };
   }
 
@@ -242,7 +250,23 @@ export async function ensureDiscoveryQuery(
     };
   }
 
+  await retireSuperseded(scope, String(created.id));
   return { queryId: String(created.id), filters: lookAlike.filters, empty: false, lookAlike };
+}
+
+/**
+ * FLOW-008. A changed profile hashes to a new query, and the one built from
+ * the old profile stayed enabled — so the engine kept searching for the
+ * customer the user had just said they no longer want, at their expense.
+ * Only profile-built searches are retired; anything else a person saved is
+ * theirs to turn off.
+ */
+async function retireSuperseded(scope: OrgScope, currentId: string): Promise<void> {
+  await scope
+    .update("discovery_queries", { is_enabled: false, next_run_at: null })
+    .eq("name", "From your customer profile")
+    .eq("is_enabled", true)
+    .neq("id", currentId);
 }
 
 /* ── Running a stage ─────────────────────────────────────────────────────── */

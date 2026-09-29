@@ -11,6 +11,7 @@ import {
   type ActionResult,
 } from "../../../../../lib/data/org";
 import { limitRefusal } from "../../../../../lib/rate-limit";
+import { followActiveIcp } from "../../../../../lib/data/engine";
 import {
   previewLookAlikes,
   type LookAlikePreview,
@@ -107,7 +108,7 @@ export async function saveIcpAction(
          once, which loses the same edit either way. */
       const { data: existing, error: readError } = await db
         .from("icps")
-        .select("criteria, negative_criteria")
+        .select("criteria, negative_criteria, is_active")
         .eq("id", value.id)
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -133,6 +134,9 @@ export async function saveIcpAction(
         .eq("org_id", orgId)
         .is("deleted_at", null);
       if (error) return fail(`That ICP could not be saved: ${error.message}`);
+
+      // FLOW-008: the search and the scores follow the profile that changed.
+      if (existing.is_active) await followActiveIcp(db, orgId, { runNow: false });
 
       revalidatePath(`/${org}`, "layout");
       return ok({ id: value.id }, "ICP saved.");
@@ -197,8 +201,11 @@ export async function activateIcpAction(
       .is("deleted_at", null);
     if (error) return fail(`That ICP could not be activated: ${error.message}`);
 
+    // FLOW-008: switching profile switches what the engine searches and scores.
+    await followActiveIcp(db, orgId, { runNow: true });
+
     revalidatePath(`/${org}`, "layout");
-    return ok(undefined, "This is now the active ICP.");
+    return ok(undefined, "This is now the active ICP. Discovery and scoring now follow it.");
   });
 }
 

@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { HuntNowButton } from "./HuntNowButton";
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { getDashboard } from "../../../../lib/data/dashboard";
@@ -479,6 +480,7 @@ export default async function DashboardPage({
             >
               Sources
             </Button>
+            {mayHunt && <HuntNowButton org={org} />}
             {mayHunt && (
               <Button
                 icon={Link2}

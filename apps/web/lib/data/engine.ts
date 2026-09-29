@@ -89,7 +89,9 @@ export async function requestResearch(
 ): Promise<void> {
   await db
     .from("companies")
-    .update({ last_researched_at: null })
+    // research_requested_at too (0036), so an explicit ask is not held to the
+    // sweeper's once-a-day retry.
+    .update({ last_researched_at: null, research_requested_at: null })
     .eq("id", companyId)
     .eq("org_id", orgId);
 }
@@ -244,4 +246,26 @@ export async function lastTickAt(db: TenantClient, orgId: string): Promise<strin
 
   if (error || !data) return null;
   return String(data.created_at);
+}
+
+/**
+ * The engine follows the active customer profile (FLOW-008).
+ *
+ * Editing or switching the ICP changed nothing the engine did: the saved
+ * discovery search was built once, during onboarding, and kept running, and
+ * nothing rescored against the new profile. Called after the profile changes
+ * (`runNow: false`, so a save that changed nothing searchable costs nothing)
+ * and by "Hunt now" (`runNow: true`). The rebuild runs under the service role
+ * inside `@huntloop/jobs`, which is why the org id must come from a verified
+ * membership — every caller is inside `mutate()`.
+ */
+export async function followActiveIcp(
+  db: TenantClient,
+  orgId: string,
+  options: { runNow: boolean },
+): Promise<{ searching: boolean; reason?: string }> {
+  const { ensureDiscoveryQuery } = await import("@huntloop/jobs");
+  const query = await ensureDiscoveryQuery(orgId, { enabled: true, runNow: options.runNow });
+  await requestRecompute(db, orgId, "icp_change");
+  return query.queryId ? { searching: true } : { searching: false, reason: query.reason };
 }
