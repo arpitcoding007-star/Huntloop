@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { buildCsp, createNonce } from "./lib/csp";
+import { isProtectedRoute } from "./lib/protected-routes";
 import {
   isProductionDeployment,
   probeSchema,
@@ -307,6 +308,21 @@ export async function proxy(request: NextRequest) {
   const isPublic = matches(path, PUBLIC_PREFIXES);
 
   if (!user && !isPublic && path !== "/") {
+    /* A URL that is no page at all gets the not-found page, not a sign-in
+       wall in front of a 404. Rewritten to a path no route serves, so Next
+       renders `app/not-found.tsx` with a real 404 status — and the requested
+       path itself is never rendered for an anonymous visitor. */
+    if (!isProtectedRoute(path)) {
+      const missing = request.nextUrl.clone();
+      missing.pathname = "/__not-found";
+      missing.search = "";
+      return sealCsp(
+        NextResponse.rewrite(missing, { request: { headers: requestHeaders }, status: 404 }),
+        responseHeader,
+        policy,
+      );
+    }
+
     const login = request.nextUrl.clone();
     /*
      * An invitee is sent to *sign up*, not to sign in.
