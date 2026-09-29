@@ -44,31 +44,31 @@ test.describe("settings", () => {
     expect(errors, "the page threw while rendering").toEqual([]);
   });
 
-  test("every settings tab leads somewhere real", async ({ page }) => {
+  test("every settings page the navigation offers leads somewhere real", async ({ page }) => {
     /*
-     * `audit.mjs` NAV-01 only inspects OrgShell, so it never saw this tab bar
-     * — and for a while two of its tabs 404'd. A dead tab is the same defect
-     * as a dead nav item; it just lives in a component the static check does
-     * not read.
+     * The settings tab row was replaced by the sidebar's Settings panel
+     * (3d7292a), so this asks the navigation rather than a tab bar that no
+     * longer exists. A dead link is the defect either way.
      *
-     * Counted rather than fixed at a number: the count used to be asserted as
-     * three, which made adding a fourth tab fail this test for the one reason
-     * it is not about. What matters is that each one answers.
+     * Counted rather than fixed at a number, so adding a settings page does
+     * not fail this test for the one reason it is not about.
      */
     await page.goto(`/${ORG}/settings`);
 
-    const tabs = page.getByRole("tab");
-    /* `not.toHaveCount(0)` rather than reading `.count()` into a plain
-       expectation: only the matcher form retries, and a bare count resolves
-       before the client component has rendered — which fails for the one
-       reason this test is not about. */
-    await expect(tabs, "the tab bar renders at all").not.toHaveCount(0);
+    const links = page.locator(`a[href^="/${ORG}/settings"]`);
+    /* `not.toHaveCount(0)` retries; a bare `.count()` resolves before the
+       client shell has rendered. */
+    await expect(links, "the navigation offers settings pages").not.toHaveCount(0);
 
-    for (const tab of await tabs.all()) {
-      const href = await tab.getAttribute("href");
-      expect(href, "every tab is a real link").toBeTruthy();
-      const response = await page.request.get(href!, { maxRedirects: 0 });
-      expect(response.status(), `${href} is a live tab`).toBeLessThan(400);
+    const hrefs = new Set<string>();
+    for (const link of await links.all()) {
+      const href = await link.getAttribute("href");
+      if (href) hrefs.add(href);
+    }
+    expect(hrefs.size, "more than one settings page is reachable").toBeGreaterThan(1);
+    for (const href of hrefs) {
+      const response = await page.request.get(href, { maxRedirects: 0 });
+      expect(response.status(), `${href} is a live page`).toBeLessThan(400);
     }
   });
 
@@ -128,7 +128,9 @@ test.describe("learn", () => {
     const errors = watchForErrors(page);
     await page.goto(`/${ORG}/learn`);
 
-    await expect(page.getByRole("heading", { name: "Learn" })).toBeVisible();
+    /* Level 1: the sidebar's section title is an h2 with the same name,
+       which is correct structure rather than a duplicate. */
+    await expect(page.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
     await expect(page.getByRole("heading", { name: /analyse what happened/i })).toBeVisible();
 
     /* A finding renders its detail and BOTH counts. Showing only the
