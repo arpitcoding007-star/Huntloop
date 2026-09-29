@@ -37,7 +37,15 @@ export interface SpendRun {
 }
 
 export interface SpendSummary {
+  /** The newest runs, for the table. The totals below cover every run. */
   runs: SpendRun[];
+  /** How many runs the totals cover. */
+  runCount: number;
+  /**
+   * True when the window held more runs than the loader will read, so the
+   * totals are a floor. Said on screen rather than left to be inferred.
+   */
+  truncated: boolean;
   totalCents: number;
   /** Runs that never reported an outcome — see the note in the page. */
   strandedCount: number;
@@ -59,10 +67,18 @@ export interface SpendSummary {
 /** How far back the screen looks. Thirty days is a billing period. */
 const WINDOW_DAYS = 30;
 
-/** Guards against a runaway table making the page unloadable. */
-const MAX_ROWS = 500;
+/**
+ * PERF-005. This was 500, and the screen still said "Total spend" for the last
+ * 30 days — on plans allowing 3,000 to 20,000 runs a month, a total that could
+ * be a fraction of the bill with nothing saying so. Now the largest plan's
+ * monthly allowance, read in pages, and `truncated` says when even that ran out.
+ */
+const MAX_ROWS = 20_000;
+const PAGE_SIZE = 1_000;
+/** Rows handed to the page for its table; totals are computed over all of them. */
+const TABLE_ROWS = 100;
 
-function summarise(runs: SpendRun[]): SpendSummary {
+function summarise(runs: SpendRun[], truncated = false): SpendSummary {
   const byTask = new Map<string, { runs: number; cents: number }>();
   const byModel = new Map<string, { runs: number; cents: number }>();
 
@@ -91,7 +107,9 @@ function summarise(runs: SpendRun[]): SpendSummary {
     [...entries].sort((a, b) => b.cents - a.cents);
 
   return {
-    runs,
+    runs: runs.slice(0, TABLE_ROWS),
+    runCount: runs.length,
+    truncated,
     totalCents,
     strandedCount,
     failedCount,
@@ -141,25 +159,32 @@ export async function getSpend(orgId: string): Promise<Loaded<SpendSummary>> {
     async (db: TenantClient) => {
       const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString();
 
-      const { data, error } = await db
-        .from("ai_runs")
-        .select(
-          "id, task, model, status, cost_cents, input_tokens, output_tokens, cache_read_tokens, latency_ms, created_at",
-        )
-        .eq("org_id", orgId)
-        .gte("created_at", since)
-        // Matches `ai_runs_cost_idx (org_id, task, created_at desc)` on its
-        // first and third columns, so the ordering is index-supported rather
-        // than a sort of the whole window.
-        .order("created_at", { ascending: false })
-        .limit(MAX_ROWS);
+      const rows: Parameters<typeof toRun>[0][] = [];
+      for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+        const { data, error } = await db
+          .from("ai_runs")
+          .select(
+            "id, task, model, status, cost_cents, input_tokens, output_tokens, cache_read_tokens, latency_ms, created_at",
+          )
+          .eq("org_id", orgId)
+          .gte("created_at", since)
+          // Matches `ai_runs_cost_idx (org_id, task, created_at desc)` on its
+          // first and third columns, so the ordering is index-supported rather
+          // than a sort of the whole window.
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
 
-      // Not caught and downgraded to fixtures. A configured deployment that
-      // quietly showed invented spend instead of an error would be showing
-      // someone a number they might act on.
-      if (error) throw new Error(`Could not read ai_runs: ${error.message}`);
+        // Not caught and downgraded to fixtures. A configured deployment that
+        // quietly showed invented spend instead of an error would be showing
+        // someone a number they might act on.
+        if (error) throw new Error(`Could not read ai_runs: ${error.message}`);
 
-      return summarise((data ?? []).map(toRun));
+        rows.push(...((data ?? []) as Parameters<typeof toRun>[0][]));
+        if ((data ?? []).length < PAGE_SIZE) break;
+      }
+
+      return summarise(rows.map(toRun), rows.length >= MAX_ROWS);
     },
     () => summarise(DEMO_RUNS),
   );

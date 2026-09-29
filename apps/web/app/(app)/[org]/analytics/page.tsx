@@ -106,7 +106,11 @@ export default async function AnalyticsPage({
             value={money(spend.totalCents)}
             icon={Coins}
             tone="brand"
-            hint={`${spend.runs.length} run${spend.runs.length === 1 ? "" : "s"}`}
+            hint={
+              spend.truncated
+                ? `At least ${spend.runCount.toLocaleString()} runs — more than this screen reads, so the total is a floor`
+                : `${spend.runCount.toLocaleString()} run${spend.runCount === 1 ? "" : "s"}`
+            }
           />
           <StatCard
             label="Cache hit rate"

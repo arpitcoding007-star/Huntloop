@@ -1,5 +1,5 @@
 import type { Priority } from "@huntloop/ui";
-import { listOpportunities } from "../../../../lib/data/opportunities";
+import { LIST_LIMIT, listOpportunities } from "../../../../lib/data/opportunities";
 import { listCampaignTargets } from "../../../../lib/data/outreach";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { OpportunityTable } from "./OpportunityTable";
@@ -64,26 +64,34 @@ export default async function OpportunitiesPage({
   ]);
 
   return (
-    <OpportunityTable
-      org={org}
-      rows={data}
-      /* The server's clock, resolved once per request and passed down, so
-         every relative age on the page is measured from the same instant.
-         Reading `new Date()` inside the client component instead would make
-         the ages drift against the data they describe. */
-      now={new Date().toISOString()}
-      initialPriority={parsePriority(query.priority)}
-      /* `?company=` seeds the search box, which already defaults to the
-         company scope. Bounded and coerced to a single string here for the
-         same reason `parsePriority` is strict: it arrives from a URL, and the
-         only thing it may do downstream is filter rows already rendered. */
-      initialQuery={parseCompany(query.company)}
-      // Resolved on the server and passed down, rather than read in the client
-      // component: the role is not something the browser should be asked to
-      // determine, even for a rendering decision. See lib/data/membership.ts.
-      canWrite={canWrite(await currentViewer(org))}
-      campaigns={campaigns}
-    />
+    <>
+      {data.length >= LIST_LIMIT && (
+        <p role="status" className="mx-auto mt-6 w-full max-w-[1200px] px-6 text-[13px] text-fg-muted lg:px-8">
+          Showing the {LIST_LIMIT} highest-priority opportunities. Filter by priority or search by
+          company to reach the rest.
+        </p>
+      )}
+      <OpportunityTable
+        org={org}
+        rows={data}
+        /* The server's clock, resolved once per request and passed down, so
+           every relative age on the page is measured from the same instant.
+           Reading `new Date()` inside the client component instead would make
+           the ages drift against the data they describe. */
+        now={new Date().toISOString()}
+        initialPriority={parsePriority(query.priority)}
+        /* `?company=` seeds the search box, which already defaults to the
+           company scope. Bounded and coerced to a single string here for the
+           same reason `parsePriority` is strict: it arrives from a URL, and the
+           only thing it may do downstream is filter rows already rendered. */
+        initialQuery={parseCompany(query.company)}
+        // Resolved on the server and passed down, rather than read in the client
+        // component: the role is not something the browser should be asked to
+        // determine, even for a rendering decision. See lib/data/membership.ts.
+        canWrite={canWrite(await currentViewer(org))}
+        campaigns={campaigns}
+      />
+    </>
   );
 }
 

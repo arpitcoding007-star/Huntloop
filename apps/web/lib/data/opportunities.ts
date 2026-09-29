@@ -80,6 +80,17 @@ async function orgIdFor(orgSlug: string, caller: string): Promise<string> {
 
 /* ── The list ────────────────────────────────────────────────────────────── */
 
+/**
+ * PERF-002. The list read every opportunity with every trigger and score, and
+ * past PostgREST's row cap it was cut off silently. Bounded, in priority
+ * order so what is cut is the least worth reading, and the page says so when
+ * the bound is reached.
+ */
+export const LIST_LIMIT = 500;
+
+/** Ids per evidence query, so the request URL stays well inside gateway limits. */
+const EVIDENCE_BATCH = 150;
+
 export async function listOpportunities(
   orgSlug: string,
 ): Promise<Loaded<OpportunityRow[]>> {
@@ -101,7 +112,8 @@ export async function listOpportunities(
         .eq("org_id", orgId)
         .is("deleted_at", null)
         .order("priority", { ascending: true })
-        .order("first_seen_at", { ascending: false });
+        .order("first_seen_at", { ascending: false })
+        .limit(LIST_LIMIT);
 
       if (error) throw new Error(`listOpportunities: ${error.message}`);
 
@@ -135,18 +147,22 @@ async function evidenceKindsFor(
   const out = new Map<string, { kind: "fact" | "inference" | "unknown" }[]>();
   if (opportunityIds.length === 0) return out;
 
-  const { data, error } = await db
-    .from("evidence")
-    .select("subject_id, kind")
-    .eq("org_id", orgId)
-    .eq("subject_type", "opportunity")
-    .in("subject_id", opportunityIds)
-    .is("deleted_at", null)
-    .is("superseded_by", null);
+  const data: unknown[] = [];
+  for (let i = 0; i < opportunityIds.length; i += EVIDENCE_BATCH) {
+    const { data: page, error } = await db
+      .from("evidence")
+      .select("subject_id, kind")
+      .eq("org_id", orgId)
+      .eq("subject_type", "opportunity")
+      .in("subject_id", opportunityIds.slice(i, i + EVIDENCE_BATCH))
+      .is("deleted_at", null)
+      .is("superseded_by", null);
 
-  if (error) throw new Error(`listOpportunities evidence: ${error.message}`);
+    if (error) throw new Error(`listOpportunities evidence: ${error.message}`);
+    data.push(...(page ?? []));
+  }
 
-  for (const row of (data ?? []) as unknown as {
+  for (const row of data as unknown as {
     subject_id: string;
     kind: "fact" | "inference" | "unknown";
   }[]) {
