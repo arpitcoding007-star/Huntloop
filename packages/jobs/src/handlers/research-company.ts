@@ -48,7 +48,7 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, permanent: true, error: "research_company: no companyId in payload." };
   }
 
-  const { data: company, error } = await scope.select("companies", "id, name, canonical_domain, website, last_researched_at")
+  const { data: company, error } = await scope.select("companies", "id, name, canonical_domain, website, last_researched_at, description, business_model")
     .eq("id", companyId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -94,9 +94,16 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
      columns would flatten a claim with a confidence and a source into a
      string with neither. */
   const update: Record<string, unknown> = { last_researched_at: new Date().toISOString() };
+  /* AI-002: only into an empty column. This overwrote `description` on every
+     run — including text a person typed or a provider supplied — and the page
+     renders that column as "What they do" with no source, so a model's
+     reading silently replaced a sourced one. The finding itself is still
+     recorded as evidence below, with its kind and source. */
   const set = (column: string, field: string) => {
     const finding = findings.get(field);
-    if (finding && finding.kind !== "unknown" && finding.value.trim()) {
+    const current = (company as Record<string, unknown>)[column];
+    const empty = current === null || current === undefined || String(current).trim() === "";
+    if (empty && finding && finding.kind !== "unknown" && finding.value.trim()) {
       update[column] = finding.value.trim();
     }
   };
@@ -132,14 +139,21 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
          sell: …", not "sells: …". `FIELD_LABELS` is the same map the analyze
          screen renders from, so the two cannot drift. */
       claim: `${FIELD_LABELS[f.field] ?? f.label}: ${f.value.trim()}`,
-      kind: f.kind,
+      /* AI-002: a "fact" must cite a page on the company's own site — what
+         research reads. Any other source makes it the model's claim, not an
+         observation, and it is stored as the inference it is. */
+      kind: f.kind === "fact" && !onCompanySite(f.sourceUrl, String(company.canonical_domain))
+        ? "inference"
+        : f.kind,
       confidence: f.confidence,
       source_url: f.sourceUrl,
       excerpt: null,
     }));
 
   if (evidenceRows.length) {
-    await scope.insert("evidence", evidenceRows);
+    const { error: evidenceError } = await scope.insert("evidence", evidenceRows);
+    // AI-003: reported, not ignored — findings with no evidence have no source.
+    if (evidenceError) return { ok: false, error: `research_company evidence: ${evidenceError.message}` };
   }
 
   /* §12's problems list. It comes out of research rather than out of scanning
@@ -186,3 +200,14 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
   };
 }
 
+/** Whether `url` is a page on `domain` or one of its subdomains. */
+export function onCompanySite(url: string | null | undefined, domain: string): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    const root = domain.toLowerCase().replace(/^www\./, "");
+    return host === root || host.endsWith(`.${root}`);
+  } catch {
+    return false;
+  }
+}

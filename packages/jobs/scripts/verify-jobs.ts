@@ -31,6 +31,7 @@ import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
+import { onCompanySite } from "../src/handlers/research-company.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
 
@@ -2875,6 +2876,13 @@ console.log("\nsync_hubspot — an org that never connected HubSpot is a normal 
   );
   setAdminClientForTests(null);
 }
+
+console.log("\nresearch_company — AI-002: a fact cites the company's own site");
+expect("a page on the company's domain counts", onCompanySite("https://acme.test/about", "acme.test"));
+expect("so does a subdomain and www", onCompanySite("https://www.blog.acme.test/x", "acme.test"));
+expect("another site does not", !onCompanySite("https://news.example/acme", "acme.test"));
+expect("nor a lookalike suffix", !onCompanySite("https://evilacme.test/", "acme.test"));
+expect("nor a missing or unreadable URL", !onCompanySite(null, "acme.test") && !onCompanySite("x", "acme.test"));
 
 console.log("\nschedule_followups — MAP-001: the producer the orphans never had");
 {
