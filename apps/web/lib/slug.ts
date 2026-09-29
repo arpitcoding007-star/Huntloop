@@ -53,4 +53,16 @@ export const RESERVED_SLUGS = new Set([
   "orgs",
   "invite",
   "unsubscribe",
+  /* UX-005. Public pages at the top level. `/for/[slug]` and
+     `/compare/[slug]` are static segments, so a workspace named "for" could
+     never be opened; the rest lose the sign-in redirect for signed-out
+     visitors. `slug.test.ts` fails when a new top-level route is missing. */
+  "for",
+  "compare",
+  "discover",
+  "privacy",
+  "terms",
+  "acceptable-use",
+  "legal",
+  "dev",
 ]);

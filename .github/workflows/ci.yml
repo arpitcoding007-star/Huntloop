@@ -58,12 +58,13 @@ jobs:
       # and a disabled gate protects nothing. High and critical are the levels
       # worth stopping a build for.
       #
-      # `continue-on-error` because a new advisory can be published against an
-      # unchanged dependency tree — that must not turn an unrelated pull
-      # request red. It reports; it does not block.
+      # Non-blocking on pull requests, because a new advisory can be published
+      # against an unchanged dependency tree and must not turn an unrelated
+      # pull request red. Blocking on main (TEST-002): a step that can never
+      # fail anywhere is a step nobody reads.
       - name: Audit — dependency advisories
         run: npm audit --audit-level=high
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
 
       - name: Build
         run: npm run build

@@ -43,9 +43,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           HUNTLOOP_URL: ${{ vars.HUNTLOOP_URL }}
         run: |
+          # JOB-001: this used to exit 0, so the engine's only driver showed a
+          # green run every five minutes while nothing ran. Red is the honest
+          # colour for "the queue has no heartbeat".
           if [ -z "$CRON_SECRET" ] || [ -z "$HUNTLOOP_URL" ]; then
-            echo "::notice::CRON_SECRET or HUNTLOOP_URL is not configured; skipping."
-            exit 0
+            echo "::error::CRON_SECRET (secret) or HUNTLOOP_URL (variable) is not set on this repository, so no job runs. Set both under Settings → Secrets and variables → Actions."
+            exit 1
           fi
           status=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 \
             -H "Authorization: Bearer $CRON_SECRET" \

@@ -9,7 +9,7 @@
  *
  * Development only. Needs the secret key; never imported by the app.
  *
- *   node scripts/dev-session.mjs          # prints document.cookie statements
+ *   node scripts/dev-session.mjs --email you@example.com [--allow-remote]
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -20,6 +20,25 @@ for (const line of readFileSync("apps/web/.env.local", "utf8").split(/\r?\n/)) {
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+/* DEBT-002. This mints a real session and prints its cookie. It used to pick
+   the first user with any membership in whatever project .env.local named —
+   production included — and hand that session to the terminal. Now the user
+   is named explicitly, and a non-local project needs a second, explicit flag. */
+const args = process.argv.slice(2);
+const emailArg = args[args.indexOf("--email") + 1];
+const isLocal = ["localhost", "127.0.0.1"].includes(url ? new URL(url).hostname : "");
+if (args.indexOf("--email") === -1 || !emailArg) {
+  console.error("Usage: node scripts/dev-session.mjs --email you@example.com [--allow-remote]");
+  process.exit(1);
+}
+if (!isLocal && !args.includes("--allow-remote")) {
+  console.error(
+    `Refusing: ${new URL(url).host} is not a local Supabase. Pass --allow-remote if you ` +
+      "really mean to mint a session against it.",
+  );
+  process.exit(1);
+}
 const admin = createClient(url, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
 });
@@ -27,10 +46,8 @@ const admin = createClient(url, process.env.SUPABASE_SECRET_KEY, {
 const { data: list, error: listErr } = await admin.auth.admin.listUsers();
 if (listErr) throw listErr;
 
-const { data: members } = await admin.from("memberships").select("user_id");
-const memberIds = new Set((members ?? []).map((m) => m.user_id));
-const user = list.users.find((u) => memberIds.has(u.id)) ?? list.users[0];
-if (!user) throw new Error("No auth users. Run db:seed --email you@example.com --create-user");
+const user = list.users.find((u) => u.email?.toLowerCase() === emailArg.toLowerCase());
+if (!user) throw new Error(`No auth user ${emailArg}. Run db:seed --email ${emailArg} --create-user`);
 
 const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
   type: "magiclink",
