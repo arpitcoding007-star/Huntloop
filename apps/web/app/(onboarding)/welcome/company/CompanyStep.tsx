@@ -162,10 +162,10 @@ export function CompanyStep({
           companyName: companyName.trim() || result.understanding.companyName,
           findings,
         },
-        // Whether a model actually read the site, carried from the run that
-        // produced this. `0026` stores it so nothing downstream promotes the
-        // labelled worked example to a real reading.
-        result.source === "live",
+        // The server's proof that a model actually read the site, carried from
+        // the run that produced this. `0026` stores the flag so nothing
+        // downstream promotes the labelled worked example to a real reading.
+        state.liveSeal,
       );
 
       if (!saved.ok) {

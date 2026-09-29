@@ -3,6 +3,7 @@
 import { research } from "../../../../lib/ai/research";
 import type { ResearchResult } from "../../../../lib/ai/research";
 import { toFailureState } from "../../../../lib/ai/outcome";
+import { sealVerdict, verifyVerdict } from "../../../../lib/ai/seal";
 import type { CompanyUnderstanding } from "@huntloop/ai";
 import { orgSlugSchema, parseInput, urlInputSchema, uuidSchema } from "../../../../lib/validation";
 import { captureForViewer } from "../../../../lib/analytics";
@@ -35,6 +36,12 @@ export interface ResearchState {
   result?: ResearchResult;
   /** The workspace the research was attributed to. Needed by every later step. */
   org?: string;
+  /**
+   * Present only when a model actually read the site: the server's proof of
+   * `source === "live"`, returned by save so the flag cannot be asserted by
+   * the client (SEC-017). See lib/ai/seal.ts.
+   */
+  liveSeal?: string;
   error?: string;
   /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
   rateLimited?: { retryAt: string | null };
@@ -90,6 +97,7 @@ export async function researchCompanyAction(
         understanding: claimed.understanding,
       },
       org: slug,
+      liveSeal: claimed.isLive ? liveSealFor(slug) : undefined,
     };
   }
 
@@ -119,8 +127,18 @@ export async function researchCompanyAction(
   );
 
   return outcome.ok
-    ? { result: outcome.result, org: slug }
+    ? {
+        result: outcome.result,
+        org: slug,
+        liveSeal: outcome.result.source === "live" ? liveSealFor(slug) : undefined,
+      }
     : { ...toFailureState(outcome), org: slug };
+}
+
+const LIVE_READING = { reading: "company-research", source: "live" };
+
+function liveSealFor(org: string): string | undefined {
+  return sealVerdict(org, LIVE_READING) ?? undefined;
 }
 
 /**
@@ -139,7 +157,7 @@ export async function researchCompanyAction(
 export async function saveCompanyAction(
   org: string,
   understanding: unknown,
-  isLive: boolean,
+  liveSeal: string | undefined,
 ): Promise<ActionResult<{ productId: string }>> {
   const slug = parseInput(orgSlugSchema, org, "organisation");
   if (!slug.ok) return fail(slug.error);
@@ -150,8 +168,12 @@ export async function saveCompanyAction(
   /* `isLive` travels from the research result rather than being re-derived:
      whether a model actually ran is a fact about the call that produced this
      understanding, and `isAiConfigured()` read again here could disagree with
-     it if a key were added between the two requests. */
-  return saveCompanyStep(slug.value, parsed, isLive === true);
+     it if a key were added between the two requests. It is sealed rather than
+     taken on trust (SEC-017): an unsealed reading is stored as the worked
+     example it is, never promoted to a live one. The content itself is not
+     sealed — correcting it is what this step is for. */
+  const isLive = verifyVerdict(slug.value, LIVE_READING, liveSeal);
+  return saveCompanyStep(slug.value, parsed, isLive);
 }
 
 /**

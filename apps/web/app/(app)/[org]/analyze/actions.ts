@@ -5,6 +5,7 @@ import type { QualifyResult } from "../../../../lib/ai/qualify";
 import { whyNow } from "../../../../lib/ai/why-now";
 import type { WhyNowRequest, WhyNowResult } from "../../../../lib/ai/why-now";
 import { toFailureState } from "../../../../lib/ai/outcome";
+import { sealVerdict, verifyVerdict } from "../../../../lib/ai/seal";
 import { revalidatePath } from "next/cache";
 import type { Qualification } from "@huntloop/ai";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
@@ -38,6 +39,11 @@ import {
 
 export interface AnalyzeState {
   result?: QualifyResult;
+  /**
+   * The server's signature over `result.qualification`, present only for a
+   * live verdict. Save requires it back unchanged (see lib/ai/seal.ts).
+   */
+  seal?: string;
   error?: string;
   /** Present when `error` is a rate-limit refusal. See lib/ai/outcome.ts. */
   rateLimited?: { retryAt: string | null };
@@ -57,7 +63,15 @@ export async function analyzeUrlAction(
   if (!target.ok) return { error: target.error };
 
   const outcome = await qualify(slug.value, target.value);
-  return outcome.ok ? { result: outcome.result } : toFailureState(outcome);
+  if (!outcome.ok) return toFailureState(outcome);
+
+  /* Only a verdict a model produced is sealed. A worked example stays
+     unsigned, so it can be read and never saved. */
+  const seal =
+    outcome.result.source === "live"
+      ? (sealVerdict(slug.value, outcome.result.qualification) ?? undefined)
+      : undefined;
+  return { result: outcome.result, seal };
 }
 
 export interface WhyNowState {
@@ -137,7 +151,18 @@ export async function whyNowAction(
 export async function saveQualificationAction(
   org: string,
   qualification: Qualification,
+  seal: string,
 ): Promise<ActionResult<{ opportunityId: string }>> {
+  /* RT-001 / RT-002. Verified over exactly what arrived, before any parsing
+     can normalise it: an unsigned worked example, a hand-built payload and an
+     edited verdict all stop here. */
+  if (!verifyVerdict(org, qualification, seal)) {
+    return fail(
+      "Only a verdict Huntloop produced can be saved, and this one could not be " +
+        "confirmed. Analyze the URL again and save the fresh result.",
+    );
+  }
+
   const parsed = qualificationSchema.safeParse(qualification);
   if (!parsed.success) {
     return fail(

@@ -141,6 +141,9 @@ export function Analyzer({ org }: { org: string }) {
 
   const result = state.result;
   const q = result?.qualification;
+  /* Present only for a live verdict. Without it there is nothing to save:
+     a worked example is readable and never storable (RT-001). */
+  const seal = state.seal;
 
   return (
     <div className="mx-auto w-full max-w-[900px] px-6 py-8 lg:px-8">
@@ -219,11 +222,9 @@ export function Analyzer({ org }: { org: string }) {
             >
               <span className="font-medium text-warning-text">No model is connected.</span>{" "}
               This is a worked example, not an assessment — nothing fetched{" "}
-              <span className="font-mono text-[12px] text-fg">{q.canonicalDomain}</span>.
-              Add{" "}
-              <span className="font-mono text-[12px] text-fg">ANTHROPIC_API_KEY</span> to{" "}
-              <span className="font-mono text-[12px] text-fg">apps/web/.env.local</span>{" "}
-              to make this real.
+              <span className="font-mono text-[12px] text-fg">{q.canonicalDomain}</span>, and
+              it can&rsquo;t be saved. Real verdicts appear once this deployment has an AI
+              model configured.
             </p>
           )}
 
@@ -404,7 +405,7 @@ export function Analyzer({ org }: { org: string }) {
             >
               Analyze another
             </Button>
-            {q.priority !== "ignore" && (
+            {q.priority !== "ignore" && seal && (
               <>
                 {/*
                   UX-05, closed: this is the edge that turns four screens into
@@ -421,7 +422,7 @@ export function Analyzer({ org }: { org: string }) {
                   disabled={saving}
                   onClick={() =>
                     startSaving(async () => {
-                      const outcome = await saveQualificationAction(org, q);
+                      const outcome = await saveQualificationAction(org, q, seal);
                       setSaved(
                         outcome.ok
                           ? { ok: true, message: outcome.message, id: outcome.data.opportunityId }
