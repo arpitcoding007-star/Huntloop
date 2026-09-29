@@ -343,12 +343,13 @@ function Hero({ next }: { next: ContinueTarget | null }) {
                 inlines NODE_ENV, so this link is dead code in every deployed
                 bundle; it must stay a comparison here for that to happen. */}
             {process.env.NODE_ENV === "development" && (
-              <a
+              <Link
                 href="/dev/onboarded"
+                prefetch={false}
                 className="hl-focusable rounded-sm border border-dashed border-warning-border px-2 py-1 text-[12.5px] text-warning-text"
               >
                 Dev: open onboarded workspace
-              </a>
+              </Link>
             )}
           </div>
         </div>

@@ -11,7 +11,7 @@
  *     *possible*. This is the seam. It is ~40 lines, not a provider framework.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { anthropicApiKey } from "./env.ts";
+import { aiRequestTimeoutMs, anthropicApiKey } from "./env.ts";
 import { capabilities, type Effort, type ModelId, type TokenUsage } from "./models.ts";
 
 export interface ModelRequest {
@@ -64,7 +64,14 @@ export class ModelRefusalError extends Error {
 const MAX_CONTINUATIONS = 5;
 
 export function createAnthropicClient(): ModelClient {
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey() });
+  /* AI-001: a timeout inside the function limit, and no SDK retries — the job
+     queue retries with backoff, and a retry inside a function about to be
+     killed is a second bill for nothing. */
+  const anthropic = new Anthropic({
+    apiKey: anthropicApiKey(),
+    timeout: aiRequestTimeoutMs(),
+    maxRetries: 0,
+  });
 
   return {
     async run(request: ModelRequest): Promise<ModelResult> {
