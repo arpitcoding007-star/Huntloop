@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import * as Sentry from "@sentry/nextjs";
 import { ErrorState } from "@huntloop/ui";
 
@@ -40,12 +41,19 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-6 py-12">
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 py-12">
       <ErrorState
         description="This screen failed to load. Nothing was changed."
         detail={error.digest ? `Reference: ${error.digest}` : undefined}
         onRetry={reset}
       />
+      {/* A way out that does not depend on the failing screen. */}
+      <Link
+        href="/"
+        className="hl-focusable rounded-sm text-[13px] text-fg-muted underline underline-offset-2 hover:text-fg"
+      >
+        Go to the home page
+      </Link>
     </div>
   );
 }

@@ -49,7 +49,7 @@ const org = (slug: string, step: string, completed: string | null = null) => ({
   },
 });
 
-const { resolveDestination } = await import("./destination");
+const { continueTarget, resolveDestination } = await import("./destination");
 
 describe("resolveDestination", () => {
   beforeEach(() => {
@@ -91,5 +91,36 @@ describe("resolveDestination", () => {
   it("sends a visitor with no session to sign in", async () => {
     state.user = null;
     expect((await resolveDestination()).kind).toBe("anonymous");
+  });
+});
+
+/**
+ * What the landing page offers a signed-in visitor instead of redirecting
+ * them. `/` used to send every session straight to `/<org>/dashboard`, so the
+ * domain resolved to the dashboard and a failing dashboard had no way back.
+ */
+describe("continueTarget", () => {
+  it("offers nothing to an anonymous visitor or the demo", () => {
+    expect(continueTarget({ kind: "anonymous", path: "/login" })).toBeNull();
+    expect(continueTarget({ kind: "demo", path: "/demo/dashboard" })).toBeNull();
+  });
+
+  it("continues setup at the step an unfinished workspace stopped at", () => {
+    expect(
+      continueTarget({ kind: "workspace", path: "/kima/dashboard", orgSlug: "kima", setupStep: "icp" }),
+    ).toEqual({ href: "/welcome/icp?org=kima", label: "Continue setup" });
+  });
+
+  it("opens the dashboard of a finished workspace", () => {
+    expect(
+      continueTarget({ kind: "workspace", path: "/kima/dashboard", orgSlug: "kima", setupStep: null }),
+    ).toEqual({ href: "/kima/dashboard", label: "Open workspace" });
+  });
+
+  it("starts onboarding for somebody with no workspace yet", () => {
+    expect(continueTarget({ kind: "new-user", path: "/welcome" })).toEqual({
+      href: "/welcome",
+      label: "Continue setup",
+    });
   });
 });

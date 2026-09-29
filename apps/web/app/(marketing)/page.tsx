@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import { BrandMark, Button, ScoreRing, ThemeToggle } from "@huntloop/ui";
 import {
@@ -37,8 +36,11 @@ import { LoopDiagram } from "./LoopDiagram";
 import { describeLimit, listPublicPlans } from "../../lib/data/plans";
 import { publicResearchEnabled } from "@huntloop/jobs";
 import { IDENTITY, legalIsComplete } from "../../lib/legal";
-import { resolveVisitorDestination } from "../../lib/data/destination";
-import { isSignedIn } from "./NavActions";
+import {
+  continueTarget,
+  resolveVisitorDestination,
+  type ContinueTarget,
+} from "../../lib/data/destination";
 import type { UseCase } from "./for/use-cases";
 
 /**
@@ -81,41 +83,19 @@ import type { UseCase } from "./for/use-cases";
  *    blue numerals), the text reads one step up the same ramp; see the note
  *    at the top of `tokens.css`.
  *
- * ── Why a signed-in visitor never sees it ────────────────────────────────
+ * ── Why a signed-in visitor sees it too ──────────────────────────────────
  *
- * Because for them it is a wall between them and their work. `/` is the URL
- * people type and the one their browser autocompletes, so it has to be the
- * fastest route into the workspace for anybody who already has one.
+ * `/` used to redirect anybody with a session straight to their workspace.
+ * That made the domain itself resolve to `/<org>/dashboard`: a stale session
+ * or a failing dashboard turned "open seefluence.com" into an error screen
+ * with no way back to the front door, and the home page was reachable only
+ * through a `?home=1` escape hatch. The home page is now always the home
+ * page. A signed-in visitor gets a "Continue" button that goes where the
+ * redirect used to — their workspace, or the setup step it stopped at.
  */
-export default async function LandingPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ home?: string }>;
-}) {
-  const [destination, { home }] = await Promise.all([
-    resolveVisitorDestination(),
-    searchParams,
-  ]);
-
-  /*
-   * Signed-in visitors go where they were going. Everyone else gets the page.
-   *
-   * `demo` is deliberately in the second group. It is tempting to send a
-   * deployment with no database straight to the fixture workspace — there is
-   * nothing to sign in to, so the sign-up CTA cannot work — but doing that
-   * makes the landing page unreachable on exactly the setup every reviewer and
-   * every fresh checkout runs, which is where it most needs looking at. The
-   * page is static content and renders correctly with no database; the demo
-   * workspace stays one click away through the sign-in screen, which already
-   * links to it and already explains why.
-   */
-  /* `?home=1` is the exception: an explicit "take me to the home page" —
-     the logo in onboarding links here with it. Without it a signed-in user
-     part-way through setup had no way to reach this page at all; every visit
-     bounced them straight back into the step they were leaving. */
-  if (isSignedIn(destination) && !home) {
-    redirect(destination.path);
-  }
+export default async function LandingPage() {
+  const destination = await resolveVisitorDestination();
+  const next = continueTarget(destination);
 
   const plans = await listPublicPlans();
 
@@ -125,7 +105,7 @@ export default async function LandingPage({
 
   return (
     <div className="min-h-screen bg-panel text-fg">
-      <Nav signedInPath={isSignedIn(destination) ? destination.path : null} />
+      <Nav next={next} />
 
       <main id="main">
         {/*
@@ -141,7 +121,7 @@ export default async function LandingPage({
           phone's collapsing URL bar does not push the strip off-screen.
         */}
         <div className="flex min-h-[calc(100dvh-68px)] flex-col">
-          <Hero />
+          <Hero next={next} />
           <FeatureStrip />
         </div>
         <ListIsNotTheAnswer />
@@ -283,7 +263,7 @@ const FACTORS: { label: string; value: number | null; icon: Icon }[] = [
 
 /* ── 1 · Nav ─────────────────────────────────────────────────────────────── */
 
-function Nav({ signedInPath }: { signedInPath: string | null }) {
+function Nav({ next }: { next: ContinueTarget | null }) {
   return (
     <header className="sticky top-0 z-30 h-[68px] border-b border-line-subtle bg-panel/82 backdrop-blur-[16px] backdrop-saturate-[1.6]">
       <Frame className="flex h-full items-center justify-between gap-6">
@@ -304,11 +284,10 @@ function Nav({ signedInPath }: { signedInPath: string | null }) {
         </nav>
         <div className="flex items-center gap-5">
           <ThemeToggle className="max-sm:hidden" />
-          {/* Only reachable signed in through `/?home=1`; a sign-in link is
-              then the one thing they cannot use. */}
-          {signedInPath ? (
-            <Button variant="primary" size="lg" href={signedInPath} linkComponent={Link} className="px-[18px]!">
-              Open workspace
+          {/* Signed in: a sign-in link is the one thing they cannot use. */}
+          {next ? (
+            <Button variant="primary" size="lg" href={next.href} linkComponent={Link} className="px-[18px]!">
+              {next.label}
             </Button>
           ) : (
             <>
@@ -331,7 +310,7 @@ function Nav({ signedInPath }: { signedInPath: string | null }) {
 
 /* ── 2 · Hero ────────────────────────────────────────────────────────────── */
 
-function Hero() {
+function Hero({ next }: { next: ContinueTarget | null }) {
   return (
     <section className="flex flex-1 items-center">
       <Frame className="grid items-center gap-14 py-14 lg:py-16 xl:grid-cols-[520px_minmax(0,1fr)] xl:gap-16">
@@ -345,12 +324,32 @@ function Hero() {
             drafts the outreach.
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-6">
-            <Button variant="primary" size="xl" href="/signup" linkComponent={Link} className="text-[15.5px]!">
-              Start free
+            {/* Anonymous: sign-up is the first step of onboarding — a
+                workspace is owned by an account, so the account comes first.
+                Signed in: pick up where they are. */}
+            <Button
+              variant="primary"
+              size="xl"
+              href={next?.href ?? "/signup"}
+              linkComponent={Link}
+              className="text-[15.5px]!"
+            >
+              {next?.label ?? "Start free"}
             </Button>
             <TextLink href="#how" className="text-[15.5px] font-medium text-fg">
               See how it works
             </TextLink>
+            {/* Development only — see app/dev/onboarded/route.ts. `next build`
+                inlines NODE_ENV, so this link is dead code in every deployed
+                bundle; it must stay a comparison here for that to happen. */}
+            {process.env.NODE_ENV === "development" && (
+              <a
+                href="/dev/onboarded"
+                className="hl-focusable rounded-sm border border-dashed border-warning-border px-2 py-1 text-[12.5px] text-warning-text"
+              >
+                Dev: open onboarded workspace
+              </a>
+            )}
           </div>
         </div>
 
@@ -1154,7 +1153,7 @@ export const metadata = {
   alternates: { canonical: "/" },
 };
 
-/* Anonymous visitors get a static page; signed-in ones are redirected, which
-   needs the request. Dynamic because `resolveDestination` reads cookies — a
-   cached landing page would show a signed-in user the marketing site. */
+/* Dynamic because `resolveDestination` reads cookies: the nav and the hero
+   CTA differ for a signed-in visitor, and a cached copy would show one
+   visitor's "Continue" button to everybody. */
 export const dynamic = "force-dynamic";

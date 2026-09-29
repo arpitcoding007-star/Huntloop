@@ -225,6 +225,36 @@ export async function resolveDestination(preferredSlug?: string): Promise<Destin
   };
 }
 
+export interface ContinueTarget {
+  href: string;
+  label: string;
+}
+
+/**
+ * The one "Continue" a signed-in visitor gets on a public page, or null for
+ * everyone else.
+ *
+ * A workspace that stopped part-way through setup continues setup — that is
+ * the onboarding flow the visitor was in. A finished one opens its dashboard.
+ * The workspace is usable before setup is done (the org layout's SetupCard
+ * links back into the steps), so this is a suggestion, never a gate.
+ */
+export function continueTarget(destination: Destination): ContinueTarget | null {
+  switch (destination.kind) {
+    case "anonymous":
+    case "demo":
+      return null;
+    case "new-user":
+      return { href: destination.path, label: "Continue setup" };
+    case "choose":
+      return { href: destination.path, label: "Open workspace" };
+    case "workspace":
+      return destination.setupStep
+        ? { href: stepPath(destination.orgSlug, destination.setupStep), label: "Continue setup" }
+        : { href: destination.path, label: "Open workspace" };
+  }
+}
+
 /** The cookie the org picker writes so a returning user skips it. */
 export const LAST_ORG_COOKIE = "huntloop.org";
 

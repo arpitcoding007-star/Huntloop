@@ -102,6 +102,12 @@ const PUBLIC_PREFIXES = [
   "/api/inngest",
   /* Booleans about configuration, never values. See the route. */
   "/api/health",
+  /* The development-only jump into the workspace. Public here so a signed-out
+     developer gets the route's own redirect to /login rather than a 404; the
+     route answers 404 itself outside `next dev`, and HIDDEN_IN_PRODUCTION
+     blocks it on the real domain. The exact path, not `/dev`, which is a
+     legal workspace slug. */
+  "/dev/onboarded",
 ];
 
 /**
@@ -133,7 +139,7 @@ const SERVED_WHILE_NOT_READY = [
 ];
 
 /** Development-only pages. They are fixtures by design and have no place on the real domain. */
-const HIDDEN_IN_PRODUCTION = ["/kitchen-sink"];
+const HIDDEN_IN_PRODUCTION = ["/kitchen-sink", "/dev/onboarded"];
 
 function matches(path: string, prefixes: string[]): boolean {
   return prefixes.some((p) => path === p || path.startsWith(`${p}/`));

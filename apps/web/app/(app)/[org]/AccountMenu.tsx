@@ -109,9 +109,9 @@ export function AccountMenu({
     ...(helpHref
       ? [{ label: "Help & docs", icon: BookOpen, href: helpHref, external: true }]
       : []),
-    /* The public site. Plain `/` sends a signed-in person straight back here,
-       so without `?home=1` the product had no way out to its own home page. */
-    { label: "Huntloop home page", icon: Home, href: "/?home=1" },
+    /* The public site. It renders for signed-in visitors too (with a
+       "Continue" back into the workspace), so plain `/` is the way out. */
+    { label: "Huntloop home page", icon: Home, href: "/" },
     account
       ? {
           label: "Sign out",

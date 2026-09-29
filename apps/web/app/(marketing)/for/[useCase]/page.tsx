@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { DomainInput } from "../../DomainInput";
 import { USE_CASES, findUseCase } from "../use-cases";
 import { resolveVisitorDestination } from "../../../../lib/data/destination";
-import { NavActions, homeHref } from "../../NavActions";
+import { NavActions } from "../../NavActions";
 import { BrandLink } from "../../../BrandLink";
 
 /**
@@ -49,7 +49,7 @@ export default async function UseCasePage({
           aria-label="Main"
           className="mx-auto flex max-w-[880px] items-center gap-4 px-6 py-3"
         >
-          <BrandLink href={homeHref(destination)} />
+          <BrandLink href="/" />
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle className="mr-2" />
             <NavActions destination={destination} />

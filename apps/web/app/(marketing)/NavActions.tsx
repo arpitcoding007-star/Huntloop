@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@huntloop/ui";
-import type { Destination } from "../../lib/data/destination";
+import { continueTarget, type Destination } from "../../lib/data/destination";
 
 /**
  * The right-hand side of a marketing header, for whoever is reading it.
@@ -18,10 +18,11 @@ export function NavActions({
   destination: Destination;
   size?: "sm" | "lg";
 }) {
-  if (isSignedIn(destination)) {
+  const next = continueTarget(destination);
+  if (next) {
     return (
-      <Button variant="primary" size={size} href={destination.path} linkComponent={Link}>
-        Open workspace
+      <Button variant="primary" size={size} href={next.href} linkComponent={Link}>
+        {next.label}
       </Button>
     );
   }
@@ -41,16 +42,3 @@ export function NavActions({
   );
 }
 
-/** Signed in with somewhere to go — not anonymous, and not the no-database demo. */
-export function isSignedIn(destination: Destination): boolean {
-  return destination.kind !== "anonymous" && destination.kind !== "demo";
-}
-
-/**
- * Where the logo on a marketing page points. Plain `/` sends a signed-in
- * visitor to their workspace, so for them it carries `?home=1`, which the
- * landing page honours.
- */
-export function homeHref(destination: Destination): string {
-  return isSignedIn(destination) ? "/?home=1" : "/";
-}

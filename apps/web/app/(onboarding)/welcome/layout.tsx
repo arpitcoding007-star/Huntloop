@@ -16,9 +16,8 @@ export default function WelcomeLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle bg-panel">
         <div className="mx-auto flex max-w-[860px] items-center gap-2 px-6 py-3">
-          {/* To the landing page, with `?home=1` so a signed-in visitor is
-              shown it rather than redirected straight back here. */}
-          <BrandLink href="/?home=1" />
+          {/* To the landing page, which offers "Continue setup" back here. */}
+          <BrandLink href="/" />
           <ThemeToggle className="ml-auto" />
         </div>
       </header>
