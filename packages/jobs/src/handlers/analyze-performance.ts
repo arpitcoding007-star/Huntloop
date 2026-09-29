@@ -465,9 +465,33 @@ async function loadDecisions(
     .order("created_at", { ascending: false })
     .limit(MAX_DECISIONS);
 
-  if (error) return [];
+  /* FLOW-005. The correction form writes `human_overrides` (0016); this
+     read only `ai_decisions`, which nothing in production writes — so every
+     correction the user was told "the weekly analysis reads" was dropped. */
+  const { data: overrides } = await ctx.scope.select(
+    "human_overrides",
+    "subject, entity_type, entity_id, system_value, human_value, reason, created_at",
+  )
+    .gte("created_at", start.toISOString())
+    .lte("created_at", end.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(MAX_DECISIONS);
 
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+  const corrections: DecisionRecord[] = ((overrides ?? []) as Record<string, unknown>[]).map((row) => ({
+    decisionType: String(row.subject ?? "override"),
+    opportunityId: row.entity_type === "opportunity" && row.entity_id ? String(row.entity_id) : null,
+    companyId: row.entity_type === "company" && row.entity_id ? String(row.entity_id) : null,
+    overridden: true,
+    rating: null,
+    note:
+      `System said ${String(row.system_value ?? "?")}, person chose ${String(row.human_value)}` +
+      (row.reason ? `: ${String(row.reason)}` : ""),
+    occurredAt: String(row.created_at),
+  }));
+
+  if (error) return corrections;
+
+  return [...corrections, ...((data ?? []) as Record<string, unknown>[]).map((row) => ({
     decisionType: String(row.decision_type ?? "unknown"),
     opportunityId: row.entity_type === "opportunity" && row.entity_id ? String(row.entity_id) : null,
     companyId: row.entity_type === "company" && row.entity_id ? String(row.entity_id) : null,
@@ -475,7 +499,7 @@ async function loadDecisions(
     rating: (row.quality_rating ?? null) as DecisionRecord["rating"],
     note: row.quality_note ? String(row.quality_note) : null,
     occurredAt: String(row.overridden_at ?? row.rated_at ?? row.created_at),
-  }));
+  }))].slice(0, MAX_DECISIONS);
 }
 
 /**
