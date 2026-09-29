@@ -42,10 +42,8 @@ export type Destination =
   | { kind: "anonymous"; path: "/login" }
   /** Signed in, belongs to nothing yet. */
   | { kind: "new-user"; path: "/welcome" }
-  /** Signed in, one workspace, still being set up. */
-  | { kind: "resume"; path: string; orgSlug: string; step: OnboardingStep }
-  /** Signed in, one workspace, configured. */
-  | { kind: "workspace"; path: string; orgSlug: string }
+  /** Signed in, one workspace — configured or not. See the rules below. */
+  | { kind: "workspace"; path: string; orgSlug: string; setupStep: OnboardingStep | null }
   /** Signed in, several workspaces. */
   | { kind: "choose"; path: "/orgs" }
   /** No database. The demo workspace is the only thing that exists. */
@@ -178,13 +176,14 @@ export async function listMemberships(): Promise<Membership[] | null> {
  * **No memberships → `/welcome`.** The founder case. There is no org yet, so
  * there is no slug to carry and the first step creates one.
  *
- * **One membership, finished → its dashboard.** The overwhelmingly common
- * case, and the one that was broken.
- *
- * **One membership, unfinished → resume.** Resume at the *workspace's* step,
- * not the user's. See `lib/data/onboarding.ts` for why that distinction is
- * load-bearing: an invited teammate must not be walked through company
- * research for a workspace that already has an ICP.
+ * **One membership → its dashboard, finished or not.** This used to resume
+ * an unfinished workspace at its onboarding step, and because this resolver
+ * answers `/`, the auth callback and the org picker, that made the setup
+ * wizard inescapable: typing the domain, signing in again, or picking the
+ * workspace all landed on the step somebody had just tried to leave. The
+ * workspace was always meant to be usable before setup is done — the org
+ * layout renders `SetupCard`, which names what is missing, what it blocks,
+ * and links back to the right step. `setupStep` carries where that is.
  *
  * **Several → `/orgs`.** Guessing would be wrong: an agency user's last
  * workspace is not their default one, and picking the alphabetically-first is
@@ -217,15 +216,12 @@ export async function resolveDestination(preferredSlug?: string): Promise<Destin
 
   if (!chosen) return { kind: "choose", path: "/orgs" };
 
-  if (chosen.completedAt || chosen.step === "done") {
-    return { kind: "workspace", path: `/${chosen.slug}/dashboard`, orgSlug: chosen.slug };
-  }
-
+  const finished = Boolean(chosen.completedAt) || chosen.step === "done";
   return {
-    kind: "resume",
-    path: stepPath(chosen.slug, chosen.step),
+    kind: "workspace",
+    path: `/${chosen.slug}/dashboard`,
     orgSlug: chosen.slug,
-    step: chosen.step,
+    setupStep: finished ? null : chosen.step,
   };
 }
 

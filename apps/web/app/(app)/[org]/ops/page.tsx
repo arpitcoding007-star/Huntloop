@@ -58,3 +58,5 @@ export default async function OpsPage({
     />
   );
 }
+
+export const metadata = { title: "Engine" };

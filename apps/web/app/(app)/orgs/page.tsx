@@ -47,14 +47,9 @@ export default async function OrgsPage() {
   if (memberships === null) redirect(DEMO_HOME);
 
   if (memberships.length === 0) redirect("/welcome");
-  if (memberships.length === 1) {
-    const only = memberships[0]!;
-    redirect(
-      only.completedAt || only.step === "done"
-        ? `/${only.slug}/dashboard`
-        : stepPath(only.slug, only.step),
-    );
-  }
+  /* Straight into the workspace, set up or not — its layout carries the
+     "finish setting up" card. See the rules in `resolveDestination`. */
+  if (memberships.length === 1) redirect(`/${memberships[0]!.slug}/dashboard`);
 
   const store = await cookies();
   const last = store.get(LAST_ORG_COOKIE)?.value;
@@ -139,15 +134,27 @@ export default async function OrgsPage() {
                           </p>
                         )}
                       </div>
-                      <Button
-                        variant={setUp ? "primary" : "secondary"}
-                        href={
-                          setUp ? `/${m.slug}/dashboard` : stepPath(m.slug, m.step)
-                        }
-                        linkComponent={Link}
-                      >
-                        {setUp ? "Open" : "Finish setup"}
-                      </Button>
+                      {/* Open is always offered: an unfinished workspace is
+                          still a workspace, and its dashboard says what is
+                          missing. Setup is the second choice, not the only one. */}
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {!setUp && (
+                          <Button
+                            variant="ghost"
+                            href={stepPath(m.slug, m.step)}
+                            linkComponent={Link}
+                          >
+                            Finish setup
+                          </Button>
+                        )}
+                        <Button
+                          variant="primary"
+                          href={`/${m.slug}/dashboard`}
+                          linkComponent={Link}
+                        >
+                          Open
+                        </Button>
+                      </div>
                     </div>
                   </CardBody>
                 </Card>

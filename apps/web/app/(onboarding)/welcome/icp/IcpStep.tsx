@@ -18,7 +18,6 @@ import type { IcpDraft } from "@huntloop/ai";
 import { LookAlikeResult } from "../../../_components/LookAlikeResult";
 import type { LookAlikePreview } from "../../../../lib/data/look-alike-preview";
 import { REGION_OPTIONS, SIZE_BANDS } from "../../../../lib/onboarding/steps";
-import { DEV_BYPASS } from "../../../../lib/dev-bypass";
 import { saveIcp } from "../actions";
 import {
   draftIcpAction,
@@ -27,6 +26,17 @@ import {
   type DraftState,
   type ReachState,
 } from "./actions";
+
+/* Development only: lets a developer past this screen's completeness gate
+   ("Still needed: a region"). It skips no server check — the save is the same
+   action and the same schema. `next build` inlines NODE_ENV as "production",
+   so this is the literal `false` in every deployed bundle and the button is
+   removed as dead code; it must stay a comparison in this module, since an
+   imported constant was not eliminated. Set NEXT_PUBLIC_HUNTLOOP_DEV_BYPASS=0
+   to see the gate as production enforces it. */
+const DEV_BYPASS =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_HUNTLOOP_DEV_BYPASS !== "0";
 
 /**
  * §9 — the ideal customer profile.
@@ -717,7 +727,7 @@ export function IcpStep({ org }: { org: string }) {
           </span>
         )}
         {!canSave && DEV_BYPASS && (
-          /* Development only — see lib/dev-bypass.ts. Skips this screen's
+          /* Development only — see DEV_BYPASS above. Skips this screen's
              completeness gate, not the server's schema: the save below is the
              same action, validated the same way. */
           <Button variant="secondary" size="lg" disabled={saving} onClick={save}>

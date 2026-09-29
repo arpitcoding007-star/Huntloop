@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { Badge, Button, ScrollRegion, ThemeToggle } from "@huntloop/ui";
+import { Badge, ScrollRegion, ThemeToggle } from "@huntloop/ui";
 import { DomainInput } from "../../DomainInput";
 import { APPROACHES, findApproach } from "../approaches";
 import { USE_CASES } from "../../for/use-cases";
 import { resolveVisitorDestination } from "../../../../lib/data/destination";
+import { NavActions, homeHref } from "../../NavActions";
 import { BrandLink } from "../../../BrandLink";
 
 /**
@@ -32,10 +33,10 @@ export default async function ComparePage({
   const approach = findApproach(slug);
   if (!approach) notFound();
 
+  /* Rendered for everyone. These used to redirect a signed-in visitor into
+     the app, which left the site's own content unreadable once you had an
+     account. The header adapts instead — see NavActions. */
   const destination = await resolveVisitorDestination();
-  if (destination.kind !== "anonymous" && destination.kind !== "demo") {
-    redirect(destination.path);
-  }
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -44,18 +45,10 @@ export default async function ComparePage({
           aria-label="Main"
           className="mx-auto flex max-w-[880px] items-center gap-4 px-6 py-3"
         >
-          <BrandLink href="/" />
+          <BrandLink href={homeHref(destination)} />
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle className="mr-2" />
-            <Link
-              href="/login"
-              className="hl-focusable rounded-sm px-3 py-1.5 text-[13px] text-fg-secondary hover:text-fg"
-            >
-              Sign in
-            </Link>
-            <Button variant="primary" size="sm" href="/signup" linkComponent={Link}>
-              Start free
-            </Button>
+            <NavActions destination={destination} />
           </div>
         </nav>
       </header>
@@ -212,5 +205,5 @@ export async function generateMetadata({
 }
 
 /* `resolveDestination` reads cookies, so this cannot be prerendered — a cached
-   page would show a signed-in user the marketing site. */
+   page would show one visitor's header to another. */
 export const dynamic = "force-dynamic";

@@ -19,7 +19,10 @@ import { SearchX } from "lucide-react";
  */
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center px-6 py-12">
+    <main id="main" className="flex min-h-screen items-center justify-center px-6 py-12">
+      {/* EmptyState draws its title as a sub-heading; a page still needs one
+          top-level heading for screen-reader navigation. */}
+      <h1 className="sr-only">Page not found</h1>
       <EmptyState
         icon={SearchX}
         title="Not found"
@@ -29,11 +32,11 @@ export default function NotFound() {
             href="/"
             className="hl-focusable inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-[13px] text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
           >
-            Go back
+            Go to the home page
           </Link>
         }
       />
-    </div>
+    </main>
   );
 }
 

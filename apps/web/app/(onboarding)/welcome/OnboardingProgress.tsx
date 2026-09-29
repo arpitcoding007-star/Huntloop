@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { VISIBLE_STEPS } from "../../../lib/onboarding/steps";
-import { DEV_BYPASS } from "../../../lib/dev-bypass";
+
+/** Per-tab memory of the furthest step reached, keyed by workspace. */
+const FURTHEST_KEY = (org: string) => `huntloop.onboarding.furthest.${org}`;
 
 /**
  * The five steps a person is asked to do, and where they are in them.
@@ -17,13 +20,21 @@ import { DEV_BYPASS } from "../../../lib/dev-bypass";
  * 8" on the screen that hands somebody their first three qualified companies
  * would frame the reward as more homework.
  *
- * ── Why completed steps are links and later ones are not ─────────────────
+ * ── Which steps are links ────────────────────────────────────────────────
  *
  * Going *back* has to be possible: §77 Principle 7 gives the user control over
  * the ICP and the sources, and a wizard you can only move forward through
- * quietly removes that. Going *forward* by clicking is not offered, because
- * each step consumes the previous one's output — a user who jumped to sources
- * would be recommended from a profile that does not exist yet.
+ * quietly removes that. Going forward is offered only as far as this tab has
+ * already been — each step consumes the previous one's output, so a jump past
+ * that would recommend sources from a profile that does not exist yet. Without
+ * that memory, going back to "You" turned every later step into plain text and
+ * the only way forward was to answer everything again.
+ *
+ * ── "Open workspace" ─────────────────────────────────────────────────────
+ *
+ * Available on every step once the workspace exists. The workspace does not
+ * require a finished setup — its layout shows what is missing and what that
+ * blocks — so holding somebody in the wizard protects nothing.
  *
  * The org travels in the query string, so a back-link that dropped it would
  * bounce the user to the step that creates a workspace they already have.
@@ -45,6 +56,31 @@ export function OnboardingProgress() {
 
   /* Beyond the five, "back" is the last of them — sources — which is where
      the building screen's own "change the profile" buttons already point. */
+  const here = beyond ? VISIBLE_STEPS.length - 1 : current;
+
+  /* Storage can throw (private windows, blocked site data); the bar then
+     behaves as it did before this existed, which is correct, just shorter. */
+  const [furthest, setFurthest] = useState(here);
+  useEffect(() => {
+    if (!org) {
+      setFurthest(here);
+      return;
+    }
+    let stored = -1;
+    try {
+      stored = Number(sessionStorage.getItem(FURTHEST_KEY(org)) ?? -1);
+    } catch {
+      /* Unavailable storage: fall back to the current step. */
+    }
+    const next = Math.max(here, Number.isFinite(stored) ? stored : -1);
+    setFurthest(next);
+    try {
+      sessionStorage.setItem(FURTHEST_KEY(org), String(next));
+    } catch {
+      /* Unavailable storage: fall back to the current step. */
+    }
+  }, [org, here]);
+
   const previous = beyond
     ? VISIBLE_STEPS[VISIBLE_STEPS.length - 1]
     : current > 0
@@ -57,6 +93,9 @@ export function OnboardingProgress() {
         {VISIBLE_STEPS.map((step, i) => {
           const done = beyond || i < current;
           const active = !beyond && i === current;
+          /* A later step this tab has already reached: navigable, but not
+             drawn as done — being there once is not the same as finishing it. */
+          const reachable = done || (!active && i <= furthest);
 
           const dot = (
             <span
@@ -93,7 +132,7 @@ export function OnboardingProgress() {
 
           return (
             <li key={step.step} className="flex items-center gap-2">
-              {done ? (
+              {reachable ? (
                 <Link
                   href={href}
                   className="hl-focusable flex items-center gap-2 rounded-sm hover:opacity-80"
@@ -118,7 +157,7 @@ export function OnboardingProgress() {
         })}
       </ol>
 
-      {(previous || (DEV_BYPASS && org)) && (
+      {(previous || org) && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
           {/* Spelled out as well as available through the dots above: a
               check mark reads as "done", not as "click to go back". */}
@@ -131,15 +170,16 @@ export function OnboardingProgress() {
               Back to {previous.label.toLowerCase()}
             </Link>
           )}
-          {/* Development only — see lib/dev-bypass.ts. The workspace layout
-              does not require a finished onboarding (it shows a setup card
-              instead), so this skips nothing the server enforces. */}
-          {DEV_BYPASS && org && (
+          {/* Everything entered so far is already saved step by step, so
+              leaving here loses nothing; the dashboard's setup card links
+              straight back to the step that is still open. */}
+          {org && (
             <Link
-              href={`/${org}/dashboard`}
-              className="hl-focusable ml-auto rounded-sm text-warning-text underline underline-offset-2 hover:text-fg"
+              href={`/${encodeURIComponent(org)}/dashboard`}
+              className="hl-focusable ml-auto inline-flex items-center gap-1 rounded-sm text-fg-muted hover:text-fg"
             >
-              Skip to workspace (dev)
+              Finish later — open workspace
+              <ArrowRight className="size-3.5" strokeWidth={1.75} />
             </Link>
           )}
         </div>

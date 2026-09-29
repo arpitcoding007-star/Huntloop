@@ -3,7 +3,7 @@ import { YouForm } from "./YouForm";
 import { isUserRole, type UserRole } from "../../../lib/onboarding/steps";
 import { captureForViewer } from "../../../lib/analytics";
 import { resolveDataSource } from "../../../lib/data/source";
-import { listMemberships } from "../../../lib/data/destination";
+import { listMemberships, stepPath } from "../../../lib/data/destination";
 import { canonicalizeDomain } from "@huntloop/db/identity";
 
 /**
@@ -71,10 +71,15 @@ export default async function WelcomePage({
       const memberships = await listMemberships();
       const first = memberships?.[0];
       if (first) {
+        /* The workspace's own step, not always step two: somebody whose ICP
+           is saved and who types /welcome should not be asked for their
+           website again. "you" is answered (that is how we got here). */
         redirect(
           first.completedAt || first.step === "done"
             ? `/${first.slug}/dashboard`
-            : `/welcome/company?org=${first.slug}${carry}`,
+            : first.step === "you" || first.step === "company"
+              ? `/welcome/company?org=${first.slug}${carry}`
+              : stepPath(first.slug, first.step),
         );
       }
       redirect(domain ? `/welcome/company?d=${encodeURIComponent(domain)}` : "/welcome/company");

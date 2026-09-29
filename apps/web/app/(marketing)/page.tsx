@@ -38,6 +38,7 @@ import { describeLimit, listPublicPlans } from "../../lib/data/plans";
 import { publicResearchEnabled } from "@huntloop/jobs";
 import { IDENTITY, legalIsComplete } from "../../lib/legal";
 import { resolveVisitorDestination } from "../../lib/data/destination";
+import { isSignedIn } from "./NavActions";
 import type { UseCase } from "./for/use-cases";
 
 /**
@@ -112,7 +113,7 @@ export default async function LandingPage({
      the logo in onboarding links here with it. Without it a signed-in user
      part-way through setup had no way to reach this page at all; every visit
      bounced them straight back into the step they were leaving. */
-  if (destination.kind !== "anonymous" && destination.kind !== "demo" && !home) {
+  if (isSignedIn(destination) && !home) {
     redirect(destination.path);
   }
 
@@ -124,7 +125,7 @@ export default async function LandingPage({
 
   return (
     <div className="min-h-screen bg-panel text-fg">
-      <Nav />
+      <Nav signedInPath={isSignedIn(destination) ? destination.path : null} />
 
       <main id="main">
         {/*
@@ -282,7 +283,7 @@ const FACTORS: { label: string; value: number | null; icon: Icon }[] = [
 
 /* ── 1 · Nav ─────────────────────────────────────────────────────────────── */
 
-function Nav() {
+function Nav({ signedInPath }: { signedInPath: string | null }) {
   return (
     <header className="sticky top-0 z-30 h-[68px] border-b border-line-subtle bg-panel/82 backdrop-blur-[16px] backdrop-saturate-[1.6]">
       <Frame className="flex h-full items-center justify-between gap-6">
@@ -303,15 +304,25 @@ function Nav() {
         </nav>
         <div className="flex items-center gap-5">
           <ThemeToggle className="max-sm:hidden" />
-          <Link
-            href="/login"
-            className="hl-focusable rounded-sm text-[14.5px] text-fg-secondary transition-colors hover:text-fg"
-          >
-            Sign in
-          </Link>
-          <Button variant="primary" size="lg" href="/signup" linkComponent={Link} className="px-[18px]!">
-            Start free
-          </Button>
+          {/* Only reachable signed in through `/?home=1`; a sign-in link is
+              then the one thing they cannot use. */}
+          {signedInPath ? (
+            <Button variant="primary" size="lg" href={signedInPath} linkComponent={Link} className="px-[18px]!">
+              Open workspace
+            </Button>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="hl-focusable rounded-sm text-[14.5px] text-fg-secondary transition-colors hover:text-fg"
+              >
+                Sign in
+              </Link>
+              <Button variant="primary" size="lg" href="/signup" linkComponent={Link} className="px-[18px]!">
+                Start free
+              </Button>
+            </>
+          )}
         </div>
       </Frame>
     </header>
