@@ -3148,6 +3148,20 @@ console.log("\n0032 — evidence keys and provenance");
   );
 }
 
+// ── 0035 — one outbound message per enrollment step ─────────────────────────
+// OUT-002: a run killed between drafting a step and advancing the enrollment
+// drafted the step again next time. The index makes that impossible.
+console.log("\n0035 — one message per enrollment step");
+{
+  const index = await db.query<{ indexdef: string }>(
+    `select indexdef from pg_indexes where indexname = 'messages_one_per_enrollment_step'`,
+  );
+  const def = index.rows[0]?.indexdef ?? "";
+  if (/UNIQUE/i.test(def) && /enrollment_id, step_id/.test(def) && /outbound/.test(def))
+    ok("outbound messages are unique per (enrollment, step)");
+  else fail("outbound messages are unique per (enrollment, step)", def || "no index");
+}
+
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,

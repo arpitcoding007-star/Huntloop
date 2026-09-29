@@ -38,7 +38,10 @@ import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
-const MAX_PER_TICK = 25;
+/* OUT-002. Each enrollment is a model call, inside one 60 s function; 25
+   meant the job was killed most runs and the rest of the batch never ran.
+   Five fits, and the sweep comes back next tick for the rest. */
+const MAX_PER_TICK = 5;
 
 /** How much evidence a drafting run may cite. Newest first. */
 const MAX_EVIDENCE = 12;
@@ -174,15 +177,30 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
     return "stopped";
   }
 
+  const mailboxId = enrollment.mailbox_id ?? (await pickMailbox(scope));
+  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
+
+  /* OUT-002. A run that drafted this step and died before advancing left it
+     due again. Its message is reused rather than drafted twice — and found
+     before the model call, so a retry does not pay for a draft it discards.
+     0035 makes a second message for the step impossible either way. */
+  const { data: existing } = await scope
+    .select("messages", "id")
+    .eq("enrollment_id", enrollmentId)
+    .eq("step_id", step.id)
+    .eq("direction", "outbound")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (existing) {
+    return advanceStep(scope, enrollmentId, step, mailboxId, autonomous, String(existing.id));
+  }
+
   const draft = await draftMessage(scope, {
     opportunity,
     campaign,
     step,
     recipient,
   });
-
-  const mailboxId = enrollment.mailbox_id ?? (await pickMailbox(scope));
-  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
 
   const { data: message, error: messageError } = await scope
     .insert("messages", {
@@ -206,11 +224,35 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
     .select("id")
     .maybeSingle();
 
+  if (messageError?.code === "23505") {
+    // Another run drafted this step between the check above and here.
+    const { data: winner } = await scope
+      .select("messages", "id")
+      .eq("enrollment_id", enrollmentId)
+      .eq("step_id", step.id)
+      .eq("direction", "outbound")
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!winner) throw new Error("the step was drafted twice and neither draft can be read");
+    return advanceStep(scope, enrollmentId, step, mailboxId, autonomous, String(winner.id));
+  }
   if (messageError || !message) {
     throw new Error(`the message could not be stored: ${messageError?.message ?? "no row"}`);
   }
 
-  await scope
+  return advanceStep(scope, enrollmentId, step, mailboxId, autonomous, String(message.id));
+}
+
+/** Move the enrollment past `step` and, when autonomous, queue its message. */
+async function advanceStep(
+  scope: OrgScope,
+  enrollmentId: string,
+  step: { id: string; position: number; delayHours: number },
+  mailboxId: string | null,
+  autonomous: boolean,
+  messageId: string,
+): Promise<"queued" | "drafted"> {
+  const { error: advanceError } = await scope
     .update("enrollments", {
       current_step: step.position + 1,
       last_step_at: new Date().toISOString(),
@@ -224,12 +266,16 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
     })
     .eq("id", enrollmentId);
 
+  /* Checked: an unrecorded advance is the state that used to produce a second
+     draft. The message exists, so the next run reuses it rather than repeat. */
+  if (advanceError) throw new Error(`the enrollment could not be advanced: ${advanceError.message}`);
+
   if (autonomous) {
     await enqueue({
       orgId: scope.orgId,
       name: "send_message",
-      payload: { messageId: String(message.id) },
-      idempotencyKey: `send:${message.id}`,
+      payload: { messageId },
+      idempotencyKey: `send:${messageId}`,
     });
     return "queued";
   }
