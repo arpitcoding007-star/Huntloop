@@ -1,4 +1,4 @@
-import type { Icp, IcpCriteria, IcpExclusions } from "@huntloop/db/icp";
+import { bandsToRange, type Icp, type IcpCriteria, type IcpExclusions } from "@huntloop/db/icp";
 import type { IcpStepValues } from "../validation";
 
 /**
@@ -29,7 +29,12 @@ export function stepIcp(v: IcpStepValues): Icp {
     regions: v.regions ?? null,
     triggers: v.triggers ?? null,
     industries: v.industries ?? null,
-    employeeRange: v.employeeRange ?? null,
+    /* Derived from the bands when no explicit range was sent — which is always,
+       from the ICP screen. `parseCriteria` does the same on read, but this
+       object never goes through it: `translateIcp` reads `employeeRange`
+       directly, so leaving it null dropped every size band from the reach
+       count and reported them as "could not be read as a number". */
+    employeeRange: v.employeeRange ?? (v.sizes?.length ? bandsToRange(v.sizes) : null),
     revenueBands: null,
     technologies: v.technologies ?? null,
     businessModels: v.businessModels ?? null,

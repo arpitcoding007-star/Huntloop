@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Check } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { VISIBLE_STEPS } from "../../../lib/onboarding/steps";
+import { DEV_BYPASS } from "../../../lib/dev-bypass";
 
 /**
  * The five steps a person is asked to do, and where they are in them.
@@ -42,6 +43,14 @@ export function OnboardingProgress() {
   // would walk the bar backwards at the moment of success.
   const beyond = !VISIBLE_STEPS.some((s) => s.href === pathname);
 
+  /* Beyond the five, "back" is the last of them — sources — which is where
+     the building screen's own "change the profile" buttons already point. */
+  const previous = beyond
+    ? VISIBLE_STEPS[VISIBLE_STEPS.length - 1]
+    : current > 0
+      ? VISIBLE_STEPS[current - 1]
+      : null;
+
   return (
     <nav aria-label="Setup progress">
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -75,11 +84,12 @@ export function OnboardingProgress() {
             </span>
           );
 
-          /* The first step creates nothing and needs no org; every other one
-             would dead-end without it. A link that dropped the parameter would
-             send a user with a half-built workspace back to the screen that
-             builds a new one. */
-          const href = org && i > 0 ? `${step.href}?org=${org}` : step.href;
+          /* Every step carries the org, the first one included. Without it
+             `/welcome` reads a returning user as somebody who has already
+             answered and forwards them on — so "You" was a link that could
+             never be reached. With it, the page treats the visit as going back
+             to edit. */
+          const href = hrefFor(step.href, org);
 
           return (
             <li key={step.step} className="flex items-center gap-2">
@@ -107,6 +117,37 @@ export function OnboardingProgress() {
           );
         })}
       </ol>
+
+      {(previous || (DEV_BYPASS && org)) && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+          {/* Spelled out as well as available through the dots above: a
+              check mark reads as "done", not as "click to go back". */}
+          {previous && (
+            <Link
+              href={hrefFor(previous.href, org)}
+              className="hl-focusable inline-flex items-center gap-1 rounded-sm text-fg-muted hover:text-fg"
+            >
+              <ArrowLeft className="size-3.5" strokeWidth={1.75} />
+              Back to {previous.label.toLowerCase()}
+            </Link>
+          )}
+          {/* Development only — see lib/dev-bypass.ts. The workspace layout
+              does not require a finished onboarding (it shows a setup card
+              instead), so this skips nothing the server enforces. */}
+          {DEV_BYPASS && org && (
+            <Link
+              href={`/${org}/dashboard`}
+              className="hl-focusable ml-auto rounded-sm text-warning-text underline underline-offset-2 hover:text-fg"
+            >
+              Skip to workspace (dev)
+            </Link>
+          )}
+        </div>
+      )}
     </nav>
   );
+}
+
+function hrefFor(path: string, org: string | null): string {
+  return org ? `${path}?org=${encodeURIComponent(org)}` : path;
 }

@@ -29,15 +29,18 @@ import type { ActionResult } from "../../../lib/data/org";
  */
 export function YouForm({
   initialName,
+  initialRole = null,
   carry,
 }: {
   initialName: string;
+  /** Set when somebody comes back to change an answer they already gave. */
+  initialRole?: UserRole | null;
   /** `&d=domain` when the visitor was already researched. See page.tsx. */
   carry: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<UserRole | null>(initialRole);
 
   const [state, formAction, pending] = useActionState<
     ActionResult<YouResult> | null,

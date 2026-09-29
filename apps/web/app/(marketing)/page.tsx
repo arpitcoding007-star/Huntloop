@@ -86,8 +86,15 @@ import type { UseCase } from "./for/use-cases";
  * people type and the one their browser autocompletes, so it has to be the
  * fastest route into the workspace for anybody who already has one.
  */
-export default async function LandingPage() {
-  const destination = await resolveVisitorDestination();
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ home?: string }>;
+}) {
+  const [destination, { home }] = await Promise.all([
+    resolveVisitorDestination(),
+    searchParams,
+  ]);
 
   /*
    * Signed-in visitors go where they were going. Everyone else gets the page.
@@ -101,7 +108,11 @@ export default async function LandingPage() {
    * workspace stays one click away through the sign-in screen, which already
    * links to it and already explains why.
    */
-  if (destination.kind !== "anonymous" && destination.kind !== "demo") {
+  /* `?home=1` is the exception: an explicit "take me to the home page" —
+     the logo in onboarding links here with it. Without it a signed-in user
+     part-way through setup had no way to reach this page at all; every visit
+     bounced them straight back into the step they were leaving. */
+  if (destination.kind !== "anonymous" && destination.kind !== "demo" && !home) {
     redirect(destination.path);
   }
 

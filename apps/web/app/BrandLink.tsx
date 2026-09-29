@@ -9,8 +9,9 @@ import { BrandMark } from "@huntloop/ui";
  * than by remembering. `size="lg"` is the sign-in and sign-up lockup, where
  * the brand is the first thing on the page rather than a corner of it.
  *
- * `href` omitted renders plain text — onboarding has nowhere useful for the
- * logo to go mid-flow, and a link that only redirects back is a detour.
+ * `href` omitted renders plain text. Onboarding passes `/?home=1`, which the
+ * landing page honours for signed-in visitors instead of redirecting them
+ * straight back into the step they left.
  */
 export function BrandLink({ href, size = "md" }: { href?: string; size?: "md" | "lg" }) {
   const lg = size === "lg";

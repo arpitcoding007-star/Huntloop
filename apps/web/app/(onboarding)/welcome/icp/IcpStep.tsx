@@ -18,6 +18,7 @@ import type { IcpDraft } from "@huntloop/ai";
 import { LookAlikeResult } from "../../../_components/LookAlikeResult";
 import type { LookAlikePreview } from "../../../../lib/data/look-alike-preview";
 import { REGION_OPTIONS, SIZE_BANDS } from "../../../../lib/onboarding/steps";
+import { DEV_BYPASS } from "../../../../lib/dev-bypass";
 import { saveIcp } from "../actions";
 import {
   draftIcpAction,
@@ -61,6 +62,8 @@ import {
 /* ── The editable field ──────────────────────────────────────────────────── */
 
 interface ChipFieldProps {
+  /** Anchor for the "Still needed" links under the Continue button. */
+  id?: string;
   label: string;
   values: string[];
   onChange: (next: string[]) => void;
@@ -74,6 +77,7 @@ interface ChipFieldProps {
 }
 
 function ChipField({
+  id,
   label,
   values,
   onChange,
@@ -88,8 +92,19 @@ function ChipField({
   const toggle = (value: string) =>
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
 
+  /* Typed-but-not-added text used to be discarded silently: a user who typed
+     "Head of Platform" and went straight to Continue believed the field was
+     filled, and the gate said otherwise with nothing on screen to explain it.
+     Committing on blur makes what is in the box what is in the profile. */
+  const commit = () => {
+    const v = entry.trim();
+    if (!v) return;
+    if (!values.includes(v)) onChange([...values, v]);
+    setEntry("");
+  };
+
   return (
-    <div>
+    <div id={id} className="scroll-mt-6">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
           {label}
@@ -151,16 +166,14 @@ function ChipField({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const v = entry.trim();
-              if (!v || values.includes(v)) return;
-              onChange([...values, v]);
-              setEntry("");
+              commit();
             }}
             className="mt-2 flex gap-2"
           >
             <input
               value={entry}
               onChange={(e) => setEntry(e.target.value)}
+              onBlur={commit}
               aria-label={`Add to ${label}`}
               placeholder={placeholder ?? "Add…"}
               maxLength={400}
@@ -395,8 +408,14 @@ export function IcpStep({ org }: { org: string }) {
   }
 
   const ready = fields.segments.length > 0 || fields.industries.length > 0;
-  const canSave = ready && fields.sizes.length > 0 && fields.regions.length > 0
-    && fields.triggers.length > 0 && fields.titles.length > 0;
+  const missing = [
+    !ready && { id: "icp-segments", label: "a segment or industry" },
+    fields.sizes.length === 0 && { id: "icp-sizes", label: "a size band" },
+    fields.regions.length === 0 && { id: "icp-regions", label: "a region" },
+    fields.triggers.length === 0 && { id: "icp-triggers", label: "a trigger" },
+    fields.titles.length === 0 && { id: "icp-titles", label: "a job title" },
+  ].filter((m): m is { id: string; label: string } => Boolean(m));
+  const canSave = missing.length === 0;
 
   return (
     <>
@@ -443,6 +462,7 @@ export function IcpStep({ org }: { org: string }) {
           <CardHeader title="Who they are" />
           <CardBody className="space-y-6">
             <ChipField
+              id="icp-segments"
               label="Segments"
               values={fields.segments}
               onChange={set("segments")}
@@ -461,6 +481,7 @@ export function IcpStep({ org }: { org: string }) {
               hint="Formal names, used as an exact filter when we search."
             />
             <ChipField
+              id="icp-sizes"
               label="Company size"
               values={fields.sizes}
               onChange={set("sizes")}
@@ -470,6 +491,7 @@ export function IcpStep({ org }: { org: string }) {
               hint="The single most effective search filter."
             />
             <ChipField
+              id="icp-regions"
               label="Regions"
               values={fields.regions}
               onChange={set("regions")}
@@ -487,6 +509,7 @@ export function IcpStep({ org }: { org: string }) {
           />
           <CardBody>
             <ChipField
+              id="icp-triggers"
               label="Buying triggers"
               values={fields.triggers}
               onChange={set("triggers")}
@@ -505,6 +528,7 @@ export function IcpStep({ org }: { org: string }) {
           />
           <CardBody className="space-y-6">
             <ChipField
+              id="icp-titles"
               label="Job titles"
               values={fields.titles}
               onChange={set("titles")}
@@ -669,17 +693,36 @@ export function IcpStep({ org }: { org: string }) {
              missing" makes a user re-read all of it. */
           <span className="text-[13px] text-warning-text">
             Still needed:{" "}
-            {[
-              !ready && "a segment or industry",
-              fields.sizes.length === 0 && "a size band",
-              fields.regions.length === 0 && "a region",
-              fields.triggers.length === 0 && "a trigger",
-              fields.titles.length === 0 && "a job title",
-            ]
-              .filter(Boolean)
-              .join(", ")}
+            {/* Each one jumps to its field. "A region" on its own sent people
+                re-reading the whole screen for a row of toggles they had
+                scrolled past. */}
+            {missing.map((m, i) => (
+              <span key={m.id}>
+                {i > 0 && ", "}
+                <a
+                  href={`#${m.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const el = document.getElementById(m.id);
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    el?.querySelector<HTMLElement>("input, button")?.focus({ preventScroll: true });
+                  }}
+                  className="hl-focusable rounded-sm underline underline-offset-2 hover:text-fg"
+                >
+                  {m.label}
+                </a>
+              </span>
+            ))}
             .
           </span>
+        )}
+        {!canSave && DEV_BYPASS && (
+          /* Development only — see lib/dev-bypass.ts. Skips this screen's
+             completeness gate, not the server's schema: the save below is the
+             same action, validated the same way. */
+          <Button variant="secondary" size="lg" disabled={saving} onClick={save}>
+            Continue anyway (dev)
+          </Button>
         )}
         <Badge variant="neutral">Editable later in Settings → ICP</Badge>
       </div>

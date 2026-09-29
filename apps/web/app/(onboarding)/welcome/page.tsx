@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { YouForm } from "./YouForm";
+import { isUserRole, type UserRole } from "../../../lib/onboarding/steps";
 import { captureForViewer } from "../../../lib/analytics";
 import { resolveDataSource } from "../../../lib/data/source";
 import { listMemberships } from "../../../lib/data/destination";
@@ -25,9 +26,9 @@ import { canonicalizeDomain } from "@huntloop/db/identity";
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; d?: string }>;
+  searchParams: Promise<{ new?: string; d?: string; org?: string }>;
 }) {
-  const { new: isNew, d } = await searchParams;
+  const { new: isNew, d, org } = await searchParams;
   await captureForViewer("onboarding_step_viewed", { step: "you" });
 
   /* Carried from `/discover` via signup, so the company step opens with the
@@ -40,6 +41,7 @@ export default async function WelcomePage({
   const { db } = await resolveDataSource();
 
   let initialName = "";
+  let initialRole: UserRole | null = null;
 
   if (db) {
     const { data: auth } = await db.auth.getUser();
@@ -57,10 +59,15 @@ export default async function WelcomePage({
 
     initialName =
       typeof profile?.full_name === "string" ? profile.full_name : "";
+    initialRole = isUserRole(profile?.role) ? profile.role : null;
 
     /* Already answered, and not deliberately starting another workspace? Then
-       this screen has nothing to ask. Resume wherever the workspace stopped. */
-    if (profile?.role && !isNew) {
+       this screen has nothing to ask. Resume wherever the workspace stopped.
+
+       Unless they came back on purpose: the progress bar and the back link
+       carry `?org=`, and a visit with it is somebody editing their answer.
+       Forwarding them would make step one a link that can never be reached. */
+    if (profile?.role && !isNew && !org) {
       const memberships = await listMemberships();
       const first = memberships?.[0];
       if (first) {
@@ -85,7 +92,7 @@ export default async function WelcomePage({
       </p>
 
       <div className="mt-6">
-        <YouForm initialName={initialName} carry={carry} />
+        <YouForm initialName={initialName} initialRole={initialRole} carry={carry} />
       </div>
     </>
   );
