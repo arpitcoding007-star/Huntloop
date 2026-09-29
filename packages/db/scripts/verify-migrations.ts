@@ -2864,6 +2864,211 @@ console.log("\n0030 — creating a workspace");
   else fail("a caller with no session cannot create one", "created");
 }
 
+// ── 0031 — tenant write hardening ───────────────────────────────────────────
+// Pass 14 found member-writable engine tables, a global idempotency index, an
+// admin → owner escalation, and a deleted workspace that kept running. Each
+// check below fails against the schema before 0031.
+console.log("\n0031 — tenant write hardening");
+{
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const ADMIN_A = "31313131-0031-0031-0031-000000000031";
+  const INVITEE = "31313131-0031-0031-0031-000000000032";
+  const ORG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const ORG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+  await db.query(
+    `insert into auth.users (id, email) values ($1, 'admin-0031@a.test'), ($2, 'invitee-0031@a.test')`,
+    [ADMIN_A, INVITEE],
+  );
+  await db.query(`insert into memberships (org_id, user_id, role) values ($1, $2, 'admin')`, [
+    ORG_A,
+    ADMIN_A,
+  ]);
+
+  const asUser = async (user: string, sql: string, params: unknown[] = []) => {
+    await db.exec("begin");
+    try {
+      await db.exec("set local role authenticated");
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [user]);
+      const r = await db.query<Record<string, unknown>>(sql, params);
+      await db.exec("commit");
+      return { rows: r.rows, count: r.affectedRows ?? r.rows.length, error: null as string | null };
+    } catch (e) {
+      await db.exec("rollback");
+      return { rows: [], count: 0, error: (e as Error).message };
+    }
+  };
+
+  // SEC-001: the queue is read-only to sessions.
+  const enqueue = await asUser(
+    OWNER_A,
+    `insert into job_executions (org_id, job_name) values ($1, 'purge_contact_data')`,
+    [ORG_A],
+  );
+  if (enqueue.error) ok("a member cannot enqueue a job directly");
+  else fail("a member cannot enqueue a job directly", "insert accepted");
+
+  const readQueue = await asUser(OWNER_A, `select count(*)::int as n from job_executions`);
+  if (!readQueue.error) ok("and can still read the org's queue");
+  else fail("and can still read the org's queue", readQueue.error);
+
+  // SEC-001: one tenant's key no longer collides with another tenant's.
+  try {
+    await db.query(
+      `insert into job_executions (org_id, job_name, idempotency_key) values
+         ($1, 'scan_source', 'k-0031'), ($2, 'scan_source', 'k-0031')`,
+      [ORG_A, ORG_B],
+    );
+    ok("the same idempotency key in two orgs does not collide");
+  } catch (e) {
+    fail("the same idempotency key in two orgs does not collide", e);
+  }
+  try {
+    await db.query(
+      `insert into job_executions (org_id, job_name, idempotency_key) values
+         (null, 'schedule_scans', 'sweep-0031'), (null, 'schedule_scans', 'sweep-0031')`,
+    );
+    fail("a global sweeper key still collapses", "second row accepted");
+  } catch {
+    ok("a global sweeper key still collapses");
+  }
+
+  // SEC-007: engine ledgers are read-only.
+  for (const table of ["provider_calls", "provider_cache", "provider_breakers", "evidence_citations"]) {
+    const del = await asUser(OWNER_A, `delete from ${table} where org_id = $1`, [ORG_A]);
+    const policies = await db.query<{ n: number }>(
+      `select count(*)::int as n from pg_policies
+        where tablename = $1 and cmd in ('ALL', 'INSERT', 'UPDATE', 'DELETE')`,
+      [table],
+    );
+    if (policies.rows[0]!.n === 0 && !del.error && del.count === 0)
+      ok(`${table} has no session write policy`);
+    else fail(`${table} has no session write policy`, `${policies.rows[0]!.n} write policies`);
+  }
+
+  // SEC-007: companies are soft-deleted only.
+  const before = await db.query<{ n: number }>(
+    `select count(*)::int as n from companies where org_id = $1`,
+    [ORG_A],
+  );
+  await asUser(OWNER_A, `delete from companies where org_id = $1`, [ORG_A]);
+  const after = await db.query<{ n: number }>(
+    `select count(*)::int as n from companies where org_id = $1`,
+    [ORG_A],
+  );
+  if (before.rows[0]!.n > 0 && after.rows[0]!.n === before.rows[0]!.n)
+    ok("an owner cannot hard-delete companies");
+  else fail("an owner cannot hard-delete companies", `${before.rows[0]!.n} → ${after.rows[0]!.n}`);
+
+  // SEC-005 / SEC-006: definer functions are not callable by sessions.
+  for (const fn of [
+    "public.merge_duplicate_evidence(uuid, text, uuid)",
+    "public.prune_rate_limits(interval)",
+  ]) {
+    const r = await db.query<{ can: boolean }>(
+      `select has_function_privilege('authenticated', $1, 'execute') as can`,
+      [fn],
+    );
+    if (!r.rows[0]!.can) ok(`authenticated cannot execute ${fn}`);
+    else fail(`authenticated cannot execute ${fn}`, "execute granted");
+  }
+
+  // SEC-002: an admin cannot take or strip the owner role.
+  const selfPromote = await asUser(
+    ADMIN_A,
+    `update memberships set role = 'owner' where org_id = $1 and user_id = $2`,
+    [ORG_A, ADMIN_A],
+  );
+  if (selfPromote.error) ok("an admin cannot make themselves owner");
+  else fail("an admin cannot make themselves owner", "update accepted");
+
+  const demote = await asUser(
+    ADMIN_A,
+    `update memberships set role = 'member' where org_id = $1 and user_id = $2`,
+    [ORG_A, OWNER_A],
+  );
+  if (demote.error) ok("an admin cannot demote an owner");
+  else fail("an admin cannot demote an owner", "update accepted");
+
+  const ownerInvite = await asUser(
+    ADMIN_A,
+    `insert into invitations (org_id, email, role) values ($1, 'x-0031@a.test', 'owner')`,
+    [ORG_A],
+  );
+  if (ownerInvite.error) ok("an admin cannot invite an owner");
+  else fail("an admin cannot invite an owner", "insert accepted");
+
+  const adminRename = await asUser(
+    ADMIN_A,
+    `update memberships set role = 'viewer' where org_id = $1 and user_id = $2`,
+    [ORG_A, "22222222-2222-2222-2222-222222222222"],
+  );
+  if (!adminRename.error) ok("an admin can still change a non-owner's role");
+  else fail("an admin can still change a non-owner's role", adminRename.error);
+
+  // An owner invitation from an owner can be accepted by its invitee.
+  const invited = await asUser(
+    OWNER_A,
+    `insert into invitations (org_id, email, role) values ($1, 'invitee-0031@a.test', 'owner')
+     returning token`,
+    [ORG_A],
+  );
+  const accepted = await asUser(INVITEE, `select * from public.accept_invitation($1)`, [
+    invited.rows[0]?.token,
+  ]);
+  if (accepted.rows[0]?.joined_role === "owner") ok("an owner's owner invitation is accepted");
+  else fail("an owner's owner invitation is accepted", accepted.error ?? accepted.rows);
+
+  // SEC-015: accepting a lower invitation keeps the stronger role.
+  const lower = await asUser(
+    OWNER_A,
+    `insert into invitations (org_id, email, role) values ($1, 'owner@a.test', 'member')
+     returning token`,
+    [ORG_A],
+  );
+  const kept = await asUser(OWNER_A, `select * from public.accept_invitation($1)`, [
+    lower.rows[0]?.token,
+  ]);
+  if (kept.rows[0]?.joined_role === "owner") ok("accepting a member invite does not demote an owner");
+  else fail("accepting a member invite does not demote an owner", kept.error ?? kept.rows);
+
+  // SEC-009: a deleted workspace disappears and stops discovering.
+  const DOOMED = "d0d0d0d0-0031-0031-0031-000000000031";
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'Doomed', 'doomed-0031')`, [
+    DOOMED,
+  ]);
+  await db.query(`insert into memberships (org_id, user_id, role) values ($1, $2, 'owner')`, [
+    DOOMED,
+    OWNER_A,
+  ]);
+  await db.query(
+    `insert into discovery_queries (org_id, name, filters, filters_hash, is_enabled, next_run_at)
+     values ($1, 'q-0031', '{}'::jsonb, 'h-0031', true, now() - interval '1 minute')`,
+    [DOOMED],
+  ).catch((e) => fail("seed a discovery query", e));
+  const dropped = await asUser(OWNER_A, `select public.delete_organization($1)`, [DOOMED]);
+  if (!dropped.error) ok("the owner deletes the workspace");
+  else fail("the owner deletes the workspace", dropped.error);
+
+  const seen = await asUser(OWNER_A, `select id from organizations where id = $1`, [DOOMED]);
+  if (seen.rows.length === 0) ok("a deleted workspace is invisible to its members");
+  else fail("a deleted workspace is invisible to its members", "still visible");
+
+  const q = await db.query<{ is_enabled: boolean }>(
+    `select is_enabled from discovery_queries where org_id = $1`,
+    [DOOMED],
+  );
+  if (q.rows.length > 0 && q.rows.every((r) => !r.is_enabled))
+    ok("and its discovery queries are disabled");
+  else fail("and its discovery queries are disabled", JSON.stringify(q.rows));
+
+  const claimed = await db.query<{ org_id: string }>(
+    `select org_id from public.claim_due_discovery_queries(50)`,
+  );
+  if (!claimed.rows.some((r) => r.org_id === DOOMED)) ok("and the claimer skips it");
+  else fail("and the claimer skips it", "claimed");
+}
+
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,

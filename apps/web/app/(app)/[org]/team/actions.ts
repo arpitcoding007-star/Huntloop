@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAudit } from "../../../../lib/data/audit";
+import { canOwn } from "../../../../lib/data/membership";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { checkQuota, quotaMessage } from "../../../../lib/data/usage";
 import { siteUrl } from "../../../../lib/site-url";
@@ -54,7 +55,7 @@ export async function setMemberRoleAction(
   return mutate(
     org,
     "setMemberRole",
-    async ({ db, orgId }) => {
+    async ({ db, orgId, viewer }) => {
       const id = uuidSchema.safeParse(membershipId);
       if (!id.success) return fail("That member reference isn't valid.");
 
@@ -72,6 +73,15 @@ export async function setMemberRoleAction(
 
       if (readError) return fail(`That role could not be changed: ${readError.message}`);
       if (!target) return fail("That member is no longer part of this organisation.");
+
+      /* SEC-002. Granting, changing or removing the owner role is an owner's
+         decision; otherwise an admin can promote themselves and then demote
+         the owner, which makes every owner-only action (deleting the
+         workspace) an admin action. 0031 enforces the same rule in Postgres;
+         this is the readable half. */
+      if ((target.role === "owner" || parsedRole.data === "owner") && !canOwn(viewer)) {
+        return fail("Only an owner can grant, change or remove the owner role.");
+      }
 
       if (target.role === "owner" && parsedRole.data !== "owner") {
         const remaining = await countOwners(db, orgId);
@@ -124,7 +134,7 @@ export async function removeMemberAction(
   return mutate(
     org,
     "removeMember",
-    async ({ db, orgId }) => {
+    async ({ db, orgId, viewer }) => {
       const id = uuidSchema.safeParse(membershipId);
       if (!id.success) return fail("That member reference isn't valid.");
 
@@ -138,6 +148,11 @@ export async function removeMemberAction(
 
       if (readError) return fail(`That member could not be removed: ${readError.message}`);
       if (!target) return fail("That member is no longer part of this organisation.");
+
+      // SEC-002: only an owner removes an owner.
+      if (target.role === "owner" && !canOwn(viewer)) {
+        return fail("Only an owner can remove an owner.");
+      }
 
       if (target.role === "owner" && (await countOwners(db, orgId)) <= 1) {
         return fail(
