@@ -86,6 +86,7 @@ export function OpportunityActions({
         onClick={() => {
           setAssigning((open) => !open);
           setEnrolling(false);
+          setDisagreeing(false);
         }}
       >
         {owner ? `Owned by ${owner}` : "Assign"}
@@ -96,6 +97,7 @@ export function OpportunityActions({
         onClick={() => {
           setEnrolling((open) => !open);
           setAssigning(false);
+          setDisagreeing(false);
         }}
         pending={
           campaigns.length === 0
