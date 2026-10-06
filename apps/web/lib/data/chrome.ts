@@ -3,6 +3,7 @@ import { cache } from "react";
 import { requireOrgId } from "./org";
 import { getOrganization } from "./organization";
 import { listPlans } from "./plans";
+import { getDefaultNeedsYou } from "./needs-you";
 import { load } from "./source";
 
 /**
@@ -38,6 +39,11 @@ export interface ShellChrome {
   quota: { label: string; used: number; limit: number } | null;
   /** The signed-in person. Null in demo mode, where there is nobody. */
   account: { name: string; email: string } | null;
+  /**
+   * How many "Needs you" items this person has, with their default filter.
+   * The same number the dashboard rail shows, from the same cached call.
+   */
+  needsYou: number;
 }
 
 /**
@@ -46,10 +52,14 @@ export interface ShellChrome {
  * inside the layout to ask the same question without paying twice.
  */
 export const getShellChrome = cache(async (orgSlug: string): Promise<ShellChrome> => {
-  const [{ data: org }, { data: plans }, session] = await Promise.all([
+  const [{ data: org }, { data: plans }, session, needsYou] = await Promise.all([
     getOrganization(orgSlug),
     listPlans(),
     loadSession(),
+    /* A failure here costs the badge, never the shell: chrome renders on every
+       page, and a sidebar that threw because a count did would take the whole
+       workspace down with it. */
+    getDefaultNeedsYou(orgSlug).then((r) => r.data.items.length).catch(() => 0),
   ]);
 
   const plan = org?.planId ? plans.find((p) => p.id === org.planId) : undefined;
@@ -70,6 +80,7 @@ export const getShellChrome = cache(async (orgSlug: string): Promise<ShellChrome
             limit,
           },
     account: session,
+    needsYou,
   };
 });
 

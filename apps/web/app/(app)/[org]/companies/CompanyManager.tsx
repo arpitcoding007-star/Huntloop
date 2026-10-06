@@ -49,6 +49,9 @@ export function CompanyManager({
   const [scope, setScope] = useState("name");
   /** `null` = not editing. `"new"` = the blank form. Otherwise a company id. */
   const [editing, setEditing] = useState<string | null>(null);
+  /* M-07: the form reports success and then unmounts, so the outcome is held
+     here, where it outlasts the form. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -173,9 +176,15 @@ export function CompanyManager({
             org={org}
             company={editingCompany}
             canWrite={canWrite}
-            onDone={() => setEditing(null)}
+            onDone={(message) => {
+              setEditing(null);
+              if (message) setNotice(message);
+            }}
           />
         </div>
+      )}
+      {notice && !editing && (
+        <FormMessage result={{ ok: true, message: notice }} className="mt-6" />
       )}
 
       <div className="mt-6">
@@ -246,7 +255,7 @@ function CompanyForm({
   org: string;
   company: Company | null;
   canWrite: boolean;
-  onDone: () => void;
+  onDone: (message?: string) => void;
 }) {
   const [name, setName] = useState(company?.name ?? "");
   const [domain, setDomain] = useState(company?.canonicalDomain ?? "");
@@ -290,8 +299,7 @@ function CompanyForm({
         employeeCount: employees.trim() === "" ? null : Number(employees),
       });
       if (res.ok) {
-        setResult({ ok: true, message: res.message });
-        onDone();
+        onDone(res.message ?? "Saved.");
       } else {
         setResult({ ok: false, error: res.error });
         setFieldErrors(res.fieldErrors ?? {});
@@ -314,7 +322,7 @@ function CompanyForm({
               onConfirm={() =>
                 start(async () => {
                   const res = await deleteCompanyAction(org, company.id);
-                  if (res.ok) onDone();
+                  if (res.ok) onDone(res.message ?? `${company.name} removed.`);
                   else setResult({ ok: false, error: res.error });
                 })
               }
@@ -459,7 +467,7 @@ function CompanyForm({
             <Button variant="primary" icon={Save} onClick={save} disabled={pending}>
               {pending ? "Saving…" : company ? "Save changes" : "Add company"}
             </Button>
-            <Button variant="ghost" onClick={onDone} disabled={pending}>
+            <Button variant="ghost" onClick={() => onDone()} disabled={pending}>
               Cancel
             </Button>
           </div>

@@ -28,6 +28,7 @@ import {
   House,
   Inbox as InboxIcon,
   KanbanSquare,
+  ListTodo,
   Lightbulb,
   MessagesSquare,
   Package,
@@ -166,6 +167,16 @@ export function OrgShell({
       description: "Reach out, follow up and move deals forward.",
       icon: MessagesSquare,
       items: [
+        /* First in Engage because it is the work itself: the ranked queue of
+           replies, drafts, due steps and quiet accounts (0037). The count is
+           the same number the dashboard rail shows. */
+        {
+          label: "Needs you",
+          href: `/${org}/needs-you`,
+          icon: ListTodo,
+          count: chrome.needsYou,
+          countTone: "attention",
+        },
         { label: "Outreach", href: `/${org}/outreach`, icon: Send },
         // No count until something counts it. "12" was a fixture, and an
         // unread badge that is always 12 is a notification about nothing —

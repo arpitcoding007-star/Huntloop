@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { listAssignments } from "../../../../lib/data/team";
+import { listCompetitorOptions } from "../../../../lib/data/competitors";
 import { DemoFigures } from "../DemoFigures";
 import { PipelineBoard } from "./PipelineBoard";
 
@@ -23,7 +24,10 @@ export default async function PipelinePage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: opportunities, source } = await listAssignments(org);
+  const [{ data: opportunities, source }, { data: competitors }] = await Promise.all([
+    listAssignments(org),
+    listCompetitorOptions(org),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-6 py-8 lg:px-8">
@@ -46,6 +50,7 @@ export default async function PipelinePage({
         <PipelineBoard
           org={org}
           opportunities={opportunities}
+          competitors={competitors}
           canWrite={canWrite(viewer)}
         />
       </div>

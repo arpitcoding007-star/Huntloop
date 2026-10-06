@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { Badge, Button, Field, FormMessage, Input, Select } from "@huntloop/ui";
-import { Send, ThumbsDown, UploadCloud, UserPlus } from "lucide-react";
+import { Ban, Send, ThumbsDown, UploadCloud, UserPlus } from "lucide-react";
 import type { Member } from "../../../../../lib/data/team";
 import type { CampaignTarget } from "../../../../../lib/data/outreach";
 import { assignOpportunityAction } from "../../team/actions";
 import { enrollOpportunitiesAction } from "../actions";
 import { overridePriorityAction, requestCrmPushAction } from "./actions";
+import { disqualifyAction } from "./activity-actions";
 
 /**
  * The three things a person does from this page: give it an owner, put it into
@@ -50,6 +51,7 @@ export function OpportunityActions({
   campaigns,
   canWrite,
   crmConnected = false,
+  closed = false,
 }: {
   org: string;
   opportunityId: string;
@@ -63,11 +65,18 @@ export function OpportunityActions({
   canWrite: boolean;
   /** HubSpot is connected, so a push means something (CRM-001). */
   crmConnected?: boolean;
+  /** Won, lost or archived: nothing left to rule out. */
+  closed?: boolean;
 }) {
   const [pushing, startPush] = useTransition();
-  const [assigning, setAssigning] = useState(false);
-  const [enrolling, setEnrolling] = useState(false);
-  const [disagreeing, setDisagreeing] = useState(false);
+  /* One open panel at a time, as one value. M-17 was two booleans that could
+     both be true; a single state cannot be. */
+  const [panel, setPanel] = useState<"assign" | "enrol" | "disagree" | "not-fit" | null>(null);
+  const toggle = (next: NonNullable<typeof panel>) => setPanel((open) => (open === next ? null : next));
+  const assigning = panel === "assign";
+  const enrolling = panel === "enrol";
+  const disagreeing = panel === "disagree";
+  const notFit = panel === "not-fit";
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
   >(null);
@@ -83,22 +92,14 @@ export function OpportunityActions({
       <Button
         variant="secondary"
         icon={UserPlus}
-        onClick={() => {
-          setAssigning((open) => !open);
-          setEnrolling(false);
-          setDisagreeing(false);
-        }}
+        onClick={() => toggle("assign")}
       >
         {owner ? `Owned by ${owner}` : "Assign"}
       </Button>
       <Button
         variant="primary"
         icon={Send}
-        onClick={() => {
-          setEnrolling((open) => !open);
-          setAssigning(false);
-          setDisagreeing(false);
-        }}
+        onClick={() => toggle("enrol")}
         pending={
           campaigns.length === 0
             ? "There are no campaigns to add this to yet. Create one under Outreach."
@@ -114,14 +115,15 @@ export function OpportunityActions({
       <Button
         variant="ghost"
         icon={ThumbsDown}
-        onClick={() => {
-          setDisagreeing((open) => !open);
-          setAssigning(false);
-          setEnrolling(false);
-        }}
+        onClick={() => toggle("disagree")}
       >
         Disagree
       </Button>
+      {!closed && (
+        <Button variant="ghost" icon={Ban} onClick={() => toggle("not-fit")}>
+          Not a fit
+        </Button>
+      )}
       {crmConnected && (
         <Button
           variant="ghost"
@@ -141,7 +143,7 @@ export function OpportunityActions({
       {/* Full-width, so the panels sit under the header rather than squeezing
           the score and status badges beside them. `basis-full` inside the
           header's existing wrap is what puts them on their own line. */}
-      {(assigning || enrolling || disagreeing) && (
+      {panel && (
         <div className="basis-full rounded-md border border-line bg-surface p-4">
           {assigning && (
             <Assign
@@ -150,7 +152,7 @@ export function OpportunityActions({
               ownerId={ownerId}
               members={members}
               onResult={setResult}
-              onDone={() => setAssigning(false)}
+              onDone={() => setPanel(null)}
             />
           )}
           {enrolling && (
@@ -159,7 +161,7 @@ export function OpportunityActions({
               opportunityId={opportunityId}
               campaigns={campaigns}
               onResult={setResult}
-              onDone={() => setEnrolling(false)}
+              onDone={() => setPanel(null)}
             />
           )}
           {disagreeing && (
@@ -168,7 +170,15 @@ export function OpportunityActions({
               opportunityId={opportunityId}
               priority={priority}
               onResult={setResult}
-              onDone={() => setDisagreeing(false)}
+              onDone={() => setPanel(null)}
+            />
+          )}
+          {notFit && (
+            <NotAFit
+              org={org}
+              opportunityId={opportunityId}
+              onResult={setResult}
+              onDone={() => setPanel(null)}
             />
           )}
         </div>
@@ -404,6 +414,98 @@ function Disagree({
           }
         >
           {pending ? "Saving…" : "Record my correction"}
+        </Button>
+        <Button variant="ghost" disabled={pending} onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const NOT_A_FIT_REASONS: { value: string; label: string }[] = [
+  { value: "not_a_fit", label: "Not our customer profile" },
+  { value: "no_need", label: "No need for what we sell" },
+  { value: "no_budget", label: "No budget" },
+  { value: "chose_competitor", label: "Already uses a competitor" },
+  { value: "missing_capability", label: "Needs something we do not offer" },
+  { value: "timing", label: "Wrong time" },
+  { value: "other", label: "Something else" },
+];
+
+/**
+ * Ruling an opportunity out, with the reason.
+ *
+ * Different from Disagree: Disagree changes how urgent something is; this says
+ * it should not be pursued at all, closes it, and stops any sequence on it.
+ * The category is what the learning loop can count; the sentence is what a
+ * person reading the loss later will want. "Needs something we do not offer"
+ * is also the raw material for product-demand intelligence.
+ */
+function NotAFit({
+  org,
+  opportunityId,
+  onResult,
+  onDone,
+}: {
+  org: string;
+  opportunityId: string;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
+  onDone: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [category, setCategory] = useState("not_a_fit");
+  const [reason, setReason] = useState("");
+
+  return (
+    <div className="max-w-[560px] space-y-3">
+      <p className="text-[12px] text-fg-muted">
+        This closes the opportunity, moves it to Ignore, and stops any sequence on it. The reason is
+        kept for the learning loop and shows on the timeline.
+      </p>
+      <Field label="Why">
+        {(field) => (
+          <Select {...field} value={category} disabled={pending} onChange={(e) => setCategory(e.target.value)}>
+            {NOT_A_FIT_REASONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <Field
+        label={category === "missing_capability" ? "What do they need?" : "Detail (optional)"}
+        hint={
+          category === "missing_capability"
+            ? "Recorded as product feedback. Be specific — it is counted across deals."
+            : "A sentence is enough."
+        }
+      >
+        {(field) => (
+          <Input
+            {...field}
+            value={reason}
+            maxLength={1000}
+            disabled={pending}
+            placeholder={category === "missing_capability" ? "On-prem deployment" : "They build this in-house"}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        )}
+      </Field>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="danger"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              const res = await disqualifyAction(org, opportunityId, { category, reason });
+              onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+              if (res.ok) onDone();
+            })
+          }
+        >
+          {pending ? "Saving…" : "Mark not a fit"}
         </Button>
         <Button variant="ghost" disabled={pending} onClick={onDone}>
           Cancel

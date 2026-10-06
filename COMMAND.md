@@ -4,7 +4,9 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-09-30** against `main` @ `ccf2bc3`.
+> Last full sync: **2026-10-06** against branch `feat/daily-loop-roadmap` (P0 + P1 of §16).
+>
+> **Roadmap:** [§16](#16-product-roadmap--planned-not-implemented) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
 **Entry format.** Complex elements use:
 `Element → Action → Destination → New elements → Nested actions → Branches → Endpoint`.
@@ -32,6 +34,7 @@ Simple link lists use tables (`Element | Where | Goes to | Notes`).
 13. [Errors, empty states & edge cases](#13-errors-empty-states--edge-cases)
 14. [Unresolved or broken flows (⚠️ FLOW MISMATCH register)](#14-unresolved-or-broken-flows)
 15. [Cross-page flow reference](#15-cross-page-flow-reference)
+16. [Product roadmap — planned, not implemented](#16-product-roadmap--planned-not-implemented)
 
 ---
 
@@ -134,7 +137,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 |---|---|---|
 | **Home** | No (single item) | Command Center → `/{org}/dashboard` |
 | **Hunt** | Yes — "Find and qualify the accounts worth pursuing." | Opportunities → `/{org}/opportunities` · Companies → `/{org}/companies` · Analyze a URL → `/{org}/analyze` · Imports → `/{org}/imports` |
-| **Engage** | Yes — "Reach out, follow up and move deals forward." | Outreach → `/{org}/outreach` · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
+| **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
 | **Learn** | Yes — "What the loop is teaching you." | Analytics → `/{org}/analytics` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` |
 | **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
@@ -144,7 +147,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 - **Active state:** longest-prefix match of `pathname` against all item hrefs (detail pages light their list page). Product/ICP appear under both Company and Settings; the section you came from stays lit.
 - **Panel footer:** `SidebarQuota` meter (`chrome.quota` label, used / limit) — omitted when plan unlimited/unknown. Not interactive.
 - **Rail footer: Hide/Show sidebar** (`SidebarCollapseButton`, ≥ lg only) → toggles panel; persisted in `localStorage["hl:sidebar-panel"]` (`hidden`/`shown`). Storage failure → toggles but not remembered.
-- **Attention dot** on a rail icon appears when any item has `count > 0` with `countTone: "attention"` — **no item currently sets `count`**, so the dot never renders today.
+- **Attention dot** on a rail icon appears when any item has `count > 0` with `countTone: "attention"`. **Needs you** sets it from `chrome.needsYou` — the number of ranked items in this person's default view (`getDefaultNeedsYou`, request-cached and shared with the dashboard rail, so the two always agree). A failure to count costs the badge, never the shell.
 - **`unbuilt` flag:** renders an item as non-link "Soon" label. **No item uses it today** (every destination exists; `scripts/audit.mjs NAV-01` fails the build for a nav href without a route).
 
 #### 1.1.4 Mobile drawer (`< lg`)
@@ -615,9 +618,45 @@ The **first chosen goal** then moves its section to the top and replaces the lea
 - **LearningNudge** (wins when present; `lib/data/nudges.ts`): kinds `rejection-streak` ("You've overruled N of our verdicts" → **Review what we got wrong**), `first-reply` ("Something worked" → **See what worked**), `tighten-icp` ("You've taken on N companies" → **Tighten my profile**) — all → `/{org}/learn`. ✕ **Dismiss** → hidden, `localStorage["huntloop.nudge.{org}.{kind}"]=dismissed`.
 - **IcpQualityCard** ("Your customer profile is N% complete" + suggestions): **Sharpen my profile** → `/{org}/settings/icp`; ✕ dismiss → `localStorage["huntloop.icp-nudge.{org}.{score}"]` (re-appears if the score changes).
 
-### 6.5 "Needs you" action rail (only when items exist; first on narrow screens, right column ≥1440px)
-| Item | Open → |
+### 6.5 "Needs you" rail (only when items exist; first on narrow screens, right column ≥1440px)
+
+The top 5 items of the ranked queue (§6.6), in this person's **default ownership filter** (role `defaultFilter = "assigned"` → Mine; every other role → Everyone). Header "Needs you · N" + **Open the queue →** / **See all N →** → `/{org}/needs-you`. Each item is a `NeedsYouList` card (`needs-you/NeedsYouList.tsx`):
+
+| Element | Action |
 |---|---|
+| Badge (Positive reply / Reply / Wrong person / Approve / Due today / Overdue / Gone quiet / Hot / No next step / Learning / Discovery paused / Sources / Freshness) + priority | Static |
+| Title (company, or thread subject / workspace subject) | Static |
+| "Why" sentence written by the ranker from the facts (ages, channel, classification, next-step text) | Static |
+| Primary button (Reply / Log your reply / Find the right person / Review draft / Open / Follow up / Set next step / Review / Triage / Open sources) | Link → the item's `href` (email reply → `/{org}/inbox#thread-{id}`; draft → `/{org}/inbox#thread-{id}` or `#draft-{id}`; opportunity items → `/{org}/opportunities/{id}`; learning → `/learn`; sources → `/sources`; discovery paused / stale → `/opportunities`) |
+| ⏰ **Snooze** menu: Later today (+4h) / Tomorrow morning (09:00 local) / Next week (Monday 09:00) | SA `snoozeAttentionAction` (`needs-you/actions.ts`) → upserts `attention_snoozes` (per user, max 30 days) → item hidden; message "Snoozed. It comes back on its own." Demo → "no database connected". Viewers may snooze (personal preference; not via `mutate`) |
+
+### 6.6 Needs you `/{org}/needs-you[?filter=mine|unassigned|everyone]`
+**Reached from:** Engage rail "Needs you", dashboard rail header link, jump-to.
+
+Ranked by `lib/needs-you/rank.ts` (pure, unit-tested): base weight per kind × priority weight (hot 1.3 … ignore 0.6) × stage weight (meeting 1.25, proposal 1.3), plus age; ties by title. One item per opportunity (its strongest) **except drafts**, which are never folded. Candidates gathered by `lib/data/needs-you.ts` (bounded queries):
+
+| Kind | Produced when |
+|---|---|
+| Reply (email) | Open thread whose last message is inbound; classifications `out_of_office`/`bounce`/`unsubscribe` never surface; `positive` ranks highest; `wrong_person` → "Find the right person" |
+| Reply (other channel) | Latest logged touch is inbound on LinkedIn/phone/chat/other and no future next step |
+| Approve | Outbound message, unsent, unapproved, not deleted (threaded or not) |
+| Next step due | `opportunities.next_step_due_at` ≤ end of today |
+| Gone quiet | Latest touch outbound, stage in assigned/contacted/replied/meeting/proposal, **no active enrollment**, no future next step, ≥ N business days (workspace setting, default 4) |
+| Hot, untouched | HOT, stage before contact, no touch, no enrollment, trigger < 30 days or found < 14 days |
+| No next step | Stage meeting/proposal and no next step |
+| Learning | Pending `learning_findings` |
+| Discovery paused | `backlog_state_for_org` saturated (open opportunities ≥ backlog cap) |
+| Sources failing / Old scores | As before (`last_error` set; `last_scored_at` > 90 days) |
+
+| Element | Action |
+|---|---|
+| Filter links **Mine / Unassigned / Everyone** | `?filter=` (link, shareable); default from role. Workspace items always shown |
+| Groups: Conversations · Follow-ups · New opportunities · Workspace health (count each) | Item cards as §6.5 |
+| Empty | "Nothing needs you right now" (Mine: suggests switching to Everyone) |
+| "{n} items are snoozed…" + **Bring them back now** | SA `clearSnoozesAction` → deletes this person's snoozes |
+| Demo | `DemoFigures`; items from fixtures, ranked at the fixtures' own "now" |
+
+---|---|
 | "N conversations are waiting on a reply" | `/{org}/inbox` |
 | "N messages need approval" | `/{org}/inbox` |
 | "N sources are failing" | `/{org}/sources` |
@@ -653,7 +692,7 @@ Server: `listOpportunities` (capped at `LIST_LIMIT`; notice "Showing the N highe
 Campaign `<select>` (non-sendable campaigns disabled "— no email step yet") → autonomy/status explainer → **Add {n} to campaign** (SA `enrollOpportunitiesAction`, max per call enforced, skips already-enrolled; revalidates `/opportunities` and `/outreach`) · **Cancel**.
 Branches: none selected / no campaign → tooltip reasons; errors ("That campaign no longer exists.", "…has no email step yet…", batch too large) shown in panel; success → panel closes and selection clears.
 
-> ⚠️ **FLOW MISMATCH M-07** — on success the panel (which holds the `FormMessage`) unmounts, so the "{n} enrolled" confirmation is never shown. Same pattern in Companies add/edit (§7.2). See §14.
+On success the panel closes and the "{n} enrolled" confirmation shows under the filters (M-07 fixed).
 
 **Empty states:** filtered → "No opportunities match this filter" + **Clear filters**; none at all → "No opportunities discovered yet" + **Analyze a company URL** (→ `/analyze`) + **Review sources** (→ `/sources`).
 
@@ -668,6 +707,7 @@ Branches: none selected / no campaign → tooltip reasons; errors ("That campaig
 | **Assign / Owned by {name}** (`canWrite`) | Toggles Assign panel: Owner `<select>` (Unassigned + members; "You") → on change SA `assignOpportunityAction` (`team/actions.ts`) → message, panel closes |
 | **Add to campaign** (`canWrite`) | Toggles Enrol panel: campaign select + **Add** (SA `enrollOpportunitiesAction(org, id, [id])`) + **Cancel**. No campaigns → tooltip explainer |
 | **Disagree** (`canWrite`) | Toggles panel: Priority select (Hot/Warm/Watch/Ignore) + "Why (optional)" + **Record my correction** (disabled until band changes; SA `overridePriorityAction` — updates priority and stores the correction for learning; "already {band}" no-op message) + **Cancel** |
+| **Not a fit** (`canWrite`, not won/lost/archived) | Toggles panel: **Why** select (Not our customer profile / No need / No budget / Already uses a competitor / Needs something we do not offer / Wrong time / Something else) + detail ("What do they need?" for missing capability) + **Mark not a fit** (danger) / **Cancel** → SA `disqualifyAction` (`activity-actions.ts`): `outcomes` kind `disqualified` with reason + recorded_by; band → Ignore via `record_override`; status → `archived`; next step cleared. Active sequences stop on their next run ("closed as not a fit") |
 | **Push to HubSpot** (`canWrite` and HubSpot connected) | SA `requestCrmPushAction` → queues a push job ("Queuing…"); error "HubSpot isn't connected. An admin can connect it under Settings → Integrations." |
 | Read-only viewers | See a badge "Owned by X / Unassigned" instead of all controls |
 | LearningNudge (rejection-streak only) | Same as dashboard §6.4 (shared dismissal key) |
@@ -676,7 +716,21 @@ Branches: none selected / no campaign → tooltip reasons; errors ("That campaig
 | Decision makers empty | "Buyer identification incomplete" |
 | **AgentPanel "Ask about {company}"** | See below |
 
-Opening one of Assign/Enrol/Disagree closes the others. All outcomes surface in one shared `FormMessage`.
+Assign / Enrol / Disagree / Not a fit are one exclusive panel state (opening one closes the others). All outcomes surface in one shared `FormMessage`.
+
+**What next bar** (`NextStepBar.tsx`, directly under the header; replaces the old static "Recommended" strip):
+| Element | Shown when | Action |
+|---|---|---|
+| Label "Next step" or "Recommended" + sentence + **Based on:** inputs | Always | Sentence from `lib/needs-you/next-action.ts`: own next step (or "Overdue: …") → inbound reply (positive / wrong person / plain) → meeting/proposal without a next step → active sequence → outbound touch quiet (≥ N business days) or waiting → the legacy four-case verdict rule. Tone: info / warning / success / neutral |
+| **Set next step** | `canWrite`, none set | Inline form: Next step (≤280) + Due (date, default +2 days, stored as 09:00 local) → **Save** (SA `setNextStepAction`: "Next step saved. It shows in Needs you when it is due.") / **Cancel** |
+| **Done** / **Edit** / **Clear** | `canWrite`, step set | Done → SA `clearNextStepAction(done=true)` (also logs a note "Done: …"); Clear → same with done=false; Edit → inline form |
+| "Trigger {age}" | Trigger on file | Static freshness |
+
+**Activity card** (`ActivityPanel.tsx`; first in the main column once the stage is past qualified, otherwise after Outreach angle). Timeline from `lib/data/activity.ts getTimeline` (50 newest; 0037 ledger): icon per kind/channel, summary, actor (You / name / "They" / Huntloop), freshness, detail (email subject linking to `/inbox#thread-{id}`; loss reason and competitor; override reason; "Reconstructed from a recorded outcome"), body for manual rows; system rows rendered quieter. Footer notes: "Showing the 50 most recent", "Stage changes are recorded from {date}…".
+| Element | Action |
+|---|---|
+| **Log activity** (`canWrite`) | Inline form: What (Message / Call / Meeting / Connection request / Note) · Channel (LinkedIn / Email outside Huntloop / Chat / Other — messages) · Who started it (We reached out / They replied or reached out — messages & calls) · With (optional person at the company) · When (datetime, ≤ now, ≤ 2 years back) · Summary (optional, auto-written) · Notes · Then (optional next step + due) → **Log it** → SA `logActivityAction`: inserts a manual `activities` row; **moves stage forward only** — meeting → `meeting` (+ outcome meeting once), inbound → `replied` (+ outcome reply once; stops sequences), outbound → `contacted`; sets the next step if given. Message "Logged. Moved to {stage}. Next step set." |
+| **Remove** (own manual rows) | SA `deleteActivityAction` → soft delete |
 
 **AgentPanel** (per-user conversation, persisted):
 - Suggested prompt chips (What should I write? · What should I not claim? · What do we actually know? · Prepare me for a meeting · Give me a different angle · Is this still a good opportunity?) → **fill the textarea only** (do not send).
@@ -695,7 +749,7 @@ Opening one of Assign/Enrol/Disagree closes the others. All outcomes surface in 
 | ✏ Edit {name} (`canWrite`) | Toggles CompanyForm for that row |
 
 **CompanyForm:** Name\*, Domain\* (URL reduced to host), Website, Industry, Country, Region, People (blank = unknown), Business model, What they do → **Add company / Save changes** (SA `saveCompanyAction`; duplicate-domain and field errors inline; revalidates) · **Cancel** · **Remove {name}** ConfirmButton ("Remove it", soft delete via `deleteCompanyAction`).
-Success closes the form (message not visible — M-07); the row appears/updates. Hand-added companies with no research are researched and scored by the engine (≤5 per tick, once a day — migration 0036).
+Success closes the form and the message shows above the list (M-07 fixed); the row appears/updates. Hand-added companies with no research are researched and scored by the engine (≤5 per tick, once a day — migration 0036).
 **Empty:** "No companies yet" / "No company matches that" (no action button). Rows are not clickable (no company detail page exists).
 
 ### 7.3 Analyze a URL `/{org}/analyze`
@@ -796,7 +850,16 @@ sequenceDiagram
 | Message **Approve** (outbound, unsent, unscheduled, `canWrite`) | SA `approveMessageAction` → "Approved. It is sent on the next run." → badge becomes "Queued to send" |
 | Badges | Received/Sent, "Drafted by Huntloop", evidence count / "No evidence cited", latest event (delivered…complained), "Awaiting approval"/"Queued to send" |
 
-**Empty:** "Nothing here yet — Replies to your outreach arrive here…". There is **no reject/edit control for drafts** (approve only), no link from a thread to its opportunity, and `assignThreadAction` exists server-side but **no UI calls it** (see §14 notes).
+**Approval queue** "Waiting for your approval · N" (every outbound draft, unsent and unapproved, threaded or not — `listDrafts`; first emails have no thread until sent, so before 0037 they appeared nowhere). Per `DraftCard` (anchor `#draft-{id}`): Drafted by Huntloop · evidence badge · "Edited by a person" · "Awaiting approval" · To {address} at {company → opportunity} · campaign.
+| Element | Action |
+|---|---|
+| **Approve** | SA `approveMessageAction` (as before); disabled with reason when no recipient |
+| **Edit** → Subject / Body → **Save changes** / **Cancel** | SA `editDraftAction`: keeps recipient/step/evidence; stores the AI original once (`original_subject`/`original_body_text`), `edited_by/at`; stays unapproved — "Saved. It still waits for your approval." |
+| **Reject** → Why (optional) → **Reject draft** / **Cancel** | SA `rejectDraftAction`: soft-deletes with `rejected_by/at/reason` (timeline: "Draft rejected"); parks its enrollment — "Rejected. Its sequence is paused so nothing follows up on it." |
+
+Threads: card anchor `#thread-{id}`; **{company} ↗** link → `/{org}/opportunities/{id}` when attached; **Who handles** select (Nobody + members; shown when > 1 member) → SA `assignThreadAction`; an unapproved draft inside a thread shows **Review in the approval queue** (→ `#draft-{id}`) instead of its own Approve. Figures now include "Waiting for approval". Replies a person queues record them as `approved_by` (attribution on the timeline).
+
+**Empty:** "Nothing here yet — Replies to your outreach arrive here…" (only when there are no threads **and** no drafts).
 
 ### 8.3 Pipeline `/{org}/pipeline`
 **Reached from:** Engage rail, dashboard Meetings/Won cards. Horizontal board scrolls within its own region.
@@ -809,6 +872,7 @@ Columns: Discovered · Researching · Qualified · Assigned · Contacted · Repl
 | PriorityBadge | Hover reason |
 | Owner badge | "Yours" / "Assigned" / "Unassigned" (static) |
 | **Stage** select (`canWrite`) — all 11 statuses | SA `setOpportunityStatusAction` → "Moved to {stage}." and card moves column after revalidation |
+| Choosing **lost** | Does not move yet: inline "Why was {company} lost?" — Reason (They stopped responding / Chose a competitor / No budget / Wrong time / No real need / Needed something we do not offer / Not a fit after all / Never reached the right person / Something else) · To whom (competitor picker, when "Chose a competitor" and competitors exist) · Detail → **Mark lost** (reason saved on the `outcomes` row; timeline "Lost · {reason}") / **Skip** (moves without a reason) / **Cancel** (stays put) |
 
 No drag-and-drop.
 
@@ -884,6 +948,7 @@ All `/{org}/settings/*` pages share `settings/layout.tsx`: eyebrow "Settings" + 
 | Tone select (No preference / Direct / Warm / Formal / Technical / Plain) | — |
 | Competitors (one per line) · Where you sell (one per line) | — |
 | Backlog limit (blank = 250, 0 = no limit) | — |
+| Follow-up reminder (business days, 1–20, blank = 4) | When an unanswered touch shows as "Gone quiet" in Needs you (`settings.followup.quietAfterBusinessDays`) |
 | **Save** | SA `saveOrgProfileAction` |
 
 No mailbox, billing or member controls live here.
@@ -976,9 +1041,9 @@ Endpoint: connected → "Push to HubSpot" appears on every opportunity detail (�
 | Card / element | Action → Endpoint |
 |---|---|
 | **Requests from people in your database**: Email address → **Export everything held** | SA `exportContactAction` → browser downloads JSON (`Downloaded {file}.`) |
-| Retype the address → **Erase permanently** (danger, enabled only when both addresses match) | SA `eraseContactAction` → contact points/person deleted, bodies redacted, suppression hash kept; fields cleared |
+| Retype the address → **Erase permanently** (danger, enabled only when both addresses match) | SA `eraseContactAction` → contact points/person deleted, bodies redacted (mail **to and from** the person, and any AI original kept beside an edited draft), hand-written activities about the person lose their text, suppression hash kept; fields cleared |
 | Retention sentence "Organisation" link | → `/{org}/settings` |
-| **Your own data** → **Export this workspace** | SA `exportOrganizationAction` → JSON download |
+| **Your own data** → **Export this workspace** | SA `exportOrganizationAction` → JSON download (includes the activity ledger in full since 0037) |
 | **Delete this workspace** (owner only): type `{org}` → **Delete workspace** | SA `deleteOrganizationAction` → full reload to `/orgs` (→ `/welcome` if no workspaces left, dashboard if one) |
 | **Delete your account**: type "delete my account" → **Delete my account** | SA `deleteOwnAccountAction` (refused if sole owner of a live workspace, naming it) → full reload to `/login` |
 
@@ -1109,7 +1174,6 @@ flowchart TD
 | **M-04** | `welcome/review/page.tsx` "Connect a mailbox"; `lib/data/personalization.ts` first action | Links to `/{org}/settings` (General), which has no mailbox controls | Links to `/{org}/outreach` (Mailboxes card) | Change both hrefs to `/${org}/outreach` |
 | **M-05** | `welcome/building/BuildingStep.tsx` | "Skip — I'll wait in the workspace" → `/welcome/review`; stages are client-sequenced so leaving stops the remaining first-run stages, despite "This carries on without you" | Button goes to the workspace (or is relabelled), and remaining stages continue server-side | Relabel/retarget, and/or run the first-run chain as a background job |
 | **M-06** | `welcome/review/FinishButton.tsx` | On `finishOnboarding` failure the note is set then `router.push` fires immediately — note never visible | Failure note visible (or surfaced on the dashboard) | Only navigate on success, or pass a flag to the dashboard |
-| **M-07** | `opportunities/OpportunityTable.tsx EnrollPanel`; `companies/CompanyManager.tsx CompanyForm`; `sources/SourceManager.tsx SourceForm` | Success message lives inside the panel/form that unmounts on success, so confirmation is never seen | Success confirmation visible after the panel closes | Lift the result to the parent's `FormMessage` (as Outreach/Memory already do) |
 | **M-08** | `welcome/company/CompanyStep.tsx runResearch` | After the first research creates workspace A, **Start over** with a different domain calls `researchCompanyAction(url, undefined)` → `createWorkspace` creates workspace B; A is orphaned mid-onboarding | Re-research reuses the workspace already created in this session | Pass `state.org ?? org` to `researchCompanyAction` |
 | **M-09** | `welcome/goals/GoalsStep.tsx`, `welcome/icp/IcpStep.tsx` | Revisiting Goals shows an empty form; revisiting ICP re-runs the model draft (cost) and discards saved edits in the form | Back/progress navigation shows saved answers for editing | Load `onboarding.goals/channel` into GoalsStep; load the saved ICP when one exists instead of drafting |
 | **M-10** | `(marketing)/DomainInput.tsx` call sites in `discover/page.tsx`, `for/[useCase]`, `compare/[approach]` | Default `canResearch=true` → always `/discover`, even when anonymous research is disabled; "try another address" loops to the same refusal | Follows `publicResearchEnabled()` like the landing page (→ `/signup?d=`) | Pass `canResearch={publicResearchEnabled()}` at every call site |
@@ -1120,19 +1184,19 @@ flowchart TD
 | **M-15** | `settings/scoring/ScoringRules.tsx RuleForm` vs `actions.ts saveRuleAction` | Header says "Saved switched off. Nothing changes until you turn it on." but edits to a running rule stay active and apply immediately | Copy is accurate, or edits to active rules require re-activation | Show different copy when editing an active rule (or deactivate on edit) |
 | **M-16** | `invite/[token]/page.tsx` | "sign out" is a GET link to `/auth/signout`, which is POST-only → 405 | Signs the user out and returns to the invite (or login) | Replace with a `<form method="post" action="/auth/signout">` button |
 
-Fixed and removed from the register: **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); every toggle now closes the other two.
+Fixed and removed from the register: **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); the panels are now one exclusive state. **M-07** — success messages lived inside panels that unmount on success (Opportunities EnrollPanel, Companies CompanyForm, Sources SourceForm); each now hands its message to the parent, which shows it after the panel closes.
 
 ### 14.2 Gaps & dead ends (not mismatches, but undefined or incomplete flows)
 
 - **No mobile menu on the landing page** — Product / How it works / Pricing anchors are hidden below `md`; Sign in / Start free remain.
 - **Auth "Check your email" state** has no resend or change-address control.
-- **Inbox:** drafts can only be approved (no edit/reject); threads don't link to their opportunity; `assignThreadAction` (`inbox/actions.ts`) is implemented but **not used by any UI**.
+- **Inbox:** an edited draft's added sentences are not re-checked against evidence (the badge says so); parked enrollments (after a rejection) are not listed anywhere yet.
 - **Outreach:** no mailbox disconnect; no enrolled-contacts view per campaign; OAuth notice persists in the URL (`?mailbox_connected=`) across refreshes.
 - **Team:** an issued invite link cannot be shown again (revoke + reissue only); approved join requesters are not notified.
 - **Memory:** non-organisation scopes require pasting a raw UUID (no picker).
 - **Companies:** no company detail page; rows are not clickable.
-- **Dashboard "Needs you" rail** has no dismiss; sidebar attention dots/counts are supported but never populated.
-- **Personalisation `defaultFilter`** (per role) is computed but never applied — the Opportunities list always opens on "All" unless `?priority=` is passed.
+- **Needs you:** snoozes are personal and time-boxed (≤ 30 days); there is deliberately no permanent dismiss — an item that is still true comes back.
+- **Personalisation `defaultFilter`** now drives Needs you's default ownership filter; the Opportunities list still opens on "All" unless `?priority=` is passed.
 - **Product settings** manages only the first product.
 - **ICP settings** use free-text sizes/regions while onboarding uses fixed option sets.
 - **Analyze:** re-clicking "Save as an opportunity" upserts the opportunity but inserts evidence rows again.
@@ -1161,7 +1225,8 @@ Fixed and removed from the register: **M-17** — on opportunity detail, opening
 | `/{org}/analyze` | Hunt rail, dashboard, opportunities | Detail ("Open it") |
 | `/{org}/imports` | Hunt rail, onboarding building/review, dashboard first action | — (companies appear on `/companies`) |
 | `/{org}/outreach` | Engage rail, dashboard, OAuth return | Google/Microsoft consent (external) |
-| `/{org}/inbox` | Engage rail, dashboard, action rail | — |
+| `/{org}/needs-you` | Engage rail (count), dashboard rail header | Inbox threads/drafts, opportunity detail, learn, sources, opportunities |
+| `/{org}/inbox` | Engage rail, dashboard, Needs you items, opportunity timeline (email subjects) | Opportunity detail (thread company link) |
 | `/{org}/pipeline` | Engage rail, dashboard | Detail |
 | `/{org}/analytics` · `/intelligence` | Learn rail | — |
 | `/{org}/learn` | Learn rail, nudges | Detail, sources, settings/scoring, memory |
@@ -1213,3 +1278,438 @@ flowchart LR
 | LearningNudge | Dashboard (all kinds) and opportunity detail (rejection-streak only), shared dismissal key |
 | Assign owner | Opportunity detail and Team → Assignments — same `assignOpportunityAction` |
 
+
+---
+
+## 16. Product roadmap — planned, **not implemented**
+
+> **Status of this section:** a plan, not current behaviour. Nothing in §16 exists in the code yet unless its status column says so. Sections §0–§15 remain the record of what the app does **today**; when a roadmap item ships, its behaviour is documented in the relevant §0–§15 entry in the same commit, and its row here moves to **Shipped** with the commit hash.
+>
+> **Origin:** produced 2026-10-06 from (a) a benchmark of Kima BD OS (`kimacrm.xyz`, a single-company internal BD tool) and (b) an inspection of this repository at `main` @ `2bc4196` — schema `0001`–`0036`, `packages/{ai,jobs,db,crm,providers,ui}`, `apps/web`, the master context, `audit/ROADMAP.md` and `audit/BACKLOG.md`. The request that commissioned it called the product "TruChat"; every capability it listed (Gmail/Outlook, warm-up, autonomy levels, HubSpot, scoring rules, failed-job retry) is Huntloop's, so this plan is for Huntloop.
+>
+> **Relationship to other plans:** `audit/ROADMAP.md` (R0–R6) is the engineering-hardening roadmap and is complete except provisioning items. The master context §68 phases describe the original product vision. This section is the next product roadmap and is consistent with both: it mostly finishes what master context §26–§30, §46–§47 and §64–§65 already asked for, using data the schema already collects.
+>
+> **Kima is a benchmark, not a spec.** Nothing here copies Kima's UI, layout, navigation, branding or workflows. Kima was used only to find the *user problems* a BD tool must solve after discovery.
+
+### 16.0 Status legend
+
+`Planned` · `In progress` · `Shipped (<hash>)` · `Deferred` · `Rejected`.
+
+**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11) ships with P2. Two defects found while building P1 were fixed in the same work and are recorded in §16.8.
+
+### 16.1 Diagnosis — what the audit actually found
+
+The most important finding is not a missing feature. **Huntloop already collects most of the data a better product needs, and shows almost none of it.** The engine and schema run several releases ahead of the UI.
+
+| # | Finding | Evidence in the code | Consequence for the user |
+|---|---|---|---|
+| D1 | Performance views exist and nothing reads them | `angle_performance`, `discovery_performance`, `persona_performance` (`0018`); `pipeline_throughput`, `spend_by_period`, `provider_health` (`0019`) — zero references in `apps/web` | "Analytics" shows AI spend only (M-11). The user cannot tell which sources, searches, personas or angles produce meetings |
+| D2 | Competitor intelligence is fully modelled, partly computed, and completely invisible | `competitors`, `competitor_profiles`, `competitor_evidence`, `company_competitor_signals` (`0015`, `0021`); `resolve_competitor_mentions` is enqueued whenever a scan adds evidence about a company (`scan-source.ts:382`); **nothing enqueues `research_competitor`** (an orphaned handler, the same class of defect as MAP-001); no screen, prompt or scoring rule reads competitor signals | Huntloop may already know a prospect uses a competitor and never tells the salesperson, the message writer or the agent |
+| D3 | No relationship history | Activity exists only in fragments: `messages` (email), `message_events`, `outcomes` (one row per kind), `human_overrides`, `opportunities.status` (no history), `conversations` (agent). No table records a stage change, a LinkedIn message, a call or a note | The opportunity page has no "what has happened" section (master context §47 asks for Outreach, Conversation History, Activities). Time-in-stage and channel reporting are impossible |
+| D4 | Email is the only channel Huntloop can see | `contact_points.kind` allows `linkedin`, but there is no activity model; Inbox is email-only | Founder-led sales happens largely on LinkedIn and calls. That work is invisible to the pipeline, the learning loop and "Needs you" |
+| D5 | "Needs you" is four counts, not a queue | `dashboard.ts attentionItems` → replies waiting, approvals, failing sources, stale scores. No follow-ups, no next steps, no snooze (`onDismiss` unwired); sidebar attention counts supported but never populated (§14.2) | The product does not say what to do next beyond "go look at the inbox" |
+| D6 | Recommended action is a fixed four-case rule | `opportunity-map.ts recommendedAction(priority, hasBuyer, hasTrigger)` ignores replies, outreach, stage and age | An opportunity at meeting stage, with a reply, can still say "Reach out now, while the trigger is fresh" |
+| D7 | Loss and disqualification reasons are modelled but never captured | `outcomes.reason` and `outcomes.kind = 'disqualified'` exist (`0018`); `setOpportunityStatusAction` writes `lost` with no reason; nothing writes `disqualified` | The learning loop's most informative negative labels are thrown away; product-demand intelligence has no raw material |
+| D8 | Research the page never shows | `company_problems` and `company_gaps` (`0003`) are not read by `getOpportunity`; `companies.tech_stack`, `funding`, `leadership` are not rendered | "What they use" and "what's wrong" are thinner on screen than in the database |
+| D9 | The agent sees less than the page | `sales_agent` input is narrative + evidence only (`sales-agent.ts AgentInput`): no memories, outreach history, reply classifications, competitor signals or stage | "Prepare me for a meeting" cannot use the conversation that produced the meeting |
+| D10 | Multi-product is a schema capability blocked by app conventions | `products` is multi-row; `icps.product_id`, `campaigns.product_id`; opportunity uniqueness is already `(org, company, icp)`. But `activateIcpAction` deactivates every other ICP, `score-opportunity.ts` reads the newest active ICP, and Product settings edits `products[0]` only | A company with two products must pick one; "also fits product B" cannot be expressed |
+| D11 | Inbox approval is approve-only | §8.2 / §14.2: no edit and no reject for drafts; threads do not link to their opportunity; `assignThreadAction` is unused | The approval workflow, a core safety feature, forces approving copy you would change or leaving it to rot |
+| D12 | No review backpressure on discovery | Credit budgets per query and per org (`0014`, providers budget), `MAX_AUTO_RESEARCH = 25`; nothing pauses discovery when the untriaged queue is already full | Spend keeps producing opportunities nobody will read |
+
+**Through the user's goal.** Where Huntloop currently costs the user effort:
+
+- **Unnecessary steps:** Needs you → Inbox → find the thread → no link to the opportunity → back to Opportunities for context. Approve-only drafts force workarounds in the mail client.
+- **Missing context:** no timeline on the opportunity, no competitor context, and an agent that cannot see outreach or memory.
+- **Manual work with no payoff:** LinkedIn and calls are tracked outside Huntloop, so the pipeline is wrong and learning ignores them.
+- **Information lost:** loss reasons, disqualification reasons, stage timing, objections raised in replies.
+- **No next step:** the recommendation ignores state, there are no follow-up due dates, and nothing says "this went quiet".
+
+### 16.2 Non-negotiables for every phase
+
+**Preserve, and regression-test, everything below.** A phase that weakens one of these does not ship.
+
+| Area | Where it lives | Guard |
+|---|---|---|
+| Auth, sessions, magic link | `proxy.ts`, `app/auth/*`, §0, §3 | e2e `routing.spec.ts`, `smoke.spec.ts` |
+| Roles (owner / admin / member / viewer) | `lib/data/membership.ts`, RLS `has_org_role` | New tables use the standard `tenant_read` / `tenant_write` pair; viewers get read only; `mutate(minRole)` |
+| Multi-tenancy | RLS on every table, `OrgScope`, `requireOrgId` | `verify-migrations.ts` RLS assertions per new table; cross-tenant id tests for every new citation enum |
+| Onboarding and ICP | `(onboarding)`, `settings/icp`, `followActiveIcp` | Unchanged until Phase 5; Phase 5 extends, never replaces |
+| Gmail / Outlook, warm-up, sending quotas | `jobs/mailbox/*`, `send-message.ts`, `0017`, `0033` | Activity projection is trigger-based and **cannot fail a send** (§16.5.2) |
+| Autonomy levels and approval | `campaigns.autonomy_level`, `advance-enrollments.ts:181`, Inbox approve | Nothing new sends. AI output that can become outbound goes through the existing draft → approve path |
+| Unsubscribe and suppression | `/unsubscribe`, `record_unsubscribe`, `is_suppressed` | Manual logging never bypasses suppression; Needs you never suggests contacting a suppressed address |
+| GDPR export / erase | `settings/privacy`, `erase_contact` RPC, `purge_contact_data` | Every new table holding person data joins export, erase and retention in the same migration |
+| Evidence-backed claims, FACT / INFERENCE / UNKNOWN | `evidence` constraints (`0002`), `ClaimBadge`, closed citation enums in AI tasks | New AI tasks cite from closed sets; inferences render as inferences; recommendations are labelled as recommendations |
+| Scoring rules | `packages/db/src/rules.ts`, `settings/scoring` | New rule fields extend `RULE_FIELDS`; proposed rules are still saved inactive |
+| HubSpot | `packages/crm`, `sync-hubspot.ts` | Untouched until an explicit integration phase |
+| Failed-job retry | `ops`, `job_dead_letters`, `retryJobAction` | New jobs register in `registry.ts` and inherit retry and dead-lettering |
+| Memory and learning | `memories`, `learning_runs`, `learning_findings`, `learn/actions.ts` | **No AI output becomes durable memory or an active rule without a human accept.** AI-derived generalisations become `learning_findings` proposals |
+| Spend and rate limits | `lib/ai/budget.ts`, `lib/rate-limit.ts`, audit `SEC-SPEND` / `SEC-RATELIMIT` / `SEC-QUOTA` | Every new model call goes through the `lib/ai/*` wrapper pattern |
+| Demo-mode honesty | `load()` live and demo branches, audit `FEAT-FIXTURE` / `FEAT-DEMO` | Every new loader has a demo branch derived from fixtures; no invented figures |
+
+**AI rules applied throughout** (master context §7, §62, §77):
+
+1. Four labels, never blurred: **Fact** (observed at a source, has `source_url`), **Inference** (derived by a model or rule, shows its basis), **Unknown** (looked, could not establish), **Recommendation** (what to do, with the inputs it was derived from).
+2. Citations are ids from a closed per-call set (the `sales_agent` / `analyze_performance` mechanism), so citing an ungathered fact or another tenant's row is unrepresentable.
+3. Numbers in any AI narrative come only from computed metrics passed in. The model may connect them, never produce them.
+4. A user's chat text is untrusted input and can never become a claim (`wrapUntrusted`).
+5. Durable changes (memory, rule, ICP, discovery query, competitor, demand-theme status) always require an explicit human accept.
+
+### 16.3 Master roadmap
+
+Each area: current state → Kima insight (the underlying problem only) → Huntloop solution → why it is better → what it needs. Complexity: **S** ≤ 3 days · **M** ≤ 2 weeks · **L** ≤ 4 weeks · **XL** > 4 weeks. These assume one engineer and exclude review; treat them as a floor.
+
+#### A. Relationship activity ledger (foundation) — Phase 1 · **L** · worth building: **yes, it enables everything else**
+
+- **Current:** fragments (D3). Stage changes leave no history; non-email touches cannot be recorded.
+- **Kima insight:** a BD person needs every touch on every channel in one place, marked replied or no response, to know what to do next and what works. Kima does this with free-text "reachout" records disconnected from its pipeline.
+- **Huntloop solution:** one append-only `activities` ledger per opportunity, company and person. System activity (emails sent and received, bounces, stage changes, priority band changes, assignment, overrides) is **projected by database triggers** from the tables that already hold it, so no sending or syncing code changes. Human activity (LinkedIn message, call, meeting, note, other channel) is logged in two clicks from the opportunity page or a Needs you item, with an optional next step.
+- **Why better:** one timeline that is complete by construction rather than by discipline; email activity cannot be forgotten; manual touches feed the same reporting, queue and learning loop as email; idempotent projection means re-running a backfill cannot duplicate rows.
+- **Dependencies:** none. **Data:** existing `messages`, `message_events`, `outcomes`, `human_overrides`, `opportunities`; new `activities`. **Events:** `email_sent`, `email_received`, `email_bounced`, `email_unsubscribed`, `stage_changed`, `priority_changed` (band changes only), `owner_changed`, `override_recorded`, `outcome_recorded`, `note`, `call`, `meeting`, `linkedin_message`, `linkedin_connect`, `other_touch`.
+- **Architecture:** a read-model ledger, not a second source of truth. `messages` stays authoritative for email and `activities.ref_type` / `ref_id` points at it. Trigger functions are `security definer`, exception-isolated, and idempotent on `(org_id, ref_type, ref_id, kind)`.
+- **Outcome:** "what has happened with this account" is answered on one screen, for every channel.
+
+#### B. "Needs you" → an intelligent daily action queue — Phase 1 · **M** · worth building: **yes, highest user value**
+
+- **Current:** four derived counts linking to list pages (D5). No follow-ups, next steps, snooze or ownership filter.
+- **Kima insight:** BD work is a queue (replies to answer, follow-ups due, hot leads to act on) worked top-down each morning. Kima splits it across "Today's Plan", a floating overdue panel and a dashboard, and the pieces disagree with each other.
+- **Huntloop solution:** keep the name and place ("Needs you", the dashboard's right rail, plus a full `/{org}/needs-you` page). Make it **one ranked list of individual items**, each with *what*, *why it is here* (inputs, ages, evidence count), *the suggested action*, an inline primary action where safe, and **Snooze** (persisted per user). Item types, ranked by a deterministic, explained score (urgency × value):
+  1. Reply waiting: last message inbound; `positive` and `needsHuman` classifications first; `wrong_person` suggests finding the right contact.
+  2. Draft awaiting approval: inline Approve / Edit / Reject (needs P0-1).
+  3. Next step due: user-set `next_step_due_at` reached.
+  4. Gone quiet: last outbound touch on **any channel** at least N business days ago, nothing inbound since, and not in an active sequence (sequences run their own follow-ups). N is a workspace setting, default 4.
+  5. Hot and untouched: HOT, trigger fresher than 14 days, no owner or no touch.
+  6. Late stage without a next step: `meeting` or `proposal` with no next step set.
+  7. Learning proposals waiting: pending `learning_findings`.
+  8. System health: failing sources and stale scores (today's items, ranked last).
+  A **Mine / Unassigned / Everyone** filter defaults from the role's personalisation `defaultFilter` (computed today and never used, §14.2). The sidebar attention count is populated from the same builder.
+- **Why better than Kima:** one queue instead of three surfaces; every item explains itself; actions complete in place; it is team-aware and respects sequences instead of double-chasing; ranking needs no AI, so it is free and auditable.
+- **Dependencies:** A (activity ages), P0-1 (draft edit / reject), P0-2 (thread → opportunity link). **Data:** activities, threads / messages / classification, opportunities (priority, owner, status, next step), `company_triggers`, `learning_findings`; new `attention_snoozes` and `opportunities.next_step*`.
+- **Architecture:** a pure ranking module (`needs-you-rank.ts`, unit tested) fed by a bounded loader. It replaces `dashboard.ts attentionItems`. No new jobs.
+- **Outcome:** the user opens Huntloop and knows the next five things to do, and why.
+
+#### C. Opportunity page as a decision brief — Phase 1 (timeline, next step) and Phase 3 (intelligence) · **M + M** · worth building: **yes**
+
+- **Current:** strong evidence discipline (§7.1.2), but no history, no competitor context, `company_problems` / `company_gaps` unread, and a recommendation that ignores state (D6, D8).
+- **Kima insight:** a salesperson wants one page that answers who they are, what to sell them, why now, what they use today, what could be displaced, and what to do next. Kima's lead page answers most of these in long AI prose with weak provenance.
+- **Huntloop solution:** reorganise master context §47's sections into a brief, keeping evidence before the pitch:
+  - **Header:** verdict, score, stage, owner, and **Next step** (editable, with a due date), which replaces the static Recommended strip. With no next step set, show a **state-aware recommendation** derived from stage, latest activity, reply classification, buyer and trigger, with its inputs listed ("They replied positively 2 days ago and nobody has answered").
+  - **Who they are:** what they do, size, region, and funding / leadership where researched.
+  - **Why they fit:** ICP criteria matched, not matched or unknown, computed from the ICP and company facts rather than prose.
+  - **Why now:** triggers with freshness (exists).
+  - **What they use:** current approach + `company_competitor_signals` (uses / evaluating / former / partner / mentions, each with its evidence excerpt) + `tech_stack`. A displacement angle appears only for `uses` or `former` with evidence; `partner` is labelled as not competitive.
+  - **Problems and gaps:** `company_problems` (with severity) and `company_gaps` (with current approach), with evidence.
+  - **Strength:** score dimensions explained, confidence, and **what would raise confidence**. Each Unknown becomes a one-click "Research this" request (existing `research_requested_at` seam).
+  - **Who to talk to** (exists).
+  - **Activity:** timeline + Log activity (Phase 1).
+  - **Agent:** upgraded context (Phase 3).
+- **Why better:** every section is sourced, computed or labelled unknown; the page is a research to-do list as well as a selling one; history and next step sit beside the evidence.
+- **Dependencies:** A, B (next step), D (competitor data). **Data:** existing tables + activities. **Architecture:** `getOpportunity` gains bounded sub-queries; `recommendedAction` moves to a pure, tested module.
+
+#### D. Competitor intelligence that changes discovery and outreach — Phase 3 · **L** · worth building: **yes, distinctive and mostly built**
+
+- **Current:** D2. Schema, a profile research task and a deterministic mention resolver exist; there is no UI, `research_competitor` is never enqueued, and nothing consumes the signals.
+- **Kima insight:** per product: who competes, their weakness, our edge, and *their customers as prospects*. Kima's weaknesses and edges are unsourced AI text.
+- **Huntloop solution:**
+  1. **Settings → Competitors** (Company section): list (name, domain, tier, origin); add and dismiss; accept `proposed` competitors; human-owned `our_advantage` / `their_advantage`; **Research** (a request column + a `schedule_followups` branch → `research_competitor`, the established seam); a profile view showing each field's claim kind and evidence.
+  2. **Opportunity "What they use"** card (C) from `company_competitor_signals`.
+  3. **Outreach and agent:** `personalize_message` and `sales_agent` receive competitor signals and profile claims as citable evidence ids. Tier decides whether naming is allowed: direct only with `uses` evidence and a human-written `our_advantage`; adjacent, incumbent and DIY never named.
+  4. **Scoring:** new rule fields "Uses competitor", "Recently left a competitor" and "Evaluating a competitor" in `RULE_FIELDS`. User-authored and testable with the existing `previewRuleAction`.
+  5. **Discovery:** competitor `customer_examples` that carry evidence become *proposed* companies to research (opt-in per competitor, budget-bounded, never auto-contacted).
+  6. **Win / loss:** "lost to competitor" (captured in Phase 1) is aggregated per competitor on its profile and in Performance.
+- **Why better:** sourced or silent. A competitor weakness Huntloop cannot cite is not shown, and signals change scoring and copy instead of sitting on a reference page.
+- **Dependencies:** A (loss reasons), C. **Data:** all existing tables; new `competitors.research_requested_at` and `competitors.prospect_customers`. **Architecture:** no new AI task; two prompt-input extensions with closed citation sets; one sweeper branch.
+
+#### E. Performance intelligence that explains, not just displays — Phase 2 · **L** · worth building: **yes**
+
+- **Current:** D1. Analytics = AI spend (M-11).
+- **Kima insight:** BD people report upward monthly and need funnel rates, time to reply, channel mix, goals and exports. Kima shows these as separate dashboards plus an AI summary.
+- **Huntloop solution:** `/{org}/performance` replaces "Analytics" in Learn (AI spend moves to Operate):
+  - **Funnel** for a period: discovered → qualified → contacted → replied → positive → meeting → proposal → won, with conversion and **median time between stages** (from the Phase 1 ledger; outcomes supply dates from before the ledger).
+  - **Breakdowns**, each drilling down to the opportunities behind the number: source and discovery search (`discovery_performance`), ICP / product, trigger type, persona (`persona_performance`), angle (`angle_performance`), and channel and owner (ledger).
+  - **Cost per outcome:** `ai_runs` + `provider_calls` spend joined to outcomes, giving cost per qualified opportunity and per meeting, by source. Kima cannot do this; Huntloop already records both halves.
+  - **"What changed" insights**, computed deterministically: period-over-period and segment-vs-baseline differences that pass a minimum sample and a confidence-interval test (Wilson), each citing the metric and its opportunities. Below the threshold the page says "not enough data", never a trend.
+  - **Optional narrative** (one AI task, `explain_performance`): receives only computed metric ids and values; its schema forbids numbers that are not in the input; labelled inference; generated on demand and spend-guarded.
+  - **Goals** (workspace and per user: touches per week, meetings per month) shown as pace, not gamification.
+  - **CSV export** of every table (`lib/csv.ts` exists) and "Copy as summary" for a manager update.
+  - **Team view** for owners and admins: per-owner funnel and response rates (master context §28).
+- **Why better:** explanations are statistically honest and traceable to the rows behind them; spend and outcomes share one view; learning findings link from the metric that motivated them.
+- **Dependencies:** A for stage timing and channels. A first slice can ship on existing views before the ledger has accrued history. **Data:** existing views + ledger; new optional `opportunities.estimated_value_cents` for pipeline value. **Architecture:** aggregates as `security_invoker` views or RPCs (PostgREST has no group-by), indexed on `(org_id, kind, occurred_at)`.
+
+#### F. Review capacity and intake quotas — Phase 2B · **S–M** · worth building: **yes, protects spend**
+
+- **Current:** D12. Credit budgets bound cost per run; nothing bounds attention.
+- **Kima insight:** "the agent pauses when the queue is full". Discovery should stop when nobody can review its output.
+- **Huntloop solution:** a workspace **review capacity** setting (max untriaged HOT + WARM, default 50). When it is exceeded, `schedule_discovery` skips the org and records why, and Sources and Needs you show "Discovery paused: N waiting for review" with Triage / Raise limit. An optional per-ICP daily intake cap. The Sources screen gains **yield** (evidence → opportunities → meetings per source, from `discovery_performance` and evidence attribution), and suggests pausing a source whose yield is still zero after N scans, filed as a `source_performance` learning finding for a person to accept. Ops gains a provider-health card from the existing `provider_health` view.
+- **Dependencies:** none. **Architecture:** one guard in `schedule-discovery.ts` and one settings field.
+
+#### G. Workspace co-pilot grounded in Huntloop's own data — Phase 4 · **L–XL** · worth building: **yes, after A–E exist**
+
+- **Current:** `AgentPanel` per opportunity with schema-constrained citations, and no memory or history in its context (D9). `conversations` is unique per `(org, opportunity, user)`.
+- **Kima insight:** "Where am I losing deals? What should I focus on today?" Users want to ask the pipeline questions in plain language. Kima's co-pilot "learns from corrections" by writing memories directly.
+- **Huntloop solution:**
+  - **A Phase 3 step first:** the per-opportunity agent receives a timeline summary, reply classifications, competitor signals, applicable memories (scope-filtered in `packages/db`) and the stage. Cheap and immediately useful.
+  - **Workspace assistant** (new task `workspace_assistant`, a panel reachable from the top bar and Jump-to) with read-only tools over typed loaders: search opportunities, get a brief, get a timeline, Needs you, performance metrics, memories, rules, competitors, and source / engine health. **No web fetch.**
+  - **Answer schema:** answer · citations as typed refs `{type: opportunity|evidence|metric|activity|memory|rule|competitor, id}`, validated against the ids the tools returned in this turn · unresolved · **proposed actions** (open a page, set a next step, create a draft for approval, propose a memory, propose a rule) that run only on an explicit click and only through the existing actions and approval paths.
+  - **Learning from corrections, safely:** "Remember this" stores the user's own sentence as a `source = 'user'` memory after confirmation. Any generalisation the model infers is filed as a `learning_findings` proposal for Learn, never written as memory directly.
+  - **Conversations:** add `conversations.scope` (`opportunity` | `workspace`) and make `opportunity_id` nullable with a check constraint; history is replayed as untrusted.
+  - **Cost:** per-user rate limit, spend guard, caps on tool-result size, prompt caching, and the mid-tier model by default.
+- **Why better:** answers trace to rows; it cannot invent a number, a claim or a memory; it acts only through approval paths. Voice is not needed, because browser dictation covers it.
+- **Dependencies:** A, B, C, D, E. It is only as good as the read models it can call. **Architecture:** the first tool-using task in `packages/ai`; closed-set citation validation generalised from `citableClaims`.
+
+#### H. Multi-product without hard-coding — Phase 5 · **L** · worth building: **conditional, build when a customer needs it**
+
+- **Current:** D10.
+- **Kima insight:** a company selling several products needs each lead matched to the right product(s), with "also fits" visible. Kima hard-codes its products into navigation.
+- **Huntloop solution:** products are data. Product settings becomes a list. **Several ICPs can be active**, each optionally bound to a product; the engine scores a company against every active ICP and produces at most one opportunity per `(company, icp)`, a uniqueness that already exists. Opportunity pages show **Also fits** chips linking sibling opportunities. Opportunities, Pipeline, Needs you and Performance gain a product filter. Sources already carry `icp_id`; campaigns already carry `product_id`.
+- **Risks to design for:** contacting one company twice for two products (enforce the existing company-level caps from `0017` across campaigns, with tests); double counting (dashboards must count distinct companies where they mean companies); discovery spend splitting (per-ICP budgets already exist on `discovery_queries`).
+- **Why better:** no per-product UI sprawl: one company, several opportunities, one relationship timeline at company level.
+- **Dependencies:** A (company-level timeline), E (product breakdowns). **Architecture:** changes to `activateIcpAction`, `followActiveIcp`, ICP loading in `score-opportunity.ts`, `first-run.ts` and Product settings. A company page (a §14.2 gap) becomes the hub for companies with several opportunities.
+
+#### I. Product-demand intelligence — Phase 6 · **M–L** · worth building: **yes, once A has captured reasons for a few months**
+
+- **Current:** no capture (D7). `classify_reply` returns a label and summary only.
+- **Kima insight:** what prospects say is missing, clustered and ranked by volume at risk, should drive the product roadmap. Kima's backlog was empty, because capture is the hard part.
+- **Huntloop solution:** capture ships in Phase 1: loss and disqualification reasons with a category, "missing capability" text, the competitor lost to, and notes taggable as product feedback. Phase 6 adds: reply classification extended to extract objections and requests as **inferences citing the message**; a clustering job proposing **demand themes** (statement; kind: objection, request or blocker; linked activities, outcomes and messages; opportunities affected; pipeline value at stake); a person accepts, merges or rejects themes and sets their status (open / planned / shipped / won't). **When a theme is marked shipped, Needs you surfaces the lost and stalled opportunities that asked for it.** Kima never closes that loop.
+- **Dependencies:** A (reasons, notes), E (value). **Data:** new `demand_themes` and `demand_signals`.
+
+#### J. Learning and memory extensions — spread across Phases 3, 4 and 6 · **M** · worth building: **yes, incrementally**
+
+- **Current:** accept / decline findings with closed citations (strong); Memory ingest of URL, .txt, .md and .csv; non-org scopes need raw UUIDs (§14.2).
+- **Kima insight:** teaching the agent should accept whatever the user has (PDFs, decks, screenshots, call notes), and conversations should yield durable knowledge.
+- **Huntloop solution:** a scope picker instead of raw UUIDs (Phase 3); server-side PDF / DOCX text extraction with size caps (Phase 6); learning targets extended to competitors and demand (Phase 6); "propose memory" from the co-pilot (Phase 4). Screenshots / vision deferred until users ask.
+
+### 16.4 Phases
+
+Ordered by user value × business value ÷ (dependency depth + regression risk), not by the order of the Kima audit.
+
+| Phase | Name | Contents | Complexity | Depends on | Regression risk |
+|---|---|---|---|---|---|
+| **P0** | Prerequisites and quick wins | P0-1 Inbox draft **Edit** and **Reject** · P0-2 thread → opportunity link, wire `assignThreadAction` · P0-3 fix M-07 (success messages lost when a panel closes) · P0-4 fix M-11 (rename to "AI spend", move to Operate) | S–M (≈ 1 week) | — | Low |
+| **P1** | The daily loop | A activity ledger · B Needs you queue · C timeline + next step + state-aware recommendation · loss and disqualification reasons · manual multi-channel logging | L (≈ 3 weeks) | P0 | **Medium** (triggers on send / sync tables) |
+| **P2** | Performance intelligence | E: funnel, breakdowns, cost per outcome, honest insights, goals, CSV, team view | L (≈ 3 weeks) | P1 for timing and channel; a first slice can start on existing views | Low (read-only) |
+| **P2B** | Review capacity | F | S–M | — (runs in parallel with P2) | Low–Medium (discovery scheduler) |
+| **P3** | Intelligence depth | D competitors · C brief sections · agent context upgrade · Memory scope picker | L (≈ 3–4 weeks) | P1 | Medium (prompt inputs) |
+| **P4** | Workspace co-pilot | G | L–XL | P1–P3 | Medium (new AI surface, cost) |
+| **P5** | Multi-product | H + company page | L | P1, P2 | **High** (the engine's ICP model) |
+| **P6** | Demand intelligence and learning extensions | I, J | M–L | P1 (data accrued), P2 | Low–Medium |
+
+**Why this order.** P1 builds the event spine that P2, P3's win/loss, P4's grounding and P6's raw material all read, and it delivers the biggest immediate user value (knowing what to do next) with no AI cost or AI risk. P2 is next because it is read-only and fixes the product's most visible broken promise (M-11). Competitors (P3) come before the co-pilot because they are mostly built and because the co-pilot is only as good as the read models it can call. Multi-product (P5) is the riskiest engine change with the narrowest audience, so it waits for a customer who needs it. Demand intelligence (P6) needs months of captured reasons, so its capture ships in P1 and its analysis later.
+
+### 16.5 Phase 1 — deep technical mapping (with its P0 prerequisites)
+
+#### 16.5.1 Scope
+
+**In:** P0-1 to P0-4; the `activities` ledger with trigger projection and backfill; manual activity logging (LinkedIn message, LinkedIn connect, call, meeting, note, other channel); one next step per opportunity with a due date; loss and disqualification reasons; the ranked Needs you queue with snooze and an ownership filter; the opportunity Activity timeline; the state-aware recommendation; GDPR coverage; COMMAND.md updates.
+
+**Out (later phases):** reporting screens, competitor UI, AI changes, multi-product, demand clustering, HubSpot activity sync, a task system beyond one next step per opportunity, and LinkedIn automation of any kind (manual logging only, see §16.6).
+
+#### 16.5.2 Schema — migration `0037_activity_ledger.sql`
+
+```sql
+-- Sketch. The final SQL follows the house style of 0015 / 0034 (comments state the why).
+create table activities (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organizations(id) on delete cascade,
+  opportunity_id uuid references opportunities(id) on delete cascade,
+  company_id     uuid references companies(id) on delete cascade,
+  person_id      uuid references people(id) on delete set null,
+  kind           text not null check (kind in (
+                   'email_sent','email_received','email_bounced','email_unsubscribed',
+                   'stage_changed','priority_changed','owner_changed','override_recorded',
+                   'outcome_recorded','note','call','meeting','linkedin_message',
+                   'linkedin_connect','other_touch')),
+  channel        text not null check (channel in
+                   ('email','linkedin','phone','meeting','chat','other','system')),
+  direction      text not null check (direction in ('outbound','inbound','internal')),
+  actor_type     text not null check (actor_type in ('user','system','contact')),
+  actor_id       uuid references auth.users(id) on delete set null,
+  occurred_at    timestamptz not null,
+  summary        text not null check (length(summary) <= 500),
+  body           text check (body is null or length(body) <= 10000),  -- manual notes only
+  ref_type       text check (ref_type is null or ref_type in
+                   ('message','message_event','outcome','human_override')),
+  ref_id         uuid,
+  payload        jsonb not null default '{}'::jsonb,   -- e.g. {"from":"contacted","to":"replied"}
+  origin         text not null check (origin in ('trigger','manual','backfill')),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  deleted_at     timestamptz,
+  constraint activities_subject check (opportunity_id is not null or company_id is not null),
+  constraint activities_manual_has_actor check (origin <> 'manual' or actor_id is not null)
+);
+create unique index activities_projection_key on activities (org_id, ref_type, ref_id, kind)
+  where ref_id is not null;                       -- idempotent projection and backfill
+create index activities_opportunity_idx on activities (org_id, opportunity_id, occurred_at desc)
+  where deleted_at is null;
+create index activities_company_idx on activities (org_id, company_id, occurred_at desc)
+  where deleted_at is null;
+create index activities_kind_idx on activities (org_id, kind, occurred_at desc)
+  where deleted_at is null;                       -- Needs you and P2 reporting
+
+create table attention_snoozes (
+  org_id        uuid not null references organizations(id) on delete cascade,
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  item_key      text not null check (length(item_key) <= 200), -- e.g. 'quiet:<opportunity id>'
+  snoozed_until timestamptz not null,
+  created_at    timestamptz not null default now(),
+  primary key (org_id, user_id, item_key)
+);   -- RLS: a user reads and writes only their own rows
+
+alter table opportunities
+  add column next_step         text check (next_step is null or length(next_step) <= 280),
+  add column next_step_due_at  timestamptz,
+  add column next_step_set_by  uuid references auth.users(id) on delete set null,
+  add column next_step_set_at  timestamptz;
+create index opportunities_next_step_due_idx on opportunities (org_id, next_step_due_at)
+  where next_step_due_at is not null and deleted_at is null;
+
+alter table outcomes
+  add column reason_category text check (reason_category is null or reason_category in (
+    'no_need','no_budget','timing','chose_competitor','missing_capability',
+    'no_response','not_a_fit','wrong_contact','other')),
+  add column competitor_id uuid references competitors(id) on delete set null,
+  add column recorded_by   uuid references auth.users(id) on delete set null;
+
+alter table messages                            -- P0-1: human edits to AI drafts
+  add column edited_by          uuid references auth.users(id) on delete set null,
+  add column edited_at          timestamptz,
+  add column original_body_text text;            -- the AI's text, kept only when edited
+
+-- organizations.settings gains 'followup' -> {"quietAfterBusinessDays": 4} (validated in the app).
+```
+
+**Trigger projection.** Each function is `security definer` with `set search_path = public, pg_catalog`, and each body is wrapped in `begin … exception when others then raise warning …; return new; end`, so a projection failure can **never** abort the write that fired it.
+
+| Trigger | Fires on | Writes |
+|---|---|---|
+| `messages_project_activity` | `after insert or update of sent_at on messages` | Outbound, when `sent_at` goes from null to a value: `email_sent`. Inbound, on insert: `email_received`. Opportunity from `messages.opportunity_id`, else `threads.opportunity_id`; person from `to_email` / `from_email` matched on `contact_points` when unambiguous |
+| `message_events_project_activity` | `after insert on message_events` | `bounced` → `email_bounced`, `unsubscribed` → `email_unsubscribed`. Opens and clicks are deliberately not projected |
+| `opportunities_project_activity` | `after update of status, priority, owner_id on opportunities` | `stage_changed` when the status differs; `priority_changed` **only when the band changes**, so rescoring within a band writes nothing and `recompute_scores` cannot flood timelines; `owner_changed`. `actor_type = 'user'` when `auth.uid()` is not null, otherwise `'system'` |
+| `human_overrides_project_activity` | `after insert on human_overrides` | `override_recorded`, with the reason |
+| `outcomes_project_activity` | `after insert on outcomes` | `outcome_recorded` for `disqualified` and `lost` (with the reason). Other kinds already show as stage changes |
+
+**Backfill:** `public.backfill_activities(p_org uuid default null)` inserts from `messages` (sent and inbound), `message_events` (bounced, unsubscribed), `outcomes` and `human_overrides` with `origin = 'backfill'`, using `on conflict do nothing` on the projection key. The migration calls it once for all orgs, and it is safe to re-run. **Stage history from before the migration cannot be reconstructed.** The timeline shows a marker ("History before 6 Oct 2026 shows email and recorded outcomes only"), and P2 timing metrics use outcomes for earlier dates.
+
+**RLS:** `activities` uses the standard `tenant_read` / `tenant_write` (member) pair. Updating or deleting a manual row is limited to its author or an admin through the server action, and deletes are soft. `attention_snoozes` is per user (`user_id = auth.uid()`).
+
+**Privacy and retention, in the same migration:** `erase_contact` already redacts message bodies and must now also redact `messages.original_body_text`; it redacts `activities.body` and nulls `person_id` on the erased person's rows, and deletes manual activities whose only subject is that person; `exportContactAction` includes their activities; `exportOrganizationAction` includes all activities; `enforce_retention` (which prunes never-messaged contacts past `contact_retention_days`) reaches activities through the same person rule; messaged contacts are already exempt from it, so it touches few activity rows. The probe `migration_0037_applied()` is added to `doctor.ts`.
+
+#### 16.5.3 Backend
+
+| File | Change |
+|---|---|
+| `packages/db/migrations/0037_activity_ledger.sql` | New (above) |
+| `packages/db/scripts/verify-migrations.ts` | RLS on both tables; constraints reject a manual row with no actor, an unknown kind and an oversize summary; **a raising projection does not abort a `messages` update**; running the backfill twice leaves the same row count; a recompute within a band writes no activity; a non-member cannot read another org's activities |
+| `packages/db/scripts/doctor.ts` | Probe `migration_0037_applied` |
+| `packages/db/src/types.ts` | `ActivityKind`, `ActivityChannel` and `ReasonCategory` unions, the single source of truth that zod reuses |
+| `packages/db/scripts/seed.ts` | Seed activities, next steps and one lost reason so live screens are not empty |
+| `packages/jobs/*` | **No changes.** Projection happens in the database. `verify-jobs.ts` is re-run unchanged to prove send and sync behaviour did not move |
+| `apps/web/lib/validation.ts` | `logActivitySchema`, `nextStepSchema`, `outcomeReasonSchema`, `snoozeSchema`, `draftEditSchema` |
+| `apps/web/lib/data/activity.ts` | New loader `getTimeline(org, {opportunityId or companyId}, cursor)`, 50 per page, with a demo branch from fixtures |
+| `apps/web/lib/data/needs-you.ts` | New loader that gathers candidates with bounded queries (each ≤ 200 rows) and calls the ranker. It replaces `attentionItems` in `dashboard.ts`; the dashboard keeps its existing shape for the other sections |
+| `apps/web/lib/data/needs-you-rank.ts` | **Pure** ranking and explanation, `rank(items, now, settings)`: no I/O, fully unit tested |
+| `apps/web/lib/data/next-action.ts` | **Pure** state-aware `recommendedAction`, moved out of `opportunity-map.ts` with the old cases kept as fallbacks. Returns `{text, inputs[]}` |
+| `apps/web/lib/data/opportunities.ts`, `opportunity-map.ts` | Load the next step, latest activity and latest reply classification, and map them to the new recommendation |
+| `apps/web/lib/data/inbox.ts` | Expose each thread's `opportunityId` and company (P0-2) |
+| `apps/web/lib/data/personalization.ts` | Export the role `defaultFilter` so Needs you defaults to Mine / Unassigned / Everyone |
+| `app/(app)/[org]/opportunities/[id]/actions.ts` | `logActivityAction` (member and above), `setNextStepAction`, `clearNextStepAction`, `disqualifyAction` (writes an `outcomes` row of kind `disqualified` with its reason, and moves the priority to Ignore through the existing override path so learning sees one coherent event) |
+| `app/(app)/[org]/pipeline/actions.ts` | `setOpportunityStatusAction` accepts an optional `{reasonCategory, competitorId, reason}` for `lost` and writes it to the `outcomes` row it already inserts |
+| `app/(app)/[org]/inbox/actions.ts` | P0-1: `editDraftAction` (subject and body; keeps `evidence_ids`; records `edited_by` / `edited_at` and preserves the AI's `original_body_text`, so master context §27's "AI-generated vs human-edited" becomes measurable; the draft stays unapproved) and `rejectDraftAction` (soft-deletes the draft with a reason; the enrollment parks rather than silently advancing). P0-2: surface `assignThreadAction` |
+| `app/(app)/[org]/needs-you/actions.ts` | `snoozeAttentionAction(itemKey, until)` and `unsnoozeAttentionAction` |
+| `app/(app)/[org]/settings/actions.ts` | `quietAfterBusinessDays` on the organisation settings form (admin) |
+
+Every new action is zod-validated (`SEC-VAL`), goes through `mutate()` with the right `minRole`, and revalidates the dashboard, Needs you, opportunity, pipeline and inbox paths.
+
+#### 16.5.4 Frontend
+
+| File | Change |
+|---|---|
+| `packages/ui/src/components/Timeline.tsx` (new) + a `kitchen-sink` example | Accessible ordered-list primitive: an icon per channel, the actor, relative time via `Freshness`, a collapsible body, and quieter styling for system items |
+| `packages/ui/src/components/ActionRail.tsx` | `onDismiss` becomes a **Snooze** menu (later today / tomorrow / next week); a slot for the "why" line; the inline secondary action already exists |
+| `app/(app)/[org]/dashboard/page.tsx` | The rail renders the top 5 ranked items + "See all N" → `/{org}/needs-you`; the empty state stays honest ("Nothing needs you right now") |
+| `app/(app)/[org]/needs-you/page.tsx` + `NeedsYouQueue.tsx` (new) | Full queue, grouped (Conversations · Follow-ups · New opportunities · Workspace health), with the Mine / Unassigned / Everyone filter, inline actions (Approve / Edit / Reject draft, Reply, Log touch, Set next step, Assign) and snooze |
+| `app/(app)/[org]/OrgShell.tsx` / sidebar config | A "Needs you" nav item under Home showing the attention count (fills the sidebar counts §14.2 notes are never populated) |
+| `app/(app)/[org]/opportunities/[id]/page.tsx` | Next step in the header; the recommendation lists its inputs; a new **Activity** card (Timeline + "Log activity"); a "Mark not a fit" entry |
+| `.../opportunities/[id]/LogActivityForm.tsx`, `NextStepControl.tsx` (new) | Channel, direction, date (defaults to now), summary, optional note, optional next step + due date. Results show in the page's shared `FormMessage` (relies on the M-07 fix) |
+| `.../opportunities/[id]/OpportunityActions.tsx` | A "Not a fit" panel (reason category + note), mutually exclusive with Assign / Enrol / Disagree as those panels are today |
+| `app/(app)/[org]/pipeline/PipelineBoard.tsx` | Choosing **Lost** opens a small reason panel (category, optional competitor from `competitors`, note). "Skip" is allowed: the reason is encouraged, not forced |
+| `app/(app)/[org]/inbox/InboxView.tsx` | Draft **Edit** / **Reject**; the thread header links to its opportunity; an assignee select |
+| `app/(app)/[org]/settings/OrgSettingsForm.tsx` | "Follow-up reminder after N business days" |
+
+Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness` and `FormMessage` patterns; sentence-case copy in Huntloop's voice ("Nothing needs you right now"); no new colours.
+
+#### 16.5.5 AI work in Phase 1
+
+**None.** Ranking and recommendations are deterministic and explained. That is deliberate: Phase 1 adds no model cost, no new prompt surface and no hallucination risk, and its outputs become trusted inputs that later AI phases cite.
+
+#### 16.5.6 Tests
+
+- **DB (`npm run test:migrations`):** as listed in §16.5.3.
+- **Unit (vitest, `apps/web`):** `needs-you-rank.test.ts` (ordering, exclusion when a sequence is active, suppressed contacts excluded, snooze respected, business-day maths across weekends, explanation text includes its inputs); `next-action.test.ts` (each state → its recommendation, the old four cases preserved); activity mapping; validation schemas.
+- **Jobs (`verify-jobs.ts`):** the unchanged suite passes, proving send, sync and advance behaviour did not move.
+- **Playwright:** a new `daily-loop.spec.ts`: log a LinkedIn touch, set a next step, see it in Needs you once due (clock-controlled), snooze it, mark an opportunity lost with a reason, edit and reject a draft. A viewer sees the timeline but no controls. The mobile project covers the queue and the timeline; `a11y.spec.ts` is extended to `/needs-you` and the Activity card.
+- **Audit (`npm run audit:site`):** new loaders pass `FEAT-FIXTURE` (demo branch), new actions pass `SEC-VAL`, and the nav item passes `NAV-*`.
+- **Live check:** `scripts/check-queries.mjs` is extended with the new loaders' SELECTs, run against the live project.
+
+#### 16.5.7 Acceptance criteria
+
+1. Every email sent or received after the migration appears on its opportunity's timeline within one engine tick, with no change to send or sync code, and a forced trigger error does not prevent a send (proven in `verify-migrations`).
+2. A member can log a LinkedIn message, call, meeting or note in at most two interactions from the opportunity page or a Needs you item. A viewer cannot.
+3. Stage, band and owner changes, by people or by the engine, appear on the timeline with the correct actor. Rescoring within a band adds nothing.
+4. Needs you shows individual ranked items, each with a visible reason. Each item type in §16.3-B is produced by a seeded fixture. Snooze persists across devices. The Mine / Unassigned / Everyone filter works and defaults from the role.
+5. An opportunity enrolled in a sequence never appears as "gone quiet", and a suppressed contact is never suggested.
+6. The opportunity's recommendation reflects replies, stage and next step, and lists its inputs.
+7. Moving to Lost offers a reason; "Mark not a fit" writes a `disqualified` outcome with its reason; both appear on the timeline and reach the learning loop (`analyze_performance` input).
+8. Drafts can be edited (edit recorded, original AI text preserved, still unapproved) and rejected (enrollment parked with the reason), and threads link to their opportunity.
+9. Erasing a contact redacts their activity bodies, and the workspace export includes activities.
+10. `npm run verify` passes; COMMAND.md §6, §7.1.2, §8.2, §8.3, §10.1, §10.7 and §14 are updated; M-07 and M-11 leave the register.
+
+#### 16.5.8 Migration and rollout
+
+- Additive only: new tables, nullable columns and triggers. Nothing is dropped or renamed, so existing readers are unaffected.
+- Apply `0037` → run `db:doctor`. The backfill runs inside the migration, bounded by org count; for large tenants the function can be re-run per org.
+- Order within the phase: (1) P0-3 / P0-4 · (2) P0-1 / P0-2 · (3) migration + timeline (read-only value straight away) · (4) manual logging, next step, reasons · (5) Needs you queue · (6) recommendation v2.
+- Rollback: the UI can be reverted on its own; the triggers can be dropped without losing data, because the ledger is a projection and the source tables are untouched.
+
+#### 16.5.9 Regressions to watch
+
+| Risk | Mitigation |
+|---|---|
+| A trigger slows or blocks sending or mailbox sync | Exception-isolated, single-row inserts, indexed lookups only; `verify-migrations` asserts the isolation; watch `send-message` latency and `job_health` after deploy |
+| Timelines flooded by rescoring | Only band changes are recorded; system items are quieter and collapsible |
+| An RLS gap exposing activities across tenants | The standard policy pair plus an explicit cross-tenant read test |
+| GDPR erase missing activity text | `erase_contact` updated in the same migration, plus a Playwright privacy test |
+| A slower dashboard | Needs you candidate queries are bounded and indexed; the rest of the dashboard keeps its head-count queries |
+| Chasing prospects a sequence is already chasing | An active enrollment excludes "gone quiet"; tested |
+| Bypassing approval through draft edit | Editing keeps the draft unapproved; only Approve schedules a send. The Inbox shows that the copy was edited and that sentences a person added are not covered by the cited evidence |
+| Demo-mode regressions | Fixtures for the timeline and the queue; `FEAT-FIXTURE` / `FEAT-DEMO` |
+| COMMAND.md drifting from the UI | The maintenance rule at the top of this file; updated in the shipping commit |
+
+### 16.6 Deliberately not building
+
+| Kima feature | Decision | Reason |
+|---|---|---|
+| Time tracker | **Rejected** | Measures time spent in the app, not selling; feels like surveillance; no decision gets better because of it |
+| Content Studio (news → social posts) | **Rejected for now** | Off the Discover → Learn loop and close to master context §67's "AI spam generator". Revisit only as "share this trigger with my team" if users ask |
+| Voice chat | **Deferred** | High cost and little value over text; browser and OS dictation already work in the agent input |
+| Hard-coded navigation per product | **Rejected** | Products are data (Phase 5), not navigation |
+| API-key / model-picker screen | **Rejected** | Keys are managed through the environment and never shown to tenants; provider health appears on Ops (P2B) |
+| Thousands of free-text agent rules | **Rejected** | Huntloop's rules are few, typed, testable and saved inactive. That is a strength |
+| Named per-person sections ("Pluto's Section") | **Rejected** | Covered by the owner filter, Assignments and the "Mine" filter in Needs you |
+| A separate weekly-learning approval page | **Not needed** | Learn's per-finding accept / decline already does this better |
+| LinkedIn automation or scraping | **Rejected** | Platform terms and master context §67; manual logging and copy-ready drafts only |
+
+### 16.7 Open decisions for the owner
+
+1. **Transactional email.** Huntloop sends no product email today (invites are a copied link). A daily Needs you digest and goal reminders would need it. The provider is a business choice; P1 and P2 are designed to work without it.
+2. **LinkedIn capture.** Manual logging only (recommended for P1), or later a browser extension that records touches the user makes (never automates)?
+3. **Deal value.** Should opportunities carry an optional estimated value (needed for pipeline value and demand "value at stake")? Recommended: yes, optional, in P2.
+4. **Multi-product timing.** Build P5 now, or wait for a paying customer with more than one product? Recommended: wait.
+5. **Plan packaging.** Which phases are gated by plan (master context §56)? The team view and the workspace co-pilot are natural Professional / Team features.
+
+### 16.8 Change log
+
+| Date | Change |
+|---|---|
+| 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |
+| 2026-10-06 | **P0 (1–3) and P1 shipped.** Found and fixed on the way: (1) at autonomy 0–1, first-step drafts had no thread until sent, so the Inbox (threads only) never showed them while the dashboard counted them — the approval queue was unreachable; (2) sequences drafted the next step on top of an unapproved draft, so follow-ups to unsent emails piled up — `advance_enrollments` now holds an enrollment while a draft awaits approval, sets `messages.opportunity_id` on drafts, and stops sequences on opportunities closed as not a fit; (3) `erase_contact` redacted mail *to* a person but not their own replies — now both. The opportunity brief goes two-column at xl instead of lg (at 1024px its main column was ~240px). |

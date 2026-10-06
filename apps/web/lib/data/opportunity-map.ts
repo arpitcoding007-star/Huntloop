@@ -5,6 +5,13 @@ import {
   isVerifiedEmail,
   verificationLabel,
 } from "@huntloop/db/contact";
+import { DEFAULT_QUIET_AFTER_BUSINESS_DAYS } from "@huntloop/db/org-profile";
+import {
+  legacyRecommendation,
+  nextAction,
+  type NextAction,
+  type NextActionInput,
+} from "../needs-you/next-action";
 
 function verificationLabelFor(c: { verification_status: string | null } | undefined): string | null {
   return c ? verificationLabel(c.verification_status) : null;
@@ -89,8 +96,17 @@ export interface OpportunityDetail {
   whyNow: string | null;
   potentialUseCase: string | null;
   outreachAngle: string | null;
+  /** The sentence of `nextAction`, kept for callers that only need the words. */
   recommendedAction: string;
+  /** What to do next, with the facts it rests on (0037, `needs-you/next-action.ts`). */
+  nextAction: NextAction;
+  /** The raw `opportunity_status`, for logic; `status` above is its label. */
+  stage: string;
+  /** One next step per opportunity, or null. */
+  nextStep: { text: string; dueAt: string | null } | null;
   buyers: {
+    /** `people.id`, so an activity can be logged against this person. */
+    id: string;
     name: string;
     title: string;
     isDecisionMaker: boolean;
@@ -185,6 +201,9 @@ export interface DetailQueryRow {
   current_approach: string | null;
   potential_use_case: string | null;
   outreach_angle: string | null;
+  /** 0037 — absent on rows read before the migration. */
+  next_step?: string | null;
+  next_step_due_at?: string | null;
   companies: {
     name: string;
     canonical_domain: string;
@@ -354,15 +373,9 @@ export function recommendedAction(
   hasBuyer: boolean,
   hasTrigger = true,
 ): string {
-  if (priority === "ignore") return "No action — this one is out of scope.";
-  if (priority === "watch") return "Keep monitoring — no reason to contact today.";
-  if (!hasBuyer) return "Identify a decision maker before reaching out.";
-  if (priority !== "hot") return "Research the current approach before contacting.";
-  /* TRUST-005: "while the trigger is fresh" was said of HOT opportunities
-     with no trigger on file at all. */
-  return hasTrigger
-    ? "Reach out now, while the trigger is fresh."
-    : "Reach out — the fit is strong, though no dated trigger is on file yet.";
+  /* TRUST-005 and the four cases live in `needs-you/next-action.ts` now, as
+     the fallback of the state-aware rule. One definition, two callers. */
+  return legacyRecommendation(priority, hasBuyer, hasTrigger);
 }
 
 /* ── Mappers ─────────────────────────────────────────────────────────────── */
@@ -419,11 +432,29 @@ export function mapListRow(
 /** `person_id` → the latest contact-fit score and its explanation. */
 export type ContactFit = Map<string, { score: number; explanation: string | null }>;
 
+/** What the next-action rule needs beyond the row itself. Loaded beside it. */
+export interface DetailContext {
+  lastTouch: NextActionInput["lastTouch"];
+  replyClassification: string | null;
+  sequenceActive: boolean;
+  quietAfterBusinessDays: number;
+  now: Date;
+}
+
+const NO_CONTEXT = (): DetailContext => ({
+  lastTouch: null,
+  replyClassification: null,
+  sequenceActive: false,
+  quietAfterBusinessDays: DEFAULT_QUIET_AFTER_BUSINESS_DAYS,
+  now: new Date(),
+});
+
 export function mapDetail(
   r: DetailQueryRow,
   evidence: EvidenceItem[],
   viewerId: string | null,
   fit: ContactFit = new Map(),
+  context: DetailContext = NO_CONTEXT(),
 ): OpportunityDetail {
   const score = latestScore(r.opportunity_scores);
   const triggers = liveTriggers(r.companies.company_triggers);
@@ -447,6 +478,7 @@ export function mapDetail(
       const linkedin = contacts.find((c) => c.kind === "linkedin");
       const ranked = fit.get(p.id);
       return {
+        id: p.id,
         name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unnamed contact",
         title: p.title ?? "Title unknown",
         isDecisionMaker: p.is_decision_maker,
@@ -483,6 +515,22 @@ export function mapDetail(
       return Number(b.isDecisionMaker) - Number(a.isDecisionMaker);
     });
 
+  const nextStep = r.next_step
+    ? { text: r.next_step, dueAt: r.next_step_due_at ?? null }
+    : null;
+  const action = nextAction({
+    priority: r.priority,
+    status: r.status,
+    hasBuyer: buyers.length > 0,
+    hasTrigger: triggers.length > 0,
+    nextStep,
+    lastTouch: context.lastTouch,
+    replyClassification: context.replyClassification,
+    sequenceActive: context.sequenceActive,
+    now: context.now,
+    quietAfterBusinessDays: context.quietAfterBusinessDays,
+  });
+
   return {
     id: r.id,
     company: r.companies.name,
@@ -514,7 +562,10 @@ export function mapDetail(
     whyNow: r.why_now,
     potentialUseCase: r.potential_use_case,
     outreachAngle: r.outreach_angle,
-    recommendedAction: recommendedAction(r.priority, buyers.length > 0, triggers.length > 0),
+    recommendedAction: action.text,
+    nextAction: action,
+    stage: r.status,
+    nextStep,
     buyers,
     evidence,
     triggers: triggers.map((t) => ({

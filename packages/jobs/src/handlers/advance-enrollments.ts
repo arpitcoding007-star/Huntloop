@@ -46,6 +46,9 @@ const MAX_PER_TICK = 5;
 /** How much evidence a drafting run may cite. Newest first. */
 const MAX_EVIDENCE = 12;
 
+/** How long an enrollment holding for an unapproved draft waits before looking again. */
+export const APPROVAL_RECHECK_MS = 24 * 3600_000;
+
 export async function advanceEnrollments(ctx: JobContext): Promise<JobOutcome> {
   /* The cross-tenant read, immediately fanned out per org — the same pattern
      and the same justification as `schedule_scans`. */
@@ -103,7 +106,8 @@ export async function advanceEnrollments(ctx: JobContext): Promise<JobOutcome> {
 
 type Outcome = "drafted" | "queued" | "stopped" | "waited";
 
-async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcome> {
+/** Exported for `verify-jobs.ts`; the sweep above is the only production caller. */
+export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcome> {
   const { data: enrollment } = await scope
     .select(
       "enrollments",
@@ -134,6 +138,13 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
     await stop(scope, enrollmentId, "They replied. Sequences stop when somebody answers.");
     return "stopped";
   }
+  /* Closed by a person — "Not a fit" archives the opportunity (0037). A
+     sequence that kept writing to a company somebody had just ruled out would
+     be the product overruling the one judgement it most needs to respect. */
+  if (opportunity?.status === "archived") {
+    await stop(scope, enrollmentId, "The opportunity was closed as not a fit.");
+    return "stopped";
+  }
 
   const step = await nextStep(scope, String(enrollment.campaign_id), Number(enrollment.current_step));
   if (!step) {
@@ -150,6 +161,31 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
         current_step: step.position + 1,
         last_step_at: new Date().toISOString(),
         next_action_at: new Date(Date.now() + step.delayHours * 3600_000).toISOString(),
+      })
+      .eq("id", enrollmentId);
+    return "waited";
+  }
+
+  /* Approval gates the sequence, not just the send. At autonomy 0–1 a draft
+     waits for a person; drafting the next step on top of it would produce a
+     follow-up to an email that never left, and a queue of drafts that grows
+     by one every delay while nobody is looking. So an enrollment with an
+     unapproved, unsent draft holds here and looks again in a day. A draft a
+     person rejected is soft-deleted and parks the enrollment from the Inbox,
+     so it never reaches this check. */
+  const { data: awaiting } = await scope
+    .select("messages", "id")
+    .eq("enrollment_id", enrollmentId)
+    .eq("direction", "outbound")
+    .is("scheduled_at", null)
+    .is("sent_at", null)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (awaiting) {
+    await scope
+      .update("enrollments", {
+        next_action_at: new Date(Date.now() + APPROVAL_RECHECK_MS).toISOString(),
       })
       .eq("id", enrollmentId);
     return "waited";
@@ -207,6 +243,10 @@ async function advanceOne(scope: OrgScope, enrollmentId: string): Promise<Outcom
       enrollment_id: enrollmentId,
       step_id: step.id,
       mailbox_id: mailboxId,
+      /* 0018's attribution column. Without it a draft has no way back to its
+         opportunity until it is sent and threaded — so the approval queue
+         could not say who it was for, and the timeline could not show it. */
+      opportunity_id: opportunity?.id ?? enrollment.opportunity_id ?? null,
       direction: "outbound",
       subject: draft.subject,
       body_text: draft.body,

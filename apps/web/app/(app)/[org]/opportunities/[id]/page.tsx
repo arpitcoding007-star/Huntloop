@@ -21,7 +21,10 @@ import { canSpend, canWrite, currentViewer } from "../../../../../lib/data/membe
 import { getConversation } from "../../../../../lib/data/conversation";
 import { getNudge } from "../../../../../lib/data/nudges";
 import { LearningNudge } from "../../dashboard/LearningNudge";
+import { getTimeline } from "../../../../../lib/data/activity";
 import { AgentPanel } from "./AgentPanel";
+import { ActivityPanel } from "./ActivityPanel";
+import { NextStepBar } from "./NextStepBar";
 import { OpportunityActions } from "./OpportunityActions";
 
 /**
@@ -92,6 +95,23 @@ export default async function OpportunityPage({
      evidence ages further down cannot disagree by a render's worth of time. */
   const now = new Date();
 
+  const { data: timeline } = await getTimeline(org, o.id);
+  /* Once a conversation has started, its history is the first thing a person
+     opening this page needs; before that, the research is. */
+  const engaged = !["discovered", "researching", "qualified"].includes(o.stage);
+  const mayWrite = canWrite(viewer);
+  const activity = (
+    <ActivityPanel
+      org={org}
+      opportunityId={o.id}
+      timeline={timeline}
+      people={o.buyers.map((b) => ({ id: b.id, name: b.name, title: b.title }))}
+      canWrite={mayWrite}
+      now={now.toISOString()}
+    />
+  );
+
+
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
       <Link
@@ -148,27 +168,36 @@ export default async function OpportunityPage({
             campaigns={campaigns}
             canWrite={canWrite(viewer)}
             crmConnected={crmConnected}
+            closed={["won", "lost", "archived"].includes(o.stage)}
           />
         </div>
       </header>
 
-      {/* Recommended action, immediately under the verdict — §46 asks the
-          page to answer "what do I do next" without scrolling. */}
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-surface px-4 py-3">
-        <SectionLabel>Recommended</SectionLabel>
-        <span className="text-[14px] text-fg">{o.recommendedAction}</span>
-        {o.triggerDate ? (
-          <Freshness date={o.triggerDate} now={now} label="Trigger" className="ml-auto" />
-        ) : (
-          <span className="ml-auto text-[12px] text-fg-muted">No trigger on file</span>
-        )}
-      </div>
+      {/* What next, immediately under the verdict — §46 asks the page to
+          answer "what do I do next" without scrolling. The person's own next
+          step outranks the derived recommendation, and both show their inputs. */}
+      <NextStepBar
+        org={org}
+        opportunityId={o.id}
+        action={o.nextAction}
+        nextStep={o.nextStep}
+        canWrite={mayWrite}
+      />
+      {o.triggerDate ? (
+        <div className="mt-2 flex justify-end">
+          <Freshness date={o.triggerDate} now={now} label="Trigger" />
+        </div>
+      ) : null}
 
       {streakNudge && <LearningNudge org={org} nudge={streakNudge} />}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Two columns from xl, not lg: at 1024px the workspace sidebar and a
+          360px side column left the brief about 240px wide — narrower than
+          its own forms. Below xl the side column stacks under the brief. */}
+      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── Main column ──────────────────────────────────────────────── */}
         <div className="min-w-0 space-y-6">
+          {engaged && activity}
           {/* TRUST-003: the model wrote these, and they say so — the same badge
               the evidence list uses, rather than prose that reads like fact. */}
           <Prose title="Why this company" body={o.whyThisCompany} inferred />
@@ -270,6 +299,7 @@ export default async function OpportunityPage({
               )}
             </CardBody>
           </Card>
+          {!engaged && activity}
         </div>
 
         {/* ── Side column ──────────────────────────────────────────────── */}

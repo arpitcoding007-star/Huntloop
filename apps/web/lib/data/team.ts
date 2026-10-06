@@ -164,7 +164,7 @@ export async function listAssignments(orgSlug: string): Promise<Loaded<Assignmen
  * concern, and losing the whole members screen because one lookup failed is a
  * worse outcome than showing uuids for a render.
  */
-async function loadProfiles(
+export async function loadProfiles(
   db: TenantClient,
   userIds: string[],
 ): Promise<Map<string, { name: string | null; email: string | null }>> {

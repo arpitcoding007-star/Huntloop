@@ -65,6 +65,9 @@ export function OrgVoiceForm({
   const [backlogCap, setBacklogCap] = useState(
     profile.engine.backlogCap === null ? "" : String(profile.engine.backlogCap),
   );
+  const [quietAfter, setQuietAfter] = useState(
+    profile.followup.quietAfterBusinessDays === null ? "" : String(profile.followup.quietAfterBusinessDays),
+  );
 
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
@@ -83,6 +86,8 @@ export function OrgVoiceForm({
         // Empty means "not set", which resolves to the default. Distinct from
         // 0, which means unlimited — see `backlog_cap()` in `0010`.
         backlogCap: backlogCap.trim() === "" ? null : Number(backlogCap),
+        // Empty means the product default (4 business days).
+        quietAfterBusinessDays: quietAfter.trim() === "" ? null : Number(quietAfter),
       });
       if (res.ok) setResult({ ok: true, message: res.message });
       else {
@@ -175,6 +180,25 @@ export function OrgVoiceForm({
               onChange={(e) => setBacklogCap(e.target.value)}
               disabled={!canAdmin || pending}
               placeholder="250"
+            />
+          )}
+        </Field>
+
+        <Field
+          label="Follow-up reminder"
+          hint="Business days without a reply before an account shows in Needs you as gone quiet. Accounts in an active sequence are left to the sequence. Leave empty for the default of 4."
+          error={fieldErrors.quietAfterBusinessDays}
+        >
+          {(a) => (
+            <Input
+              {...a}
+              type="number"
+              min={1}
+              max={20}
+              value={quietAfter}
+              onChange={(e) => setQuietAfter(e.target.value)}
+              disabled={!canAdmin || pending}
+              placeholder="4"
             />
           )}
         </Field>

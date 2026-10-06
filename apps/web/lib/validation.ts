@@ -2,6 +2,11 @@ import { z } from "zod";
 import { CLAIM_KINDS, CONFIDENCES, PRIORITIES, SCORE_DIMENSIONS } from "@huntloop/ai";
 import { MIN_POSTAL_ADDRESS_LENGTH, ORG_TONES } from "@huntloop/db/org-profile";
 import {
+  ACTIVITY_CHANNELS,
+  MANUAL_ACTIVITY_KINDS,
+  REASON_CATEGORIES,
+} from "@huntloop/db/activity";
+import {
   GOALS,
   MAX_GOALS,
   FIRST_RUN_STAGES,
@@ -415,6 +420,14 @@ export const orgProfileSchema = z.object({
   competitors: z.array(z.string().trim().min(1).max(120)).max(20),
   targetRegions: z.array(z.string().trim().min(1).max(120)).max(20),
   backlogCap: z.number().int().min(0).max(100_000).nullable(),
+  /** 0037: business days before an unanswered touch shows as "gone quiet". */
+  quietAfterBusinessDays: z
+    .number()
+    .int("A whole number of business days.")
+    .min(1, "At least one business day.")
+    .max(20, "At most 20 business days.")
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -528,6 +541,86 @@ export const replyBodySchema = z
   .trim()
   .min(1, "A reply needs something in it.")
   .max(4000, "That reply is longer than an email should be. Trim it to 4 000 characters.");
+
+/**
+ * A person's edit to an AI draft before approving it.
+ *
+ * Subject and body only. The recipient, the step and the cited evidence stay
+ * what the engine chose — an edit changes what the message *says*, and letting
+ * it also change who it goes to would turn the approval queue into a way of
+ * sending anything to anyone.
+ */
+export const draftEditSchema = z.object({
+  subject: z.string().trim().min(1, "A message needs a subject.").max(200),
+  body: z
+    .string()
+    .trim()
+    .min(1, "A message needs a body.")
+    .max(8000, "That message is longer than an email should be. Trim it to 8 000 characters."),
+});
+
+/** Why a person refused a draft. Optional, short, and kept on the row. */
+export const rejectionReasonSchema = z
+  .string()
+  .trim()
+  .max(500, "Keep the reason under 500 characters.")
+  .optional()
+  .or(z.literal(""));
+
+/**
+ * A touch a person logs by hand — 0037's manual activities.
+ *
+ * `occurredAt` is bounded both ways: a future date is a plan (that is what the
+ * next step is for), and one more than two years back is almost certainly a
+ * typo that would quietly reorder the timeline.
+ */
+export const logActivitySchema = z
+  .object({
+    kind: z.enum(MANUAL_ACTIVITY_KINDS),
+    channel: z.enum(ACTIVITY_CHANNELS).refine((c) => c !== "system", "Pick a channel."),
+    direction: z.enum(["outbound", "inbound", "internal"]),
+    summary: z.string().trim().min(1, "Say what happened in a few words.").max(200),
+    body: z.string().trim().max(5000, "Notes are capped at 5 000 characters.").optional().or(z.literal("")),
+    occurredAt: z.iso.datetime({ offset: true }).optional(),
+    personId: uuidSchema.optional().nullable(),
+  })
+  .refine(
+    (v) => !v.occurredAt || Date.parse(v.occurredAt) <= Date.now() + 5 * 60_000,
+    { message: "That is in the future. Use a next step for something you plan to do.", path: ["occurredAt"] },
+  )
+  .refine(
+    (v) => !v.occurredAt || Date.parse(v.occurredAt) >= Date.now() - 2 * 365 * 24 * 3600_000,
+    { message: "That is more than two years ago.", path: ["occurredAt"] },
+  )
+  .refine((v) => v.kind !== "note" || v.direction === "internal", {
+    message: "A note is internal.",
+    path: ["direction"],
+  });
+
+/** One next step per opportunity, with an optional due date. */
+export const nextStepSchema = z.object({
+  text: z.string().trim().min(1, "Say what the next step is.").max(280),
+  dueAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+/** Why a deal ended, or why it was never a fit. */
+export const outcomeReasonSchema = z.object({
+  category: z.enum(REASON_CATEGORIES).nullable(),
+  competitorId: uuidSchema.nullable().optional(),
+  reason: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+/** A "Needs you" item key — `<kind>:<id>`, opaque to everything but the queue. */
+export const attentionKeySchema = z
+  .string()
+  .min(3)
+  .max(200)
+  .regex(/^[a-z-]+:[A-Za-z0-9-]+$/, "That item reference isn't valid.");
+
+export const snoozeSchema = z.object({
+  key: attentionKeySchema,
+  until: z.iso.datetime({ offset: true }),
+});
 
 /**
  * A qualification, on its way back from the browser to be saved.

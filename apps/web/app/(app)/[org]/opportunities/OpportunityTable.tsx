@@ -123,6 +123,9 @@ export function OpportunityTable({
   }, []);
 
   const [selected, setSelected] = useState<string[]>([]);
+  /* M-07: the panel that reports success unmounts on success, so the outcome
+     lives here, where it outlasts the panel. */
+  const [notice, setNotice] = useState<string | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
     key: "priority",
@@ -304,11 +307,15 @@ export function OpportunityTable({
           campaigns={campaigns}
           selected={selected}
           onClose={() => setEnrolling(false)}
-          onEnrolled={() => {
+          onEnrolled={(message) => {
             setEnrolling(false);
             setSelected([]);
+            setNotice(message ?? "Added to the campaign.");
           }}
         />
+      )}
+      {notice && !enrolling && (
+        <FormMessage result={{ ok: true, message: notice }} className="mt-3" />
       )}
 
       <FilterBar
@@ -454,7 +461,7 @@ function EnrollPanel({
   campaigns: CampaignTarget[];
   selected: string[];
   onClose: () => void;
-  onEnrolled: () => void;
+  onEnrolled: (message?: string) => void;
 }) {
   const sendable = campaigns.filter((c) => c.sendable);
   const [campaignId, setCampaignId] = useState(sendable[0]?.id ?? "");
@@ -504,8 +511,8 @@ function EnrollPanel({
             onClick={() => {
               startTransition(async () => {
                 const outcome = await enrollOpportunitiesAction(org, campaignId, selected);
-                setResult(outcome);
-                if (outcome.ok) onEnrolled();
+                if (outcome.ok) onEnrolled(outcome.message);
+                else setResult(outcome);
               });
             }}
           >

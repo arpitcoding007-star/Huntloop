@@ -1,6 +1,8 @@
 import type { TenantClient } from "@huntloop/db";
 import type { EvidenceItem } from "@huntloop/ui";
-import { OPPORTUNITIES, findOpportunity } from "../fixtures/opportunities";
+import { DEFAULT_QUIET_AFTER_BUSINESS_DAYS, parseOrgProfile } from "@huntloop/db/org-profile";
+import { NOW as FIXTURE_NOW, OPPORTUNITIES, findOpportunity } from "../fixtures/opportunities";
+import { nextAction } from "../needs-you/next-action";
 import { currentViewer } from "./membership";
 import { currentUserId } from "./org";
 import { load, type Loaded } from "./source";
@@ -11,6 +13,7 @@ import {
   mapEvidence,
   mapListRow,
   type ContactFit,
+  type DetailContext,
   type DetailQueryRow,
   type EvidenceQueryRow,
   type ListQueryRow,
@@ -192,6 +195,7 @@ export async function getOpportunity(
           `id, company_id, priority, priority_reason, status, confidence, first_seen_at,
            owner_id, why_this_company, identified_problem, potential_gap,
            why_now, current_approach, potential_use_case, outreach_angle,
+           next_step, next_step_due_at,
            companies!inner(name, canonical_domain, industry, region,
              employee_count, description,
              company_triggers(trigger_type, event_date, strength, deleted_at),
@@ -217,22 +221,103 @@ export async function getOpportunity(
         .filter((p) => p.deleted_at === null)
         .map((p) => p.id);
 
-      const [evidence, viewerId, fit] = await Promise.all([
+      const [evidence, viewerId, fit, context] = await Promise.all([
         evidenceFor(db, orgId, id, (data as { company_id: string }).company_id),
         currentUserId(db),
         contactFitFor(db, orgId, personIds),
+        detailContext(db, orgId, id),
       ]);
 
-      return mapDetail(row, evidence, viewerId, fit);
+      return mapDetail(row, evidence, viewerId, fit, context);
     },
     () => {
       const fixture = findOpportunity(id);
+      if (!fixture) return undefined;
       /* `ownerId` is null on every fixture, and stays a real null rather than
          an invented uuid: the demo owner label reads "You", which is a
-         rendering choice, not a claim that a particular account owns it. */
-      return fixture && { ...fixture, ownerId: null };
+         rendering choice, not a claim that a particular account owns it.
+         The next action is computed by the same rule as live data, at the
+         fixtures' own instant, so the demo shows what the rule really says. */
+      const stage = fixture.status.toLowerCase();
+      const action = nextAction({
+        priority: fixture.priority,
+        status: stage,
+        hasBuyer: fixture.buyers.length > 0,
+        hasTrigger: fixture.triggerDate !== null,
+        nextStep: null,
+        lastTouch: null,
+        replyClassification: null,
+        sequenceActive: false,
+        now: FIXTURE_NOW,
+        quietAfterBusinessDays: DEFAULT_QUIET_AFTER_BUSINESS_DAYS,
+      });
+      return {
+        ...fixture,
+        ownerId: null,
+        stage,
+        nextStep: null,
+        nextAction: action,
+        recommendedAction: action.text,
+        buyers: fixture.buyers.map((b, i) => ({ ...b, id: `${fixture.id}-buyer-${i}` })),
+      };
     },
   );
+}
+
+/**
+ * What the next-action rule needs beyond the opportunity row (0037).
+ *
+ * Four small reads, each bounded to one row or one count, and each allowed to
+ * come back empty: a missing piece of context makes the recommendation fall
+ * back to the verdict-only rule, which is still true — it never makes the page
+ * fail.
+ */
+async function detailContext(db: TenantClient, orgId: string, opportunityId: string): Promise<DetailContext> {
+  const [touch, thread, enrolled, org] = await Promise.all([
+    db
+      .from("activities")
+      .select("direction, channel, occurred_at")
+      .eq("org_id", orgId)
+      .eq("opportunity_id", opportunityId)
+      .in("kind", ["email_sent", "email_received", "message", "call", "meeting", "connection_request"])
+      .neq("direction", "internal")
+      .is("deleted_at", null)
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("threads")
+      .select("classification")
+      .eq("org_id", orgId)
+      .eq("opportunity_id", opportunityId)
+      .not("classification", "is", null)
+      .is("deleted_at", null)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("enrollments")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("opportunity_id", opportunityId)
+      .eq("status", "active")
+      .is("deleted_at", null),
+    db.from("organizations").select("settings").eq("id", orgId).maybeSingle(),
+  ]);
+
+  const t = touch.data as { direction: string; channel: string; occurred_at: string } | null;
+  return {
+    lastTouch:
+      t && (t.direction === "inbound" || t.direction === "outbound")
+        ? { direction: t.direction, channel: t.channel, at: t.occurred_at }
+        : null,
+    replyClassification: (thread.data as { classification: string | null } | null)?.classification ?? null,
+    sequenceActive: Number(enrolled.count ?? 0) > 0,
+    quietAfterBusinessDays:
+      parseOrgProfile((org.data as { settings?: unknown } | null)?.settings).followup
+        .quietAfterBusinessDays ?? DEFAULT_QUIET_AFTER_BUSINESS_DAYS,
+    now: new Date(),
+  };
 }
 
 /**

@@ -3,6 +3,8 @@ import { HuntNowButton } from "./HuntNowButton";
 import Link from "next/link";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { getDashboard } from "../../../../lib/data/dashboard";
+import { getDefaultNeedsYou } from "../../../../lib/data/needs-you";
+import { NeedsYouList } from "../needs-you/NeedsYouList";
 import { getShellChrome } from "../../../../lib/data/chrome";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
 import { personalize, type DashboardSection } from "../../../../lib/data/personalization";
@@ -12,8 +14,6 @@ import { getNudge } from "../../../../lib/data/nudges";
 import { LearningNudge } from "./LearningNudge";
 import { RefreshButton } from "../RefreshButton";
 import {
-  ActionRail,
-  ActionRailItem,
   BreakdownList,
   Button,
   Card,
@@ -102,6 +102,14 @@ export default async function DashboardPage({
   /* The layout this person gets. Order and defaults only — never capability;
      see lib/data/personalization.ts for why that line is where it is. */
   const layout = personalize(onboarding?.role ?? null, onboarding?.goals ?? [], org);
+
+  /* "Needs you", filtered the way this role works by default (§14.2: the
+     role's `defaultFilter` was computed and never applied). An SDR sees
+     their own queue; a founder sees everything. The full page lets anyone
+     switch. */
+  const { data: needsYou } = await getDefaultNeedsYou(org);
+  const attention = needsYou.items;
+  const RAIL_LIMIT = 5;
   const mayHunt = canSpend(viewer);
 
   /* Resolved once per request and passed down, so every relative age on the
@@ -109,7 +117,7 @@ export default async function DashboardPage({
      per component. */
   const now = new Date();
 
-  const { counts, whyNow, loop, outcomes, capacity, attention } = data;
+  const { counts, whyNow, loop, outcomes, capacity } = data;
   const totalOpportunities = counts.hot + counts.warm + counts.watch + counts.ignore;
 
   /* No `DemoFigures` here any more, and its own comment is the argument for
@@ -591,20 +599,26 @@ export default async function DashboardPage({
           It renders at all only when something is actually waiting, so this
           cannot push the page down for a workspace with nothing to do. */}
       {attention.length > 0 && (
-        <ActionRail className="order-first min-[1440px]:order-none">
-          {attention.map((item) => (
-            <ActionRailItem
-              key={item.kind}
-              title={item.title}
-              source={item.source}
-              sourceVariant={RAIL_TONE[item.kind]}
-              meta={item.meta}
-              primaryLabel="Open"
-              href={item.href ?? undefined}
-              linkComponent={Link}
-            />
-          ))}
-        </ActionRail>
+        <aside
+          aria-labelledby="needs-you-rail"
+          className="order-first flex flex-col gap-3 min-[1440px]:order-none"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <h2
+              id="needs-you-rail"
+              className="text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase"
+            >
+              Needs you · {attention.length}
+            </h2>
+            <Link
+              href={`/${org}/needs-you`}
+              className="hl-focusable rounded-sm text-[12px] text-fg-muted transition-colors duration-[120ms] hover:text-fg-secondary"
+            >
+              {attention.length > RAIL_LIMIT ? `See all ${attention.length} →` : "Open the queue →"}
+            </Link>
+          </div>
+          <NeedsYouList org={org} items={attention.slice(0, RAIL_LIMIT)} compact />
+        </aside>
       )}
       </div>
     </>
@@ -623,11 +637,5 @@ function BreakdownEmpty({ children }: { children: ReactNode }) {
   );
 }
 
-const RAIL_TONE = {
-  replies: "info",
-  approvals: "ai",
-  "failing-sources": "warning",
-  "stale-evidence": "neutral",
-} as const;
 
 export const metadata = { title: "Command Center" };

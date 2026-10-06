@@ -264,7 +264,11 @@ export function SourceManager({
           <SourceForm
             org={org}
             canWrite={canWrite}
-            onDone={() => setAdding(false)}
+            onDone={(message) => {
+              setAdding(false);
+              /* M-07: shown in the page's own message slot, which outlasts the form. */
+              if (message) setResult({ ok: true, message });
+            }}
           />
         </div>
       )}
@@ -608,7 +612,7 @@ function SourceForm({
 }: {
   org: string;
   canWrite: boolean;
-  onDone: () => void;
+  onDone: (message?: string) => void;
 }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<SourceInput["kind"]>("news");
@@ -685,8 +689,7 @@ function SourceForm({
               start(async () => {
                 const res = await saveSourceAction(org, { name, kind, url, icpId: "" });
                 if (res.ok) {
-                  setResult({ ok: true, message: res.message });
-                  onDone();
+                  onDone(res.message ?? "Source added.");
                 } else {
                   setResult({ ok: false, error: res.error });
                   setFieldErrors(res.fieldErrors ?? {});
@@ -696,7 +699,7 @@ function SourceForm({
           >
             {pending ? "Adding…" : "Add source"}
           </Button>
-          <Button variant="ghost" onClick={onDone} disabled={pending}>
+          <Button variant="ghost" onClick={() => onDone()} disabled={pending}>
             Cancel
           </Button>
         </div>

@@ -3162,6 +3162,327 @@ console.log("\n0035 — one message per enrollment step");
   else fail("outbound messages are unique per (enrollment, step)", def || "no index");
 }
 
+// ── 0037 — the daily loop ───────────────────────────────────────────────────
+// The activity ledger is fed by triggers, so its two promises are tested
+// directly: it records what happened, and it can never stop the thing that
+// happened from happening.
+console.log("\n0037 — the activity ledger and the daily loop");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const OWNER = "11111111-1111-1111-1111-111111111111";
+  const VIEWER = "22222222-2222-2222-2222-222222222222";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const OPP = "37373737-0037-0037-0037-000000000001";
+  const CO = "37373737-0037-0037-0037-0000000000c0";
+  const MSG = "37373737-0037-0037-0037-0000000000a1";
+  const MSG2 = "37373737-0037-0037-0037-0000000000a2";
+
+  const asUser = async (user: string, sql: string, params: unknown[] = []) => {
+    await db.exec("begin");
+    try {
+      await db.exec("set local role authenticated");
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [user]);
+      const r = await db.query<Record<string, unknown>>(sql, params);
+      await db.exec("commit");
+      return { rows: r.rows, error: null as string | null };
+    } catch (e) {
+      await db.exec("rollback");
+      return { rows: [], error: (e as Error).message };
+    }
+  };
+  const count = async (sql: string, params: unknown[] = []) =>
+    Number((await db.query<{ n: number }>(sql, params)).rows[0]?.n ?? 0);
+
+  for (const t of ["activities", "attention_snoozes"]) {
+    const r = await db.query<{ on: boolean }>(
+      `select relrowsecurity as on from pg_class where relname = $1`,
+      [t],
+    );
+    if (r.rows[0]?.on) ok(`RLS is on for ${t}`);
+    else fail(`RLS is on for ${t}`, "off");
+  }
+
+  await db.query(
+    `insert into companies (id, org_id, canonical_domain, name) values ($1, $2, 'ledger-0037.test', 'Ledger Co')`,
+    [CO, A],
+  );
+  await db.query(
+    `insert into opportunities (id, org_id, company_id, priority, priority_reason, first_seen_at)
+     values ($1, $2, $3, 'warm', 'Hiring for the problem.', now() - interval '3 days')`,
+    [OPP, A, CO],
+  );
+  if (
+    (await count(
+      `select count(*)::int as n from activities where opportunity_id = $1 and kind = 'discovered'`,
+      [OPP],
+    )) === 1
+  )
+    ok("a new opportunity records that it was found");
+  else fail("a new opportunity records that it was found", "no row");
+
+  // A draft becomes history only when it is sent.
+  await db.query(
+    `insert into messages (id, org_id, opportunity_id, direction, subject, body_text, ai_generated, to_email)
+     values ($1, $2, $3, 'outbound', 'Hello', 'Body', true, 'buyer@alphio.ai')`,
+    [MSG, A, OPP],
+  );
+  if (
+    (await count(`select count(*)::int as n from activities where ref_id = $1`, [MSG])) === 0
+  )
+    ok("an unsent draft is not history");
+  else fail("an unsent draft is not history", "projected");
+
+  await db.query(
+    `update messages set sent_at = now(), provider_message_id = 'p-1' where id = $1`,
+    [MSG],
+  );
+  const sent = await db.query<{ kind: string; summary: string }>(
+    `select kind, summary from activities where ref_id = $1`,
+    [MSG],
+  );
+  if (sent.rows.length === 1 && sent.rows[0]!.kind === "email_sent")
+    ok("sending it records an email_sent activity");
+  else fail("sending it records an email_sent activity", JSON.stringify(sent.rows));
+  if (!/Hello|Body/.test(sent.rows[0]?.summary ?? ""))
+    ok("and the ledger copies no subject or body");
+  else fail("and the ledger copies no subject or body", sent.rows[0]?.summary);
+
+  // The promise that matters most: a broken projection cannot stop a send.
+  await db.exec(`alter table activities add constraint boom_0037 check (false) not valid`);
+  await db.query(
+    `insert into messages (id, org_id, opportunity_id, direction, subject, body_text, ai_generated, to_email)
+     values ($1, $2, $3, 'outbound', 'Second', 'Body', true, 'buyer@alphio.ai')`,
+    [MSG2, A, OPP],
+  );
+  try {
+    await db.query(
+      `update messages set sent_at = now(), provider_message_id = 'p-2' where id = $1`,
+      [MSG2],
+    );
+    const r = await db.query<{ sent_at: string | null }>(
+      `select sent_at from messages where id = $1`,
+      [MSG2],
+    );
+    if (r.rows[0]?.sent_at) ok("a failing projection does not abort the send it describes");
+    else fail("a failing projection does not abort the send it describes", "sent_at not stored");
+  } catch (e) {
+    fail("a failing projection does not abort the send it describes", e);
+  }
+  await db.exec(`alter table activities drop constraint boom_0037`);
+
+  // ...and the backfill repairs the gap, idempotently.
+  await db.query(`select public.backfill_activities($1)`, [A]);
+  const afterFirst = await count(`select count(*)::int as n from activities where org_id = $1`, [A]);
+  await db.query(`select public.backfill_activities($1)`, [A]);
+  const afterSecond = await count(`select count(*)::int as n from activities where org_id = $1`, [A]);
+  if (
+    (await count(`select count(*)::int as n from activities where ref_id = $1`, [MSG2])) === 1
+  )
+    ok("the backfill repairs a gap the failing projection left");
+  else fail("the backfill repairs a gap the failing projection left", "still missing");
+  if (afterFirst === afterSecond) ok("running the backfill twice adds nothing");
+  else fail("running the backfill twice adds nothing", `${afterFirst} → ${afterSecond}`);
+
+  // Bands: the engine's moves are history; a rescore inside a band is not.
+  const bands = () =>
+    count(
+      `select count(*)::int as n from activities where opportunity_id = $1 and kind = 'priority_changed'`,
+      [OPP],
+    );
+  const b0 = await bands();
+  await db.query(`update opportunities set priority = 'warm' where id = $1`, [OPP]);
+  if ((await bands()) === b0) ok("a rescore that keeps the band records nothing");
+  else fail("a rescore that keeps the band records nothing", "recorded");
+  await db.query(`update opportunities set priority = 'hot' where id = $1`, [OPP]);
+  if ((await bands()) === b0 + 1) ok("the engine moving the band is recorded");
+  else fail("the engine moving the band is recorded", "missing");
+
+  // Stage changes carry their actor.
+  const moved = await asUser(
+    OWNER,
+    `update opportunities set status = 'contacted' where id = $1 returning id`,
+    [OPP],
+  );
+  const stage = await db.query<{ actor_type: string; actor_id: string | null }>(
+    `select actor_type, actor_id from activities
+      where opportunity_id = $1 and kind = 'stage_changed' order by created_at desc limit 1`,
+    [OPP],
+  );
+  if (!moved.error && stage.rows[0]?.actor_type === "user" && stage.rows[0]?.actor_id === OWNER)
+    ok("a person's stage change is recorded as theirs");
+  else fail("a person's stage change is recorded as theirs", moved.error ?? JSON.stringify(stage.rows));
+
+  // What a session may write.
+  const forged = await asUser(
+    OWNER,
+    `insert into activities (org_id, opportunity_id, kind, channel, direction, actor_type, actor_id,
+       occurred_at, summary, origin)
+     values ($1, $2, 'email_sent', 'email', 'outbound', 'user', $3, now(), 'Email sent', 'manual')`,
+    [A, OPP, OWNER],
+  );
+  if (forged.error) ok("a session cannot forge a system activity");
+  else fail("a session cannot forge a system activity", "insert accepted");
+
+  const asSomeoneElse = await asUser(
+    OWNER,
+    `insert into activities (org_id, opportunity_id, kind, channel, direction, actor_type, actor_id,
+       occurred_at, summary, origin)
+     values ($1, $2, 'note', 'other', 'internal', 'user', $3, now(), 'A note', 'manual')`,
+    [A, OPP, VIEWER],
+  );
+  if (asSomeoneElse.error) ok("a session cannot log an activity as somebody else");
+  else fail("a session cannot log an activity as somebody else", "insert accepted");
+
+  const note = await asUser(
+    OWNER,
+    `insert into activities (org_id, opportunity_id, kind, channel, direction, actor_type, actor_id,
+       occurred_at, summary, body, origin)
+     values ($1, $2, 'message', 'linkedin', 'outbound', 'user', $3, now(),
+       'LinkedIn message', 'Asked about their custody setup.', 'manual') returning id`,
+    [A, OPP, OWNER],
+  );
+  if (!note.error) ok("a member logs a LinkedIn message as themselves");
+  else fail("a member logs a LinkedIn message as themselves", note.error);
+
+  const viewerNote = await asUser(
+    VIEWER,
+    `insert into activities (org_id, opportunity_id, kind, channel, direction, actor_type, actor_id,
+       occurred_at, summary, origin)
+     values ($1, $2, 'note', 'other', 'internal', 'user', $3, now(), 'Viewer note', 'manual')`,
+    [A, OPP, VIEWER],
+  );
+  if (viewerNote.error) ok("a viewer cannot log activity");
+  else fail("a viewer cannot log activity", "insert accepted");
+
+  const hardDelete = await asUser(OWNER, `delete from activities where org_id = $1 returning id`, [A]);
+  if (hardDelete.rows.length === 0) ok("the ledger cannot be hard-deleted by a session");
+  else fail("the ledger cannot be hard-deleted by a session", `${hardDelete.rows.length} rows`);
+
+  const otherTenant = await asUser(
+    OWNER_B,
+    `select count(*)::int as n from activities where org_id = $1`,
+    [A],
+  );
+  if (Number(otherTenant.rows[0]?.n ?? -1) === 0) ok("another tenant reads none of it");
+  else fail("another tenant reads none of it", JSON.stringify(otherTenant.rows));
+
+  // Snoozes are personal.
+  await asUser(
+    OWNER,
+    `insert into attention_snoozes (org_id, user_id, item_key, snoozed_until)
+     values ($1, $2, 'quiet:x', now() + interval '1 day')`,
+    [A, OWNER],
+  );
+  const viewerSees = await asUser(
+    VIEWER,
+    `select count(*)::int as n from attention_snoozes where org_id = $1`,
+    [A],
+  );
+  if (Number(viewerSees.rows[0]?.n ?? -1) === 0) ok("nobody reads another person's snoozes");
+  else fail("nobody reads another person's snoozes", JSON.stringify(viewerSees.rows));
+  const snoozeForOther = await asUser(
+    VIEWER,
+    `insert into attention_snoozes (org_id, user_id, item_key, snoozed_until)
+     values ($1, $2, 'quiet:y', now() + interval '1 day')`,
+    [A, OWNER],
+  );
+  if (snoozeForOther.error) ok("nor writes them");
+  else fail("nor writes them", "insert accepted");
+
+  // Outcomes with a why become history; reasons are bounded.
+  await db.query(
+    `insert into outcomes (org_id, opportunity_id, kind, reason_category, reason, recorded_by)
+     values ($1, $2, 'disqualified', 'not_a_fit', 'They build in-house.', $3)`,
+    [A, OPP, OWNER],
+  );
+  if (
+    (await count(
+      `select count(*)::int as n from activities where opportunity_id = $1 and kind = 'outcome_recorded'`,
+      [OPP],
+    )) === 1
+  )
+    ok("a disqualification with its reason is on the timeline");
+  else fail("a disqualification with its reason is on the timeline", "missing");
+  await expectReject(
+    db,
+    "an unknown loss reason category is refused",
+    `insert into outcomes (org_id, opportunity_id, kind, reason_category) values ($1, $2, 'lost', 'vibes')`,
+    [A, OPP],
+  );
+
+  // Erasure reaches hand-written activity about the person.
+  const PERSON = "37373737-0037-0037-0037-0000000000b1";
+  await db.query(
+    `insert into people (id, org_id, company_id, first_name) values ($1, $2, $3, 'Erin')`,
+    [PERSON, A, CO],
+  );
+  await db.query(
+    `insert into contact_points (org_id, person_id, kind, value) values ($1, $2, 'email', 'erin-0037@alphio.ai')`,
+    [A, PERSON],
+  );
+  await db.query(
+    `insert into activities (org_id, opportunity_id, person_id, kind, channel, direction, actor_type,
+       actor_id, occurred_at, summary, body, origin)
+     values ($1, $2, $3, 'call', 'phone', 'outbound', 'user', $4, now(), 'Call with Erin',
+       'Erin said budget is frozen until Q3.', 'manual')`,
+    [A, OPP, PERSON, OWNER],
+  );
+  await db.query(
+    `insert into messages (org_id, opportunity_id, direction, subject, body_text, from_email)
+     values ($1, $2, 'inbound', 'Re: Hello', 'Not now, thanks.', 'erin-0037@alphio.ai')`,
+    [A, OPP],
+  );
+  await db.query(`select public.erase_contact($1, 'erin-0037@alphio.ai', null)`, [A]);
+  const erased = await db.query<{ body: string | null; summary: string }>(
+    `select body, summary from activities where person_id = $1`,
+    [PERSON],
+  );
+  if (erased.rows.length > 0 && erased.rows.every((r) => r.body === null && r.summary === "[erased]"))
+    ok("erasing a contact redacts what people wrote about them");
+  else fail("erasing a contact redacts what people wrote about them", JSON.stringify(erased.rows));
+  if (
+    (await count(
+      `select count(*)::int as n from messages where org_id = $1 and body_text = 'Not now, thanks.'`,
+      [A],
+    )) === 0
+  )
+    ok("and their own replies, not only mail sent to them");
+  else fail("and their own replies, not only mail sent to them", "inbound body survived");
+
+  // Draft review columns exist, and a rejected draft becomes history.
+  await db.query(
+    `update messages set rejected_at = now(), rejected_by = $2, rejection_reason = 'Wrong angle',
+       deleted_at = now() where id = (
+         select id from messages where org_id = $1 and direction = 'outbound'
+         and sent_at is null limit 1)`,
+    [A, OWNER],
+  );
+  await db.query(
+    `insert into messages (org_id, opportunity_id, direction, subject, body_text, ai_generated, to_email)
+     values ($1, $2, 'outbound', 'Draft', 'Draft body', true, 'buyer@alphio.ai')`,
+    [A, OPP],
+  );
+  await db.query(
+    `update messages set rejected_at = now(), rejected_by = $2, rejection_reason = 'Too pushy',
+       deleted_at = now() where org_id = $1 and subject = 'Draft'`,
+    [A, OWNER],
+  );
+  if (
+    (await count(
+      `select count(*)::int as n from activities where opportunity_id = $1 and kind = 'draft_rejected'`,
+      [OPP],
+    )) >= 1
+  )
+    ok("a rejected draft is recorded, with who rejected it");
+  else fail("a rejected draft is recorded, with who rejected it", "missing");
+
+  const callable = await db.query<{ can: boolean }>(
+    `select has_function_privilege('authenticated', 'public.backfill_activities(uuid)', 'execute') as can`,
+  );
+  if (!callable.rows[0]!.can) ok("sessions cannot run the backfill");
+  else fail("sessions cannot run the backfill", "execute granted");
+}
+
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,

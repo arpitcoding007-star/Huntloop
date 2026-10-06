@@ -89,16 +89,35 @@ export interface OrgComplianceSettings {
   postalAddress: string | null;
 }
 
+/**
+ * How "Needs you" decides an account has gone quiet (0037, COMMAND.md §16.3-B).
+ *
+ * In business days, because a message sent on Friday has not been ignored by
+ * Monday morning. Null means the org has not chosen and the product default
+ * (`DEFAULT_QUIET_AFTER_BUSINESS_DAYS`) applies — kept distinct from a chosen
+ * value for the same reason the backlog cap is.
+ */
+export interface OrgFollowupSettings {
+  quietAfterBusinessDays: number | null;
+}
+
+/** The product default when a workspace has not chosen. */
+export const DEFAULT_QUIET_AFTER_BUSINESS_DAYS = 4;
+/** Bounds on the follow-up setting: one business day to a month of them. */
+export const QUIET_AFTER_RANGE = { min: 1, max: 20 } as const;
+
 export interface OrgProfile {
   voice: OrgVoice;
   engine: OrgEngineSettings;
   compliance: OrgComplianceSettings;
+  followup: OrgFollowupSettings;
 }
 
 export const EMPTY_ORG_PROFILE: OrgProfile = {
   voice: { tone: null, competitors: [], targetRegions: [] },
   engine: { backlogCap: null },
   compliance: { postalAddress: null },
+  followup: { quietAfterBusinessDays: null },
 };
 
 /**
@@ -117,6 +136,7 @@ export function parseOrgProfile(settings: unknown): OrgProfile {
   const voice = object(root.voice);
   const engine = object(root.engine);
   const compliance = object(root.compliance);
+  const followup = object(root.followup);
 
   const tone = typeof voice.tone === "string" && isOrgTone(voice.tone) ? voice.tone : null;
 
@@ -128,6 +148,7 @@ export function parseOrgProfile(settings: unknown): OrgProfile {
     },
     engine: { backlogCap: cap(engine.backlogCap) },
     compliance: { postalAddress: address(compliance.postalAddress) },
+    followup: { quietAfterBusinessDays: quietAfter(followup.quietAfterBusinessDays) },
   };
 }
 
@@ -155,8 +176,14 @@ export function serializeOrgProfile(profile: OrgProfile): Record<string, unknown
     compliance.postalAddress = profile.compliance.postalAddress;
   }
 
+  const followup: Record<string, unknown> = {};
+  if (profile.followup.quietAfterBusinessDays !== null) {
+    followup.quietAfterBusinessDays = profile.followup.quietAfterBusinessDays;
+  }
+
   const out: Record<string, unknown> = {};
   if (Object.keys(voice).length) out.voice = voice;
+  if (Object.keys(followup).length) out.followup = followup;
   if (Object.keys(engine).length) out.engine = engine;
   if (Object.keys(compliance).length) out.compliance = compliance;
   return out;
@@ -265,4 +292,13 @@ function cap(value: unknown): number | null {
 function list(values: string[]): string {
   if (values.length === 1) return values[0]!;
   return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
+}
+
+/** Whole business days within `QUIET_AFTER_RANGE`, or null. */
+function quietAfter(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isInteger(n)) return null;
+  if (n < QUIET_AFTER_RANGE.min || n > QUIET_AFTER_RANGE.max) return null;
+  return n;
 }

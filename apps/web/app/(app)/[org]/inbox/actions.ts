@@ -8,7 +8,14 @@ import {
   ok,
   type ActionResult,
 } from "../../../../lib/data/org";
-import { replyBodySchema, threadStatusSchema, uuidSchema } from "../../../../lib/validation";
+import {
+  draftEditSchema,
+  parseForm,
+  rejectionReasonSchema,
+  replyBodySchema,
+  threadStatusSchema,
+  uuidSchema,
+} from "../../../../lib/validation";
 
 /**
  * Inbox writes — `threads` from `0004`.
@@ -219,6 +226,9 @@ export async function replyToThreadAction(
         /* Approved and due, because a person wrote it and pressed send. This is
            the field `schedule_sends` sweeps and `send_message` requires. */
         scheduled_at: new Date().toISOString(),
+        /* And approved by *them*: the activity ledger (0037) attributes a sent
+           email to its approver, and a reply somebody typed is theirs. */
+        approved_by: await currentUserId(db),
       })
       .select("id")
       .single();
@@ -306,7 +316,147 @@ export async function approveMessageAction(
     if (error) return fail(`That message could not be approved: ${error.message}`);
 
     revalidatePath(`/${org}/inbox`);
+    revalidatePath(`/${org}/needs-you`);
+    revalidatePath(`/${org}/dashboard`);
     return ok(undefined, "Approved. It is sent on the next run.");
+  });
+}
+
+/** An unsent, unapproved outbound message — the only kind a person may edit or refuse. */
+async function readDraft(db: Parameters<Parameters<typeof mutate>[2]>[0]["db"], orgId: string, id: string) {
+  const { data } = await db
+    .from("messages")
+    .select("id, direction, subject, body_text, ai_generated, scheduled_at, sent_at, original_body_text, enrollment_id")
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!data) return { ok: false as const, error: "That message no longer exists." };
+  if (data.direction !== "outbound") return { ok: false as const, error: "That message is one you received." };
+  if (data.sent_at) return { ok: false as const, error: "That message has already been sent." };
+  if (data.scheduled_at) {
+    return { ok: false as const, error: "That message is already approved and waiting to send, so it can no longer change." };
+  }
+  return { ok: true as const, draft: data };
+}
+
+/**
+ * Change a draft's words before approving it (P0-1).
+ *
+ * ── What changes, and what deliberately does not ─────────────────────────
+ *
+ * Subject and body. The recipient, the step and the cited evidence stay as the
+ * engine chose them — an edit changes what the message says, not who it goes
+ * to. The draft stays unapproved: editing is not approving, and a person who
+ * fixes a sentence should still be the one who presses Approve.
+ *
+ * The model's original words are kept the first time a person changes them
+ * (`original_body_text`), so "AI-generated" and "human-edited" are two facts
+ * the learning loop can tell apart (master context §27).
+ */
+export async function editDraftAction(
+  org: string,
+  messageId: string,
+  input: { subject: string; body: string },
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(messageId);
+  if (!id.success) return fail("That message reference isn't valid.");
+  const parsed = parseForm(draftEditSchema, input);
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+
+  return mutate(org, "editDraft", async ({ db, orgId }) => {
+    const read = await readDraft(db, orgId, id.data);
+    if (!read.ok) return fail(read.error);
+    const { draft } = read;
+
+    const unchanged =
+      (draft.subject ?? "") === parsed.value.subject && (draft.body_text ?? "") === parsed.value.body;
+    if (unchanged) return ok(undefined, "Nothing changed.");
+
+    const { error } = await db
+      .from("messages")
+      .update({
+        subject: parsed.value.subject,
+        body_text: parsed.value.body,
+        /* The text it no longer carries, kept once — the *first* original. A
+           second edit must not overwrite the model's words with the person's. */
+        ...(draft.ai_generated && draft.original_body_text === null
+          ? { original_subject: draft.subject, original_body_text: draft.body_text }
+          : {}),
+        edited_by: await currentUserId(db),
+        edited_at: new Date().toISOString(),
+      })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("scheduled_at", null)
+      .is("sent_at", null);
+    if (error) return fail(`That draft could not be saved: ${error.message}`);
+
+    revalidatePath(`/${org}/inbox`);
+    return ok(undefined, "Saved. It still waits for your approval.");
+  });
+}
+
+/**
+ * Refuse a draft (P0-1).
+ *
+ * Soft-deleted with who and why, never removed: a rejected draft is a fact the
+ * learning loop should see ("this angle keeps getting refused"). The sequence
+ * it came from is parked with the reason rather than left to draft the next
+ * step — a follow-up to an email somebody refused would be the worst message
+ * the product could send.
+ */
+export async function rejectDraftAction(
+  org: string,
+  messageId: string,
+  reason: string,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(messageId);
+  if (!id.success) return fail("That message reference isn't valid.");
+  const parsedReason = rejectionReasonSchema.safeParse(reason);
+  if (!parsedReason.success) return fail(parsedReason.error.issues[0]?.message ?? "That reason could not be read.");
+  const why = parsedReason.data?.trim() || null;
+
+  return mutate(org, "rejectDraft", async ({ db, orgId }) => {
+    const read = await readDraft(db, orgId, id.data);
+    if (!read.ok) return fail(read.error);
+    const now = new Date().toISOString();
+
+    const { error } = await db
+      .from("messages")
+      .update({
+        rejected_at: now,
+        rejected_by: await currentUserId(db),
+        rejection_reason: why,
+        deleted_at: now,
+      })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("scheduled_at", null)
+      .is("sent_at", null);
+    if (error) return fail(`That draft could not be rejected: ${error.message}`);
+
+    if (read.draft.enrollment_id) {
+      await db
+        .from("enrollments")
+        .update({
+          status: "parked",
+          parked_reason: `Draft rejected${why ? `: ${why}` : ""}`.slice(0, 500),
+          next_action_at: null,
+        })
+        .eq("id", read.draft.enrollment_id)
+        .eq("org_id", orgId);
+    }
+
+    revalidatePath(`/${org}/inbox`);
+    revalidatePath(`/${org}/needs-you`);
+    revalidatePath(`/${org}/dashboard`);
+    return ok(
+      undefined,
+      read.draft.enrollment_id
+        ? "Rejected. Its sequence is paused so nothing follows up on it."
+        : "Rejected. Nothing will be sent.",
+    );
   });
 }
 

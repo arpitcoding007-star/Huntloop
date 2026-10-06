@@ -21,6 +21,7 @@ export {
 } from "./crypto.ts";
 
 export * from "./types.ts";
+export * from "./activity.ts";
 
 /**
  * The scoring-rule language and its evaluator.

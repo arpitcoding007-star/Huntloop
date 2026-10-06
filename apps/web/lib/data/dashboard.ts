@@ -56,15 +56,6 @@ export interface WhyNow {
   evidence: EvidenceItem[];
 }
 
-export interface Attention {
-  /** Distinguishes the items so the page can route each one. */
-  kind: "replies" | "approvals" | "failing-sources" | "stale-evidence";
-  title: string;
-  source: string;
-  meta: string;
-  href: string | null;
-}
-
 export interface Dashboard {
   counts: Record<Priority, number>;
   /** Triggers whose event was inside the last day. */
@@ -83,7 +74,8 @@ export interface Dashboard {
   capacity: { label: string; used: number; limit: number }[];
   signalsByType: { label: string; value: number }[];
   sourcePerformance: { label: string; value: number }[];
-  attention: Attention[];
+  /* "Needs you" moved to `lib/data/needs-you.ts` (0037): it is a ranked queue
+     of individual items now, not four counts, and the full page reads it too. */
 }
 
 const PRIORITIES: readonly Priority[] = ["hot", "warm", "watch", "ignore"];
@@ -113,9 +105,8 @@ export async function getDashboard(orgSlug: string): Promise<Loaded<Dashboard>> 
       const now = Date.now();
       const dayAgo = new Date(now - 24 * 3600_000).toISOString();
       const weekAgo = new Date(now - 7 * 24 * 3600_000).toISOString();
-      const ninetyDaysAgo = new Date(now - 90 * 24 * 3600_000).toISOString();
 
-      const [counts, triggersLastDay, awaitingReview, whyNow, loop, outcomes, capacity, signals, sources, attention] =
+      const [counts, triggersLastDay, awaitingReview, whyNow, loop, outcomes, capacity, signals, sources] =
         await Promise.all([
           priorityCounts(db, orgId),
           countRows(db, orgId, "company_triggers", (q) => q.gte("event_date", dayAgo)),
@@ -128,7 +119,6 @@ export async function getDashboard(orgSlug: string): Promise<Loaded<Dashboard>> 
           sendingCapacity(db, orgId),
           signalsByType(db, orgId, weekAgo),
           sourcePerformance(db, orgId, weekAgo),
-          attentionItems(db, orgId, orgSlug, ninetyDaysAgo),
         ]);
 
       return {
@@ -141,7 +131,6 @@ export async function getDashboard(orgSlug: string): Promise<Loaded<Dashboard>> 
         capacity,
         signalsByType: signals,
         sourcePerformance: sources,
-        attention,
       };
     },
     () => DEMO,
@@ -381,108 +370,6 @@ async function sourcePerformance(db: TenantClient, orgId: string, since: string)
   return tally(names);
 }
 
-/**
- * What needs a person, derived rather than asserted.
- *
- * The previous version of this rail stated four decisions were required and
- * gave counts for all of them, none of which had been computed. An item is
- * only rendered here when its count is non-zero, so a quiet workspace shows an
- * empty rail rather than a manufactured to-do list.
- */
-async function attentionItems(
-  db: TenantClient,
-  orgId: string,
-  orgSlug: string,
-  staleBefore: string,
-): Promise<Attention[]> {
-  const [approvals, failing, stale] = await Promise.all([
-    countRows(db, orgId, "messages", (q) =>
-      q
-        .eq("direction", "outbound")
-        .is("scheduled_at", null)
-        .is("sent_at", null)
-        .is("deleted_at", null),
-    ),
-    countRows(db, orgId, "sources", (q) =>
-      q.not("last_error", "is", null).eq("is_enabled", true).is("deleted_at", null),
-    ),
-    countRows(db, orgId, "opportunities", (q) =>
-      q.lt("last_scored_at", staleBefore).is("deleted_at", null),
-    ),
-  ]);
-
-  /* Threads rather than a count, because "waiting on us" is the last message
-     being inbound — which PostgREST cannot express as a filter. Bounded, and
-     the number shown is honest about that bound. */
-  const { data: threads } = await db
-    .from("threads")
-    .select("id, last_message_at, messages(direction, created_at, deleted_at)")
-    .eq("org_id", orgId)
-    .eq("status", "open")
-    .is("deleted_at", null)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(200);
-
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-     A nested select has no generated row type. */
-  const unanswered = ((threads ?? []) as any[]).filter((t) => {
-    const messages = (Array.isArray(t.messages) ? t.messages : [])
-      /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- same */
-      .filter((m: any) => !m.deleted_at)
-      /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- same */
-      .sort((a: any, b: any) =>
-        String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
-      );
-    return messages[messages.length - 1]?.direction === "inbound";
-  }).length;
-
-  const items: Attention[] = [];
-
-  if (unanswered > 0) {
-    items.push({
-      kind: "replies",
-      title: `${unanswered} ${unanswered === 1 ? "conversation is" : "conversations are"} waiting on a reply`,
-      source: "Inbox",
-      meta: "Last message came from them",
-      href: `/${orgSlug}/inbox`,
-    });
-  }
-
-  if (approvals > 0) {
-    items.push({
-      kind: "approvals",
-      title: `${approvals} ${approvals === 1 ? "message needs" : "messages need"} approval`,
-      source: "Outreach",
-      meta: "Drafted, and nothing sends until you say so",
-      href: `/${orgSlug}/inbox`,
-    });
-  }
-
-  if (failing > 0) {
-    items.push({
-      kind: "failing-sources",
-      /* §58: a source that fails does not fail the hunt — it is marked
-         unavailable, retried, and surfaced as something a human can see. */
-      title: `${failing} ${failing === 1 ? "source is" : "sources are"} failing`,
-      source: "Sources",
-      meta: "Still enabled, and still retrying",
-      href: `/${orgSlug}/sources`,
-    });
-  }
-
-  if (stale > 0) {
-    items.push({
-      kind: "stale-evidence",
-      title: `${stale} ${stale === 1 ? "opportunity was" : "opportunities were"} last scored over 90 days ago`,
-      source: "Freshness",
-      meta: "§81 — an old score is not a current one",
-      href: `/${orgSlug}/opportunities`,
-    });
-  }
-
-  return items;
-}
-
 /* ── Small shared rules ──────────────────────────────────────────────────── */
 
 /** Counts, then orders by count. Ties keep the order they arrived in. */
@@ -576,5 +463,4 @@ const DEMO: Dashboard = {
   capacity: [],
   signalsByType: tally(OPPORTUNITIES.map((o) => o.trigger)),
   sourcePerformance: [],
-  attention: [],
 };

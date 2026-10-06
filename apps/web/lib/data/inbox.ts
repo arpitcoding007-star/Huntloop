@@ -41,6 +41,8 @@ export interface Message {
   sentAt: string | null;
   scheduledAt: string | null;
   createdAt: string | null;
+  /** A person changed the AI's words before approving (0037). */
+  edited: boolean;
   /** The most recent event, or null when nothing has happened to it yet. */
   latestEvent: { kind: MessageEventKind; occurredAt: string } | null;
 }
@@ -51,6 +53,10 @@ export interface Thread {
   status: string;
   classification: string | null;
   opportunityId: string | null;
+  /** The company the conversation is with, when it is attached to an opportunity. */
+  company: string | null;
+  /** Who is handling this conversation. */
+  assigneeId: string | null;
   lastMessageAt: string | null;
   messages: Message[];
   /** True when anything in the thread bounced, failed or complained. */
@@ -67,9 +73,10 @@ export async function listThreads(orgSlug: string): Promise<Loaded<Thread[]>> {
       const { data, error } = await db
         .from("threads")
         .select(
-          `id, subject, status, classification, opportunity_id, last_message_at,
+          `id, subject, status, classification, opportunity_id, assignee_id, last_message_at,
+           opportunities(companies(name)),
            messages(id, direction, subject, body_text, ai_generated, evidence_ids,
-             sent_at, scheduled_at, created_at, deleted_at,
+             sent_at, scheduled_at, created_at, deleted_at, edited_at,
              message_events(kind, occurred_at))`,
         )
         .eq("org_id", orgId)
@@ -108,6 +115,8 @@ function mapThread(row: any): Thread {
     status: String(row.status ?? "open"),
     classification: row.classification ?? null,
     opportunityId: row.opportunity_id ?? null,
+    company: (Array.isArray(row.opportunities) ? row.opportunities[0] : row.opportunities)?.companies?.name ?? null,
+    assigneeId: row.assignee_id ?? null,
     lastMessageAt: row.last_message_at ?? null,
     messages,
     hasFailure: messages.some(
@@ -134,6 +143,7 @@ function mapMessage(row: any): Message {
     sentAt: row.sent_at ?? null,
     scheduledAt: row.scheduled_at ?? null,
     createdAt: row.created_at ?? null,
+    edited: Boolean(row.edited_at),
     latestEvent: events[0]
       ? {
           kind: events[0].kind as MessageEventKind,
@@ -166,6 +176,8 @@ const DEMO: Thread[] = [
     status: "open",
     classification: "interested",
     opportunityId: null,
+    company: null,
+    assigneeId: null,
     lastMessageAt: null,
     hasFailure: false,
     awaitingUs: true,
@@ -181,6 +193,7 @@ const DEMO: Thread[] = [
         sentAt: "2026-08-10T09:00:00Z",
         scheduledAt: "2026-08-10T08:58:00Z",
         createdAt: "2026-08-10T09:00:00Z",
+        edited: false,
         latestEvent: { kind: "opened", occurredAt: "2026-08-10T11:20:00Z" },
       },
       {
@@ -193,6 +206,7 @@ const DEMO: Thread[] = [
         sentAt: null,
         scheduledAt: null,
         createdAt: "2026-08-10T14:05:00Z",
+        edited: false,
         latestEvent: { kind: "replied", occurredAt: "2026-08-10T14:05:00Z" },
       },
       {
@@ -208,6 +222,7 @@ const DEMO: Thread[] = [
         sentAt: null,
         scheduledAt: null,
         createdAt: "2026-08-10T15:40:00Z",
+        edited: false,
         latestEvent: null,
       },
     ],
@@ -218,6 +233,8 @@ const DEMO: Thread[] = [
     status: "open",
     classification: null,
     opportunityId: null,
+    company: null,
+    assigneeId: null,
     lastMessageAt: null,
     hasFailure: true,
     awaitingUs: false,
@@ -234,8 +251,104 @@ const DEMO: Thread[] = [
         sentAt: "2026-08-09T08:30:00Z",
         scheduledAt: "2026-08-09T08:29:00Z",
         createdAt: "2026-08-09T08:30:00Z",
+        edited: false,
         latestEvent: { kind: "bounced", occurredAt: "2026-08-09T08:31:00Z" },
       },
     ],
+  },
+];
+
+/* ── Drafts waiting for a person (P0-1) ───────────────────────────────────── */
+
+/**
+ * An outbound message nobody has approved yet.
+ *
+ * ── Why this is its own list ─────────────────────────────────────────────
+ *
+ * A sequence's first email has no thread until it is sent — `send_message`
+ * creates the thread when the provider accepts it. The inbox used to list
+ * threads only, so at autonomy 0–1 the very drafts it existed to approve never
+ * appeared anywhere, while the dashboard counted them and linked here. This is
+ * the queue those drafts belong in, threaded or not.
+ */
+export interface Draft {
+  id: string;
+  subject: string | null;
+  bodyText: string | null;
+  toEmail: string | null;
+  aiGenerated: boolean;
+  evidenceCount: number;
+  createdAt: string | null;
+  edited: boolean;
+  opportunityId: string | null;
+  company: string | null;
+  campaign: string | null;
+}
+
+export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "listDrafts");
+      const { data, error } = await db
+        .from("messages")
+        .select(
+          `id, subject, body_text, to_email, ai_generated, evidence_ids, created_at, edited_at,
+           opportunity_id,
+           opportunities(id, companies(name)),
+           enrollments(opportunity_id, campaigns(name), opportunities(id, companies(name)))`,
+        )
+        .eq("org_id", orgId)
+        .eq("direction", "outbound")
+        .is("sent_at", null)
+        .is("scheduled_at", null)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(100);
+      if (error) throw new Error(`listDrafts: ${error.message}`);
+
+      /* eslint-disable @typescript-eslint/no-explicit-any -- nested select, no generated types */
+      return ((data ?? []) as any[]).map((row): Draft => {
+        const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+        const enrollment = one(row.enrollments);
+        const opp = one(row.opportunities) ?? one(enrollment?.opportunities);
+        return {
+          id: String(row.id),
+          subject: row.subject ?? null,
+          bodyText: row.body_text ?? null,
+          toEmail: row.to_email ?? null,
+          aiGenerated: Boolean(row.ai_generated),
+          evidenceCount: Array.isArray(row.evidence_ids) ? row.evidence_ids.length : 0,
+          createdAt: row.created_at ?? null,
+          edited: Boolean(row.edited_at),
+          opportunityId: opp?.id ? String(opp.id) : (row.opportunity_id ?? null),
+          company: opp?.companies?.name ?? null,
+          campaign: one(enrollment?.campaigns)?.name ?? null,
+        };
+      });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    },
+    () => DEMO_DRAFTS,
+  );
+}
+
+/**
+ * One demo draft, the same one the demo thread carries — so the approval queue
+ * and the conversation show the same message, as they would on a live
+ * workspace where a follow-up draft sits in its thread.
+ */
+const DEMO_DRAFTS: Draft[] = [
+  {
+    id: "demo-message-3",
+    subject: "Re: The policy layer your agents are missing",
+    bodyText:
+      "A policy layer that sits in front of the call rather than inside it — happy to walk through how that changes the audit trail.",
+    toEmail: "dana@alphio.ai",
+    aiGenerated: true,
+    evidenceCount: 1,
+    createdAt: "2026-08-10T15:40:00Z",
+    edited: false,
+    opportunityId: null,
+    company: "Alphio AI",
+    campaign: "Agent governance — founders",
   },
 ];

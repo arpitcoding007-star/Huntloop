@@ -6,6 +6,8 @@ export interface CardProps {
   className?: string;
   /** Removes body padding — for tables and lists that own their own insets. */
   flush?: boolean;
+  /** An anchor target, e.g. a deep link to one conversation in a list. */
+  id?: string;
 }
 
 /**
@@ -14,9 +16,10 @@ export interface CardProps {
  * opacity that fourteen cards on one screen still read as one surface rather
  * than a pile of paper, and it resolves to none in dark.
  */
-export function Card({ children, className, flush }: CardProps) {
+export function Card({ children, className, flush, id }: CardProps) {
   return (
     <section
+      id={id}
       className={cn(
         "min-w-0 rounded-lg border border-line-subtle bg-surface shadow-card",
         !flush && "p-5",

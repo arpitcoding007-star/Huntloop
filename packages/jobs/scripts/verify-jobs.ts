@@ -31,6 +31,7 @@ import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
+import { advanceOne, APPROVAL_RECHECK_MS } from "../src/handlers/advance-enrollments.ts";
 import { onCompanySite } from "../src/handlers/research-company.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
@@ -2959,6 +2960,90 @@ console.log("\nschedule_followups — MAP-001: the producer the orphans never ha
     updates.some((c) => typeof (c.payload as Record<string, unknown>).contacts_sought_at === "string"),
   );
   setAdminClientForTests(null);
+}
+
+/* ── advance_enrollments — approval gates the sequence ──────────────────── */
+
+console.log("\nadvance_enrollments — a draft waiting for a person holds the sequence");
+{
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-1",
+        campaign_id: "camp-1",
+        opportunity_id: "opp-1",
+        current_step: 1,
+        mailbox_id: null,
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: 0, product_id: null },
+        opportunities: {
+          id: "opp-1",
+          company_id: "co-1",
+          primary_person_id: null,
+          outreach_angle: null,
+          status: "contacted",
+        },
+      },
+      error: null,
+    },
+    "select:sequence_steps": {
+      data: { id: "step-2", position: 1, kind: "email", delay_hours: 72, template: {} },
+      error: null,
+    },
+    // The unapproved step-1 draft.
+    "select:messages": { data: { id: "draft-1" }, error: null },
+  });
+  const scope = new OrgScope(ORG_A, client);
+  const outcome = await advanceOne(scope, "enr-1");
+
+  expectEqual("the enrollment waits rather than drafting", outcome, "waited");
+  expect(
+    "no second draft is written on top of the first",
+    !calls.some((c) => c.table === "messages" && c.verb === "insert"),
+  );
+  const held = calls.find((c) => c.table === "enrollments" && c.verb === "update");
+  const nextAt = Date.parse(String((held?.payload as Record<string, unknown>)?.next_action_at));
+  expect(
+    "and it looks again in about a day",
+    Number.isFinite(nextAt) && Math.abs(nextAt - (Date.now() + APPROVAL_RECHECK_MS)) < 60_000,
+    JSON.stringify(held?.payload),
+  );
+  expect(
+    "without moving the step on",
+    held !== undefined && !("current_step" in (held.payload as Record<string, unknown>)),
+  );
+  expect(
+    "and the pending check only counts drafts nobody approved",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.filters.some(([k]) => k === "is:scheduled_at") &&
+        c.filters.some(([k]) => k === "is:sent_at"),
+    ),
+  );
+}
+
+console.log("\nadvance_enrollments — an opportunity closed as not a fit stops its sequence");
+{
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-2",
+        campaign_id: "camp-1",
+        opportunity_id: "opp-2",
+        current_step: 0,
+        mailbox_id: null,
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: 3, product_id: null },
+        opportunities: { id: "opp-2", company_id: "co-2", primary_person_id: null, outreach_angle: null, status: "archived" },
+      },
+      error: null,
+    },
+  });
+  const outcome = await advanceOne(new OrgScope(ORG_A, client), "enr-2");
+  expectEqual("the enrollment stops", outcome, "stopped");
+  expect(
+    "and nothing is drafted",
+    !calls.some((c) => c.table === "messages" && c.verb === "insert"),
+  );
 }
 
 console.log(

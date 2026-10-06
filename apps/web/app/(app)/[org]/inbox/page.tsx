@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { listThreads } from "../../../../lib/data/inbox";
+import { listDrafts, listThreads } from "../../../../lib/data/inbox";
+import { listMembers } from "../../../../lib/data/team";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
 import { InboxView } from "./InboxView";
@@ -22,14 +23,18 @@ export default async function InboxPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: threads, source } = await listThreads(org);
+  const [{ data: threads, source }, { data: drafts }, { data: members }] = await Promise.all([
+    listThreads(org),
+    listDrafts(org),
+    listMembers(org),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[1000px] px-6 py-8 lg:px-8">
       <header>
         <h1 className="hl-heading text-fg">Inbox</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Replies, and what happened to what you sent
+          Drafts waiting for your approval, replies, and what happened to what you sent
         </p>
       </header>
 
@@ -43,6 +48,8 @@ export default async function InboxPage({
         <InboxView
           org={org}
           threads={threads}
+          drafts={drafts}
+          members={members.map((m) => ({ userId: m.userId, label: m.isYou ? "You" : (m.name ?? m.email ?? "A teammate") }))}
           canWrite={canWrite(viewer)}
           now={new Date().toISOString()}
         />

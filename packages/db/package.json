@@ -14,7 +14,8 @@
     "./icp": "./src/icp.ts",
     "./identity": "./src/identity.ts",
     "./contact": "./src/contact.ts",
-    "./discovery": "./src/discovery.ts"
+    "./discovery": "./src/discovery.ts",
+    "./activity": "./src/activity.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

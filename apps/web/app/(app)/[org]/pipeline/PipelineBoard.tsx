@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import {
   Badge,
+  Button,
   Card,
+  Field,
   FormMessage,
+  Input,
   PriorityBadge,
   ScrollRegion,
   Select,
   type Priority,
 } from "@huntloop/ui";
+import type { CompetitorOption } from "../../../../lib/data/competitors";
 import type { Assignment } from "../../../../lib/data/team";
 import { setOpportunityStatusAction } from "./actions";
 
@@ -57,10 +61,13 @@ const ALL_STATUSES = [...STAGES.map((s) => s.key), ...CLOSED] as const;
 export function PipelineBoard({
   org,
   opportunities,
+  competitors = [],
   canWrite,
 }: {
   org: string;
   opportunities: Assignment[];
+  /** For "lost to whom". Empty when the workspace has named none. */
+  competitors?: CompetitorOption[];
   canWrite: boolean;
 }) {
   const [result, setResult] = useState<
@@ -143,6 +150,7 @@ export function PipelineBoard({
                         key={o.id}
                         org={org}
                         opportunity={o}
+                        competitors={competitors}
                         canWrite={canWrite}
                         onResult={setResult}
                       />
@@ -161,15 +169,28 @@ export function PipelineBoard({
 function PipelineCard({
   org,
   opportunity,
+  competitors,
   canWrite,
   onResult,
 }: {
   org: string;
   opportunity: Assignment;
+  competitors: CompetitorOption[];
   canWrite: boolean;
   onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
 }) {
   const [pending, start] = useTransition();
+  /* Choosing Lost asks why before it moves (0037). The select's own value
+     stays on the current stage until the reason panel commits or is skipped,
+     so cancelling leaves the card exactly where it was. */
+  const [askingWhy, setAskingWhy] = useState(false);
+
+  const move = (status: string, why?: { category: string | null; competitorId: string | null; reason: string }) =>
+    start(async () => {
+      const res = await setOpportunityStatusAction(org, opportunity.id, status, why ?? null);
+      onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+      if (res.ok) setAskingWhy(false);
+    });
 
   return (
     <Card className="p-3">
@@ -199,18 +220,13 @@ function PipelineCard({
             value={opportunity.status}
             disabled={pending}
             className="mt-0 h-8 text-[12px]"
-            onChange={(e) =>
-              start(async () => {
-                const res = await setOpportunityStatusAction(
-                  org,
-                  opportunity.id,
-                  e.target.value,
-                );
-                onResult(
-                  res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error },
-                );
-              })
-            }
+            onChange={(e) => {
+              if (e.target.value === "lost") {
+                setAskingWhy(true);
+                return;
+              }
+              move(e.target.value);
+            }}
           >
             {ALL_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -220,6 +236,105 @@ function PipelineCard({
           </Select>
         </label>
       )}
+
+      {canWrite && askingWhy && (
+        <LostReason
+          company={opportunity.company}
+          competitors={competitors}
+          pending={pending}
+          onCommit={(why) => move("lost", why)}
+          onSkip={() => move("lost")}
+          onCancel={() => setAskingWhy(false)}
+        />
+      )}
     </Card>
+  );
+}
+
+const LOSS_REASONS = [
+  { value: "no_response", label: "They stopped responding" },
+  { value: "chose_competitor", label: "Chose a competitor" },
+  { value: "no_budget", label: "No budget" },
+  { value: "timing", label: "Wrong time" },
+  { value: "no_need", label: "No real need" },
+  { value: "missing_capability", label: "Needed something we do not offer" },
+  { value: "not_a_fit", label: "Not a fit after all" },
+  { value: "wrong_contact", label: "Never reached the right person" },
+  { value: "other", label: "Something else" },
+];
+
+/**
+ * Why a deal was lost — asked at the moment it is lost, when the answer is
+ * still remembered. Skippable, because a forced field gets "other".
+ */
+function LostReason({
+  company,
+  competitors,
+  pending,
+  onCommit,
+  onSkip,
+  onCancel,
+}: {
+  company: string;
+  competitors: CompetitorOption[];
+  pending: boolean;
+  onCommit: (why: { category: string | null; competitorId: string | null; reason: string }) => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const [category, setCategory] = useState("no_response");
+  const [competitorId, setCompetitorId] = useState("");
+  const [reason, setReason] = useState("");
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-line bg-canvas p-2.5">
+      <p className="text-[12px] text-fg-secondary">Why was {company} lost?</p>
+      <Field label="Reason">
+        {(field) => (
+          <Select {...field} value={category} disabled={pending} className="mt-1 h-8 text-[12px]" onChange={(e) => setCategory(e.target.value)}>
+            {LOSS_REASONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {category === "chose_competitor" && competitors.length > 0 && (
+        <Field label="To whom">
+          {(field) => (
+            <Select {...field} value={competitorId} disabled={pending} className="mt-1 h-8 text-[12px]" onChange={(e) => setCompetitorId(e.target.value)}>
+              <option value="">Not sure</option>
+              {competitors.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
+      <Field label={category === "missing_capability" ? "What did they need?" : "Detail (optional)"}>
+        {(field) => (
+          <Input {...field} value={reason} maxLength={1000} disabled={pending} className="mt-1 h-8 text-[12px]" onChange={(e) => setReason(e.target.value)} />
+        )}
+      </Field>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={pending}
+          onClick={() => onCommit({ category, competitorId: competitorId || null, reason })}
+        >
+          {pending ? "Saving…" : "Mark lost"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={onSkip}>
+          Skip
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }

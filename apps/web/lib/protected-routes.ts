@@ -31,6 +31,7 @@ export const WORKSPACE_SECTIONS = [
   "intelligence",
   "learn",
   "memory",
+  "needs-you",
   "opportunities",
   "ops",
   "outreach",

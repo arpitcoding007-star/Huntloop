@@ -129,6 +129,7 @@ export async function saveOrgProfileAction(
     competitors: string[];
     targetRegions: string[];
     backlogCap: number | null;
+    quietAfterBusinessDays?: number | null;
   },
 ): Promise<ActionResult<undefined>> {
   const parsed = parseForm(orgProfileSchema, input);
@@ -156,6 +157,9 @@ export async function saveOrgProfileAction(
       profile.voice.competitors = value.competitors;
       profile.voice.targetRegions = value.targetRegions;
       profile.engine.backlogCap = value.backlogCap;
+      if (value.quietAfterBusinessDays !== undefined) {
+        profile.followup.quietAfterBusinessDays = value.quietAfterBusinessDays;
+      }
 
       const { error } = await db
         .from("organizations")
@@ -166,6 +170,8 @@ export async function saveOrgProfileAction(
       if (error) return fail(`Those settings could not be saved: ${error.message}`);
 
       revalidatePath(`/${org}/settings`);
+      revalidatePath(`/${org}/needs-you`);
+      revalidatePath(`/${org}/dashboard`);
       return ok(
         undefined,
         "Saved. Outreach written from now on uses this; messages already drafted are unchanged.",
