@@ -105,6 +105,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0036_research_requests.sql", probe: "migration_0036_applied", kind: "rpc" },
   { file: "0037_daily_loop.sql", probe: "migration_0037_applied", kind: "rpc" },
   { file: "0038_discovery_backpressure.sql", probe: "migration_0038_applied", kind: "rpc" },
+  { file: "0039_competitor_requests.sql", probe: "migration_0039_applied", kind: "rpc" },
 ];
 
 /**

@@ -30,6 +30,7 @@ const MAX_CRM_PER_TICK = 25;
 const MAX_CONTACTS_PER_TICK = 10;
 const MAX_ENRICH_PER_TICK = 10;
 const MAX_RESEARCH_PER_TICK = 5;
+const MAX_COMPETITOR_PER_TICK = 5;
 const RESEARCH_RETRY_MS = 24 * 3600_000;
 
 export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
@@ -137,5 +138,28 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     counts.research++;
   }
 
-  return { ok: true, result: counts };
+  // 5. Competitor research a person asked for (0039). `research_competitor`
+  //    had no producer before this; the request column is its seam.
+  const { data: asked, error: competitorError } = await db
+    .from("competitors")
+    .select("id, org_id")
+    .not("research_requested_at", "is", null)
+    .is("deleted_at", null)
+    .order("research_requested_at", { ascending: true })
+    .limit(MAX_COMPETITOR_PER_TICK);
+  if (competitorError) return { ok: false, error: `schedule_followups: ${competitorError.message}` };
+
+  let competitors = 0;
+  for (const row of (asked ?? []) as { id: string; org_id: string }[]) {
+    await enqueue({
+      orgId: row.org_id,
+      name: "research_competitor",
+      payload: { competitorId: row.id, force: true },
+      idempotencyKey: `competitor:${row.id}`,
+    });
+    await db.from("competitors").update({ research_requested_at: null }).eq("id", row.id);
+    competitors++;
+  }
+
+  return { ok: true, result: { ...counts, competitors } };
 }
