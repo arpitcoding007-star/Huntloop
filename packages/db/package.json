@@ -15,7 +15,9 @@
     "./identity": "./src/identity.ts",
     "./contact": "./src/contact.ts",
     "./discovery": "./src/discovery.ts",
-    "./activity": "./src/activity.ts"
+    "./activity": "./src/activity.ts",
+    "./memory": "./src/memory.ts",
+    "./needs-you": "./src/needs-you.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

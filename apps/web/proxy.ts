@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { buildCsp, createNonce } from "./lib/csp";
-import { isProtectedRoute } from "./lib/protected-routes";
+import { isProtectedRoute, workspaceSlug } from "./lib/protected-routes";
+
+/** Mirrors `LAST_ORG_COOKIE` in lib/data/destination.ts, which is server-only. */
+const LAST_ORG_COOKIE = "huntloop.org";
 import {
   isProductionDeployment,
   probeSchema,
@@ -67,6 +70,9 @@ const PUBLIC_PREFIXES = [
      dead unsubscribe, and a dead unsubscribe is a spam report. */
   "/unsubscribe",
   "/api/unsubscribe",
+  /* The daily digest's own off switch. A signed token is its authority, and
+     the person clicking it from their mail app may not be signed in. */
+  "/api/notifications/unsubscribe",
   /* The top of the funnel. A visitor who has typed their domain into the
      landing page has not signed in yet by construction — bouncing them to
      /login here would put the sign-up wall back in front of the value, which
@@ -346,6 +352,22 @@ export async function proxy(request: NextRequest) {
     // `lib/safe-next.ts` is the other half, where the value is consumed.
     login.searchParams.set("next", path);
     return sealCsp(NextResponse.redirect(login), responseHeader, policy);
+  }
+
+  /* Remember the workspace a signed-in user is working in, so the next sign-in
+     skips the picker (M-03). Set here because this is the one place that sees
+     every workspace navigation and may write cookies; the org layout is a
+     Server Component and cannot. The value is a pointer, not a grant —
+     `resolveDestination` re-checks membership before honouring it. */
+  const workspace = user ? workspaceSlug(path) : null;
+  if (workspace && request.cookies.get(LAST_ORG_COOKIE)?.value !== workspace) {
+    response.cookies.set(LAST_ORG_COOKIE, workspace, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: production,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
   }
 
   return sealCsp(response, responseHeader, policy);

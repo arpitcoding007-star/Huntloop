@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, Note } from "@huntloop/ui";
-import { sendMagicLink } from "./actions";
+import { sendMagicLink, signInWithGoogle } from "./actions";
 import { initialAuthState } from "./auth-state";
 import { DEMO_HOME } from "../../lib/demo";
 
@@ -32,7 +32,37 @@ import { DEMO_HOME } from "../../lib/demo";
  * `@huntloop/db` here silently undoes it.
  */
 export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: string }) {
+  // Remounting is the only way to return `useActionState` to its initial
+  // state, which is what "use a different address" means.
+  const [attempt, setAttempt] = useState(0);
+  return (
+    <AuthFormBody
+      key={attempt}
+      mode={mode}
+      next={next}
+      onReset={() => setAttempt((n) => n + 1)}
+    />
+  );
+}
+
+/**
+ * Google sign-in is offered only when the deployment says the provider is
+ * enabled in Supabase. Rendering it otherwise sends every click to
+ * `/login?error=oauth`.
+ */
+const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_AUTH_GOOGLE === "true";
+
+function AuthFormBody({
+  mode,
+  next,
+  onReset,
+}: {
+  mode: "login" | "signup";
+  next: string;
+  onReset: () => void;
+}) {
   const [state, formAction] = useActionState(sendMagicLink, initialAuthState);
+  const [resent, setResent] = useState(false);
 
   const configured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -85,14 +115,35 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
 
   if (state.status === "sent") {
     return (
-      <Note tone="success">
-        <p className="font-medium">Check your email</p>
-        <p className="mt-1.5 text-fg-secondary">
-          If an account can be created or found for{" "}
-          <span className="text-fg">{state.email}</span>, a sign-in link is on
-          its way. It expires in an hour.
-        </p>
-      </Note>
+      <div className="space-y-3">
+        <Note tone="success">
+          <p className="font-medium">Check your email</p>
+          <p className="mt-1.5 text-fg-secondary">
+            If an account can be created or found for{" "}
+            <span className="text-fg">{state.email}</span>, a sign-in link is on
+            its way. It expires in an hour.
+          </p>
+          {resent && (
+            <p className="mt-1.5 text-fg-secondary">
+              Sent again. Only the newest link works.
+            </p>
+          )}
+        </Note>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The same submission again. Supabase allows one email per address
+              per minute; a resend inside that window comes back as the
+              generic error below, which is the honest answer. */}
+          <form action={formAction} onSubmit={() => setResent(true)}>
+            <input type="hidden" name="mode" value={mode} />
+            <input type="hidden" name="next" value={next} />
+            <input type="hidden" name="email" value={state.email} />
+            <ResendButton />
+          </form>
+          <Button type="button" variant="ghost" size="sm" onClick={onReset}>
+            Use a different address
+          </Button>
+        </div>
+      </div>
     );
   }
 
@@ -128,8 +179,12 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
         />
       </form>
 
-      {/* Google OAuth temporarily hidden for testing — signInWithGoogle in
-          actions.ts is untouched, just not rendered here. */}
+      {GOOGLE_ENABLED && (
+        <form action={signInWithGoogle}>
+          <input type="hidden" name="next" value={next} />
+          <GoogleButton />
+        </form>
+      )}
 
       {state.status === "error" && (
         <p role="alert" className="text-[13px] text-danger">
@@ -157,6 +212,30 @@ function SubmitButton({ label }: { label: string }) {
       disabled={pending}
     >
       {pending ? "Sending…" : label}
+    </Button>
+  );
+}
+
+function ResendButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+      {pending ? "Sending…" : "Send it again"}
+    </Button>
+  );
+}
+
+function GoogleButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      variant="secondary"
+      size="lg"
+      className="w-full"
+      disabled={pending}
+    >
+      {pending ? "Opening Google…" : "Continue with Google"}
     </Button>
   );
 }

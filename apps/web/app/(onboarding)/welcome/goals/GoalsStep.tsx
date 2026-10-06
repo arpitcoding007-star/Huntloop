@@ -40,10 +40,19 @@ import { saveGoals } from "../actions";
  * Asking what they *intend* costs one click and lets the connection be offered
  * later, in context, when there is a drafted message waiting to go out.
  */
-export function GoalsStep({ org }: { org: string }) {
+export function GoalsStep({
+  org,
+  initialGoals = [],
+  initialChannel = null,
+}: {
+  org: string;
+  /** What was saved on an earlier visit, so going back does not lose it. */
+  initialGoals?: Goal[];
+  initialChannel?: OutreachChannel | null;
+}) {
   const router = useRouter();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [channel, setChannel] = useState<OutreachChannel | null>(null);
+  const [goals, setGoals] = useState<Goal[]>(initialGoals);
+  const [channel, setChannel] = useState<OutreachChannel | null>(initialChannel);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 

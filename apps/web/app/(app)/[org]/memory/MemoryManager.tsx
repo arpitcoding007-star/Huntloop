@@ -19,6 +19,7 @@ import {
 } from "@huntloop/ui";
 import { Brain, FileUp, Link2, Plus, Save, Trash2 } from "lucide-react";
 import type { Memory, MemoryScope } from "../../../../lib/data/memory";
+import type { MemorySubjects, SubjectOption } from "../../../../lib/data/memory-subjects";
 import { deleteMemoryAction, ingestMemoryAction, saveMemoryAction } from "./actions";
 
 /**
@@ -74,10 +75,13 @@ const SCOPE_HELP: Record<MemoryScope, string> = {
 export function MemoryManager({
   org,
   memories,
+  subjects = { user: [], account: [], opportunity: [] },
   canWrite,
 }: {
   org: string;
   memories: Memory[];
+  /** Named options for each subject-taking scope — no raw ids (§14.2). */
+  subjects?: MemorySubjects;
   canWrite: boolean;
 }) {
   const [adding, setAdding] = useState(false);
@@ -138,6 +142,7 @@ export function MemoryManager({
             <MemoryForm
               org={org}
               memory={null}
+              subjects={subjects}
               canWrite={canWrite}
               onDone={() => setAdding(false)}
               onResult={setResult}
@@ -163,6 +168,7 @@ export function MemoryManager({
                   key={m.id}
                   org={org}
                   memory={m}
+                  subjects={subjects}
                   canWrite={canWrite}
                   onDone={() => setEditing(null)}
                   onResult={setResult}
@@ -172,6 +178,7 @@ export function MemoryManager({
                   key={m.id}
                   org={org}
                   memory={m}
+                  subjectLabel={labelFor(subjects, m)}
                   canWrite={canWrite}
                   onEdit={() => setEditing(m.id)}
                   onResult={setResult}
@@ -224,11 +231,14 @@ function MemoryCard({
   canWrite,
   onEdit,
   onResult,
+  subjectLabel = null,
 }: {
   org: string;
   memory: Memory;
   canWrite: boolean;
   onEdit?: () => void;
+  /** Who or what a scoped memory is about, by name. */
+  subjectLabel?: string | null;
   onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
 }) {
   const [pending, start] = useTransition();
@@ -238,6 +248,7 @@ function MemoryCard({
       <CardBody className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="neutral">{memory.scope}</Badge>
+          {subjectLabel && <Badge variant="neutral">{subjectLabel}</Badge>}
           {memory.key && <Badge variant="neutral">{memory.key}</Badge>}
           {memory.source === "derived" && (
             <ClaimBadge kind="inference" confidence={memory.confidence ?? undefined} />
@@ -329,10 +340,11 @@ function MemoryCard({
  * weaker provenance claim than "we fetched this from that address" and is
  * labelled as the weaker one.
  *
- * Plain text only, deliberately. A PDF or a .docx read as text is mostly
- * binary noise, and silently storing that as an organisation memory would put
- * it in front of every prompt this org ever runs. The accept list refuses them
- * rather than producing something unusable that looks like it worked.
+ * Text and markdown are read in the browser. A PDF or a .docx read as text
+ * is binary noise, so those go to `/api/memory/extract` (§16.3-J), which
+ * returns their text and stores nothing. Either way the text is shown here
+ * before it is saved: a scanned PDF or a mangled layout is caught by the
+ * person, not discovered later inside every prompt this org runs.
  */
 function IngestForm({
   org,
@@ -350,13 +362,42 @@ function IngestForm({
   const [key, setKey] = useState("");
   const [tags, setTags] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [reading, setReading] = useState(false);
   const [pending, start] = useTransition();
+  const busy = pending || reading;
+
+  async function readFile(file: File) {
+    setFieldErrors({});
+    setText("");
+    setFilename(file.name);
+    if (!/\.(pdf|docx)$/i.test(file.name)) {
+      setText(await file.text());
+      return;
+    }
+    setReading(true);
+    try {
+      const body = new FormData();
+      body.set("org", org);
+      body.set("file", file);
+      const res = await fetch("/api/memory/extract", { method: "POST", body });
+      const data = (await res.json().catch(() => null)) as { text?: string; error?: string } | null;
+      if (!res.ok || !data?.text) {
+        setFieldErrors({ text: data?.error ?? "That file could not be read." });
+        return;
+      }
+      setText(data.text);
+    } catch {
+      setFieldErrors({ text: "That file could not be uploaded. Check your connection and try again." });
+    } finally {
+      setReading(false);
+    }
+  }
 
   return (
     <Card>
       <CardHeader
         title="Add a document"
-        description="A page or a text file becomes organisation context — read by every qualification and every message Huntloop writes from now on."
+        description="A page or a document becomes organisation context — read by every qualification and every message Huntloop writes from now on."
       />
       <CardBody className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
@@ -365,7 +406,7 @@ function IngestForm({
             variant={mode === "url" ? "secondary" : "ghost"}
             icon={Link2}
             onClick={() => setMode("url")}
-            disabled={pending}
+            disabled={busy}
           >
             From a link
           </Button>
@@ -374,7 +415,7 @@ function IngestForm({
             variant={mode === "file" ? "secondary" : "ghost"}
             icon={FileUp}
             onClick={() => setMode("file")}
-            disabled={pending}
+            disabled={busy}
           >
             From a file
           </Button>
@@ -392,34 +433,51 @@ function IngestForm({
                 {...a}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                disabled={pending}
+                disabled={busy}
                 placeholder="https://example.com/positioning"
               />
             )}
           </Field>
         ) : (
-          <Field
-            label="File"
-            required
-            hint="Plain text or markdown. Read in your browser — the file itself is not uploaded or stored."
-            error={fieldErrors.text}
-          >
-            {(a) => (
-              <input
-                {...a}
-                type="file"
-                accept=".txt,.md,.markdown,.csv,text/plain,text/markdown"
-                disabled={pending}
-                className="hl-focusable block w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg file:mr-3 file:rounded file:border-0 file:bg-surface-active file:px-3 file:py-1 file:text-[12px] file:text-fg"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setFilename(file.name);
-                  setText(await file.text());
-                }}
-              />
+          <>
+            <Field
+              label="File"
+              required
+              hint="PDF, Word (.docx), text or markdown, up to 4 MB. Only the text is kept — the file itself is not stored."
+              error={fieldErrors.text}
+            >
+              {(a) => (
+                <input
+                  {...a}
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                  disabled={busy}
+                  className="hl-focusable block w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg file:mr-3 file:rounded file:border-0 file:bg-surface-active file:px-3 file:py-1 file:text-[12px] file:text-fg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void readFile(file);
+                  }}
+                />
+              )}
+            </Field>
+            {reading && <p className="text-[13px] text-fg-muted">Reading {filename}…</p>}
+            {text && !reading && (
+              <Field
+                label="What will be stored"
+                hint={`${text.length.toLocaleString()} characters from ${filename}. Trim anything that should not reach every prompt.`}
+              >
+                {(a) => (
+                  <Textarea
+                    {...a}
+                    rows={10}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    disabled={busy}
+                  />
+                )}
+              </Field>
             )}
-          </Field>
+          </>
         )}
 
         <Field
@@ -432,7 +490,7 @@ function IngestForm({
               {...a}
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              disabled={pending}
+              disabled={busy}
               placeholder="positioning"
             />
           )}
@@ -444,7 +502,7 @@ function IngestForm({
               {...a}
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              disabled={pending}
+              disabled={busy}
               placeholder="positioning, pricing"
             />
           )}
@@ -454,7 +512,7 @@ function IngestForm({
           <Button
             variant="primary"
             icon={Save}
-            disabled={pending || (mode === "url" ? !url.trim() : !text.trim())}
+            disabled={busy || (mode === "url" ? !url.trim() : !text.trim())}
             onClick={() =>
               start(async () => {
                 setFieldErrors({});
@@ -479,7 +537,7 @@ function IngestForm({
           >
             {pending ? "Reading…" : "Store it"}
           </Button>
-          <Button variant="ghost" onClick={onDone} disabled={pending}>
+          <Button variant="ghost" onClick={onDone} disabled={busy}>
             Cancel
           </Button>
         </div>
@@ -491,12 +549,14 @@ function IngestForm({
 function MemoryForm({
   org,
   memory,
+  subjects,
   canWrite,
   onDone,
   onResult,
 }: {
   org: string;
   memory: Memory | null;
+  subjects: MemorySubjects;
   canWrite: boolean;
   onDone: () => void;
   onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
@@ -525,7 +585,9 @@ function MemoryForm({
               onChange={(e) => setScope(e.target.value as MemoryScope)}
               disabled={!canWrite || pending}
             >
-              {MEMORY_SCOPES.map((s) => (
+              {/* "team" is listed only for a memory that already has it: there
+                  is no teams table to pick a subject from. */}
+              {MEMORY_SCOPES.filter((s) => s !== "team" || memory?.scope === "team").map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -541,18 +603,22 @@ function MemoryForm({
           <Field
             label="Subject"
             required
-            hint={`The id of the ${scope} this is about. Without it, this memory would be retrieved for every ${scope}.`}
+            hint={`Which ${scope === "account" ? "company" : scope === "user" ? "person" : scope} this is about. It is retrieved only when that one is in play.`}
             error={fieldErrors.scopeId}
           >
-            {(a) => (
-              <Input
-                {...a}
-                value={scopeId}
-                onChange={(e) => setScopeId(e.target.value)}
-                disabled={!canWrite || pending}
-                placeholder="00000000-0000-0000-0000-000000000000"
-              />
-            )}
+            {(a) =>
+              scope === "team" ? (
+                <Input {...a} value={scopeId} disabled />
+              ) : (
+                <SubjectPicker
+                  fieldProps={a}
+                  options={subjects[scope as "user" | "account" | "opportunity"] ?? []}
+                  value={scopeId}
+                  onChange={setScopeId}
+                  disabled={!canWrite || pending}
+                />
+              )
+            }
           </Field>
         )}
 
@@ -618,5 +684,72 @@ function MemoryForm({
         )}
       </CardBody>
     </Card>
+  );
+}
+
+/** The subject's name for a scoped memory, or null for organisation scope. */
+function labelFor(subjects: MemorySubjects, memory: Memory): string | null {
+  if (!memory.scopeId || memory.scope === "organization" || memory.scope === "team") return null;
+  const list = subjects[memory.scope as "user" | "account" | "opportunity"] ?? [];
+  return list.find((o) => o.id === memory.scopeId)?.label ?? "Removed or not loaded";
+}
+
+/**
+ * A filterable list of named subjects. A select over hundreds of companies is
+ * unusable without a filter, and a free-text id box was unusable entirely.
+ */
+function SubjectPicker({
+  fieldProps,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  fieldProps: { id: string; "aria-describedby"?: string; "aria-invalid"?: boolean };
+  options: SubjectOption[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled: boolean;
+}) {
+  const [filter, setFilter] = useState("");
+  const q = filter.trim().toLowerCase();
+  const shown = (q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options).slice(0, 200);
+  const selected = options.find((o) => o.id === value);
+
+  if (options.length === 0) {
+    /* Still the labelled control, disabled, so the field and its error read
+       the same whether or not there is anything to pick. */
+    return (
+      <Select {...fieldProps} value="" disabled>
+        <option value="">Nothing to choose from yet</option>
+      </Select>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Input
+        aria-label="Filter the list"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        disabled={disabled}
+        placeholder="Type to filter"
+      />
+      <Select {...fieldProps} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
+        <option value="">{selected ? selected.label : "Choose…"}</option>
+        {shown
+          .filter((o) => o.id !== value)
+          .map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        {selected && (
+          <option key={selected.id} value={selected.id}>
+            {selected.label}
+          </option>
+        )}
+      </Select>
+    </div>
   );
 }

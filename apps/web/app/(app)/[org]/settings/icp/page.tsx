@@ -6,6 +6,8 @@ import { DemoFigures } from "../../DemoFigures";
 import { IcpEditor } from "./IcpEditor";
 import { SearchPreview } from "./SearchPreview";
 import { getDiscoveryPreview } from "../../../../../lib/data/discovery-preview";
+import { getIcpProposal } from "../../../../../lib/data/icp-proposal";
+import { ProfileProposal } from "./ProfileProposal";
 
 /**
  * ICP — master context §9.
@@ -26,8 +28,13 @@ export default async function IcpPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: icps, source }, { data: products }, searchPreview] =
-    await Promise.all([listIcps(org), listProducts(org), getDiscoveryPreview(org)]);
+  const [{ data: icps, source }, { data: products }, searchPreview, proposal] =
+    await Promise.all([
+      listIcps(org),
+      listProducts(org),
+      getDiscoveryPreview(org),
+      getIcpProposal(org),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -45,6 +52,9 @@ export default async function IcpPage({
           qualification instead, and what the example companies added. Renders
           nothing when there is no saved search. */}
       <SearchPreview preview={searchPreview} />
+      {/* What the companies this workspace took on have in common (M-12).
+          Absent until there are enough decisions to count. */}
+      {proposal && <ProfileProposal org={org} view={proposal} canWrite={canWrite(viewer)} />}
     </div>
   );
 }

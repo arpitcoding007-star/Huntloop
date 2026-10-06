@@ -106,6 +106,10 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0037_daily_loop.sql", probe: "migration_0037_applied", kind: "rpc" },
   { file: "0038_discovery_backpressure.sql", probe: "migration_0038_applied", kind: "rpc" },
   { file: "0039_competitor_requests.sql", probe: "migration_0039_applied", kind: "rpc" },
+  { file: "0040_brief_value_notifications.sql", probe: "notification_preferences", kind: "table" },
+  { file: "0041_workspace_assistant.sql", probe: "migration_0041_applied", kind: "rpc" },
+  { file: "0042_demand_intelligence.sql", probe: "demand_themes", kind: "table" },
+  { file: "0043_learning_competitors_demand.sql", probe: "migration_0043_applied", kind: "rpc" },
 ];
 
 /**

@@ -138,6 +138,29 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     counts.research++;
   }
 
+  // 4b. "Research this" on an opportunity's brief (0040). Forced, because the
+  //     company was researched before — that is why it has an opportunity —
+  //     and the person is asking for a fresh reading, which then rescores.
+  const { data: askedCompanies, error: askedError } = await db
+    .from("companies")
+    .select("id, org_id")
+    .not("research_asked_at", "is", null)
+    .is("deleted_at", null)
+    .order("research_asked_at", { ascending: true })
+    .limit(MAX_RESEARCH_PER_TICK);
+  if (askedError) return { ok: false, error: `schedule_followups: ${askedError.message}` };
+
+  for (const company of (askedCompanies ?? []) as { id: string; org_id: string }[]) {
+    await enqueue({
+      orgId: company.org_id,
+      name: "research_company",
+      payload: { companyId: company.id, force: true },
+      idempotencyKey: `research:${company.id}`,
+    });
+    await db.from("companies").update({ research_asked_at: null }).eq("id", company.id);
+    counts.research++;
+  }
+
   // 5. Competitor research a person asked for (0039). `research_competitor`
   //    had no producer before this; the request column is its seam.
   const { data: asked, error: competitorError } = await db
@@ -161,5 +184,35 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     competitors++;
   }
 
-  return { ok: true, result: { ...counts, competitors } };
+  // 6. Competitors whose customers a person asked us to go after (0039):
+  //    once per research — again only after the profile was re-researched.
+  const { data: prospecting, error: prospectError } = await db
+    .from("competitors")
+    .select("id, org_id, last_researched_at, customers_sought_at")
+    .eq("prospect_customers", true)
+    .eq("status", "active")
+    .not("last_researched_at", "is", null)
+    .is("deleted_at", null)
+    .limit(MAX_COMPETITOR_PER_TICK * 4);
+  if (prospectError) return { ok: false, error: `schedule_followups: ${prospectError.message}` };
+
+  let prospected = 0;
+  for (const row of (prospecting ?? []) as {
+    id: string;
+    org_id: string;
+    last_researched_at: string;
+    customers_sought_at: string | null;
+  }[]) {
+    if (prospected >= MAX_COMPETITOR_PER_TICK) break;
+    if (row.customers_sought_at && row.customers_sought_at >= row.last_researched_at) continue;
+    await enqueue({
+      orgId: row.org_id,
+      name: "prospect_competitor_customers",
+      payload: { competitorId: row.id },
+      idempotencyKey: `competitor-customers:${row.id}:${row.last_researched_at}`,
+    });
+    prospected++;
+  }
+
+  return { ok: true, result: { ...counts, competitors, prospected } };
 }

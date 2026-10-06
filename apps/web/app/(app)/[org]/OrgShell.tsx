@@ -29,12 +29,14 @@ import {
   House,
   Inbox as InboxIcon,
   KanbanSquare,
+  Layers,
   ListTodo,
   Lightbulb,
   MessagesSquare,
   Package,
   Plug,
   Radar,
+  Swords,
   Send,
   Settings,
   ShieldCheck,
@@ -197,6 +199,13 @@ export function OrgShell({
            Performance is the outcome analytics the label promised; spend
            moved to Operate, where it is the engine's running cost. */
         { label: "Performance", href: `/${org}/performance`, icon: BarChart3 },
+        /* P4: questions about the workspace, answered from its own records. */
+        {
+          label: "Ask Huntloop",
+          href: `/${org}/assistant`,
+          icon: MessagesSquare,
+          badge: { label: "AI", variant: "ai" },
+        },
         {
           label: "Intelligence",
           href: `/${org}/intelligence`,
@@ -214,6 +223,8 @@ export function OrgShell({
           badge: { label: "AI", variant: "ai" },
         },
         { label: "Memory", href: `/${org}/memory`, icon: Brain },
+        /* P6: what prospects ask for, grouped into a roadmap. */
+        { label: "Prospect demand", href: `/${org}/demand`, icon: Layers },
       ],
     },
     {
@@ -230,6 +241,7 @@ export function OrgShell({
           badge: { label: "AI", variant: "ai" },
         },
         { label: "Sources", href: `/${org}/sources`, icon: Radar },
+        { label: "Competitors", href: `/${org}/competitors`, icon: Swords },
       ],
     },
     {

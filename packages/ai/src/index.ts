@@ -109,8 +109,10 @@ export {
 } from "./tasks/qualify-opportunity.ts";
 
 export {
+  MAX_DEMAND_MENTIONS,
   REPLY_CLASSES,
   classifyReply,
+  type DemandMention,
   type ReplyClass,
   type ReplyClassification,
   type ReplyInput,
@@ -119,8 +121,11 @@ export {
 export {
   BANNED_PHRASES,
   MAX_BODY_CHARS,
+  competitorMayBeNamed,
   findBannedPhrase,
+  findForbiddenCompetitor,
   personalizeMessage,
+  type MessageCompetitor,
   type MessageEvidence,
   type PersonalizeInput,
   type PersonalizedMessage,
@@ -145,6 +150,8 @@ export {
   type FindingKind,
   type FindingProposal,
   type MemoryProposal,
+  type CompetitorRecord,
+  type DemandThemeRecord,
   type OutcomeRecord,
   type PerformanceAnalysis,
   type RuleProposal,
@@ -185,5 +192,29 @@ export {
   salesAgent,
   type AgentAnswer,
   type AgentInput,
+  type AgentContext,
   type AgentTurn,
 } from "./tasks/sales-agent.ts";
+
+export {
+  ASSISTANT_MAX_HISTORY,
+  ASSISTANT_MAX_QUESTION,
+  ASSISTANT_MAX_RECORDS,
+  assistantRefs,
+  workspaceAssistant,
+  type AssistantAction,
+  type AssistantActionKind,
+  type AssistantAnswer,
+  type AssistantInput,
+  type AssistantRecord,
+  type AssistantRecordType,
+} from "./tasks/workspace-assistant.ts";
+
+export {
+  MAX_CLUSTER_SIGNALS,
+  MAX_NEW_THEMES,
+  clusterDemand,
+  type ClusterInput,
+  type ClusterOutput,
+  type DemandKind,
+} from "./tasks/cluster-demand.ts";

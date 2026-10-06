@@ -111,12 +111,50 @@ export interface SourcePerformance {
   wins: number;
 }
 
+/**
+ * A competitor a person accepted, with what the window says about them.
+ * Proposed and dismissed competitors are not included: only a competitor
+ * somebody vouched for is worth a finding.
+ */
+export interface CompetitorRecord {
+  competitorId: string;
+  name: string;
+  tier: string | null;
+  /** Deals in the window closed as lost to them. */
+  lossesInWindow: number;
+  /** Those deals, so a finding can cite them. Newest first, capped. */
+  lostOpportunityIds: string[];
+  /** Prospects with evidence they use / are evaluating / left this competitor. */
+  prospectsUsing: number;
+  prospectsEvaluating: number;
+  prospectsFormer: number;
+  /** Whether a person has written down where we win and where they win. */
+  hasPositioning: boolean;
+}
+
+/** A demand theme a person accepted (not proposed, dismissed or merged). */
+export interface DemandThemeRecord {
+  themeId: string;
+  title: string;
+  kind: "request" | "objection" | "blocker";
+  status: "open" | "planned" | "shipped" | "wont";
+  /** Statements grouped under it, from replies, closed deals and notes. */
+  statements: number;
+  /** Deals that asked for it, and how many of those were lost. */
+  opportunityIds: string[];
+  lostOpportunities: number;
+}
+
 export interface AnalyzeInput {
   windowStart: string;
   windowEnd: string;
   outcomes: OutcomeRecord[];
   decisions: DecisionRecord[];
   sources: SourcePerformance[];
+  /** Accepted competitors (§16.3-J: learning extended to competitors). */
+  competitors?: CompetitorRecord[];
+  /** Accepted demand themes (§16.3-J: learning extended to demand). */
+  demand?: DemandThemeRecord[];
   /** What the policy already says, so a finding does not propose it again. */
   existingRules: { name: string; description: string }[];
   /** House style already on file, for the same reason. */
@@ -130,6 +168,8 @@ export const FINDING_KINDS = [
   "scoring_adjustment",
   "style_guidance",
   "icp_refinement",
+  "competitive_positioning",
+  "product_demand",
 ] as const;
 
 export type FindingKind = (typeof FINDING_KINDS)[number];
@@ -165,6 +205,8 @@ export interface Finding {
   citedOpportunityIds: string[];
   citedCompanyIds: string[];
   citedSourceIds: string[];
+  citedCompetitorIds: string[];
+  citedThemeIds: string[];
   supportingCount: number;
   contradictingCount: number;
   /** Null where a finding is worth reading and not worth automating. */
@@ -267,6 +309,17 @@ findings is a report about the model's confidence, not about the customer.
                       replies and overrides — not from taste.
   icp_refinement      The profile itself is off: a segment that never converts,
                       or one that does and is not in it.
+  competitive_positioning
+                      A competitor deals are lost to, or one many prospects use,
+                      and what that should change — usually positioning a person
+                      writes down. Cite the competitor and the lost deals.
+                      Never claim why a buyer chose them; you were not told.
+  product_demand      A theme prospects keep raising, weighed by the deals that
+                      raised it and how many were lost. Cite the theme and those
+                      deals. This informs the roadmap; it rarely deserves a
+                      scoring rule, and a memory only when it changes what
+                      outreach should say (for example, not promising what does
+                      not exist yet).
 
 ## Proposals
 
@@ -339,6 +392,8 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
       ...input.sources.map((s) => s.sourceId),
       ...input.outcomes.map((o) => o.sourceId).filter((id): id is string => Boolean(id)),
     ]);
+    const { opportunityIds: extraOpportunityIds, competitorIds, themeIds } = citable(input);
+    opportunityIds.push(...extraOpportunityIds.filter((id) => !opportunityIds.includes(id)));
 
     /* An empty enum is not a valid schema, so a citation array with no
        candidates is declared as an always-empty array instead. That is the
@@ -440,6 +495,8 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
               "citedOpportunityIds",
               "citedCompanyIds",
               "citedSourceIds",
+              "citedCompetitorIds",
+              "citedThemeIds",
               "supportingCount",
               "contradictingCount",
               "proposal",
@@ -453,6 +510,8 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
               citedOpportunityIds: citations(opportunityIds),
               citedCompanyIds: citations(companyIds),
               citedSourceIds: citations(sourceIds),
+              citedCompetitorIds: citations(competitorIds),
+              citedThemeIds: citations(themeIds),
               supportingCount: { type: "integer", minimum: 0 },
               contradictingCount: { type: "integer", minimum: 0 },
               proposal: { anyOf: [ruleProposal, memoryProposal, { type: "null" }] },
@@ -501,6 +560,30 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
           .join("\n")
       : "  (none configured)";
 
+    const competitors = input.competitors?.length
+      ? input.competitors
+          .map(
+            (c) =>
+              `  competitor=${c.competitorId} "${c.name}" tier=${c.tier ?? "?"} ` +
+              `lost_to_in_period=${c.lossesInWindow}` +
+              (c.lostOpportunityIds.length ? ` lost_opportunities=${c.lostOpportunityIds.join(",")}` : "") +
+              ` prospects_using=${c.prospectsUsing} evaluating=${c.prospectsEvaluating} ` +
+              `former=${c.prospectsFormer} positioning_written=${c.hasPositioning ? "yes" : "no"}`,
+          )
+          .join("\n")
+      : "  (none accepted)";
+
+    const demand = input.demand?.length
+      ? input.demand
+          .map(
+            (t) =>
+              `  theme=${t.themeId} "${t.title}" kind=${t.kind} status=${t.status} ` +
+              `statements=${t.statements} deals=${t.opportunityIds.length} lost=${t.lostOpportunities}` +
+              (t.opportunityIds.length ? ` opportunities=${t.opportunityIds.join(",")}` : ""),
+          )
+          .join("\n")
+      : "  (none accepted)";
+
     const rules = input.existingRules.length
       ? input.existingRules.map((r) => `  - ${r.name}: ${r.description}`).join("\n")
       : "  (none yet)";
@@ -526,6 +609,12 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
       "",
       `Sources (${input.sources.length}):`,
       sources,
+      "",
+      `Competitors (${input.competitors?.length ?? 0}):`,
+      competitors,
+      "",
+      `What prospects ask for — demand themes (${input.demand?.length ?? 0}):`,
+      demand,
     ].join("\n");
 
     return [
@@ -586,6 +675,10 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
       ...input.sources.map((s) => s.sourceId),
       ...input.outcomes.map((o) => o.sourceId).filter((id): id is string => Boolean(id)),
     ]);
+    const extra = citable(input);
+    for (const id of extra.opportunityIds) opportunityIds.add(id);
+    const competitorIds = new Set(extra.competitorIds);
+    const themeIds = new Set(extra.themeIds);
 
     const existingRuleNames = new Set(
       input.existingRules.map((r) => r.name.trim().toLowerCase()),
@@ -632,8 +725,21 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
       );
       const citedCompanyIds = citedFrom(item.citedCompanyIds, companyIds, headline, "company");
       const citedSourceIds = citedFrom(item.citedSourceIds, sourceIds, headline, "source");
+      const citedCompetitorIds = citedFrom(
+        item.citedCompetitorIds,
+        competitorIds,
+        headline,
+        "competitor",
+      );
+      const citedThemeIds = citedFrom(item.citedThemeIds, themeIds, headline, "demand theme");
 
-      if (!citedOpportunityIds.length && !citedCompanyIds.length && !citedSourceIds.length) {
+      if (
+        !citedOpportunityIds.length &&
+        !citedCompanyIds.length &&
+        !citedSourceIds.length &&
+        !citedCompetitorIds.length &&
+        !citedThemeIds.length
+      ) {
         throw new Error(
           `analyze_performance: "${headline}" cites nothing. A finding with no ` +
             `records behind it is a plausible sentence, and it is about to be ` +
@@ -646,7 +752,13 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
       if (supportingCount === 0) {
         throw new Error(
           `analyze_performance: "${headline}" is supported by zero records ` +
-            `while citing ${citedOpportunityIds.length + citedCompanyIds.length + citedSourceIds.length}.`,
+            `while citing ${
+              citedOpportunityIds.length +
+              citedCompanyIds.length +
+              citedSourceIds.length +
+              citedCompetitorIds.length +
+              citedThemeIds.length
+            }.`,
         );
       }
 
@@ -661,6 +773,8 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
         citedOpportunityIds,
         citedCompanyIds,
         citedSourceIds,
+        citedCompetitorIds,
+        citedThemeIds,
         supportingCount,
         contradictingCount,
         proposal,
@@ -682,6 +796,8 @@ interface RawFinding {
   citedOpportunityIds?: unknown;
   citedCompanyIds?: unknown;
   citedSourceIds?: unknown;
+  citedCompetitorIds?: unknown;
+  citedThemeIds?: unknown;
   supportingCount?: unknown;
   contradictingCount?: unknown;
   proposal?: unknown;
@@ -698,6 +814,28 @@ function count(value: unknown): number {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+/**
+ * The ids competitor and demand records add to what a finding may cite. A
+ * deal lost to a competitor, or one that asked for a theme, is a real record
+ * of this org even when its outcome fell outside the outcome list's cap.
+ */
+function citable(input: AnalyzeInput): {
+  opportunityIds: string[];
+  competitorIds: string[];
+  themeIds: string[];
+} {
+  const competitors = input.competitors ?? [];
+  const demand = input.demand ?? [];
+  return {
+    opportunityIds: unique([
+      ...competitors.flatMap((c) => c.lostOpportunityIds),
+      ...demand.flatMap((t) => t.opportunityIds),
+    ]),
+    competitorIds: unique(competitors.map((c) => c.competitorId)),
+    themeIds: unique(demand.map((t) => t.themeId)),
+  };
 }
 
 /**

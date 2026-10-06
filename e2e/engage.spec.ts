@@ -287,9 +287,10 @@ test.describe("memory", () => {
     await page.goto(`/${ORG}/memory`);
     await page.getByRole("button", { name: /add a memory/i }).click();
 
-    await expect(page.getByRole("textbox", { name: /subject/i })).toBeHidden();
+    // The subject is picked by name from a list, not typed as a raw id.
+    await expect(page.getByRole("combobox", { name: /^subject/i })).toBeHidden();
 
     await page.getByRole("combobox", { name: /who this applies to/i }).selectOption("user");
-    await expect(page.getByRole("textbox", { name: /subject/i })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /^subject/i })).toBeVisible();
   });
 });

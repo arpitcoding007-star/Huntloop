@@ -46,7 +46,8 @@ export type TaskName =
   | "research_competitor"
   | "draft_icp"
   | "explain_performance"
-  | "workspace_assistant";
+  | "workspace_assistant"
+  | "cluster_demand";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -94,6 +95,10 @@ export const ROUTES: Record<TaskName, Route> = {
      default because it is conversational and frequent; nothing it says is
      acted on without a person pressing a button. */
   workspace_assistant: { model: MODELS.sonnet, effort: "medium" },
+  /* Groups short paraphrases into themes. Every reference is closed over the
+     ids sent and every new theme is a proposal a person accepts, so this is
+     mid-tier work; it runs at most daily per workspace. */
+  cluster_demand: { model: MODELS.sonnet, effort: "medium" },
 };
 
 /**

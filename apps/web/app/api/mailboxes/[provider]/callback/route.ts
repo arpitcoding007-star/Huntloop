@@ -147,6 +147,8 @@ export async function GET(
       token_expires_at: tokens.expiresAt.toISOString(),
       status: "connected",
       last_error: null,
+      // A mailbox disconnected earlier is restored by reconnecting it.
+      deleted_at: null,
       ...(tokens.refreshToken
         ? { refresh_token_enc: encryptSecret(tokens.refreshToken) }
         : {}),

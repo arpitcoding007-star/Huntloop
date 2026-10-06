@@ -242,6 +242,44 @@ export const icpFormSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+/* ── Competitors (COMMAND.md §16.3-D) ──────────────────────────────────── */
+
+const competitorTier = z.enum(["direct", "adjacent", "incumbent", "diy"]);
+/** A person's own positioning sentence. Bounded; never written by a model. */
+const positioning = z.string().trim().max(1000).optional().or(z.literal(""));
+
+export const competitorCreateSchema = z.object({
+  name,
+  /* A domain is what research reads. Optional, because a name typed from
+     memory is still worth recording; research waits until there is one. */
+  domain: z.string().trim().max(253).optional().or(z.literal("")),
+  tier: competitorTier.optional().or(z.literal("")),
+});
+
+export const competitorUpdateSchema = z.object({
+  id: uuidSchema,
+  name,
+  domain: z.string().trim().max(253).optional().or(z.literal("")),
+  tier: competitorTier.optional().or(z.literal("")),
+  ourAdvantage: positioning,
+  theirAdvantage: positioning,
+  prospectCustomers: z.boolean(),
+});
+
+/** Suggestions from the tighter-profile proposal a person chose to apply (M-12). */
+export const icpProposalApplySchema = z.object({
+  icpId: uuidSchema,
+  picks: z
+    .array(
+      z.object({
+        field: z.enum(["industries", "sizes", "regions", "exclusions"]),
+        value: z.string().trim().min(1).max(200),
+      }),
+    )
+    .min(1, "Choose at least one suggestion.")
+    .max(30),
+});
+
 export const personaSchema = z.object({
   id: uuidSchema.optional(),
   icpId: uuidSchema,

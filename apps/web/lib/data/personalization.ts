@@ -143,7 +143,7 @@ function firstAction(
   org: string,
 ): { label: string; href: string } {
   if (goals.includes("reach_out")) {
-    return { label: "Connect a mailbox", href: `/${org}/settings` };
+    return { label: "Connect a mailbox", href: `/${org}/outreach` };
   }
   if (goals.includes("qualify")) {
     return { label: "Import your accounts", href: `/${org}/imports` };

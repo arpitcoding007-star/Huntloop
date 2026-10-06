@@ -129,10 +129,14 @@ export function CompanyStep({
 
   function runResearch(e: React.FormEvent) {
     e.preventDefault();
+    /* The workspace an earlier run in this session created, read before the
+       state is cleared. Without it "Start over" with another address created
+       a second workspace and orphaned the first (M-08). */
+    const workspace = state.org ?? org;
     setPhase("researching");
     setState({});
     startTransition(async () => {
-      const next = await researchCompanyAction(url, org);
+      const next = await researchCompanyAction(url, workspace);
       setState(next);
       if (next.result) {
         setFindings(next.result.understanding.findings as Finding[]);

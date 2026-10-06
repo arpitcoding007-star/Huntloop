@@ -24,8 +24,11 @@
 export const WORKSPACE_SECTIONS = [
   "analytics",
   "analyze",
+  "assistant",
   "companies",
+  "competitors",
   "dashboard",
+  "demand",
   "imports",
   "inbox",
   "intelligence",
@@ -54,4 +57,16 @@ export function isProtectedRoute(path: string): boolean {
   // the database and a session — so any slug with a known section counts.
   const [, org, section] = path.split("/");
   return Boolean(org) && Boolean(section) && SECTIONS.has(section!);
+}
+
+/**
+ * The workspace slug in a `/<org>/<section>` path, or null for every other
+ * path. Used to remember the workspace a user last worked in (M-03); the slug
+ * shape is checked so a crafted path cannot write arbitrary text into a cookie.
+ */
+export function workspaceSlug(path: string): string | null {
+  const [, org, section] = path.split("/");
+  if (!org || !section || !SECTIONS.has(section)) return null;
+  // The shape `orgSlugSchema` accepts.
+  return org.length <= 48 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(org) ? org : null;
 }

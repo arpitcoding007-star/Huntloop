@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { parseIcp } from "@huntloop/db/icp";
+import { bandsToRange, parseIcp } from "@huntloop/db/icp";
 import { mergeStoredJson } from "../../../../../lib/data/icp";
 import {
   fail,
@@ -18,6 +18,7 @@ import {
 } from "../../../../../lib/data/look-alike-preview";
 import {
   icpFormSchema,
+  icpProposalApplySchema,
   parseForm,
   personaSchema,
   uuidSchema,
@@ -83,6 +84,10 @@ export async function saveIcpAction(
       criteria: {
         segments: value.segments,
         sizes: value.sizes,
+        /* The numeric range a provider filter reads. Derived from the bands so
+           a size changed here changes the search; leaving the range written
+           at onboarding meant the bands said one thing and the search another. */
+        employeeRange: value.sizes.length ? bandsToRange(value.sizes) : null,
         regions: value.regions,
         triggers: value.triggers,
         exampleCompanies: value.exampleCompanies,
@@ -154,15 +159,87 @@ export async function saveIcpAction(
       .eq("org_id", orgId)
       .is("deleted_at", null);
 
+    const active = (count ?? 0) === 0;
     const { data, error } = await db
       .from("icps")
-      .insert({ ...row, is_active: (count ?? 0) === 0 })
+      .insert({ ...row, is_active: active })
       .select("id")
       .single();
     if (error) return fail(`That ICP could not be created: ${error.message}`);
 
+    /* An active profile gets its search built now, exactly as saving or
+       activating one does — otherwise nothing hunted until the next edit or
+       "Hunt now" (M-14). */
+    if (active) await followActiveIcp(db, orgId, { runNow: false });
+
     revalidatePath(`/${org}`, "layout");
     return ok({ id: String(data.id) }, "ICP created.");
+  });
+}
+
+/**
+ * Applies the suggestions a person picked from the tighter-profile proposal
+ * (M-12). Each value is appended to its list on the stored profile — never
+ * replacing what is there — and the search and scores follow, as any other
+ * profile edit does.
+ */
+export async function applyIcpProposalAction(
+  org: string,
+  input: unknown,
+): Promise<ActionResult<{ applied: number }>> {
+  const parsed = parseForm(icpProposalApplySchema, input);
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+  const { icpId, picks } = parsed.value;
+
+  return mutate(org, "applyIcpProposal", async ({ db, orgId }) => {
+    const { data: existing, error } = await db
+      .from("icps")
+      .select("criteria, negative_criteria, is_active")
+      .eq("id", icpId)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) return fail(`That profile could not be read: ${error.message}`);
+    if (!existing) return fail("That profile no longer exists.");
+
+    const criteria = mergeStoredJson(existing.criteria, {});
+    const negative = mergeStoredJson(existing.negative_criteria, {});
+    const append = (target: Record<string, unknown>, key: string, value: string) => {
+      const list = Array.isArray(target[key]) ? (target[key] as unknown[]).map(String) : [];
+      if (list.some((v) => v.toLowerCase() === value.toLowerCase())) return false;
+      target[key] = [...list, value];
+      return true;
+    };
+
+    let applied = 0;
+    for (const pick of picks) {
+      const added =
+        pick.field === "exclusions"
+          ? append(negative, "exclusions", pick.value)
+          : append(criteria, pick.field, pick.value);
+      if (added) applied += 1;
+    }
+    // The search reads the range, not the bands; keep them in step.
+    if (picks.some((p) => p.field === "sizes") && Array.isArray(criteria.sizes)) {
+      criteria.employeeRange = bandsToRange(criteria.sizes as string[]);
+    }
+    if (applied === 0) return ok({ applied }, "Those are already on the profile.");
+
+    const { error: writeError } = await db
+      .from("icps")
+      .update({ criteria, negative_criteria: negative })
+      .eq("id", icpId)
+      .eq("org_id", orgId)
+      .is("deleted_at", null);
+    if (writeError) return fail(`The profile could not be updated: ${writeError.message}`);
+
+    if (existing.is_active) await followActiveIcp(db, orgId, { runNow: false });
+
+    revalidatePath(`/${org}`, "layout");
+    return ok(
+      { applied },
+      `Added ${applied} to the profile. The search and scores follow it from the next run.`,
+    );
   });
 }
 

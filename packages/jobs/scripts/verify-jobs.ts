@@ -27,6 +27,10 @@ import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.t
 import { gmail } from "../src/mailbox/gmail.ts";
 import type { OutgoingMessage } from "../src/mailbox/provider.ts";
 import { ruleFacts } from "../src/handlers/score-opportunity.ts";
+import { normalizeCompanyName, pickMatch } from "../src/handlers/prospect-competitor-customers.ts";
+import { DEFAULT_PREFERENCE, digestDue, digestFilter, localTime } from "../src/handlers/send-digests.ts";
+import { digestUnsubscribeToken, verifyDigestUnsubscribeToken } from "../src/email/digest-token.ts";
+import { digestEmail, escapeHtml, invitationEmail } from "../src/email/templates.ts";
 import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
@@ -114,10 +118,17 @@ function fakeClient(responses: Record<string, unknown> = {}) {
     };
     chain.single = () => chain;
     chain.maybeSingle = () => chain;
-    chain.then = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(
-        responses[`${record.verb}:${record.table}`] ?? { data: null, error: null },
+    /* A response may be a function of the recorded query, for a handler that
+       reads one table twice with different filters. */
+    chain.then = (resolve: (v: unknown) => unknown) => {
+      const response = responses[`${record.verb}:${record.table}`];
+      return Promise.resolve(
+        (typeof response === "function" ? (response as (r: Recorded) => unknown)(record) : response) ?? {
+          data: null,
+          error: null,
+        },
       ).then(resolve);
+    };
     return chain;
   };
 
@@ -593,6 +604,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       /* Retention, added with the compliance jobs. Keyed daily rather than
          per-tick — see `DAILY` in the runner. */
       "enforce_retention",
+      /* 0042: demand grouping. Hourly; spends at most once a day per org. */
+      "schedule_demand",
       /* Added with `0014`. Listed explicitly rather than derived from
          `SWEEPERS`, so adding a cross-tenant job is a deliberate two-line
          change — the set is the most consequential list in the engine, and a
@@ -611,6 +624,10 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
          test actually has to notice. */
       "schedule_signal_fetches",
       "schedule_syncs",
+      /* 0040: product email. Listed by hand like every other sweeper; both
+         send nothing without RESEND_API_KEY. */
+      "send_digests",
+      "send_notifications",
     ],
   );
   expect(
@@ -628,7 +645,13 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
   expect(
     "a per-tick sweeper is idempotent on its own name",
     enqueued
-      .filter((row) => row.job_name !== "schedule_learning" && row.job_name !== "enforce_retention")
+      .filter(
+        (row) =>
+          row.job_name !== "schedule_learning" &&
+          row.job_name !== "enforce_retention" &&
+          row.job_name !== "send_digests" &&
+          row.job_name !== "schedule_demand",
+      )
       .every((row) => row.idempotency_key === row.job_name),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
   );
@@ -639,6 +662,13 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       .every((row) =>
         /^schedule_learning:\d{4}-\d{2}-\d{2}T\d{2}$/.test(String(row.idempotency_key)),
       ),
+    JSON.stringify(enqueued.map((row) => row.idempotency_key)),
+  );
+  expect(
+    "the digest sweep collapses to one an hour — a person's digest hour changes hourly",
+    enqueued
+      .filter((row) => row.job_name === "send_digests")
+      .every((row) => /^send_digests:\d{4}-\d{2}-\d{2}T\d{2}$/.test(String(row.idempotency_key))),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
   );
   expect(
@@ -2904,13 +2934,18 @@ console.log("\nschedule_followups — MAP-001: the producer the orphans never ha
     "select:opportunities": { data: [{ id: OPP, org_id: ORG_A, company_id: COMPANY }], error: null },
     /* FLOW-007: one company never researched and with no opportunity (an
        import), and one that already has an opportunity and must be left. */
-    "select:companies": {
-      data: [
-        { id: "33333333-0036-0036-0036-000000000003", org_id: ORG_A, opportunities: [] },
-        { id: "44444444-0036-0036-0036-000000000004", org_id: ORG_A, opportunities: [{ id: OPP }] },
-      ],
-      error: null,
-    },
+    /* The "Research this" read (0040) asks for requested companies; none is
+       requested here, so it must not re-research anything. */
+    "select:companies": (record: { filters: [string, unknown][] }) =>
+      record.filters.some(([f]) => f === "not:research_asked_at")
+        ? { data: [], error: null }
+        : {
+            data: [
+              { id: "33333333-0036-0036-0036-000000000003", org_id: ORG_A, opportunities: [] },
+              { id: "44444444-0036-0036-0036-000000000004", org_id: ORG_A, opportunities: [{ id: OPP }] },
+            ],
+            error: null,
+          },
     "insert:job_executions": { data: { id: "job_1" }, error: null },
   });
   setAdminClientForTests(client);
@@ -3044,6 +3079,109 @@ console.log("\nadvance_enrollments — an opportunity closed as not a fit stops 
     "and nothing is drafted",
     !calls.some((c) => c.table === "messages" && c.verb === "insert"),
   );
+}
+
+/* ── prospect_competitor_customers — a named customer, matched or not ─── */
+
+console.log("\nprospect_competitor_customers — only an unambiguous name becomes a company");
+{
+  const company = (name: string, domain: string | null) => ({
+    providerId: name, name, domain, website: null, description: null, industry: null,
+    employeeCount: null, revenueBand: null, country: null, region: null, city: null,
+    foundedYear: null, linkedinUrl: null, technologies: [], funding: null, raw: null,
+  });
+  expectEqual(
+    "legal suffixes and punctuation do not make two names differ",
+    normalizeCompanyName("Acme, Inc."),
+    normalizeCompanyName("acme"),
+  );
+  expectEqual(
+    "an exact match with a domain is taken",
+    pickMatch("Acme Inc", [company("Acme", "acme.com"), company("Acme Robotics", "acmerobotics.com")])?.domain,
+    "acme.com",
+  );
+  expectEqual(
+    "two companies with the same name are a guess, not a match",
+    pickMatch("Acme", [company("Acme", "acme.com"), company("ACME", "acme.io")]),
+    null,
+  );
+  expectEqual("a match with no domain cannot be researched", pickMatch("Acme", [company("Acme", null)]), null);
+}
+
+console.log("\nsend_digests — once a day, at the person's own hour");
+{
+  // 13:30 UTC is 15:30 in Paris (CEST, UTC+2) on this date.
+  const now = new Date("2026-10-06T13:30:00Z");
+  expectEqual("local time follows the zone", localTime(now, "Europe/Paris"), { date: "2026-10-06", hour: 15 });
+  expectEqual("an unknown zone falls back to UTC", localTime(now, "Not/AZone"), { date: "2026-10-06", hour: 13 });
+  expect("due once the hour has passed", digestDue({ ...DEFAULT_PREFERENCE, digestHour: 8 }, now).due);
+  expect("not before the hour", !digestDue({ ...DEFAULT_PREFERENCE, digestHour: 20 }, now).due);
+  expect(
+    "not twice on the same local day",
+    !digestDue({ ...DEFAULT_PREFERENCE, lastDigestOn: "2026-10-06" }, now).due,
+  );
+  expect("never when turned off", !digestDue({ ...DEFAULT_PREFERENCE, dailyDigest: false }, now).due);
+  expectEqual("an account executive sees their own accounts", digestFilter("sales"), "mine");
+  expectEqual("everyone else sees the workspace", digestFilter("founder"), "everyone");
+}
+
+console.log("\ndigest unsubscribe link — signed, and bound to one person");
+{
+  const previous = process.env.SUPABASE_SECRET_KEY;
+  process.env.SUPABASE_SECRET_KEY = "test-secret-for-verify-jobs";
+  const org = "11111111-1111-4111-8111-111111111111";
+  const user = "22222222-2222-4222-8222-222222222222";
+  const token = digestUnsubscribeToken(org, user)!;
+  expectEqual("a token verifies to the ids it was issued for", verifyDigestUnsubscribeToken(token), {
+    orgId: org,
+    userId: user,
+  });
+  const other = "33333333-3333-4333-8333-333333333333";
+  expectEqual(
+    "and cannot be pointed at somebody else",
+    verifyDigestUnsubscribeToken(token.replace(user, other)),
+    null,
+  );
+  expectEqual("garbage is refused", verifyDigestUnsubscribeToken("not.a.token"), null);
+  if (previous === undefined) delete process.env.SUPABASE_SECRET_KEY;
+  else process.env.SUPABASE_SECRET_KEY = previous;
+}
+
+console.log("\nemail templates — every value people typed is escaped");
+{
+  expectEqual("html is escaped", escapeHtml('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;");
+  const invite = invitationEmail({
+    orgName: "<script>alert(1)</script>",
+    inviterName: "Mallory",
+    role: "admin",
+    url: "https://example.com/invite/abc",
+    expiresAt: "2026-10-13T00:00:00Z",
+  });
+  expect("an org name cannot inject markup", !invite.html.includes("<script>"));
+  expect("and the plain-text part carries the link", invite.text.includes("https://example.com/invite/abc"));
+  const digest = digestEmail({
+    orgName: "Acme",
+    firstName: "Sam",
+    items: [{ title: "Reply: Northwind", why: "They replied 2 days ago.", href: "https://x.test/a" }],
+    total: 3,
+    needsYouUrl: "https://x.test/needs-you",
+    preferencesUrl: "https://x.test/settings",
+    unsubscribeUrl: "https://x.test/unsub",
+  });
+  expect("a digest says how many need you", digest.subject.startsWith("3 things need you"));
+  expect("and links to stop it", digest.text.includes("https://x.test/unsub"));
+}
+
+console.log("\nruleFacts — competitor relationships reach the rules");
+{
+  const facts = ruleFacts({}, [], [], { score: 50, priority: "warm" }, {
+    uses: ["Rival"],
+    evaluating: [],
+    former: ["OldCo"],
+  });
+  expectEqual("uses", facts["competitors.uses"], ["Rival"]);
+  expectEqual("former", facts["competitors.former"], ["OldCo"]);
+  expectEqual("and none evaluating is an empty list, not absent", facts["competitors.evaluating"], []);
 }
 
 console.log(

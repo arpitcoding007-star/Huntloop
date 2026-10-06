@@ -5,6 +5,9 @@ import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { DemoFigures } from "../DemoFigures";
 import { OrgSettingsForm } from "./OrgSettingsForm";
 import { OrgVoiceForm } from "./OrgVoiceForm";
+import { NotificationsForm } from "./NotificationsForm";
+import { getNotificationPreferences, supportedTimeZones } from "../../../../lib/data/notifications";
+import { isEmailConfigured } from "@huntloop/jobs";
 
 /**
  * Settings root — the organisation itself.
@@ -24,7 +27,10 @@ export default async function SettingsPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: organization, source } = await getOrganization(org);
+  const [{ data: organization, source }, { data: notifications }] = await Promise.all([
+    getOrganization(org),
+    getNotificationPreferences(org),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -44,6 +50,14 @@ export default async function SettingsPage({
         org={org}
         profile={parseOrgProfile(organization?.settings)}
         canAdmin={canAdmin(viewer)}
+      />
+      {/* Personal, so every member sees it — not only admins. */}
+      <NotificationsForm
+        org={org}
+        preferences={notifications}
+        timeZones={supportedTimeZones()}
+        emailConfigured={isEmailConfigured()}
+        demo={source !== "live"}
       />
     </div>
   );

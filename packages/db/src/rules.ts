@@ -113,6 +113,16 @@ export const RULE_FIELDS = [
   /** The qualifier's own verdict, before any rule ran. */
   "score.model_score",
   "score.priority",
+  /**
+   * Competitors this company has a recorded relationship with (0015's
+   * `company_competitor_signals`), by name. Only active competitors, and only
+   * relationships observed with evidence — "uses", "evaluating", "former".
+   * `partner` and `mentions` are deliberately not rule fields: neither is a
+   * competitive signal a score should move on.
+   */
+  "competitors.uses",
+  "competitors.evaluating",
+  "competitors.former",
 ] as const;
 
 export type RuleField = (typeof RULE_FIELDS)[number];

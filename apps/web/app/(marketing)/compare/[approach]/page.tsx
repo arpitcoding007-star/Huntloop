@@ -1,3 +1,4 @@
+import { publicResearchEnabled } from "@huntloop/jobs";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -139,7 +140,7 @@ export default async function ComparePage({
             than any table.
           </p>
           <div className="mt-6 flex w-full justify-center">
-            <DomainInput />
+            <DomainInput canResearch={publicResearchEnabled()} />
           </div>
         </section>
 

@@ -84,7 +84,8 @@ export async function mutate<T>(
   orgSlug: string,
   caller: string,
   run: (ctx: { db: TenantClient; orgId: string; viewer: Viewer }) => Promise<ActionResult<T>>,
-  options: { minRole?: "member" | "admin" | "owner" } = {},
+  /** `viewer` admits read-only members, for writes that are only ever about themselves. */
+  options: { minRole?: "viewer" | "member" | "admin" | "owner" } = {},
 ): Promise<ActionResult<T>> {
   const { db, source } = await resolveDataSource();
 
@@ -100,7 +101,7 @@ export async function mutate<T>(
   if (!viewer || viewer.kind !== "member") {
     return fail("You are not a member of this organisation.");
   }
-  if (viewer.role === "viewer") {
+  if (viewer.role === "viewer" && options.minRole !== "viewer") {
     return fail("Your role is read-only, so this change was not saved. An admin can change your role under Members.");
   }
   if (options.minRole === "admin" && !canAdmin(viewer)) {

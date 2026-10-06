@@ -1,3 +1,4 @@
+import { MobileNav } from "./MobileNav";
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import { BrandMark, Button, ScoreRing, ThemeToggle } from "@huntloop/ui";
@@ -284,6 +285,13 @@ function Nav({ next }: { next: ContinueTarget | null }) {
         </nav>
         <div className="flex items-center gap-5">
           <ThemeToggle className="max-sm:hidden" />
+          <MobileNav
+            links={[
+              { href: "#discover", label: "Product" },
+              { href: "#how", label: "How it works" },
+              { href: "#pricing", label: "Pricing" },
+            ]}
+          />
           {/* Signed in: a sign-in link is the one thing they cannot use. */}
           {next ? (
             <Button variant="primary" size="lg" href={next.href} linkComponent={Link} className="px-[18px]!">

@@ -53,6 +53,7 @@ export interface AgentRequest {
   evidence: QualificationEvidence[];
   history: AgentTurn[];
   question: string;
+  context?: AgentInput["context"];
 }
 
 export async function ask(orgSlug: string, request: AgentRequest): Promise<AgentOutcome> {

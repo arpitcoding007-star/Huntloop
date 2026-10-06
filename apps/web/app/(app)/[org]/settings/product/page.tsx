@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { listProducts } from "../../../../../lib/data/product";
 import { DemoFigures } from "../../DemoFigures";
-import { ProductForm } from "./ProductForm";
+import { ProductList } from "./ProductList";
 
 /**
  * Product — master context §8.
@@ -29,11 +29,7 @@ export default async function ProductPage({
       {source !== "live" && (
         <DemoFigures what="This is an example product, not the one on your account." />
       )}
-      <ProductForm
-        org={org}
-        product={products[0] ?? null}
-        canWrite={canWrite(viewer)}
-      />
+      <ProductList org={org} products={products} canWrite={canWrite(viewer)} />
     </div>
   );
 }

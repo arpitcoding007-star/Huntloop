@@ -313,6 +313,32 @@ export async function applyClassification(
   }
 
   const opportunityId = input.threadId ? await opportunityFor(ctx, input.threadId) : null;
+
+  /* What they said they need or object to (0042, §16.3-I) — one short
+     statement each, citing this message. Kept even without an opportunity:
+     a stated need is worth counting whoever said it. */
+  const demand = input.classification.demand ?? [];
+  if (demand.length) {
+    let companyId: string | null = null;
+    if (opportunityId) {
+      const { data: opp } = await scope.select("opportunities", "company_id").eq("id", opportunityId).maybeSingle();
+      companyId = opp?.company_id ? String(opp.company_id) : null;
+    }
+    await scope.upsert(
+      "demand_signals",
+      demand.map((d) => ({
+        kind: d.kind,
+        statement: d.statement,
+        source_type: "reply",
+        source_id: input.messageId,
+        opportunity_id: opportunityId,
+        company_id: companyId,
+        claim_kind: "inference",
+      })),
+      { onConflict: "org_id,source_type,source_id,statement", ignoreDuplicates: true },
+    );
+  }
+
   if (!opportunityId) return;
 
   await scope

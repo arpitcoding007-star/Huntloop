@@ -207,6 +207,14 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
      budget; bounded per tick, and every branch sets a marker so it never asks
      twice for the same thing. */
   "schedule_followups",
+  /* 0040: product email. Both are no-ops without RESEND_API_KEY; neither
+     spends credits. `send_notifications` is two indexed queries that are
+     almost always empty; `send_digests` is hourly (below). */
+  "send_notifications",
+  "send_digests",
+  /* 0042: spends at most one mid-tier call per workspace per day (the
+     handler's own staleness rule), plus one per explicit "Group now". */
+  "schedule_demand",
 ]);
 
 /**
@@ -223,7 +231,7 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
  * it. A missed hour costs nothing, because being due is decided from
  * `learning_runs` inside the handler rather than from having been enqueued.
  */
-const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning"]);
+const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning", "send_digests", "schedule_demand"]);
 
 /**
  * Sweepers that only need asking once a day.

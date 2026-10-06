@@ -62,6 +62,8 @@ export async function GET() {
       outlook: has("MICROSOFT_CLIENT_ID") && has("MICROSOFT_CLIENT_SECRET"),
       sentry: has("SENTRY_DSN") && has("NEXT_PUBLIC_SENTRY_DSN"),
       posthog: has("NEXT_PUBLIC_POSTHOG_KEY"),
+      // Product email (invitations, join requests, the daily digest). Both are needed.
+      email: has("RESEND_API_KEY") && has("EMAIL_FROM"),
     },
   };
 

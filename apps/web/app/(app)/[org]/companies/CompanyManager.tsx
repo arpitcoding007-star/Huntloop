@@ -74,7 +74,12 @@ export function CompanyManager({
       header: "Company",
       render: (c) => (
         <div className="min-w-0">
-          <span className="block truncate text-[13px] font-medium text-fg">{c.name}</span>
+          <Link
+            href={`/${org}/companies/${c.id}`}
+            className="hl-focusable block truncate rounded-sm text-[13px] font-medium text-fg hover:underline"
+          >
+            {c.name}
+          </Link>
           <span className="block truncate font-mono text-[12px] text-fg-muted">
             {c.canonicalDomain}
           </span>

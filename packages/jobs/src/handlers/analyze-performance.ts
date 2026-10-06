@@ -33,7 +33,9 @@ import {
   analyzePerformance as analyzePerformanceTask,
   countSignals,
   type AnalyzeInput,
+  type CompetitorRecord,
   type DecisionRecord,
+  type DemandThemeRecord,
   type OutcomeRecord,
   type SourcePerformance,
 } from "@huntloop/ai";
@@ -80,13 +82,16 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
   const windowEnd = ctx.now;
   const windowStart = new Date(windowEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-  const [outcomes, decisions, sources, existingRules, existingGuidance] = await Promise.all([
-    loadOutcomes(ctx, windowStart, windowEnd),
-    loadDecisions(ctx, windowStart, windowEnd),
-    loadSourcePerformance(ctx),
-    loadExistingRules(ctx),
-    loadGuidance(ctx),
-  ]);
+  const [outcomes, decisions, sources, existingRules, existingGuidance, competitors, demand] =
+    await Promise.all([
+      loadOutcomes(ctx, windowStart, windowEnd),
+      loadDecisions(ctx, windowStart, windowEnd),
+      loadSourcePerformance(ctx),
+      loadExistingRules(ctx),
+      loadGuidance(ctx),
+      loadCompetitors(ctx, windowStart, windowEnd),
+      loadDemand(ctx),
+    ]);
 
   const signals = countSignals({ outcomes, decisions });
   const counts = {
@@ -175,6 +180,8 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
     outcomes,
     decisions,
     sources,
+    competitors,
+    demand,
     existingRules,
     existingGuidance,
   };
@@ -215,6 +222,8 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
       cited_opportunity_ids: finding.citedOpportunityIds,
       cited_company_ids: finding.citedCompanyIds,
       cited_source_ids: finding.citedSourceIds,
+      cited_competitor_ids: finding.citedCompetitorIds,
+      cited_theme_ids: finding.citedThemeIds,
       supporting_count: finding.supportingCount,
       contradicting_count: finding.contradictingCount,
       proposal: finding.proposal,
@@ -569,6 +578,121 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
   }
 
   return performance;
+}
+
+/** How many lost deals one competitor or theme line carries, newest first. */
+const MAX_CITABLE_PER_RECORD = 20;
+const LOST_KINDS = ["lost", "disqualified"];
+
+/**
+ * Accepted competitors and what the window says about them (§16.3-J).
+ *
+ * Losses are the window's; prospect signals are all-time, because "how many
+ * of our prospects use them" is a level, not an event. Only signals with
+ * evidence count — the same rule the Competitors screen applies.
+ */
+async function loadCompetitors(
+  ctx: JobContext,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<CompetitorRecord[]> {
+  const { data: rows } = await ctx.scope
+    .select("competitors", "id, name, tier, our_advantage, their_advantage")
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(50);
+  const competitors = (rows ?? []) as Record<string, unknown>[];
+  if (!competitors.length) return [];
+  const ids = competitors.map((c) => String(c.id));
+
+  const [{ data: losses }, { data: signals }] = await Promise.all([
+    ctx.scope
+      .select("outcomes", "competitor_id, opportunity_id, occurred_at")
+      .in("competitor_id", ids)
+      .in("kind", LOST_KINDS)
+      .gte("occurred_at", windowStart.toISOString())
+      .lte("occurred_at", windowEnd.toISOString())
+      .order("occurred_at", { ascending: false })
+      .limit(1000),
+    ctx.scope
+      .select("company_competitor_signals", "competitor_id, relationship")
+      .in("competitor_id", ids)
+      .not("evidence_id", "is", null)
+      .limit(5000),
+  ]);
+
+  return competitors.map((c) => {
+    const id = String(c.id);
+    const lost = ((losses ?? []) as Record<string, unknown>[]).filter(
+      (o) => String(o.competitor_id) === id,
+    );
+    const mine = ((signals ?? []) as Record<string, unknown>[]).filter(
+      (s) => String(s.competitor_id) === id,
+    );
+    const countOf = (relationship: string) => mine.filter((s) => s.relationship === relationship).length;
+    return {
+      competitorId: id,
+      name: String(c.name ?? ""),
+      tier: c.tier ? String(c.tier) : null,
+      lossesInWindow: lost.length,
+      lostOpportunityIds: [
+        ...new Set(lost.map((o) => o.opportunity_id).filter(Boolean).map(String)),
+      ].slice(0, MAX_CITABLE_PER_RECORD),
+      prospectsUsing: countOf("uses"),
+      prospectsEvaluating: countOf("evaluating"),
+      prospectsFormer: countOf("former"),
+      hasPositioning: Boolean(c.our_advantage || c.their_advantage),
+    };
+  });
+}
+
+/**
+ * Accepted demand themes, with the deals that asked and how many were lost
+ * (§16.3-J). Proposed, dismissed and merged themes are a person's undecided
+ * or rejected groupings, not facts to reason from.
+ */
+async function loadDemand(ctx: JobContext): Promise<DemandThemeRecord[]> {
+  const { data: rows } = await ctx.scope
+    .select("demand_themes", "id, title, kind, status")
+    .in("status", ["open", "planned", "shipped", "wont"])
+    .order("updated_at", { ascending: false })
+    .limit(40);
+  const themes = (rows ?? []) as Record<string, unknown>[];
+  if (!themes.length) return [];
+  const ids = themes.map((t) => String(t.id));
+
+  const { data: signalRows } = await ctx.scope
+    .select("demand_signals", "theme_id, opportunity_id")
+    .in("theme_id", ids)
+    .limit(5000);
+  const signals = (signalRows ?? []) as Record<string, unknown>[];
+
+  const opportunityIds = [
+    ...new Set(signals.map((s) => s.opportunity_id).filter(Boolean).map(String)),
+  ];
+  const lost = new Set<string>();
+  if (opportunityIds.length) {
+    const { data: outcomeRows } = await ctx.scope
+      .select("outcomes", "opportunity_id")
+      .in("opportunity_id", opportunityIds.slice(0, 1000))
+      .in("kind", LOST_KINDS);
+    for (const o of (outcomeRows ?? []) as Record<string, unknown>[]) lost.add(String(o.opportunity_id));
+  }
+
+  return themes.map((t) => {
+    const id = String(t.id);
+    const mine = signals.filter((s) => String(s.theme_id) === id);
+    const deals = [...new Set(mine.map((s) => s.opportunity_id).filter(Boolean).map(String))];
+    return {
+      themeId: id,
+      title: String(t.title ?? ""),
+      kind: String(t.kind) as DemandThemeRecord["kind"],
+      status: String(t.status) as DemandThemeRecord["status"],
+      statements: mine.length,
+      opportunityIds: deals.slice(0, MAX_CITABLE_PER_RECORD),
+      lostOpportunities: deals.filter((d) => lost.has(d)).length,
+    };
+  });
 }
 
 /** The policy already in force, so a finding does not propose it again. */

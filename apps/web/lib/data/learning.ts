@@ -116,21 +116,32 @@ export async function listLearningRuns(orgSlug: string): Promise<Loaded<Learning
          this repo deliberately has none. Same note as icp.ts. */
       const runIds = (runs as any[]).map((r) => String(r.id));
 
-      const { data: findings, error: findingsError } = await db
-        .from("learning_findings")
-        .select(
-          "id, run_id, kind, headline, detail, recommendation, confidence, " +
-            "cited_opportunity_ids, cited_company_ids, cited_source_ids, " +
-            "supporting_count, contradicting_count, proposal, status, decided_at, applied_type",
-        )
-        .eq("org_id", orgId)
-        .in("run_id", runIds)
-        /* Pending first, then by how much they rest on. A reviewer's attention
-           is the scarce thing here, and the ordering is what decides where it
-           goes — a decided finding is history and a two-record finding is a
-           note, so neither should be above an undecided one drawn from thirty. */
-        .order("status", { ascending: true })
-        .order("supporting_count", { ascending: false });
+      const selectFindings = (citations: string) =>
+        db
+          .from("learning_findings")
+          .select(
+            "id, run_id, kind, headline, detail, recommendation, confidence, " +
+              citations +
+              ", supporting_count, contradicting_count, proposal, status, decided_at, applied_type",
+          )
+          .eq("org_id", orgId)
+          .in("run_id", runIds)
+          /* Pending first, then by how much they rest on. A reviewer's attention
+             is the scarce thing here, and the ordering is what decides where it
+             goes — a decided finding is history and a two-record finding is a
+             note, so neither should be above an undecided one drawn from thirty. */
+          .order("status", { ascending: true })
+          .order("supporting_count", { ascending: false });
+
+      const BASE_CITATIONS = "cited_opportunity_ids, cited_company_ids, cited_source_ids";
+      let { data: findings, error: findingsError } = await selectFindings(
+        `${BASE_CITATIONS}, cited_competitor_ids, cited_theme_ids`,
+      );
+      /* 0043's columns, absent on a database that has not applied it yet:
+         the screen keeps working on the three citation kinds it had. */
+      if (findingsError && /cited_(competitor|theme)_ids/.test(findingsError.message)) {
+        ({ data: findings, error: findingsError } = await selectFindings(BASE_CITATIONS));
+      }
 
       if (findingsError) throw new Error(`listLearningRuns: ${findingsError.message}`);
 
@@ -190,8 +201,10 @@ async function resolveCitations(
   const opportunityIds = collect("cited_opportunity_ids");
   const companyIds = collect("cited_company_ids");
   const sourceIds = collect("cited_source_ids");
+  const competitorIds = collect("cited_competitor_ids");
+  const themeIds = collect("cited_theme_ids");
 
-  const [opportunities, companies, sources] = await Promise.all([
+  const [opportunities, companies, sources, competitors, themes] = await Promise.all([
     opportunityIds.length
       ? db
           .from("opportunities")
@@ -204,6 +217,12 @@ async function resolveCitations(
       : Promise.resolve({ data: [] }),
     sourceIds.length
       ? db.from("sources").select("id, name").eq("org_id", orgId).in("id", sourceIds)
+      : Promise.resolve({ data: [] }),
+    competitorIds.length
+      ? db.from("competitors").select("id, name").eq("org_id", orgId).in("id", competitorIds)
+      : Promise.resolve({ data: [] }),
+    themeIds.length
+      ? db.from("demand_themes").select("id, title").eq("org_id", orgId).in("id", themeIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -219,9 +238,21 @@ async function resolveCitations(
     labels.set(String(row.id), {
       id: String(row.id),
       label: String(row.name ?? "A company"),
-      // Companies has a list screen but no per-company route today, so the
-      // citation renders as a label rather than a link that 404s.
-      href: null,
+      href: `/${orgSlug}/companies/${row.id}`,
+    });
+  }
+  for (const row of (competitors.data ?? []) as any[]) {
+    labels.set(String(row.id), {
+      id: String(row.id),
+      label: String(row.name ?? "A competitor"),
+      href: `/${orgSlug}/competitors/${row.id}`,
+    });
+  }
+  for (const row of (themes.data ?? []) as any[]) {
+    labels.set(String(row.id), {
+      id: String(row.id),
+      label: String(row.title ?? "A demand theme"),
+      href: `/${orgSlug}/demand`,
     });
   }
   for (const row of (sources.data ?? []) as any[]) {
@@ -240,6 +271,8 @@ function mapFinding(row: any, labels: Map<string, Citation>): LearningFinding {
     ...(Array.isArray(row.cited_opportunity_ids) ? row.cited_opportunity_ids : []),
     ...(Array.isArray(row.cited_company_ids) ? row.cited_company_ids : []),
     ...(Array.isArray(row.cited_source_ids) ? row.cited_source_ids : []),
+    ...(Array.isArray(row.cited_competitor_ids) ? row.cited_competitor_ids : []),
+    ...(Array.isArray(row.cited_theme_ids) ? row.cited_theme_ids : []),
   ].map(String);
 
   const citations: Citation[] = [];

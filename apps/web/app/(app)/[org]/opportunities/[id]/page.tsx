@@ -26,6 +26,9 @@ import { AgentPanel } from "./AgentPanel";
 import { ActivityPanel } from "./ActivityPanel";
 import { NextStepBar } from "./NextStepBar";
 import { OpportunityActions } from "./OpportunityActions";
+import { getCompanyIntel } from "../../../../../lib/data/company-intel";
+import { FitCard, ProblemsCard, RaiseConfidenceCard, WhatTheyUseCard } from "./BriefSections";
+import { DealValue } from "./DealValue";
 
 /**
  * The §47 company/opportunity page — the screen the product is judged on.
@@ -95,7 +98,12 @@ export default async function OpportunityPage({
      evidence ages further down cannot disagree by a render's worth of time. */
   const now = new Date();
 
-  const { data: timeline } = await getTimeline(org, o.id);
+  const [{ data: timeline }, { data: intel }] = await Promise.all([
+    getTimeline(org, o.id),
+    /* The brief's company-level sections (§16.3-C). Null on fixtures, where
+       there is no company row — those sections are then simply absent. */
+    o.companyId ? getCompanyIntel(org, o.companyId) : Promise.resolve({ data: null }),
+  ]);
   /* Once a conversation has started, its history is the first thing a person
      opening this page needs; before that, the research is. */
   const engaged = !["discovered", "researching", "qualified"].includes(o.stage);
@@ -202,6 +210,7 @@ export default async function OpportunityPage({
               the evidence list uses, rather than prose that reads like fact. */}
           <Prose title="Why this company" body={o.whyThisCompany} inferred />
           <Prose title="What they do" body={o.whatTheyDo} />
+          {intel && <FitCard org={org} intel={intel} />}
           <Prose title="Identified problem" body={o.identifiedProblem} inferred />
           <Prose title="Potential gap" body={o.potentialGap} inferred />
           <Prose
@@ -211,6 +220,8 @@ export default async function OpportunityPage({
             /* §78: an unknown current approach is a finding, not a blank. */
             fallback="Not established. No evidence on file describes how they solve this today."
           />
+          {intel && <WhatTheyUseCard org={org} intel={intel} />}
+          {intel && <ProblemsCard intel={intel} />}
 
           {/* Evidence, before the pitch. */}
           <Card flush>
@@ -395,6 +406,24 @@ export default async function OpportunityPage({
               )}
             </CardBody>
           </Card>
+
+          <DealValue
+            org={org}
+            opportunityId={o.id}
+            cents={o.estimatedValueCents}
+            canWrite={mayWrite}
+          />
+
+          {intel && (
+            <RaiseConfidenceCard
+              org={org}
+              opportunityId={o.id}
+              intel={intel}
+              unknownClaims={o.evidence.filter((e) => e.kind === "unknown").map((e) => e.claim)}
+              unmeasured={o.dimensions.filter((d) => d.value === "unknown").map((d) => d.label)}
+              canSpend={canSpend(viewer)}
+            />
+          )}
 
           <AgentPanel
             org={org}

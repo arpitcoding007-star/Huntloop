@@ -4,6 +4,7 @@ import { OPPORTUNITIES } from "../fixtures/opportunities";
 import type { Role } from "./membership";
 import { currentUserId, requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
+import { siteUrl } from "../site-url";
 
 /**
  * The team — master context §38, and the role enum from `0001`.
@@ -204,6 +205,12 @@ export interface Invitation {
    * and hiding it turns that into a mystery.
    */
   expired: boolean;
+  /**
+   * The link itself, so an admin can copy it again (§14.2: it used to be
+   * shown once). Only admins can read invitations at all (`invitation_admin`),
+   * and an admin could issue a new one anyway, so this widens nothing.
+   */
+  url: string;
 }
 
 /**
@@ -221,7 +228,7 @@ export async function listInvitations(orgSlug: string): Promise<Loaded<Invitatio
 
       const { data, error } = await db
         .from("invitations")
-        .select("id, email, role, invited_by, created_at, expires_at")
+        .select("id, email, role, invited_by, created_at, expires_at, token")
         .eq("org_id", orgId)
         .is("accepted_at", null)
         .is("revoked_at", null)
@@ -246,6 +253,7 @@ export async function listInvitations(orgSlug: string): Promise<Loaded<Invitatio
           createdAt: String(row.created_at),
           expiresAt: String(row.expires_at),
           expired: new Date(String(row.expires_at)).getTime() < now,
+          url: new URL(`/invite/${row.token}`, siteUrl()).toString(),
         };
       });
     },

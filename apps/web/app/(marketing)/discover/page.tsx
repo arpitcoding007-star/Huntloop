@@ -1,3 +1,4 @@
+import { publicResearchEnabled } from "@huntloop/jobs";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -108,7 +109,7 @@ export default async function DiscoverPage({
               <span className="text-[13px] text-fg-muted">Or try another address:</span>
             </div>
             <div className="mt-4">
-              <DomainInput size="md" />
+              <DomainInput size="md" canResearch={publicResearchEnabled()} />
             </div>
           </>
         ) : (

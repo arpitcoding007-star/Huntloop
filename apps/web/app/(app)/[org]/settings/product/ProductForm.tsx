@@ -37,10 +37,16 @@ export function ProductForm({
   org,
   product,
   canWrite,
+  onCreated,
+  onRemoved,
 }: {
   org: string;
   product: Product | null;
   canWrite: boolean;
+  /** Called with the new id after a create, so the list can select it. */
+  onCreated?: (id: string, message?: string) => void;
+  /** Called after this product is removed. */
+  onRemoved?: (message?: string) => void;
 }) {
   const [name, setName] = useState(product?.name ?? "");
   const [website, setWebsite] = useState(product?.website ?? "");
@@ -66,8 +72,11 @@ export function ProductForm({
         valueProps: splitList(valueProps),
         proofPoints: splitList(proofPoints),
       });
-      if (res.ok) setResult({ ok: true, message: res.message });
-      else {
+      if (res.ok) {
+        const created = !product?.id || product.id.startsWith("demo-");
+        if (created && onCreated) onCreated(res.data.id, res.message);
+        else setResult({ ok: true, message: res.message });
+      } else {
         setResult({ ok: false, error: res.error });
         setFieldErrors(res.fieldErrors ?? {});
       }
@@ -79,7 +88,8 @@ export function ProductForm({
     setResult(null);
     start(async () => {
       const res = await deleteProductAction(org, product.id);
-      setResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+      if (res.ok && onRemoved) onRemoved(res.message);
+      else setResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
     });
   }
 

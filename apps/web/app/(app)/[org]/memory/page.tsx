@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { listMemories } from "../../../../lib/data/memory";
+import { listMemorySubjects } from "../../../../lib/data/memory-subjects";
 import { DemoFigures } from "../DemoFigures";
 import { MemoryManager } from "./MemoryManager";
 
@@ -21,7 +22,10 @@ export default async function MemoryPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: memories, source } = await listMemories(org);
+  const [{ data: memories, source }, { data: subjects }] = await Promise.all([
+    listMemories(org),
+    listMemorySubjects(org),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
@@ -39,7 +43,12 @@ export default async function MemoryPage({
       )}
 
       <div className="mt-6">
-        <MemoryManager org={org} memories={memories} canWrite={canWrite(viewer)} />
+        <MemoryManager
+          org={org}
+          memories={memories}
+          subjects={subjects}
+          canWrite={canWrite(viewer)}
+        />
       </div>
     </div>
   );

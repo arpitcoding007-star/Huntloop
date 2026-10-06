@@ -195,7 +195,7 @@ export async function getOpportunity(
           `id, company_id, priority, priority_reason, status, confidence, first_seen_at,
            owner_id, why_this_company, identified_problem, potential_gap,
            why_now, current_approach, potential_use_case, outreach_angle,
-           next_step, next_step_due_at,
+           next_step, next_step_due_at, estimated_value_cents,
            companies!inner(name, canonical_domain, industry, region,
              employee_count, description,
              company_triggers(trigger_type, event_date, strength, deleted_at),
@@ -253,6 +253,8 @@ export async function getOpportunity(
       });
       return {
         ...fixture,
+        companyId: null,
+        estimatedValueCents: null,
         ownerId: null,
         stage,
         nextStep: null,

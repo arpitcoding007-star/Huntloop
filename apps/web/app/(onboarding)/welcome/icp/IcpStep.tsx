@@ -237,11 +237,22 @@ const EMPTY: Fields = {
   seniority: [], departments: [], excludeTitles: [],
 };
 
-export function IcpStep({ org }: { org: string }) {
+export function IcpStep({
+  org,
+  saved = null,
+}: {
+  org: string;
+  /**
+   * The profile already saved for this workspace. When present the step opens
+   * on it instead of drafting a new one, which used to cost a model call and
+   * discard the saved edits (M-09). Re-drafting stays one click away.
+   */
+  saved?: Fields | null;
+}) {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("loading");
+  const [phase, setPhase] = useState<Phase>(saved ? "ready" : "loading");
   const [state, setState] = useState<DraftState>({});
-  const [fields, setFields] = useState<Fields>(EMPTY);
+  const [fields, setFields] = useState<Fields>(saved ?? EMPTY);
   const [reach, setReach] = useState<ReachState | null>(null);
   const [reachPending, setReachPending] = useState(false);
 
@@ -260,7 +271,7 @@ export function IcpStep({ org }: { org: string }) {
      development, and without this every visit would quietly bill for two runs
      — invisible until the first real invoice. `run` doubles as the retry
      handler, so a deliberate retry still works. */
-  const started = useRef(false);
+  const started = useRef(Boolean(saved));
 
   const run = useCallback(async () => {
     setPhase("loading");
@@ -432,11 +443,23 @@ export function IcpStep({ org }: { org: string }) {
       <h1 className="hl-title text-fg">
         Who should we hunt for?
       </h1>
-      <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
-        Drafted from your website — every line says which sentence it came from.
-        Correct anything that&rsquo;s wrong. This decides what counts as a good
-        opportunity.
-      </p>
+      {saved && !state.result ? (
+        <div className="mt-1.5 flex max-w-2xl flex-wrap items-start gap-3">
+          <p className="max-w-lg flex-1 text-[14px] leading-[1.6] text-fg-muted">
+            Your saved profile. Change anything that&rsquo;s wrong — this decides
+            what counts as a good opportunity.
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => void run()}>
+            Redraft from my website
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
+          Drafted from your website — every line says which sentence it came from.
+          Correct anything that&rsquo;s wrong. This decides what counts as a good
+          opportunity.
+        </p>
+      )}
 
       {state.result?.source === "unconfigured" && (
         <p

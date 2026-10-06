@@ -181,16 +181,27 @@ export async function saveRuleAction(
     };
 
     if (value.id) {
-      const { error } = await db
+      const { data: saved, error } = await db
         .from("scoring_rules")
         .update(row)
         .eq("id", value.id)
         .eq("org_id", orgId)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .select("is_active")
+        .maybeSingle();
       if (error) return fail(`That rule could not be saved: ${error.message}`);
+      if (!saved) return fail("That rule no longer exists.");
 
       revalidatePath(`/${org}/settings/scoring`);
-      return ok({ id: value.id }, "Rule saved.");
+      /* An edit to a live rule stays live (M-15) — said so, rather than the
+         "nothing changes until you turn it on" that only holds for new rules. */
+      return ok(
+        { id: value.id },
+        saved.is_active
+          ? "Rule saved. It is on, so the change applies the next time a company " +
+              "is scored — use Rescore all to apply it to opportunities you already have."
+          : "Rule saved. It is off, so nothing changes until you turn it on.",
+      );
     }
 
     const { data, error } = await db
@@ -404,6 +415,33 @@ export async function previewRuleAction(
     const examples: string[] = [];
     let matched = 0;
 
+    /* Competitor relationships, read the way the scorer reads them — active
+       competitors, evidence-backed signals — so a rule on them previews what
+       the engine will actually do. */
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const companyIds = (rows as any[])
+      .map((r) => (Array.isArray(r.companies) ? r.companies[0] : r.companies)?.id)
+      .filter(Boolean);
+    const relations = new Map<string, { uses: string[]; evaluating: string[]; former: string[] }>();
+    if (companyIds.length) {
+      const { data: signals } = await db
+        .from("company_competitor_signals")
+        .select("company_id, relationship, competitors!inner(name, status, deleted_at)")
+        .eq("org_id", orgId)
+        .in("company_id", companyIds)
+        .in("relationship", ["uses", "evaluating", "former"])
+        .not("evidence_id", "is", null);
+      for (const s of (signals ?? []) as any[]) {
+        const c = Array.isArray(s.competitors) ? s.competitors[0] : s.competitors;
+        if (!c || c.deleted_at || c.status !== "active") continue;
+        const entry = relations.get(String(s.company_id)) ?? { uses: [], evaluating: [], former: [] };
+        const list = entry[s.relationship as "uses" | "evaluating" | "former"];
+        if (!list.includes(String(c.name))) list.push(String(c.name));
+        relations.set(String(s.company_id), entry);
+      }
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
     /* eslint-disable @typescript-eslint/no-explicit-any --
        PostgREST types an embed as object-or-array depending on whether it can
        prove the relationship is to-one, and widens the whole row to a union
@@ -437,6 +475,9 @@ export async function previewRuleAction(
             ? company.tech_stack.map(String)
             : [],
           "score.priority": String(row.priority ?? ""),
+          "competitors.uses": relations.get(String(company.id))?.uses ?? [],
+          "competitors.evaluating": relations.get(String(company.id))?.evaluating ?? [],
+          "competitors.former": relations.get(String(company.id))?.former ?? [],
         },
         { score: 50, priority: (row.priority ?? "watch") as RulePriority },
       );

@@ -38,6 +38,11 @@ import {
 } from "../src/tasks/qualify-opportunity.ts";
 import { explainWhyNow, type WhyNowInput } from "../src/tasks/explain-why-now.ts";
 import { salesAgent, type AgentInput } from "../src/tasks/sales-agent.ts";
+import { workspaceAssistant, type AssistantInput } from "../src/tasks/workspace-assistant.ts";
+import {
+  competitorMayBeNamed,
+  findForbiddenCompetitor,
+} from "../src/tasks/personalize-message.ts";
 import { explainPerformance, type ExplainPerformanceInput } from "../src/tasks/explain-performance.ts";
 import {
   MAX_SIGNALS,
@@ -1876,6 +1881,91 @@ console.log("\nanalyze_performance — a finding cites real records or it is not
   expect("and it still has to say so", result.output.summary.length > 0);
 }
 
+console.log("\nanalyze_performance — competitors and demand are citable, and only theirs");
+{
+  const COMPETITOR_ID = "44444444-4444-4444-4444-444444444444";
+  const THEME_ID = "55555555-5555-5555-5555-555555555555";
+  const LOST_ID = "66666666-6666-6666-6666-666666666666";
+  const input: AnalyzeInput = {
+    ...ANALYZE_INPUT,
+    competitors: [
+      {
+        competitorId: COMPETITOR_ID,
+        name: "Rival",
+        tier: "direct",
+        lossesInWindow: 3,
+        lostOpportunityIds: [LOST_ID],
+        prospectsUsing: 5,
+        prospectsEvaluating: 1,
+        prospectsFormer: 0,
+        hasPositioning: false,
+      },
+    ],
+    demand: [
+      {
+        themeId: THEME_ID,
+        title: "Salesforce integration",
+        kind: "request",
+        status: "open",
+        statements: 7,
+        opportunityIds: [LOST_ID],
+        lostOpportunities: 1,
+      },
+    ],
+  };
+  const competitive = {
+    ...GOOD_FINDING,
+    kind: "competitive_positioning",
+    headline: "Three losses to Rival, no positioning written",
+    citedOpportunityIds: [LOST_ID],
+    citedCompetitorIds: [COMPETITOR_ID],
+    citedThemeIds: [],
+  };
+  const demandFinding = {
+    ...GOOD_FINDING,
+    kind: "product_demand",
+    headline: "Salesforce comes up in seven statements",
+    citedOpportunityIds: [],
+    citedCompetitorIds: [],
+    citedThemeIds: [THEME_ID],
+  };
+  {
+    const { client } = scriptedClient(analysis([competitive, demandFinding]));
+    const result = await runTask(analyzePerformance, input, ctx(client, spyRecorder().recorder));
+    expectEqual("both new kinds are kept", result.output.findings.map((f) => f.kind), [
+      "competitive_positioning",
+      "product_demand",
+    ]);
+    expectEqual("a competitor is cited by its id", result.output.findings[0]!.citedCompetitorIds, [
+      COMPETITOR_ID,
+    ]);
+    expectEqual(
+      "a deal lost to them is citable though it is not in the outcome list",
+      result.output.findings[0]!.citedOpportunityIds,
+      [LOST_ID],
+    );
+    expectEqual("a theme is cited by its id", result.output.findings[1]!.citedThemeIds, [THEME_ID]);
+  }
+  {
+    const { client } = scriptedClient(
+      analysis([{ ...competitive, citedCompetitorIds: ["99999999-9999-9999-9999-999999999999"] }]),
+    );
+    await expectThrows(
+      "a competitor id it was not given is refused",
+      () => runTask(analyzePerformance, input, ctx(client, spyRecorder().recorder)),
+      /cites competitor/,
+    );
+  }
+  {
+    const { client } = scriptedClient(analysis([demandFinding]));
+    await expectThrows(
+      "and a theme id with no demand records sent is refused",
+      () => runTask(analyzePerformance, ANALYZE_INPUT, ctx(client, spyRecorder().recorder)),
+      /cites demand theme/,
+    );
+  }
+}
+
 console.log("\nanalyze_performance — a proposal is what accepting will actually do");
 {
   const { client } = scriptedClient(
@@ -2131,6 +2221,74 @@ console.log("\nexplain_performance — numbers come only from the facts it cites
     () =>
       runTask(explainPerformance, { periodLabel: "x", facts: [input.facts[0]!] }, ctx(scriptedClient(good).client, spyRecorder().recorder)),
     /fewer than two facts/,
+  );
+}
+
+/* ── workspace_assistant — cites only what it was given ────────────────── */
+
+console.log("\nworkspace_assistant — citations and actions are closed over the records");
+{
+  const input: AssistantInput = {
+    workspaceName: "Acme",
+    role: "founder",
+    history: [],
+    question: "What should I focus on?",
+    records: [
+      { ref: "opportunity:o1", type: "opportunity", title: "Northwind", facts: ["priority hot"] },
+      { ref: "metric:f1", type: "metric", title: "Last 30 days", facts: ["Reply rate: 10%"] },
+    ],
+  };
+  const out = workspaceAssistant.parse(
+    {
+      answer: "Call Northwind.",
+      citations: ["opportunity:o1", "opportunity:invented"],
+      unresolved: [],
+      actions: [
+        { kind: "set_next_step", ref: "opportunity:o1", label: "Set next step", text: "Call their CTO" },
+        { kind: "set_next_step", ref: "metric:f1", label: "Bad", text: "x" },
+        { kind: "open", ref: "opportunity:invented", label: "Open", text: null },
+        { kind: "remember", ref: null, label: "Remember", text: "We never pitch on Fridays." },
+      ],
+      confidence: "medium",
+    },
+    input,
+  );
+  expectEqual("a citation the records do not contain is dropped", out.citations, ["opportunity:o1"]);
+  expectEqual(
+    "a next step only on an opportunity, an open only on a real record",
+    out.actions.map((a) => a.kind),
+    ["set_next_step", "remember"],
+  );
+  const schema = workspaceAssistant.schema as (i: AssistantInput) => Record<string, any>;
+  expectEqual(
+    "and the schema enumerates exactly the records sent",
+    schema(input).properties.citations.items.enum,
+    ["opportunity:o1", "metric:f1"],
+  );
+}
+
+console.log("\npersonalize_message — a competitor is named only by rule");
+{
+  const base = { name: "Rival", tier: "direct" as const, relationship: "uses" as const, evidenceId: "e1", ourAdvantage: "We ship weekly." };
+  expect("direct, used, evidenced and positioned may be named", competitorMayBeNamed(base));
+  expect("not without the team's own positioning", !competitorMayBeNamed({ ...base, ourAdvantage: null }));
+  expect("not without evidence", !competitorMayBeNamed({ ...base, evidenceId: null }));
+  expect("never an adjacent one", !competitorMayBeNamed({ ...base, tier: "adjacent" }));
+  expect("never on a mention alone", !competitorMayBeNamed({ ...base, relationship: "mentions" }));
+  expectEqual(
+    "a body naming a forbidden competitor is caught",
+    findForbiddenCompetitor("Unlike Rival, we...", [{ ...base, mayName: false }]),
+    "Rival",
+  );
+  expectEqual(
+    "but a permitted one is not",
+    findForbiddenCompetitor("Unlike Rival, we...", [{ ...base, mayName: true }]),
+    null,
+  );
+  expectEqual(
+    "and a name inside another word is not a mention",
+    findForbiddenCompetitor("Our rivalry with nobody", [{ ...base, mayName: false }]),
+    null,
   );
 }
 

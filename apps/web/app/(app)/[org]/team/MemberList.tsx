@@ -14,12 +14,13 @@ import {
   Input,
   Select,
 } from "@huntloop/ui";
-import { Copy, Trash2, UserPlus, X } from "lucide-react";
+import { Copy, Mail, Trash2, UserPlus, X } from "lucide-react";
 import type { Role } from "../../../../lib/data/membership";
 import type { Invitation, Member } from "../../../../lib/data/team";
 import {
   inviteMemberAction,
   removeMemberAction,
+  resendInvitationAction,
   revokeInvitationAction,
   setMemberRoleAction,
 } from "./actions";
@@ -52,18 +53,21 @@ export function MemberList({
   org,
   members,
   invitations,
+  emailConfigured = false,
   canAdmin,
   now,
 }: {
   org: string;
   members: Member[];
   invitations: Invitation[];
+  /** Whether invitations are emailed (Resend) or only shown as a link. */
+  emailConfigured?: boolean;
   canAdmin: boolean;
   now: string;
 }) {
   const [result, setResult] = useState<Result>(null);
   const [inviting, setInviting] = useState(false);
-  const [issued, setIssued] = useState<{ url: string; email: string } | null>(null);
+  const [issued, setIssued] = useState<{ url: string; email: string; emailed: boolean } | null>(null);
 
   const owners = members.filter((m) => m.role === "owner").length;
 
@@ -93,6 +97,7 @@ export function MemberList({
           {inviting && (
             <InviteForm
               org={org}
+              emailConfigured={emailConfigured}
               onIssued={(r) => {
                 setIssued(r);
                 setInviting(false);
@@ -102,7 +107,7 @@ export function MemberList({
             />
           )}
 
-          {issued && <IssuedLink url={issued.url} email={issued.email} />}
+          {issued && <IssuedLink url={issued.url} email={issued.email} emailed={issued.emailed} />}
 
           <ul className="divide-y divide-line-subtle">
             {members.map((m) => (
@@ -136,6 +141,7 @@ export function MemberList({
             <ul className="divide-y divide-line-subtle">
               {invitations.map((inv) => (
                 <InvitationRow
+                  emailConfigured={emailConfigured}
                   key={inv.id}
                   org={org}
                   invitation={inv}
@@ -176,12 +182,14 @@ const INVITE_ROLES: Role[] = ["admin", "member", "viewer"];
 
 function InviteForm({
   org,
+  emailConfigured,
   onIssued,
   onCancel,
   onResult,
 }: {
   org: string;
-  onIssued: (r: { url: string; email: string }) => void;
+  emailConfigured: boolean;
+  onIssued: (r: { url: string; email: string; emailed: boolean }) => void;
   onCancel: () => void;
   onResult: (r: Result) => void;
 }) {
@@ -252,9 +260,9 @@ function InviteForm({
         </div>
       </div>
       <p className="mt-3 text-[12px] text-fg-muted">
-        This creates a link. Huntloop has no transactional sender configured, so
-        you send it yourself — the link only works for the address you type
-        here, whoever ends up holding it.
+        {emailConfigured
+          ? "We email them the link. It only works for the address you type here, whoever ends up holding it."
+          : "This creates a link. No email service is connected, so you send it yourself — the link only works for the address you type here, whoever ends up holding it."}
       </p>
     </form>
   );
@@ -268,14 +276,23 @@ function InviteForm({
  * user gesture — would leave the admin with nothing at all. The text is always
  * selectable, and the button is a convenience over it.
  */
-function IssuedLink({ url, email }: { url: string; email: string }) {
+function IssuedLink({ url, email, emailed = false }: { url: string; email: string; emailed?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="mb-5 rounded-md border border-success-border bg-success-surface p-4">
       <p className="text-[13px] text-success-text">
-        Invitation for <span className="font-medium">{email}</span>. Send them
-        this link — it expires in 14 days and works only for that address.
+        {emailed ? (
+          <>
+            Invitation emailed to <span className="font-medium">{email}</span>. The link
+            expires in 14 days and works only for that address.
+          </>
+        ) : (
+          <>
+            Invitation for <span className="font-medium">{email}</span>. Send them
+            this link — it expires in 14 days and works only for that address.
+          </>
+        )}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <code className="min-w-0 flex-1 overflow-x-auto rounded-sm border border-line bg-canvas px-2 py-1.5 font-mono text-[12px] text-fg">
@@ -407,13 +424,16 @@ function InvitationRow({
   invitation,
   now,
   onResult,
+  emailConfigured,
 }: {
   org: string;
   invitation: Invitation;
   now: string;
   onResult: (r: Result) => void;
+  emailConfigured: boolean;
 }) {
   const [pending, start] = useTransition();
+  const [copied, setCopied] = useState(false);
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-3">
@@ -428,6 +448,40 @@ function InvitationRow({
           {invitation.invitedByName && <span>by {invitation.invitedByName}</span>}
         </div>
       </div>
+
+      {!invitation.expired && (
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Copy}
+            onClick={() =>
+              navigator.clipboard?.writeText(invitation.url).then(
+                () => setCopied(true),
+                () => onResult({ ok: false, error: `Copy failed. The link is ${invitation.url}` }),
+              )
+            }
+          >
+            {copied ? "Copied" : "Copy link"}
+          </Button>
+          {emailConfigured && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Mail}
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await resendInvitationAction(org, invitation.id);
+                  onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                })
+              }
+            >
+              Email again
+            </Button>
+          )}
+        </div>
+      )}
 
       <ConfirmButton
         icon={X}

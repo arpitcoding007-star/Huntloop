@@ -11,6 +11,7 @@ import {
   type ActionResult,
 } from "../../../../lib/data/org";
 import { uuidSchema } from "../../../../lib/validation";
+import { engineReadiness } from "../../../../lib/data/engine";
 
 /**
  * Learning — requesting an analysis, and deciding on what it found.
@@ -52,6 +53,14 @@ export async function requestAnalysisAction(
   const days = Math.max(7, Math.min(365, Math.round(Number(windowDays) || 90)));
 
   return mutate(org, "requestAnalysis", async ({ db, orgId }) => {
+    /* The screen disables the button in this state; the action refuses too,
+       because a request nothing will pick up reports success forever. */
+    if (!(await engineReadiness(db, orgId)).driven) {
+      return fail(
+        "Nothing is running the engine for this workspace yet, so an analysis would never start.",
+      );
+    }
+
     const userId = await currentUserId(db);
     const end = new Date();
     const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);

@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { WORKSPACE_SECTIONS, isProtectedRoute } from "./protected-routes";
+import { WORKSPACE_SECTIONS, isProtectedRoute, workspaceSlug } from "./protected-routes";
 
 describe("isProtectedRoute", () => {
   /* The list fails closed — a missing section 404s anonymous visitors rather
@@ -33,6 +33,19 @@ describe("isProtectedRoute", () => {
     "treats %s as not a page",
     (path) => {
       expect(isProtectedRoute(path)).toBe(false);
+    },
+  );
+});
+
+describe("workspaceSlug", () => {
+  it("reads the slug from a workspace screen", () => {
+    expect(workspaceSlug("/acme-2/opportunities/abc")).toBe("acme-2");
+  });
+
+  it.each(["/orgs", "/welcome/icp", "/acme", "/acme/nope", "/Acme/dashboard", "/a%22b/dashboard"])(
+    "ignores %s",
+    (path) => {
+      expect(workspaceSlug(path)).toBeNull();
     },
   );
 });

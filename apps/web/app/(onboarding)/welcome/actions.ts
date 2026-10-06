@@ -91,7 +91,11 @@ export async function saveYou(
   /* An existing membership means the workspace is already someone else's
      doing. Send them to it — or to wherever its own setup stopped, which is
      the case where a teammate was invited mid-flow. */
-  const memberships = await listMemberships();
+  /* Unless they asked for another workspace (`/welcome?new=1`, from the
+     picker or "Set up another client"). Forwarding them to the existing one
+     made a second workspace impossible to create (M-02). */
+  const creatingAnother = formData.get("new") === "1";
+  const memberships = creatingAnother ? null : await listMemberships();
   const existing = memberships?.[0];
   if (existing) {
     const done = Boolean(existing.completedAt) || existing.step === "done";

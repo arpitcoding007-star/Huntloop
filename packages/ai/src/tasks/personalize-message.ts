@@ -53,6 +53,51 @@ export interface PersonalizeInput {
   evidence: MessageEvidence[];
   /** House style, from `memories`. Applied over everything below. */
   guidance: string[];
+  /**
+   * Competitors this company has a recorded relationship with (COMMAND.md
+   * §16.3-D). Optional: absent means none on file. `mayName` is decided by
+   * the caller from the rule in `competitorMayBeNamed`, never by the model.
+   */
+  competitors?: MessageCompetitor[];
+}
+
+export interface MessageCompetitor {
+  name: string;
+  tier: "direct" | "adjacent" | "incumbent" | "diy" | null;
+  relationship: "uses" | "evaluating" | "former" | "mentions" | "partner";
+  /** The evidence row behind the relationship — citable like any other. */
+  evidenceId: string | null;
+  /** The sender's own "where we win" sentence, when they wrote one. */
+  ourAdvantage: string | null;
+  mayName: boolean;
+}
+
+/**
+ * Whether outreach may name a competitor. COMMAND.md §16.3-D: only a direct
+ * competitor the company uses or left, with evidence, and only when a person
+ * wrote down where they win. Adjacent, incumbent and built-in-house are never
+ * named — naming them is confusing at best and disparaging at worst.
+ */
+export function competitorMayBeNamed(c: Omit<MessageCompetitor, "mayName">): boolean {
+  return (
+    c.tier === "direct" &&
+    (c.relationship === "uses" || c.relationship === "former") &&
+    Boolean(c.evidenceId) &&
+    Boolean(c.ourAdvantage?.trim())
+  );
+}
+
+/** The first competitor named in `text` that may not be, or null. */
+export function findForbiddenCompetitor(text: string, competitors: MessageCompetitor[]): string | null {
+  const haystack = text.toLowerCase();
+  const hit = competitors.find(
+    (c) => !c.mayName && c.name.trim().length >= 3 && new RegExp(`\\b${escapeRegExp(c.name.trim().toLowerCase())}\\b`).test(haystack),
+  );
+  return hit?.name ?? null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export interface PersonalizedMessage {
@@ -205,11 +250,21 @@ If this is not the first step, do not repeat the first message's argument.
 Add one thing: a different angle from a different piece of evidence, or a
 genuinely shorter nudge. Never "just bumping this to the top of your inbox".
 
+## Competitors
+
+You may be told which competitors this company uses, is evaluating, or left.
+Each says whether it may be named. Name one only when it says "may name: yes",
+and then cite the evidence id given for that relationship. When you contrast
+with it, use only the sender's own "where we win" sentence — never invent a
+weakness, never disparage. A competitor marked "may name: no" must not appear
+in the subject or the body at all; you may still let the knowledge shape the
+angle without naming it. A partner is not a competitor.
+
 ## Style guidance
 
 Anything under "house style" comes from the sender and overrides the
-instructions above where they conflict — except the citation rule, which
-nothing overrides.
+instructions above where they conflict — except the citation rule and the
+competitor rule, which nothing overrides.
 `,
 );
 
@@ -283,6 +338,24 @@ export const personalizeMessage: LLMTask<PersonalizeInput, PersonalizedMessage> 
         ? wrapUntrusted("house style", input.guidance.map((g) => `- ${g}`).join("\n"))
         : "(no house style recorded)",
       "",
+      input.competitors?.length
+        ? wrapUntrusted(
+            "competitors on file for this company",
+            input.competitors
+              .map((c) =>
+                [
+                  `${c.name} — ${c.relationship}${c.tier ? `, ${c.tier} competitor` : ""}`,
+                  `  may name: ${c.mayName ? "yes" : "no"}`,
+                  c.evidenceId ? `  evidence id: ${c.evidenceId}` : null,
+                  c.mayName && c.ourAdvantage ? `  where we win (the sender's words): ${c.ourAdvantage}` : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+              )
+              .join("\n\n"),
+          )
+        : "(no competitors on file for this company)",
+      "",
       "Cite by id. Anything you cannot cite goes in `omitted`, not in the body.",
     ].join("\n");
   },
@@ -324,6 +397,14 @@ export const personalizeMessage: LLMTask<PersonalizeInput, PersonalizedMessage> 
       ["subject", subject],
       ["body", body],
     ] as const) {
+      /* The naming rule, enforced the same way as the banned phrases: a
+         message naming a competitor it may not name fails rather than sends. */
+      const forbidden = findForbiddenCompetitor(value, input.competitors ?? []);
+      if (forbidden) {
+        throw new Error(
+          `personalize_message: the ${field} names ${forbidden}, which outreach may not name.`,
+        );
+      }
       const phrase = findBannedPhrase(value);
       if (phrase) {
         throw new Error(

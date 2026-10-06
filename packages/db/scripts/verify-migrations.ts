@@ -3525,6 +3525,46 @@ console.log("\n0038 — discovery pauses for a saturated backlog, without losing
   else fail("with the cap lifted (0 = unlimited) it is claimed", "not claimed");
 }
 
+// ── 0043 — learning extended to competitors and demand ─────────────────────
+console.log("\n0043 — findings about competitors and demand cite them by id");
+{
+  const ORG = "43434343-0043-0043-0043-000000000043";
+  const RUN = "43434343-0043-0043-0043-0000000000a1";
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'Learn Co', 'learn-0043')`, [ORG]);
+  await db.query(
+    `insert into learning_runs (id, org_id, window_start, window_end)
+     values ($1, $2, now() - interval '90 days', now())`,
+    [RUN, ORG],
+  );
+  for (const kind of ["competitive_positioning", "product_demand"]) {
+    await expectAccept(
+      db,
+      `a ${kind} finding is accepted, with its citations`,
+      `insert into learning_findings
+         (org_id, run_id, kind, headline, detail, recommendation, cited_competitor_ids, cited_theme_ids)
+       values ($1, $2, $3, 'h', 'd', 'r',
+               array['43434343-0043-0043-0043-0000000000c1']::uuid[],
+               array['43434343-0043-0043-0043-0000000000d1']::uuid[])`,
+      [ORG, RUN, kind],
+    );
+  }
+  await expectAccept(
+    db,
+    "the kinds from 0018 are still accepted",
+    `insert into learning_findings (org_id, run_id, kind, headline, detail, recommendation)
+     values ($1, $2, 'outreach_angle', 'h', 'd', 'r')`,
+    [ORG, RUN],
+  );
+  const defaults = await db.query<{ c: string[]; t: string[] }>(
+    `select cited_competitor_ids as c, cited_theme_ids as t from learning_findings
+      where org_id = $1 and kind = 'outreach_angle'`,
+    [ORG],
+  );
+  const row = defaults.rows[0];
+  if (row && row.c.length === 0 && row.t.length === 0) ok("and an older finding cites no competitor or theme");
+  else fail("and an older finding cites no competitor or theme", JSON.stringify(row));
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );

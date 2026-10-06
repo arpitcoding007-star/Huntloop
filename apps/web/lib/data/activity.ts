@@ -75,8 +75,9 @@ export function reasonLabel(category: string | null | undefined): string | null 
 
 export async function getTimeline(
   orgSlug: string,
-  opportunityId: string,
-  options: { before?: string | null } = {},
+  /** An opportunity id, or a company id with `scope: "company"`. */
+  subjectId: string,
+  options: { before?: string | null; scope?: "opportunity" | "company" } = {},
 ): Promise<Loaded<Timeline>> {
   return load(
     async (db) => {
@@ -89,7 +90,9 @@ export async function getTimeline(
           "id, kind, channel, direction, actor_type, actor_id, occurred_at, summary, body, ref_type, ref_id, payload, origin",
         )
         .eq("org_id", orgId)
-        .eq("opportunity_id", opportunityId)
+        /* A company's timeline is every opportunity's history at once — the
+           relationship, across products and profiles. */
+        .eq(options.scope === "company" ? "company_id" : "opportunity_id", subjectId)
         .is("deleted_at", null)
         .order("occurred_at", { ascending: false })
         .limit(PAGE + 1);
@@ -163,7 +166,7 @@ export async function getTimeline(
         ledgerStartedAt: started.data?.created_at ? String(started.data.created_at) : null,
       };
     },
-    () => ({ items: demoTimeline(opportunityId), hasMore: false, ledgerStartedAt: null }),
+    () => ({ items: options.scope === "company" ? [] : demoTimeline(subjectId), hasMore: false, ledgerStartedAt: null }),
   );
 }
 

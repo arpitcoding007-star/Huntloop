@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { QualificationEvidence } from "@huntloop/ai";
 import { ask } from "../../../../../lib/ai/agent";
+import { loadAgentContext } from "../../../../../lib/ai/agent-context";
 import {
   currentUserId,
   fail,
@@ -56,7 +57,7 @@ export async function askAgentAction(
     const { data: opportunity, error: readError } = await db
       .from("opportunities")
       .select(
-        `id, priority, priority_reason, why_this_company, identified_problem,
+        `id, company_id, status, priority, priority_reason, why_this_company, identified_problem,
          current_approach, why_now, outreach_angle,
          companies!inner(name, canonical_domain)`,
       )
@@ -135,6 +136,21 @@ export async function askAgentAction(
        One embedded relation, no generated row type. */
     const company = (opportunity as any).companies;
 
+    /* Stage, history, reply, competitors and memories (§16.3-G, Phase 3).
+       Competitor evidence joins the citable set under its own ids. */
+    const extra = await loadAgentContext(db, {
+      orgId,
+      opportunityId: id.data,
+      companyId: String(opportunity.company_id),
+      userId,
+      stage: String(opportunity.status ?? ""),
+    });
+    for (const { id: evidenceId, item } of extra.evidence) {
+      if (idByClaim.has(item.claim)) continue;
+      evidence.push(item);
+      idByClaim.set(item.claim, evidenceId);
+    }
+
     const outcome = await ask(org, {
       companyName: String(company?.name ?? ""),
       canonicalDomain: String(company?.canonical_domain ?? ""),
@@ -150,6 +166,7 @@ export async function askAgentAction(
       evidence,
       history,
       question: parsed.data,
+      context: extra.context,
     });
 
     if (!outcome.ok) return fail(outcome.error);

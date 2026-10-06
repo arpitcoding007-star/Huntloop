@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -17,16 +19,20 @@ import {
   Select,
   Textarea,
 } from "@huntloop/ui";
-import { Mail, Plus, Save, Send, Trash2 } from "lucide-react";
+import { Mail, Plus, Save, Send, Trash2, Unplug } from "lucide-react";
 import type { ProviderId } from "@huntloop/jobs";
 import type { Campaign, Mailbox, Outreach, Sequence, SequenceStep } from "../../../../lib/data/outreach";
 import {
   createSequenceAction,
   deleteCampaignAction,
   deleteStepAction,
+  disconnectMailboxAction,
+  listEnrollmentsAction,
   saveCampaignAction,
   saveStepAction,
+  setEnrollmentStatusAction,
   type CampaignInput,
+  type EnrollmentRow,
 } from "./actions";
 
 /**
@@ -78,6 +84,14 @@ export function OutreachManager({
   /* Seeded from the URL, so the outcome of an OAuth round trip lands in the
      same place every other outcome on this screen does. */
   const [result, setResult] = useState<Result>(notice);
+
+  /* The OAuth outcome is shown once. Leaving it in the URL made every refresh
+     announce the connection again (§14.2), so it is removed after it is read. */
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    if (notice) router.replace(pathname, { scroll: false });
+  }, [notice, router, pathname]);
 
   const { campaigns, mailboxes } = outreach;
   const live = campaigns.filter((c) => c.status === "active");
@@ -176,7 +190,7 @@ export function OutreachManager({
             ) : (
               <ul className="space-y-3">
                 {mailboxes.map((m) => (
-                  <MailboxRow key={m.id} mailbox={m} />
+                  <MailboxRow key={m.id} org={org} mailbox={m} canWrite={canWrite} onResult={setResult} />
                 ))}
               </ul>
             )}
@@ -249,7 +263,18 @@ function ConnectControls({
   );
 }
 
-function MailboxRow({ mailbox }: { mailbox: Mailbox }) {
+function MailboxRow({
+  org,
+  mailbox,
+  canWrite,
+  onResult,
+}: {
+  org: string;
+  mailbox: Mailbox;
+  canWrite: boolean;
+  onResult: (r: Result) => void;
+}) {
+  const [pending, start] = useTransition();
   return (
     <li className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -259,6 +284,22 @@ function MailboxRow({ mailbox }: { mailbox: Mailbox }) {
           {mailbox.status}
         </Badge>
         {mailbox.warmupStage && <Badge variant="neutral">warm-up: {mailbox.warmupStage}</Badge>}
+        {canWrite && !mailbox.id.startsWith("demo") && (
+          <ConfirmButton
+            className="ml-auto"
+            size="sm"
+            icon={Unplug}
+            label={`Disconnect ${mailbox.email}`}
+            confirmLabel="Disconnect"
+            pending={pending}
+            onConfirm={() =>
+              start(async () => {
+                const res = await disconnectMailboxAction(org, mailbox.id);
+                onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+              })
+            }
+          />
+        )}
       </div>
       <QuotaBar
         label="Sent today"
@@ -322,6 +363,10 @@ function CampaignCard({
               : `${campaign.enrollmentCount} enrolled`}
           </span>
         </div>
+
+        {campaign.enrollmentCount > 0 && !campaign.id.startsWith("demo") && (
+          <EnrollmentList org={org} campaignId={campaign.id} canWrite={canWrite} onResult={onResult} />
+        )}
 
         <SequenceList
           org={org}
@@ -788,5 +833,126 @@ function CampaignForm({
         )}
       </CardBody>
     </Card>
+  );
+}
+
+const ENROLLMENT_TONE: Record<string, "success" | "warning" | "neutral" | "danger"> = {
+  active: "success",
+  parked: "warning",
+  paused: "neutral",
+  stopped: "neutral",
+  completed: "neutral",
+};
+
+/**
+ * Who is in a campaign, opened on demand (§14.2). Parked enrollments say why —
+ * the engine parks one when it needs a person (a rejected draft, no address,
+ * no mailbox) — and can be resumed or stopped from here.
+ */
+function EnrollmentList({
+  org,
+  campaignId,
+  canWrite,
+  onResult,
+}: {
+  org: string;
+  campaignId: string;
+  canWrite: boolean;
+  onResult: (r: Result) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<EnrollmentRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const load = () =>
+    start(async () => {
+      const res = await listEnrollmentsAction(org, campaignId);
+      if (res.ok) {
+        setRows(res.data);
+        setError(null);
+      } else setError(res.error);
+    });
+
+  const parked = rows?.filter((r) => r.status === "parked").length ?? 0;
+
+  return (
+    <div>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((v) => !v);
+          if (!rows) load();
+        }}
+      >
+        {open ? "Hide who's enrolled" : "Show who's enrolled"}
+      </Button>
+      {open && (
+        <div className="mt-2 rounded-md border border-line-subtle">
+          {error && <p className="px-3 py-2 text-[13px] text-danger">{error}</p>}
+          {!rows && !error && <p className="px-3 py-2 text-[13px] text-fg-muted">Loading…</p>}
+          {rows && (
+            <>
+              {parked > 0 && (
+                <p className="border-b border-line-subtle bg-warning-surface px-3 py-2 text-[12px] text-warning-text">
+                  {parked} waiting for a person — each says why.
+                </p>
+              )}
+              <ul className="divide-y divide-line-subtle">
+                {rows.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                    <Link
+                      href={`/${org}/opportunities/${r.opportunityId}`}
+                      className="hl-focusable min-w-0 flex-1 rounded-sm text-[13px] text-fg hover:underline"
+                    >
+                      {r.company}
+                    </Link>
+                    <Badge variant={ENROLLMENT_TONE[r.status] ?? "neutral"}>{r.status}</Badge>
+                    <span className="text-[12px] text-fg-muted">step {r.currentStep + 1}</span>
+                    {canWrite && (r.status === "parked" || r.status === "paused") && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={pending}
+                        onClick={() =>
+                          start(async () => {
+                            const res = await setEnrollmentStatusAction(org, r.id, "active");
+                            onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                            if (res.ok) load();
+                          })
+                        }
+                      >
+                        Resume
+                      </Button>
+                    )}
+                    {canWrite && ["active", "parked", "paused"].includes(r.status) && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() =>
+                          start(async () => {
+                            const res = await setEnrollmentStatusAction(org, r.id, "stopped");
+                            onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                            if (res.ok) load();
+                          })
+                        }
+                      >
+                        Stop
+                      </Button>
+                    )}
+                    {r.parkedReason && (
+                      <p className="w-full text-[12px] text-fg-muted">{r.parkedReason}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
