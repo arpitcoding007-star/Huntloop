@@ -155,9 +155,9 @@ export async function getNudge(orgSlug: string): Promise<Nudge | null> {
       title: `You've taken on ${approvals} companies`,
       body:
         "Enough for what they have in common to be worth more than the profile " +
-        "you sketched on day one. We can propose a tighter one and show you " +
-        "exactly what would have scored differently.",
-      action: { label: "Tighten my profile", href: `/${orgSlug}/learn` },
+        "you sketched on day one. See what they share that your profile does " +
+        "not say, and add it in one click.",
+      action: { label: "Tighten my profile", href: `/${orgSlug}/settings/icp#proposal` },
     };
   }
 

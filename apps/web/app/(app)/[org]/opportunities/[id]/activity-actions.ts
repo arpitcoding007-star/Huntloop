@@ -106,6 +106,8 @@ export interface LogActivityInput {
   occurredAt?: string;
   personId?: string | null;
   nextStep?: { text: string; dueAt: string | null } | null;
+  /** Something the prospect said they need or object to (0042, Demand). */
+  productFeedback?: boolean;
 }
 
 export async function logActivityAction(
@@ -161,6 +163,9 @@ export async function logActivityAction(
       summary: value.summary,
       body: value.body || null,
       origin: "manual",
+      /* A trigger turns this into a demand signal (0042). Only with something
+         to quote: a feedback flag on an empty note is a statement of nothing. */
+      product_feedback: input.productFeedback === true && Boolean((value.body || value.summary).trim()),
     });
     if (error) return fail(`That could not be logged: ${error.message}`);
 

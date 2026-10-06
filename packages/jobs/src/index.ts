@@ -43,6 +43,26 @@ export {
 export { HANDLERS, type JobContext, type JobHandler, type JobOutcome } from "./registry.ts";
 export { sweep, tick, type TickOptions, type TickReport } from "./runner.ts";
 
+/* Product email (Resend). Sending is safe from the app; anything that needs
+   the service-role client (admins' addresses, digests) runs as a job. */
+export {
+  emailConfig,
+  isEmailConfigured,
+  sendEmail,
+  type EmailMessage,
+  type SendResult,
+} from "./email/resend.ts";
+export {
+  digestEmail,
+  escapeHtml,
+  invitationEmail,
+  joinApprovedEmail,
+  joinRequestEmail,
+  type RenderedEmail,
+} from "./email/templates.ts";
+export { verifyDigestUnsubscribeToken } from "./email/digest-token.ts";
+export { disableDigest } from "./handlers/send-digests.ts";
+
 export {
   FetchRefused,
   assertFetchable,

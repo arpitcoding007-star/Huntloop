@@ -77,7 +77,15 @@ export type JobName =
   | "sync_hubspot"
   /* MAP-001: the producer for CRM pushes, contact discovery and enrichment
      refresh after onboarding. */
-  | "schedule_followups";
+  | "schedule_followups"
+  /* 0039: a competitor's named customers, researched when a person opts in. */
+  | "prospect_competitor_customers"
+  /* 0040: the product's own email — join requests, and the daily digest. */
+  | "send_notifications"
+  | "send_digests"
+  /* 0042: demand intelligence — group what prospects said into themes. */
+  | "schedule_demand"
+  | "cluster_demand";
 
 export interface JobRow {
   id: string;

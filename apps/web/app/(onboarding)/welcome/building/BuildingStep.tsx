@@ -9,7 +9,7 @@ import {
   STAGE_LABELS,
   type FirstRunStage,
 } from "../../../../lib/onboarding/steps";
-import { runStageAction } from "./actions";
+import { continueInBackgroundAction, runStageAction } from "./actions";
 import { advanceStep } from "../actions";
 
 /**
@@ -39,7 +39,12 @@ import { advanceStep } from "../actions";
  *
  * The first stage creates a saved discovery query that is enabled on a daily
  * interval, so the scheduled runner continues from exactly here. Closing the
- * tab delays the workspace; it does not break it. The Skip button says so.
+ * tab delays the workspace; it does not break it.
+ *
+ * The stages themselves are driven by this screen, so leaving does stop them.
+ * Skip therefore marks the saved search due now (the engine chains enrichment
+ * and scoring after discovery) and opens the workspace — and says plainly
+ * when nothing on this deployment runs the engine (M-05).
  */
 
 type Status = "waiting" | "running" | "done" | "skipped" | "failed";
@@ -57,8 +62,16 @@ const INITIAL: Record<FirstRunStage, StageState> = Object.fromEntries(
   FIRST_RUN_STAGES.map((stage) => [stage, { status: "waiting", detail: "", count: 0 }]),
 ) as Record<FirstRunStage, StageState>;
 
-export function BuildingStep({ org }: { org: string }) {
+export function BuildingStep({
+  org,
+  engineConfigured,
+}: {
+  org: string;
+  /** Whether a tick can run at all, so Skip only promises what will happen. */
+  engineConfigured: boolean;
+}) {
   const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
   const [stages, setStages] = useState<Record<FirstRunStage, StageState>>(INITIAL);
   const [finished, setFinished] = useState(false);
 
@@ -67,9 +80,13 @@ export function BuildingStep({ org }: { org: string }) {
      provider bill and a duplicate set of research calls, invisible until the
      invoice. */
   const started = useRef(false);
+  /* Set when the user leaves. A client navigation does not stop this loop,
+     and without the check it would keep spending on stages nobody watches. */
+  const cancelled = useRef(false);
 
   const run = useCallback(async () => {
     for (const stage of FIRST_RUN_STAGES) {
+      if (cancelled.current) return;
       setStages((prev) => ({ ...prev, [stage]: { ...prev[stage], status: "running" } }));
 
       const result = await runStageAction(org, stage);
@@ -95,6 +112,7 @@ export function BuildingStep({ org }: { org: string }) {
       }));
     }
 
+    if (cancelled.current) return;
     await advanceStep(org, "review");
     setFinished(true);
   }, [org]);
@@ -200,16 +218,36 @@ export function BuildingStep({ org }: { org: string }) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button
-          variant={finished ? "primary" : "secondary"}
-          size="lg"
-          onClick={() => router.push(`/welcome/review?org=${org}`)}
-        >
-          {finished ? "See what we found" : "Skip — I'll wait in the workspace"}
-        </Button>
+        {finished ? (
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={() => router.push(`/welcome/review?org=${org}`)}
+          >
+            See what we found
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="lg"
+            disabled={leaving}
+            onClick={async () => {
+              setLeaving(true);
+              cancelled.current = true;
+              // Failure still leaves: the profile is saved and the dashboard's
+              // setup card says what is missing.
+              await continueInBackgroundAction(org).catch(() => null);
+              router.push(`/${org}/dashboard`);
+            }}
+          >
+            {leaving ? "Opening…" : "Skip — open my workspace"}
+          </Button>
+        )}
         {!finished && (
-          <span className="text-[13px] text-fg-muted">
-            This carries on without you — the search is scheduled either way.
+          <span className="max-w-md text-[13px] text-fg-muted">
+            {engineConfigured
+              ? "Leaving stops this screen’s run. The search carries on in the background on the engine’s next run."
+              : "Leaving stops this run. Nothing runs the engine on this deployment yet, so the search waits until it does."}
           </span>
         )}
       </div>

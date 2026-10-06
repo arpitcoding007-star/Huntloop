@@ -87,6 +87,30 @@ export interface AgentInput {
   /** Oldest first. Trimmed to `MAX_HISTORY` by the caller. */
   history: AgentTurn[];
   question: string;
+  /**
+   * What has happened with this account, beyond the research (COMMAND.md
+   * §16.3-G, the Phase 3 step). Optional: absent means none on file.
+   */
+  context?: AgentContext;
+}
+
+export interface AgentContext {
+  /** The pipeline stage, e.g. "contacted". */
+  stage: string;
+  /** Newest first, one line each, already dated. Bounded by the caller. */
+  recentActivity: string[];
+  /** The latest reply classification, e.g. "positive", or null. */
+  replyClassification: string | null;
+  /** Competitors on file for the company, with the team's own positioning. */
+  competitors: {
+    name: string;
+    tier: string | null;
+    relationship: string;
+    ourAdvantage: string | null;
+    theirAdvantage: string | null;
+  }[];
+  /** Notes the team taught Huntloop that apply here. Guidance, not evidence. */
+  memories: string[];
 }
 
 /**
@@ -168,8 +192,54 @@ is genuinely a list of steps.
 When asked to draft something, draft it — do not describe what you would draft.
 Keep it short enough to send, and make every specific in it traceable to a
 claim you cited.
+
+## What has happened, and what the team knows
+
+You may be given the account's recent history, the stage it is at, how the
+prospect replied, competitors on file, and notes the team taught Huntloop.
+Use them to judge what to do next — a positive reply nobody answered is a
+different situation from a cold account. They are context, not evidence about
+the company: cite only the evidence list.
+
+Competitors: a relationship is citable only through the evidence list. In
+anything drafted for the prospect, name a competitor only when it is a direct
+competitor they use or left, the evidence says so, and the team wrote where we
+win — then use the team's words, never your own claim about the competitor.
+Never name adjacent, incumbent or built-in-house alternatives to the prospect.
 `,
 );
+
+function renderContext(context: AgentContext): string {
+  const competitors = context.competitors.length
+    ? context.competitors
+        .map((c) =>
+          [
+            `- ${c.name}: ${c.relationship}${c.tier ? ` (${c.tier})` : ""}`,
+            c.ourAdvantage ? `  where we win (team's words): ${c.ourAdvantage}` : null,
+            c.theirAdvantage ? `  where they win (team's words): ${c.theirAdvantage}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        )
+        .join("\n")
+    : "(none on file)";
+  return [
+    `Stage: ${context.stage}`,
+    `Latest reply: ${context.replyClassification ?? "(no reply classified)"}`,
+    "",
+    wrapUntrusted(
+      "recent activity, newest first",
+      context.recentActivity.length ? context.recentActivity.join("\n") : "(nothing recorded yet)",
+    ),
+    "",
+    wrapUntrusted("competitors on file", competitors),
+    "",
+    wrapUntrusted(
+      "notes the team taught Huntloop",
+      context.memories.length ? context.memories.map((m) => `- ${m}`).join("\n") : "(none)",
+    ),
+  ].join("\n");
+}
 
 export const salesAgent: LLMTask<AgentInput, AgentAnswer> = {
   name: "sales_agent",
@@ -259,6 +329,7 @@ export const salesAgent: LLMTask<AgentInput, AgentAnswer> = {
          plant has been carried this far intact. */
       wrapUntrusted("evidence gathered about this company", evidence),
       "",
+      ...(input.context ? [renderContext(input.context), ""] : []),
       /* Untrusted because the user writes half of it. Continuity is why it is
          here; authority is not something it carries. */
       wrapUntrusted("conversation so far", history),

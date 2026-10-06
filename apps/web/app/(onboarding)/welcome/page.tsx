@@ -97,7 +97,12 @@ export default async function WelcomePage({
       </p>
 
       <div className="mt-6">
-        <YouForm initialName={initialName} initialRole={initialRole} carry={carry} />
+        <YouForm
+          initialName={initialName}
+          initialRole={initialRole}
+          carry={carry}
+          isNew={Boolean(isNew)}
+        />
       </div>
     </>
   );

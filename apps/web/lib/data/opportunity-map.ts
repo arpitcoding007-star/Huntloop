@@ -64,6 +64,8 @@ export interface OpportunityRow {
 
 export interface OpportunityDetail {
   id: string;
+  /** The company row, for the brief's company-level sections. Null on fixtures. */
+  companyId: string | null;
   company: string;
   domain: string;
   industry: string;
@@ -138,6 +140,8 @@ export interface OpportunityDetail {
   }[];
   evidence: EvidenceItem[];
   triggers: { type: string; date: string; strength: number | null }[];
+  /** Optional, typed by a person (0040). Null means nobody said. */
+  estimatedValueCents: number | null;
 }
 
 /* ── Row types.
@@ -188,6 +192,9 @@ export interface ListQueryRow {
 
 export interface DetailQueryRow {
   id: string;
+  company_id: string;
+  /** 0040 — absent on rows read before the migration. */
+  estimated_value_cents?: number | null;
   priority: Priority;
   priority_reason: string;
   status: string;
@@ -554,6 +561,11 @@ export function mapDetail(
       r.owner_id === null ? null : r.owner_id === viewerId ? "You" : "another member",
     ownerId: r.owner_id,
     triggerDate: triggers[0]?.event_date ?? null,
+    companyId: r.company_id,
+    estimatedValueCents:
+      r.estimated_value_cents === null || r.estimated_value_cents === undefined
+        ? null
+        : Number(r.estimated_value_cents),
     whyThisCompany: r.why_this_company,
     whatTheyDo: r.companies.description,
     identifiedProblem: r.identified_problem,

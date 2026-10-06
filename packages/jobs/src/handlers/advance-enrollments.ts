@@ -29,7 +29,12 @@
  * enrollment that keeps drafting messages nobody will send is a bill and a
  * queue of drafts a person has to dismiss.
  */
-import { personalizeMessage, type MessageEvidence } from "@huntloop/ai";
+import {
+  competitorMayBeNamed,
+  personalizeMessage,
+  type MessageCompetitor,
+  type MessageEvidence,
+} from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
 import { isSendableEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
@@ -469,6 +474,13 @@ async function draftMessage(
     const evidence = await loadEvidence(scope, String(input.opportunity.id));
     const product = await loadProduct(scope, input.campaign.product_id);
     const guidance = await loadGuidance(scope);
+    const competitors = await loadCompetitors(scope, String(input.opportunity.company_id));
+    /* The evidence behind a competitor relationship is citable like any other
+       claim — that is how a named competitor stays traceable. */
+    const known = new Set(evidence.map((e) => e.id));
+    for (const c of competitors.evidence) {
+      if (!known.has(c.id)) evidence.push(c);
+    }
 
     const run = await runForOrg(scope, personalizeMessage, {
       companyName,
@@ -480,6 +492,7 @@ async function draftMessage(
       template: { subject: input.step.subject, body: input.step.body },
       evidence,
       guidance,
+      competitors: competitors.list,
     });
 
     return {
@@ -534,6 +547,50 @@ async function loadEvidence(scope: OrgScope, opportunityId: string): Promise<Mes
     sourceUrl: (row.source_url as string | null) ?? null,
     eventDate: (row.event_date as string | null) ?? null,
   }));
+}
+
+/**
+ * Competitors on file for the company, with the naming decision made here —
+ * by rule, from data — rather than left to the model.
+ */
+async function loadCompetitors(
+  scope: OrgScope,
+  companyId: string,
+): Promise<{ list: MessageCompetitor[]; evidence: MessageEvidence[] }> {
+  const { data } = await scope
+    .select(
+      "company_competitor_signals",
+      "relationship, evidence_id, competitors!inner(name, tier, status, our_advantage, deleted_at), " +
+        "evidence(id, claim, kind, source_url, event_date)",
+    )
+    .eq("company_id", companyId)
+    .limit(20);
+
+  const list: MessageCompetitor[] = [];
+  const evidence: MessageEvidence[] = [];
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const c = one(row.competitors);
+    if (!c || c.deleted_at || c.status !== "active") continue;
+    const base = {
+      name: String(c.name),
+      tier: (c.tier ?? null) as MessageCompetitor["tier"],
+      relationship: row.relationship as MessageCompetitor["relationship"],
+      evidenceId: row.evidence_id ? String(row.evidence_id) : null,
+      ourAdvantage: (c.our_advantage as string | null) ?? null,
+    };
+    list.push({ ...base, mayName: competitorMayBeNamed(base) });
+    const ev = one(row.evidence);
+    if (ev?.id) {
+      evidence.push({
+        id: String(ev.id),
+        claim: String(ev.claim),
+        kind: ev.kind as MessageEvidence["kind"],
+        sourceUrl: ev.source_url ?? null,
+        eventDate: ev.event_date ?? null,
+      });
+    }
+  }
+  return { list, evidence };
 }
 
 async function loadProduct(scope: OrgScope, productId: string | null): Promise<string> {

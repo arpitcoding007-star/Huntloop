@@ -58,11 +58,15 @@ export function LearningReview({
   runs,
   canWrite,
   engineRunning,
+  engineConfigured = engineRunning,
 }: {
   org: string;
   runs: LearningRun[];
   canWrite: boolean;
+  /** Something drives the tick, so a requested analysis will be picked up. */
   engineRunning: boolean;
+  /** The tick would accept a caller, whether or not anything calls it. */
+  engineConfigured?: boolean;
 }) {
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
@@ -82,10 +86,21 @@ export function LearningReview({
         <CardBody className="space-y-4">
           {!engineRunning && (
             <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-[12px] text-fg">
-              Nothing is running the engine on this deployment, so a requested
-              analysis would sit in the queue indefinitely. Set{" "}
-              <code className="font-mono">CRON_SECRET</code> and schedule{" "}
-              <code className="font-mono">/api/jobs/tick</code> first.
+              {engineConfigured ? (
+                <>
+                  <code className="font-mono">/api/jobs/tick</code> would accept a
+                  caller, but nothing has called it and no job has run for this
+                  workspace, so a requested analysis would sit in the queue.
+                  Connect Inngest, or point a scheduler at it.
+                </>
+              ) : (
+                <>
+                  Nothing is running the engine on this deployment, so a requested
+                  analysis would sit in the queue indefinitely. Set{" "}
+                  <code className="font-mono">CRON_SECRET</code> and schedule{" "}
+                  <code className="font-mono">/api/jobs/tick</code> first.
+                </>
+              )}
             </p>
           )}
 
@@ -256,6 +271,8 @@ const KIND_LABEL: Record<LearningFinding["kind"], string> = {
   scoring_adjustment: "Scoring",
   style_guidance: "Outreach",
   icp_refinement: "Profile",
+  competitive_positioning: "Competitors",
+  product_demand: "Demand",
 };
 
 function FindingCard({

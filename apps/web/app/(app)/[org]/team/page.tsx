@@ -5,6 +5,7 @@ import { listPendingJoinRequests } from "../../../../lib/data/directory";
 import { DemoFigures } from "../DemoFigures";
 import { MemberList } from "./MemberList";
 import { JoinRequests } from "./JoinRequests";
+import { isEmailConfigured } from "@huntloop/jobs";
 
 /**
  * Members — master context §38.
@@ -57,6 +58,7 @@ export default async function TeamPage({
           members={members}
           invitations={invitations}
           canAdmin={canAdmin(viewer)}
+          emailConfigured={isEmailConfigured()}
           now={new Date().toISOString()}
         />
       </div>

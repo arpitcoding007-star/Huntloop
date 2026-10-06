@@ -408,6 +408,7 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
 
       const body: Record<string, unknown> = { page, per_page: perPage };
 
+      if (query.name) body.q_organization_name = query.name;
       if (query.keywords.length) body.q_organization_keyword_tags = query.keywords;
       if (query.industries.length) body.q_organization_industry_tag_ids = undefined;
       /* Apollo takes industries as internal tag ids, which we do not have, and

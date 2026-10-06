@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { enqueueScan, isEngineRunning } from "../../../../lib/data/engine";
+import { engineReadiness, enqueueScan } from "../../../../lib/data/engine";
 import { getActiveIcp } from "../../../../lib/data/icp";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
@@ -287,12 +287,17 @@ export async function scanSourceNowAction(
     const parsed = uuidSchema.safeParse(sourceId);
     if (!parsed.success) return fail("That source reference isn't valid.");
 
-    if (!isEngineRunning()) {
+    const engine = await engineReadiness(db, orgId);
+    if (!engine.driven) {
       return fail(
-        "Nothing is running the scanner on this deployment. Set CRON_SECRET in " +
-          "the project's environment variables — the schedule at " +
-          "/api/jobs/tick refuses every request without it, so a queued scan " +
-          "would never be picked up.",
+        engine.configured
+          ? "/api/jobs/tick would accept a caller, but nothing has called it for " +
+              "this workspace, so a queued scan would sit in the queue. Connect " +
+              "Inngest, or point a scheduler at it."
+          : "Nothing is running the scanner on this deployment. Set CRON_SECRET in " +
+              "the project's environment variables — the schedule at " +
+              "/api/jobs/tick refuses every request without it, so a queued scan " +
+              "would never be picked up.",
       );
     }
 

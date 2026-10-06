@@ -4,9 +4,9 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-10-06** against branch `feat/daily-loop-roadmap` (P0 + P1 of §16).
+> Last full sync: **2026-10-06** against the `main` working tree (P0–P6 of §16; P3–P6 uncommitted).
 >
-> **Roadmap:** [§16](#16-product-roadmap--planned-not-implemented) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
+> **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
 **Entry format.** Complex elements use:
 `Element → Action → Destination → New elements → Nested actions → Branches → Endpoint`.
@@ -34,7 +34,7 @@ Simple link lists use tables (`Element | Where | Goes to | Notes`).
 13. [Errors, empty states & edge cases](#13-errors-empty-states--edge-cases)
 14. [Unresolved or broken flows (⚠️ FLOW MISMATCH register)](#14-unresolved-or-broken-flows)
 15. [Cross-page flow reference](#15-cross-page-flow-reference)
-16. [Product roadmap — planned, not implemented](#16-product-roadmap--planned-not-implemented)
+16. [Product roadmap](#16-product-roadmap)
 
 ---
 
@@ -138,8 +138,8 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 | **Home** | No (single item) | Command Center → `/{org}/dashboard` |
 | **Hunt** | Yes — "Find and qualify the accounts worth pursuing." | Opportunities → `/{org}/opportunities` · Companies → `/{org}/companies` · Analyze a URL → `/{org}/analyze` · Imports → `/{org}/imports` |
 | **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
-| **Learn** | Yes — "What the loop is teaching you." | Performance → `/{org}/performance` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` |
-| **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` |
+| **Learn** | Yes — "What the loop is teaching you." | Performance → `/{org}/performance` · Ask Huntloop [AI] → `/{org}/assistant` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` · Prospect demand → `/{org}/demand` |
+| **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` · Competitors → `/{org}/competitors` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
 | **Operate** | Yes — "Is the engine running, and what is it costing?" | Engine → `/{org}/ops` · AI spend → `/{org}/analytics` |
 | **Settings** (rail footer) | Yes — "How this workspace is set up." | General → `/{org}/settings` · Product · ICP · Scoring → `/{org}/settings/scoring` · Integrations → `/{org}/settings/integrations` · Data & privacy → `/{org}/settings/privacy` |
@@ -752,6 +752,9 @@ Assign / Enrol / Disagree / Not a fit are one exclusive panel state (opening one
 Success closes the form and the message shows above the list (M-07 fixed); the row appears/updates. Hand-added companies with no research are researched and scored by the engine (≤5 per tick, once a day — migration 0036).
 **Empty:** "No companies yet" / "No company matches that" (no action button). Rows are not clickable (no company detail page exists).
 
+### 7.2.1 Company detail `/{org}/companies/{id}`
+**Reached from:** company names on Companies (§7.2). One company across every profile it fits: **Opportunities** (each a company × profile pair → opportunity detail) and **Not qualified yet**; **History** — one timeline across all its opportunities; the opportunity brief sections computed for the company; **People on file** (LinkedIn links); **Funding and leadership**.
+
 ### 7.3 Analyze a URL `/{org}/analyze`
 **Reached from:** Hunt rail, dashboard header + chip, opportunities header/empty state, jump-to. **Viewer without spend rights → `PermissionDenied` (required role: member)**.
 
@@ -911,12 +914,13 @@ Content: Last 30 days stat cards (Total spend, Cache hit rate, Failed, No outcom
 
 | Element | Shown when | Action |
 |---|---|---|
-| Engine warning "Nothing is running the engine… Set CRON_SECRET and schedule /api/jobs/tick" | Engine not configured | Informational |
-| **Run an analysis** (`canWrite`) | Always for writers | SA `requestAnalysisAction(org, 90)` → queued run. Disabled while a run is requested/running or engine not running. Caption: "Looks at the last 90 days." / "One is already running…" |
+| Engine warning | Engine not **driven** (`engineReadiness`, the same check Sources uses) | Not configured → "Nothing is running the engine… Set CRON_SECRET and schedule /api/jobs/tick"; configured but never called → "/api/jobs/tick would accept a caller, but nothing has called it…" |
+| **Run an analysis** (`canWrite`) | Always for writers | SA `requestAnalysisAction(org, 90)` → queued run. Disabled while a run is requested/running or the engine is not driven; the action refuses in that state too. Caption: "Looks at the last 90 days." / "One is already running…" |
 | Run section header | Per run | Date, outcomes/overrides/ratings considered, "scheduled" |
 | Run states | requested / running / insufficient / failed / ready-with-no-findings | Status copy ("Queued. It starts on the next engine tick." etc.) |
-| Finding card: kind badge (Sources/Scoring/Outreach/Profile), inference badge, headline, detail, recommendation, support counts | Per finding | — |
-| "Based on" citation links | Citation has href | → `/{org}/opportunities/{id}` or `/{org}/sources` |
+| Finding card: kind badge (Sources/Scoring/Outreach/Profile/Competitors/Demand), inference badge, headline, detail, recommendation, support counts | Per finding | — |
+| "Based on" citation links | Citation has href | → `/{org}/opportunities/{id}`, `/{org}/companies/{id}`, `/{org}/sources`, `/{org}/competitors/{id}` or `/{org}/demand` |
+| What an analysis reads | — | Outcomes, overrides and ratings in the window; sources; accepted competitors (losses in the window, prospects using / evaluating / leaving them, whether positioning is written); accepted demand themes (statements, deals that asked, how many were lost) — `0043`. Competitor and demand findings cite those records by id |
 | Proposal box | Finding has a proposal | "Accepting adds this to Memory" or "Accepting creates this rule, inactive" |
 | **Accept** (`canWrite`, pending finding) | — | SA `approveFindingAction` → creates inactive scoring rule **or** memory note (or just records agreement) → card shows "Approved" + link |
 | **Decline** | — | SA `rejectFindingAction` → "Rejected. Nothing was applied." |
@@ -925,7 +929,7 @@ Content: Last 30 days stat cards (Total spend, Cache hit rate, Failed, No outcom
 
 **Empty:** "Nothing analysed yet". Endpoint of the learning loop: inactive rule on Scoring (§10.4) → activated by a human; or a Memory entry (§9.4).
 
-> ⚠️ **FLOW MISMATCH M-12** — the "tighten-icp" nudge promises "We can propose a tighter one and show you exactly what would have scored differently" with **Tighten my profile**, but it lands here, where the only action is a generic analysis run; no ICP proposal/diff view exists. See §14.
+The "tighten-icp" nudge's promise is kept on ICP settings (§10.3): **Suggested from your decisions** proposes additions drawn from the companies this workspace took on, each naming the companies behind it (M-12, fixed).
 
 ### 9.4 Memory `/{org}/memory`
 **Reached from:** Learn rail, Learn "Memory" link after accepting a finding.
@@ -933,13 +937,39 @@ Content: Last 30 days stat cards (Total spend, Cache hit rate, Failed, No outcom
 | Element | Action |
 |---|---|
 | Figures You wrote / Huntloop concluded | Static |
-| **Add a document** (`canWrite`) | IngestForm: toggle **From a link** / **From a file** · Address (URL) *or* File (.txt/.md/.csv read in browser, not uploaded) · Label · Tags (comma) → **Store it** (SA `ingestMemoryAction`, "Reading…"; disabled until URL/text) · **Cancel** |
-| **Add a memory** (`canWrite`) | MemoryForm: **Who this applies to** (organization / team / user / account / opportunity, with help text) · **Subject** (raw UUID, required for non-org scopes) · Label · **What to remember**\* → **Add memory** (SA `saveMemoryAction`) · **Cancel** |
+| **Add a document** (`canWrite`) | IngestForm: toggle **From a link** / **From a file** · Address (URL) *or* File — PDF, Word (.docx), .txt/.md/.csv, ≤ 4 MB. Text files are read in the browser; PDF/DOCX are posted to `POST /api/memory/extract` (writers only; type judged by magic bytes, not the declared type; zip-bomb bounded; stores nothing), which returns their text. A scanned PDF with no text layer is refused with "Paste the text instead". The text appears in an editable **What will be stored** box ("Reading {file}…" while extracting) · Label · Tags (comma) → **Store it** (SA `ingestMemoryAction`, "Reading…"; disabled until URL/text) · **Cancel** |
+| **Add a memory** (`canWrite`) | MemoryForm: **Who this applies to** (organization / team / user / account / opportunity, with help text) · **Subject** (filterable picker of named people / companies / opportunities, required for non-org scopes; `team` is offered only on a memory that already has it) · Label · **What to remember**\* → **Add memory** (SA `saveMemoryAction`) · **Cancel** |
 | Memory card **Edit** (user-written only) | Swaps to MemoryForm → **Save memory** |
 | **Remove this memory** ConfirmButton | SA `deleteMemoryAction` → "Memory removed. The agent will stop using it." |
 | Source link on card | External, new tab |
 
-"What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Non-org scopes require pasting an id — there is no picker (usability gap noted in §14).
+"What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
+
+### 9.5 Ask Huntloop `/{org}/assistant`
+**Reached from:** Learn rail "Ask Huntloop" [AI], jump-to. The workspace co-pilot (§16.3-G).
+
+| Element | Action |
+|---|---|
+| **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`) |
+| Answer: **Based on** citations | Each cited record links to its page; with nothing on file the answer says **Not in your records** |
+| Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `saveMemoryAction` |
+| Clear the conversation | SA `clearAssistantAction` deletes this person's turns |
+| No model key / demo | **Worked example** |
+
+### 9.6 Prospect demand `/{org}/demand` (H1 "What prospects ask for")
+**Reached from:** Learn rail "Prospect demand", jump-to. Data: `demand_signals`, `demand_themes` (`0042`).
+
+Statements come from three producers: `classify_reply` (objections and requests a prospect stated, citing the message), deals closed lost / not a fit with a reason (trigger on `outcomes`), and activities marked as product feedback (trigger on `activities`). Erasing a contact deletes the statements drawn from them.
+
+| Element | Action |
+|---|---|
+| **Group new statements** / "Grouping requested" (`canWrite`) | SA `requestGroupingAction` → `schedule_demand` (hourly) enqueues `cluster_demand`, which proposes themes citing statements |
+| **Themes** — status (Proposed · Open · Planned · Shipped · Won't do · Dismissed · Merged), kind (Request / Objection / Blocker), statements with source ("from a reply / a closed deal / a note") | — |
+| Proposed theme: **Accept** / dismiss; status changes (Open → Planned → Shipped / Won't do) | SA `setThemeStatusAction`. **Shipped** puts the lost and stalled deals that asked for it into Needs you ("Now shipped", 30 days) |
+| Rename · **Merge into…** | SA `renameThemeAction` · `mergeThemeAction` |
+| New theme (Theme name, Kind) | SA `createThemeAction` (origin `user`) |
+| **Not grouped yet** — statement **Add to theme…** | SA `assignStatementAction` |
+| Empty | "No themes yet" |
 
 ---
 
@@ -1040,6 +1070,18 @@ Note the free-text Company sizes / Regions here vs. fixed option chips in onboar
 | Per recommendation **Accept** | SA `setSourceEnabledAction(true)` → moves to Monitored |
 | Per recommendation **Dismiss** | SA `deleteSourceAction` (no undo here) |
 Empty: "No suggestions waiting…".
+
+### 10.5b Competitors `/{org}/competitors` and `/{org}/competitors/{id}` (Company section of the nav)
+**Reached from:** Company rail "Competitors", jump-to.
+
+| Element | Action |
+|---|---|
+| **Add a competitor** (Name, Website, How directly) | SA `addCompetitorAction` (origin `user`) |
+| **Proposed** — "Named in what your sources said about prospects. Nothing counts until you accept it." | Accept / dismiss → SA `setCompetitorStatusAction` |
+| **Your competitors** rows (Not researched · Research queued · Prospecting their customers · Not sure yet) | → detail page |
+| Detail: Name, Website, How directly they compete; **Your positioning** — Where we win / Where they win (person-owned; research never writes them) | SA `updateCompetitorAction` |
+| Detail: **Research** | SA `requestCompetitorResearchAction` → request column (`0039`) → `research_competitor`; refused when nothing drives the engine |
+| Detail: delete | SA `deleteCompetitorAction` |
 
 ### 10.6 Integrations `/{org}/settings/integrations`
 **Reached from:** Settings panel, account menu "Integrations", HubSpot error copy.
@@ -1186,40 +1228,18 @@ flowchart TD
 
 | ID | Where | Current behaviour | Expected behaviour | Fix needed |
 |---|---|---|---|---|
-| **M-01** | `app/(auth)/login/page.tsx` ← `app/auth/callback/route.ts`, `(auth)/actions.ts signInWithGoogle` | Callback sends failures to `/login?error=missing_code\|invalid_link\|oauth`; login page ignores `error`, user sees an unexplained blank form | Login explains "That link has expired or was already used — enter your email for a new one" | Read `searchParams.error` in LoginPage and render a `Note`/alert per code |
-| **M-02** | `/orgs` "Create another workspace", dashboard "Set up another client" → `/welcome?new=1` → `YouForm` → `saveYou` (`welcome/actions.ts`) | `?new=1` only skips the page's auto-forward; `saveYou` then forwards to the **existing** workspace (`/welcome/company?org=existing` or its dashboard). A second workspace cannot be created via the UI | `?new=1` leads to `/welcome/company` with no `org`, creating a new workspace | Pass `new` through `YouForm` to `saveYou` (or from `/welcome?new=1` with a role already set, go straight to `/welcome/company`) and skip the existing-membership redirect |
-| **M-03** | `lib/data/destination.ts resolveDestination`, `app/auth/callback/route.ts`, `/orgs` | `huntloop.org` is written only by `finishOnboarding`; no caller passes `preferredSlug`; `/orgs` **Open** writes nothing. Multi-workspace users hit `/orgs` every sign-in; "Last used" badge only reflects the last onboarded workspace | Choosing a workspace remembers it; callback honours it | Read the cookie in callback/`resolveDestination`; set it when a workspace is opened (e.g. in the org layout or an `/orgs` open action) |
-| **M-04** | `welcome/review/page.tsx` "Connect a mailbox"; `lib/data/personalization.ts` first action | Links to `/{org}/settings` (General), which has no mailbox controls | Links to `/{org}/outreach` (Mailboxes card) | Change both hrefs to `/${org}/outreach` |
-| **M-05** | `welcome/building/BuildingStep.tsx` | "Skip — I'll wait in the workspace" → `/welcome/review`; stages are client-sequenced so leaving stops the remaining first-run stages, despite "This carries on without you" | Button goes to the workspace (or is relabelled), and remaining stages continue server-side | Relabel/retarget, and/or run the first-run chain as a background job |
-| **M-06** | `welcome/review/FinishButton.tsx` | On `finishOnboarding` failure the note is set then `router.push` fires immediately — note never visible | Failure note visible (or surfaced on the dashboard) | Only navigate on success, or pass a flag to the dashboard |
-| **M-08** | `welcome/company/CompanyStep.tsx runResearch` | After the first research creates workspace A, **Start over** with a different domain calls `researchCompanyAction(url, undefined)` → `createWorkspace` creates workspace B; A is orphaned mid-onboarding | Re-research reuses the workspace already created in this session | Pass `state.org ?? org` to `researchCompanyAction` |
-| **M-09** | `welcome/goals/GoalsStep.tsx`, `welcome/icp/IcpStep.tsx` | Revisiting Goals shows an empty form; revisiting ICP re-runs the model draft (cost) and discards saved edits in the form | Back/progress navigation shows saved answers for editing | Load `onboarding.goals/channel` into GoalsStep; load the saved ICP when one exists instead of drafting |
-| **M-10** | `(marketing)/DomainInput.tsx` call sites in `discover/page.tsx`, `for/[useCase]`, `compare/[approach]` | Default `canResearch=true` → always `/discover`, even when anonymous research is disabled; "try another address" loops to the same refusal | Follows `publicResearchEnabled()` like the landing page (→ `/signup?d=`) | Pass `canResearch={publicResearchEnabled()}` at every call site |
-| **M-12** | `lib/data/nudges.ts` "tighten-icp" → `/learn` | Copy promises a proposed tighter ICP and a what-would-have-changed diff; destination only offers a generic analysis | Destination provides the promised proposal, or copy matches what exists | Adjust copy/CTA, or implement ICP-refinement proposals |
-| **M-13** | `settings/icp/IcpEditor.tsx` | `creating` state is never cleared after **Create ICP** succeeds; form stays in create mode, personas hidden; a second click creates a duplicate ICP | After create, the new ICP is selected in edit mode | On success, `setCreating(false)` and select the returned id |
-| **M-14** | `settings/icp/actions.ts saveIcpAction` (insert branch) | First ICP (auto-active) created in Settings does not call `followActiveIcp`; no discovery search until an edit/activation/"Hunt now" | Creating an active ICP builds its search like saving one does | Call `followActiveIcp(db, orgId, { runNow: false })` when inserting with `is_active = true` |
-| **M-15** | `settings/scoring/ScoringRules.tsx RuleForm` vs `actions.ts saveRuleAction` | Header says "Saved switched off. Nothing changes until you turn it on." but edits to a running rule stay active and apply immediately | Copy is accurate, or edits to active rules require re-activation | Show different copy when editing an active rule (or deactivate on edit) |
-| **M-16** | `invite/[token]/page.tsx` | "sign out" is a GET link to `/auth/signout`, which is POST-only → 405 | Signs the user out and returns to the invite (or login) | Replace with a `<form method="post" action="/auth/signout">` button |
+| — | — | **No open mismatches.** | — | — |
 
-Fixed and removed from the register: **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); the panels are now one exclusive state. **M-07** — success messages lived inside panels that unmount on success (Opportunities EnrollPanel, Companies CompanyForm, Sources SourceForm); each now hands its message to the parent, which shows it after the panel closes. **M-11** — "Analytics" opened a model-spend page; Learn now has **Performance** (outcome analytics) and spend moved to Operate as **AI spend**.
+Fixed and removed from the register: **M-01** (login explains each `?error=` code), **M-02** (`/welcome?new=1` creates a new workspace), **M-03** (the workspace last opened is remembered), **M-04** ("Connect a mailbox" → Outreach), **M-05** (Skip marks the saved search due and opens the workspace, saying when nothing runs the engine), **M-06** (a finish failure is shown, not lost to navigation), **M-08** (re-research reuses the session's workspace), **M-09** (Goals and ICP steps reload saved answers), **M-10** (every DomainInput honours `publicResearchEnabled()`), **M-12** (ICP proposal from decisions), **M-13** (a created ICP is selected for editing), **M-14** (an active ICP created in Settings builds its search), **M-15** (editing a live rule says it stays live), **M-16** (invite sign-out is a POST form). **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); the panels are now one exclusive state. **M-07** — success messages lived inside panels that unmount on success (Opportunities EnrollPanel, Companies CompanyForm, Sources SourceForm); each now hands its message to the parent, which shows it after the panel closes. **M-11** — "Analytics" opened a model-spend page; Learn now has **Performance** (outcome analytics) and spend moved to Operate as **AI spend**.
 
 ### 14.2 Gaps & dead ends (not mismatches, but undefined or incomplete flows)
 
-- **No mobile menu on the landing page** — Product / How it works / Pricing anchors are hidden below `md`; Sign in / Start free remain.
-- **Auth "Check your email" state** has no resend or change-address control.
-- **Inbox:** an edited draft's added sentences are not re-checked against evidence (the badge says so); parked enrollments (after a rejection) are not listed anywhere yet.
-- **Outreach:** no mailbox disconnect; no enrolled-contacts view per campaign; OAuth notice persists in the URL (`?mailbox_connected=`) across refreshes.
-- **Team:** an issued invite link cannot be shown again (revoke + reissue only); approved join requesters are not notified.
-- **Memory:** non-organisation scopes require pasting a raw UUID (no picker).
-- **Companies:** no company detail page; rows are not clickable.
+- **Inbox:** an edited draft's added sentences are not re-checked against evidence; the **Edited by a person** badge says so.
 - **Needs you:** snoozes are personal and time-boxed (≤ 30 days); there is deliberately no permanent dismiss — an item that is still true comes back.
-- **Personalisation `defaultFilter`** now drives Needs you's default ownership filter; the Opportunities list still opens on "All" unless `?priority=` is passed.
-- **Product settings** manages only the first product.
-- **ICP settings** use free-text sizes/regions while onboarding uses fixed option sets.
-- **Analyze:** re-clicking "Save as an opportunity" upserts the opportunity but inserts evidence rows again.
 - **Billing:** no checkout anywhere (stated explicitly on the pricing section).
-- **Google OAuth sign-in** implemented but hidden.
-- **Engine readiness is judged two ways:** Learn's **Run an analysis** uses `isEngineRunning()` (a trigger is configured), while Sources' **Scan now** also requires that a tick has actually run. With `CRON_SECRET` set but never called, Learn lets you queue a run that nothing will pick up, while Sources refuses.
+- **Google OAuth sign-in** is implemented and shown only when `NEXT_PUBLIC_AUTH_GOOGLE=true`.
+
+Closed since the last sync (verified in code): "Check your email" has **Resend** and **Use a different address**; Outreach has mailbox **Disconnect**, a per-campaign **Show who's enrolled** list (parked enrollments say why, with resume/stop), and strips `?mailbox_connected=` after showing it; Team pending invites keep a **Copy link** and approved join requesters are emailed (`join_approved`); the Opportunities list opens on the role's default filter; ICP settings use the onboarding size and region options; Analyze no longer re-inserts identical evidence; Memory has a subject picker; Companies has a detail page; Product settings lists every product; the landing page has a mobile menu; Learn and Sources judge engine readiness the same way.
 
 ---
 
@@ -1238,7 +1258,8 @@ Fixed and removed from the register: **M-17** — on opportunity detail, opening
 | `/{org}/dashboard` | Home rail, callback, onboarding finish, `/orgs` | Opportunities (filtered), detail, companies, analyze, sources, outreach, inbox, pipeline, learn, settings/icp, settings/scoring, imports |
 | `/{org}/opportunities` | Hunt rail, dashboard, companies `?company=`, detail back | Detail, analyze, sources |
 | `/{org}/opportunities/{id}` | List, dashboard why-now, pipeline, assignments, review, analyze "Open it", learn citations | List, external domain/LinkedIn/mailto, learn (nudge) |
-| `/{org}/companies` | Hunt rail, dashboard | `/opportunities?company=` |
+| `/{org}/companies` | Hunt rail, dashboard | `/companies/{id}`, `/opportunities?company=` |
+| `/{org}/companies/{id}` | Companies (name link) | Opportunity detail, external LinkedIn |
 | `/{org}/analyze` | Hunt rail, dashboard, opportunities | Detail ("Open it") |
 | `/{org}/imports` | Hunt rail, onboarding building/review, dashboard first action | — (companies appear on `/companies`) |
 | `/{org}/outreach` | Engage rail, dashboard, OAuth return | Google/Microsoft consent (external) |
@@ -1249,10 +1270,13 @@ Fixed and removed from the register: **M-17** — on opportunity detail, opening
 | `/{org}/analytics` | Operate rail, Performance | — |
 | `/{org}/intelligence` | Learn rail | — |
 | `/{org}/learn` | Learn rail, nudges | Detail, sources, settings/scoring, memory |
-| `/{org}/memory` | Learn rail, learn | External source URLs |
+| `/{org}/memory` | Learn rail, learn, Ask Huntloop (proposed memory) | External source URLs |
+| `/{org}/assistant` | Learn rail | Cited records (opportunity, company and other detail pages) |
+| `/{org}/demand` | Learn rail | — (shipped themes surface in Needs you) |
 | `/{org}/settings` | Settings rail, account menu, privacy links, "Connect a mailbox" (M-04) | — |
 | `/{org}/settings/product` · `/icp` · `/scoring` · `/integrations` · `/privacy` | Settings/Company rails, account menu (integrations, privacy), nudges, review | `/orgs` (workspace deleted), `/login` (account deleted), `/settings` |
 | `/{org}/sources` | Company rail, dashboard, action rail, learn | — |
+| `/{org}/competitors` · `/competitors/{id}` | Company rail | Detail, back to list |
 | `/{org}/team` · `/team/assignments` | Team rail, review "Invite a teammate" | Detail (assignments) |
 | `/{org}/ops` | Operate rail | — |
 | `/invite/{token}` | Out-of-band link | `/signup?next=`, `/{slug}/dashboard`, `/welcome` |
@@ -1300,7 +1324,7 @@ flowchart LR
 
 ---
 
-## 16. Product roadmap — planned, **not implemented**
+## 16. Product roadmap
 
 > **Status of this section:** a plan, not current behaviour. Nothing in §16 exists in the code yet unless its status column says so. Sections §0–§15 remain the record of what the app does **today**; when a roadmap item ships, its behaviour is documented in the relevant §0–§15 entry in the same commit, and its row here moves to **Shipped** with the commit hash.
 >
@@ -1314,7 +1338,7 @@ flowchart LR
 
 `Planned` · `In progress` · `Shipped (<hash>)` · `Deferred` · `Rejected`.
 
-**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11), **P2** and **P2B** are **Shipped** too (migration `0038_discovery_backpressure.sql`; §9.1, §9.1b, §10.5, §11.3). Defects found on the way are recorded in §16.8.
+**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11), **P2** and **P2B** are **Shipped** too (migration `0038_discovery_backpressure.sql`; §9.1, §9.1b, §10.5, §11.3). **P3** (competitors, brief sections, deal value, notifications, Memory scope picker — `0039`, `0040`; §7.1.2, §9.4, §10.5b), **P4** (Ask Huntloop — `0041`; §9.5), **P5** (product list, company page; §10.2, §7.2.1) and **P6** (prospect demand — `0042`; §9.6 — PDF/DOCX Memory ingest; §9.4 — and learning over competitors and demand — `0043`; §9.3) are **implemented in the working tree, not yet committed or deployed**. Defects found on the way are recorded in §16.8.
 
 ### 16.1 Diagnosis — what the audit actually found
 
@@ -1493,9 +1517,9 @@ Each area: current state → Kima insight (the underlying problem only) → Hunt
 
 #### J. Learning and memory extensions — spread across Phases 3, 4 and 6 · **M** · worth building: **yes, incrementally**
 
-- **Current:** accept / decline findings with closed citations (strong); Memory ingest of URL, .txt, .md and .csv; non-org scopes need raw UUIDs (§14.2).
+- **Current:** accept / decline findings with closed citations (strong); Memory ingest of URL, PDF, .docx, .txt, .md and .csv, reviewed before saving; a named subject picker for non-org scopes (§9.4).
 - **Kima insight:** teaching the agent should accept whatever the user has (PDFs, decks, screenshots, call notes), and conversations should yield durable knowledge.
-- **Huntloop solution:** a scope picker instead of raw UUIDs (Phase 3); server-side PDF / DOCX text extraction with size caps (Phase 6); learning targets extended to competitors and demand (Phase 6); "propose memory" from the co-pilot (Phase 4). Screenshots / vision deferred until users ask.
+- **Huntloop solution:** a scope picker instead of raw UUIDs (Phase 3); server-side PDF / DOCX text extraction with size caps (Phase 6); learning targets extended to competitors and demand (Phase 6, **done** — `0043`); "propose memory" from the co-pilot (Phase 4). Screenshots / vision deferred until users ask.
 
 ### 16.4 Phases
 
@@ -1731,5 +1755,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 | Date | Change |
 |---|---|
 | 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |
+| 2026-10-06 | **§16.3-J complete**: `analyze_performance` reads accepted competitors and demand themes and can conclude `competitive_positioning` and `product_demand` findings citing them by id (`0043`); Learn links company, competitor and theme citations. §14.2 re-verified against the code and trimmed to the four gaps that remain. |
+| 2026-10-06 | **P3–P6 implemented** (migrations `0039`–`0042`): competitors and their research, brief sections and deal value, notifications and digests, Ask Huntloop, product list and company page, prospect demand, PDF/DOCX Memory ingest. Every remaining FLOW MISMATCH (M-01…M-16) fixed. Found on the way: `0042`'s erasure trigger read `new.subject` on `activities` rows (PL/pgSQL resolves every field an `and` chain names), so `erase_contact` failed for anyone with a manual activity — split into nested `if`s. |
 | 2026-10-06 | **P2 + P2B shipped**: Performance (cohort funnel, Wilson/z-tested insights, breakdowns with drill-down, loss reasons, goals and pace, stalled deals, cost per outcome, CSV, grounded `explain_performance` narrative); M-11 fixed; paid discovery honours the backlog cap (0038); provider health on Engine; discovery pause shown on Sources and in Needs you. |
 | 2026-10-06 | **P0 (1–3) and P1 shipped.** Found and fixed on the way: (1) at autonomy 0–1, first-step drafts had no thread until sent, so the Inbox (threads only) never showed them while the dashboard counted them — the approval queue was unreachable; (2) sequences drafted the next step on top of an unapproved draft, so follow-ups to unsent emails piled up — `advance_enrollments` now holds an enrollment while a draft awaits approval, sets `messages.opportunity_id` on drafts, and stops sequences on opportunities closed as not a fit; (3) `erase_contact` redacted mail *to* a person but not their own replies — now both. The opportunity brief goes two-column at xl instead of lg (at 1024px its main column was ~240px). |

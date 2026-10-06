@@ -12,7 +12,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = {
   user: { id: "u1" } as { id: string } | null,
   rows: [] as unknown[],
+  cookie: undefined as string | undefined,
 };
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) =>
+      name === "huntloop.org" && state.cookie ? { value: state.cookie } : undefined,
+  }),
+}));
 
 vi.mock("./source", () => ({
   resolveDataSource: async () => ({
@@ -55,6 +63,7 @@ describe("resolveDestination", () => {
   beforeEach(() => {
     state.user = { id: "u1" };
     state.rows = [];
+    state.cookie = undefined;
   });
 
   it("sends an unfinished workspace to its dashboard, not back into setup", async () => {
@@ -86,6 +95,18 @@ describe("resolveDestination", () => {
   it("honours a remembered workspace, unfinished or not", async () => {
     state.rows = [org("a", "done"), org("b", "goals")];
     expect((await resolveDestination("b")).path).toBe("/b/dashboard");
+  });
+
+  it("opens the workspace the user last worked in (M-03)", async () => {
+    state.rows = [org("a", "done"), org("b", "done")];
+    state.cookie = "b";
+    expect((await resolveDestination()).path).toBe("/b/dashboard");
+  });
+
+  it("ignores a remembered workspace the user no longer belongs to", async () => {
+    state.rows = [org("a", "done"), org("b", "done")];
+    state.cookie = "gone";
+    expect((await resolveDestination()).path).toBe("/orgs");
   });
 
   it("sends a visitor with no session to sign in", async () => {

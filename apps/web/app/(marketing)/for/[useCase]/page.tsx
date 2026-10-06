@@ -1,3 +1,4 @@
+import { publicResearchEnabled } from "@huntloop/jobs";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -68,7 +69,7 @@ export default async function UseCasePage({
         </p>
 
         <div className="mt-8">
-          <DomainInput size="md" />
+          <DomainInput size="md" canResearch={publicResearchEnabled()} />
         </div>
 
         <section className="mt-14">
@@ -150,7 +151,7 @@ export default async function UseCasePage({
             Put in your domain. Two minutes, no card.
           </p>
           <div className="mt-6 flex w-full justify-center">
-            <DomainInput />
+            <DomainInput canResearch={publicResearchEnabled()} />
           </div>
         </section>
 

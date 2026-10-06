@@ -3,6 +3,8 @@ import { LIST_LIMIT, listOpportunities } from "../../../../lib/data/opportunitie
 import { listCampaignTargets } from "../../../../lib/data/outreach";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { OpportunityTable } from "./OpportunityTable";
+import { getOnboardingState } from "../../../../lib/data/onboarding";
+import { personalize } from "../../../../lib/data/personalization";
 
 /**
  * The opportunity list.
@@ -55,13 +57,26 @@ export default async function OpportunitiesPage({
 }) {
   const [{ org }, query] = await Promise.all([params, searchParams]);
 
-  const [{ data }, { data: campaigns }] = await Promise.all([
+  const [{ data }, { data: campaigns }, onboarding] = await Promise.all([
     listOpportunities(org),
     /* Loaded here rather than in the table, because whether there is anything
        to add a selection to is a fact about the workspace and not a fact the
        browser should go and ask for after the button is pressed. */
     listCampaignTargets(org),
+    getOnboardingState(org),
   ]);
+
+  /* The role's default view (§14.2: `defaultFilter` was computed and only
+     Needs you used it). Only "hot" maps to a single priority; the other
+     defaults are wider than one band, so they open on everything. An explicit
+     `?priority=` — including `all` — always wins, and so does a company
+     search. */
+  const explicit = parsePriority(query.priority);
+  const defaultPriority =
+    query.priority === undefined && !query.company &&
+    personalize(onboarding?.role ?? null, onboarding?.goals ?? [], org).defaultFilter === "hot"
+      ? ("hot" as const)
+      : undefined;
 
   return (
     <>
@@ -79,7 +94,7 @@ export default async function OpportunitiesPage({
            Reading `new Date()` inside the client component instead would make
            the ages drift against the data they describe. */
         now={new Date().toISOString()}
-        initialPriority={parsePriority(query.priority)}
+        initialPriority={explicit ?? defaultPriority}
         /* `?company=` seeds the search box, which already defaults to the
            company scope. Bounded and coerced to a single string here for the
            same reason `parsePriority` is strict: it arrives from a URL, and the

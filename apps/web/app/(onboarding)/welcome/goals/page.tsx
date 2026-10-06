@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { GoalsStep } from "./GoalsStep";
 import { captureForViewer } from "../../../../lib/analytics";
+import { getSavedGoals } from "../../../../lib/data/onboarding";
 
 export default async function GoalsPage({
   searchParams,
@@ -18,7 +19,16 @@ export default async function GoalsPage({
 
   await captureForViewer("onboarding_step_viewed", { step: "goals" });
 
-  return <GoalsStep org={org} />;
+  // A returning visitor edits what they saved rather than starting over (M-09).
+  const saved = await getSavedGoals(org);
+
+  return (
+    <GoalsStep
+      org={org}
+      initialGoals={saved?.goals ?? []}
+      initialChannel={saved?.channel ?? null}
+    />
+  );
 }
 
 export const metadata = { title: "Your goals" };

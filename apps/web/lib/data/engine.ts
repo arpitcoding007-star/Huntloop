@@ -31,7 +31,8 @@ import type { TenantClient } from "@huntloop/db";
  * it reports success, and the user waits.
  */
 export function isEngineRunning(): boolean {
-  return Boolean(process.env.CRON_SECRET?.trim());
+  // Inngest calls the same tick with its own signature, so it needs no secret.
+  return Boolean(process.env.CRON_SECRET?.trim()) || isInngestDriving();
 }
 
 /** True when Inngest is driving the tick instead of Vercel Cron. */
@@ -246,6 +247,36 @@ export async function lastTickAt(db: TenantClient, orgId: string): Promise<strin
 
   if (error || !data) return null;
   return String(data.created_at);
+}
+
+export interface EngineReadiness {
+  /** The tick would accept a caller: `CRON_SECRET` or Inngest is set. */
+  configured: boolean;
+  /**
+   * Something actually drives it: Inngest owns a schedule, or a tick has
+   * already run work for this workspace. Queuing work is only honest when
+   * this is true.
+   */
+  driven: boolean;
+  lastTickAt: string | null;
+}
+
+/**
+ * One answer to "will queued work be picked up?", for every screen that
+ * queues work (Sources, Learn, setup). Two screens used to answer it two ways
+ * — one from the environment, one from observed ticks — and disagreed.
+ */
+export async function engineReadiness(
+  db: TenantClient | null,
+  orgId: string | null,
+): Promise<EngineReadiness> {
+  const configured = isEngineRunning();
+  const lastTick = db && orgId && configured ? await lastTickAt(db, orgId) : null;
+  return {
+    configured,
+    driven: configured && (isInngestDriving() || lastTick !== null),
+    lastTickAt: lastTick,
+  };
 }
 
 /**

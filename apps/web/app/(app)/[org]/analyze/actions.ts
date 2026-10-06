@@ -247,6 +247,47 @@ export async function saveQualificationAction(
       return found && typeof found.value === "number" ? found.value : null;
     };
 
+    /* Saving the same verdict twice is a no-op (§14.2). It used to add a
+       second score row and retire-then-reinsert identical evidence on every
+       click — invisible on the page, but history that records a decision
+       nobody made twice. Same live evidence and same latest score: done. */
+    const incoming = new Set(
+      q.evidence
+        .filter((e) => e.claim.trim())
+        .map((e) => `${e.kind}|${e.claim.trim()}|${e.sourceUrl ?? ""}`),
+    );
+    const [{ data: liveEvidence }, { data: lastScore }] = await Promise.all([
+      db
+        .from("evidence")
+        .select("claim, kind, source_url")
+        .eq("org_id", orgId)
+        .eq("subject_type", "opportunity")
+        .eq("subject_id", opportunityId)
+        .is("deleted_at", null)
+        .is("superseded_by", null),
+      db
+        .from("opportunity_scores")
+        .select("score, explanation")
+        .eq("org_id", orgId)
+        .eq("opportunity_id", opportunityId)
+        .order("computed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const live = (liveEvidence ?? []).map(
+      (e) => `${e.kind}|${String(e.claim).trim()}|${e.source_url ?? ""}`,
+    );
+    if (
+      lastScore &&
+      lastScore.score === q.score &&
+      lastScore.explanation === q.explanation &&
+      live.length === incoming.size &&
+      live.every((k) => incoming.has(k))
+    ) {
+      revalidatePath(`/${org}/opportunities`);
+      return ok({ opportunityId }, "Already saved — nothing has changed since.");
+    }
+
     const { error: scoreError } = await db.from("opportunity_scores").insert({
       org_id: orgId,
       opportunity_id: opportunityId,

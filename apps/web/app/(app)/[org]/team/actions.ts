@@ -8,6 +8,8 @@ import { checkQuota, quotaMessage } from "../../../../lib/data/usage";
 import { siteUrl } from "../../../../lib/site-url";
 import { inviteSchema, memberRoleSchema, parseForm, parseInput, uuidSchema } from "../../../../lib/validation";
 import { approveJoinRequest, declineJoinRequest } from "../../../../lib/data/directory";
+import { invitationEmail, isEmailConfigured, sendEmail } from "@huntloop/jobs";
+import type { TenantClient } from "@huntloop/db";
 
 /**
  * Membership writes — master context §38, and the role enum from `0001`.
@@ -285,9 +287,50 @@ export async function assignOpportunityAction(
 /* ── Invitations (0007) ──────────────────────────────────────────────────── */
 
 export interface InviteResult {
-  /** The URL to hand to the invitee. Shown, not emailed — see the note above. */
+  /** The URL to hand to the invitee — emailed too when email is configured. */
   url: string;
   email: string;
+  /** Whether the invitation email went out. False without an email service. */
+  emailed: boolean;
+}
+
+/**
+ * The invitation email, from the inviter, through Resend. Best-effort: the
+ * invitation exists either way and its link is shown to the admin, so a send
+ * that fails is reported, never fatal.
+ */
+async function emailInvitation(
+  db: TenantClient,
+  orgId: string,
+  invitation: { id: string; email: string; role: string; token: string; expiresAt: string },
+): Promise<boolean> {
+  if (!isEmailConfigured()) return false;
+  const [{ data: org }, { data: auth }] = await Promise.all([
+    db.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+    db.auth.getUser(),
+  ]);
+  let inviterName: string | null = null;
+  if (auth.user) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+    inviterName = (profile?.full_name as string | null) ?? (profile?.email as string | null) ?? null;
+  }
+  const result = await sendEmail({
+    to: invitation.email,
+    ...invitationEmail({
+      orgName: String(org?.name ?? "a workspace"),
+      inviterName,
+      role: invitation.role,
+      url: new URL(`/invite/${invitation.token}`, siteUrl()).toString(),
+      expiresAt: invitation.expiresAt,
+    }),
+    idempotencyKey: `invitation:${invitation.id}:${Date.now() - (Date.now() % 60_000)}`,
+    tags: { kind: "invitation" },
+  });
+  return result.ok;
 }
 
 export async function inviteMemberAction(
@@ -355,7 +398,7 @@ export async function inviteMemberAction(
           role,
           invited_by: viewer.user?.id ?? null,
         })
-        .select("id, token")
+        .select("id, token, expires_at")
         .single();
 
       if (error) return fail(`That invitation could not be created: ${error.message}`);
@@ -370,11 +413,66 @@ export async function inviteMemberAction(
         meta: { email, role },
       });
 
+      const emailed = await emailInvitation(db, orgId, {
+        id: String(data.id),
+        email,
+        role,
+        token: String(data.token),
+        expiresAt: String(data.expires_at),
+      });
+
       revalidatePath(`/${org}/team`);
       return ok(
-        { url: new URL(`/invite/${data.token}`, siteUrl()).toString(), email },
-        `Invitation created for ${email}. Send them the link below — nothing is emailed automatically.`,
+        { url: new URL(`/invite/${data.token}`, siteUrl()).toString(), email, emailed },
+        emailed
+          ? `Invitation emailed to ${email}. The link is below too, if you'd rather send it yourself.`
+          : isEmailConfigured()
+            ? `Invitation created for ${email}, but the email could not be sent. Send them the link below.`
+            : `Invitation created for ${email}. Send them the link below — this deployment has no email service connected.`,
       );
+    },
+    { minRole: "admin" },
+  );
+}
+
+/** Send a pending invitation's email again — the same link, not a new one. */
+export async function resendInvitationAction(
+  org: string,
+  invitationId: string,
+): Promise<ActionResult<undefined>> {
+  return mutate(
+    org,
+    "resendInvitation",
+    async ({ db, orgId }) => {
+      const id = uuidSchema.safeParse(invitationId);
+      if (!id.success) return fail("That invitation reference isn't valid.");
+      if (!isEmailConfigured()) {
+        return fail("This deployment has no email service connected. Copy the link and send it yourself.");
+      }
+
+      const { data: inv } = await db
+        .from("invitations")
+        .select("id, email, role, token, expires_at")
+        .eq("id", id.data)
+        .eq("org_id", orgId)
+        .is("accepted_at", null)
+        .is("revoked_at", null)
+        .maybeSingle();
+      if (!inv) return fail("That invitation is no longer pending.");
+      if (new Date(String(inv.expires_at)).getTime() < Date.now()) {
+        return fail("That invitation has expired. Revoke it and invite them again.");
+      }
+
+      const sent = await emailInvitation(db, orgId, {
+        id: String(inv.id),
+        email: String(inv.email),
+        role: String(inv.role),
+        token: String(inv.token),
+        expiresAt: String(inv.expires_at),
+      });
+      return sent
+        ? ok(undefined, `Sent again to ${inv.email}.`)
+        : fail("The email could not be sent. Copy the link and send it yourself.");
     },
     { minRole: "admin" },
   );

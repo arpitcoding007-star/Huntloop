@@ -66,7 +66,20 @@ export interface ReplyClassification {
    * person's attention; a `positive` autoresponder is not.
    */
   needsHuman: boolean;
+  /**
+   * What the prospect said they need, object to, or are blocked by — only
+   * what they stated, paraphrased in their terms (COMMAND.md §16.3-I). Empty
+   * for most replies, and always empty for automatic ones.
+   */
+  demand: DemandMention[];
 }
+
+export interface DemandMention {
+  kind: "request" | "objection" | "blocker";
+  statement: string;
+}
+
+export const MAX_DEMAND_MENTIONS = 3;
 
 const PROMPT = definePrompt(
   "classify_reply",
@@ -127,18 +140,48 @@ low     genuinely unclear — a one-word reply, or a language you are unsure of
 
 A low-confidence classification is fine and useful. Guessing high on an
 ambiguous reply is what causes a sequence to stop, or not stop, wrongly.
+
+## What they said is missing
+
+List in "demand" anything the person explicitly said they need, object to,
+or are blocked by — at most three:
+
+  request    a capability or option they asked for ("do you integrate with
+             Salesforce?", "we'd need SSO")
+  objection  a reason they gave against it ("too expensive for us", "we
+             already use X")
+  blocker    something that stops them buying now ("security review takes a
+             quarter", "frozen budget until Q3")
+
+One short sentence each, in their terms, without names or contact details.
+Only what they said — never a guess at what they might mean. Most replies
+have none, and an empty list is the right answer then. Never list anything
+for an automatic reply or a request not to be contacted.
 `,
 );
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["label", "confidence", "summary", "needsHuman"],
+  required: ["label", "confidence", "summary", "needsHuman", "demand"],
   properties: {
     label: { type: "string", enum: [...REPLY_CLASSES] },
     confidence: { type: "string", enum: [...CONFIDENCES] },
     summary: { type: "string" },
     needsHuman: { type: "boolean" },
+    demand: {
+      type: "array",
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "statement"],
+        properties: {
+          kind: { type: "string", enum: ["request", "objection", "blocker"] },
+          statement: { type: "string" },
+        },
+      },
+    },
   },
 } as const;
 
@@ -199,9 +242,30 @@ export const classifyReply: LLMTask<ReplyInput, ReplyClassification> = {
          out-of-office notices. */
       needsHuman:
         label === "out_of_office" || label === "bounce" ? false : Boolean(raw.needsHuman),
+      /* Enforced rather than trusted: an automatic reply or an opt-out never
+         carries product demand, whatever the model listed. */
+      demand:
+        label === "out_of_office" || label === "bounce" || label === "unsubscribe"
+          ? []
+          : parseDemand(raw.demand),
     };
   },
 };
+
+function parseDemand(value: unknown): DemandMention[] {
+  if (!Array.isArray(value)) return [];
+  const out: DemandMention[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const d = item as Record<string, unknown>;
+    const kind = d.kind;
+    const statement = typeof d.statement === "string" ? d.statement.trim().replace(/\s+/g, " ") : "";
+    if ((kind !== "request" && kind !== "objection" && kind !== "blocker") || !statement) continue;
+    out.push({ kind, statement: statement.slice(0, 300) });
+    if (out.length === MAX_DEMAND_MENTIONS) break;
+  }
+  return out;
+}
 
 /**
  * Drops the quoted original from a reply.

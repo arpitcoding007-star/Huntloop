@@ -357,6 +357,9 @@ const FIELDS: { value: RuleField; label: string }[] = [
   { value: "signals.event_types", label: "Kind of signal seen" },
   { value: "score.model_score", label: "The qualifier's score" },
   { value: "score.priority", label: "The qualifier's priority" },
+  { value: "competitors.uses", label: "Uses a competitor (with evidence)" },
+  { value: "competitors.evaluating", label: "Is evaluating a competitor" },
+  { value: "competitors.former", label: "Recently left a competitor" },
 ];
 
 const OPERATORS: { value: RuleOperator; label: string; takesValue: boolean }[] = [
@@ -444,7 +447,13 @@ function RuleForm({
     <Card>
       <CardHeader
         title={rule ? "Edit rule" : "Write a rule"}
-        description="Saved switched off. Nothing changes until you turn it on."
+        description={
+          rule?.isActive
+            ? "This rule is on. Saving changes it for every company scored from now on."
+            : rule
+              ? "This rule is off. Nothing changes until you turn it on."
+              : "Saved switched off. Nothing changes until you turn it on."
+        }
       />
       <CardBody className="space-y-5">
         <Field label="Name" required error={fieldErrors.name}>

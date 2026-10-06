@@ -322,6 +322,7 @@ describe("mapListRow", () => {
 describe("mapDetail", () => {
   const detail = (over: Partial<DetailQueryRow> = {}): DetailQueryRow => ({
     id: "b08fc3ca-83d8-4d99-afc8-c2fd949d81fe",
+    company_id: "c08fc3ca-83d8-4d99-afc8-c2fd949d81fe",
     priority: "hot",
     priority_reason: "Because.",
     status: "qualified",

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
-import { isEngineRunning } from "../../../../lib/data/engine";
+import { engineReadiness } from "../../../../lib/data/engine";
+import { getDb } from "../../../../lib/data/source";
 import { listLearningRuns } from "../../../../lib/data/learning";
 import { DemoFigures } from "../DemoFigures";
 import { LearningReview } from "./LearningReview";
@@ -18,7 +19,7 @@ import { LearningReview } from "./LearningReview";
  * Requesting an analysis writes a `learning_runs` row and waits for the
  * sweeper — so on a deployment where nothing drives the tick, the request is
  * queued into a queue nobody drains and the button reports success forever.
- * `isEngineRunning()` is what lets the screen say so instead, and it is the
+ * `engineReadiness()` is what lets the screen say so instead, and it is the
  * same check the Sources screen makes about "Scan now" for the same reason.
  */
 export default async function LearnPage({
@@ -32,6 +33,9 @@ export default async function LearnPage({
   if (!viewer) notFound();
 
   const { data: runs, source } = await listLearningRuns(org);
+  /* The same readiness Sources uses: configured is not driven. */
+  const db = source === "live" && viewer.kind === "member" ? await getDb() : null;
+  const engine = await engineReadiness(db, viewer.kind === "member" ? viewer.orgId : null);
 
   return (
     <div className="mx-auto w-full max-w-[880px] px-6 py-8 lg:px-8">
@@ -53,7 +57,8 @@ export default async function LearnPage({
           org={org}
           runs={runs}
           canWrite={canWrite(viewer)}
-          engineRunning={isEngineRunning()}
+          engineRunning={engine.driven}
+          engineConfigured={engine.configured}
         />
       </div>
     </div>

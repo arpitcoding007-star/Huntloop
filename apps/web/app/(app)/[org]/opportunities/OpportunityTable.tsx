@@ -117,8 +117,9 @@ export function OpportunityTable({
     setPriorityValue(next);
 
     const url = new URL(window.location.href);
-    if (next === "all") url.searchParams.delete("priority");
-    else url.searchParams.set("priority", next);
+    /* "all" is written rather than removed, so choosing it survives a refresh
+       instead of falling back to the role's default view. */
+    url.searchParams.set("priority", next);
     window.history.replaceState(window.history.state, "", url);
   }, []);
 

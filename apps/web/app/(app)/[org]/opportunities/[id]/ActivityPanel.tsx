@@ -302,6 +302,7 @@ function LogActivityForm({
   const [when, setWhen] = useState(localNow());
   const [stepText, setStepText] = useState("");
   const [stepDate, setStepDate] = useState("");
+  const [feedback, setFeedback] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
 
@@ -322,6 +323,7 @@ function LogActivityForm({
             occurredAt: when ? new Date(when).toISOString() : undefined,
             personId: personId || null,
             nextStep: stepText.trim() ? { text: stepText, dueAt: dueInstant(stepDate) } : null,
+            productFeedback: feedback,
           });
           if (!res.ok) setErrors(res.fieldErrors ?? {});
           onDone(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
@@ -410,6 +412,20 @@ function LogActivityForm({
           />
         )}
       </Field>
+
+      <label className="flex items-start gap-2 text-[13px] text-fg-secondary">
+        <input
+          type="checkbox"
+          checked={feedback}
+          disabled={pending}
+          onChange={(e) => setFeedback(e.target.checked)}
+          className="mt-0.5 size-4 accent-[var(--color-brand)]"
+        />
+        <span>
+          They asked for something we don&rsquo;t have, or objected to something
+          <span className="block text-[12px] text-fg-muted">Counted under Prospect demand, so it can shape the roadmap.</span>
+        </span>
+      </label>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
         <Field label="Then (optional next step)" error={errors["nextStep.text"]}>

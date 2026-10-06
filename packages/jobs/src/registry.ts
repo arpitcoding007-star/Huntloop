@@ -64,6 +64,11 @@ import { scheduleSignalFetches } from "./handlers/schedule-signal-fetches.ts";
 import { fetchCompanySignals } from "./handlers/fetch-company-signals.ts";
 import { syncHubspot } from "./handlers/sync-hubspot.ts";
 import { scheduleFollowups } from "./handlers/schedule-followups.ts";
+import { prospectCompetitorCustomers } from "./handlers/prospect-competitor-customers.ts";
+import { sendNotifications } from "./handlers/send-notifications.ts";
+import { sendDigests } from "./handlers/send-digests.ts";
+import { scheduleDemand } from "./handlers/schedule-demand.ts";
+import { clusterDemandJob } from "./handlers/cluster-demand.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -93,4 +98,9 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   fetch_company_signals: fetchCompanySignals,
   sync_hubspot: syncHubspot,
   schedule_followups: scheduleFollowups,
+  prospect_competitor_customers: prospectCompetitorCustomers,
+  send_notifications: sendNotifications,
+  send_digests: sendDigests,
+  schedule_demand: scheduleDemand,
+  cluster_demand: clusterDemandJob,
 };

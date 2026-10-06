@@ -31,12 +31,15 @@ export function YouForm({
   initialName,
   initialRole = null,
   carry,
+  isNew = false,
 }: {
   initialName: string;
   /** Set when somebody comes back to change an answer they already gave. */
   initialRole?: UserRole | null;
   /** `&d=domain` when the visitor was already researched. See page.tsx. */
   carry: string;
+  /** `?new=1`: creating another workspace, so the action must not resume an existing one. */
+  isNew?: boolean;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -65,6 +68,7 @@ export function YouForm({
 
   return (
     <form action={formAction} className="space-y-6">
+      {isNew && <input type="hidden" name="new" value="1" />}
       <div className="max-w-md">
         <label
           htmlFor="fullName"

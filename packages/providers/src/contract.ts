@@ -149,6 +149,8 @@ export interface ProviderCompany {
 }
 
 export interface CompanySearchQuery {
+  /** A company name to look up — for resolving a named company, not discovery. */
+  name?: string | null;
   /** Free-text, when the provider supports it. Most of the filtering is below. */
   keywords: string[];
   industries: string[];

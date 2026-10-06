@@ -533,13 +533,15 @@ test.describe("the priority filter is one control", () => {
 
     await expect(page).toHaveURL(/[?&]priority=hot/);
 
-    // And back to All clears it rather than leaving `priority=all` behind,
-    // which is a parameter the page would have to be taught to ignore.
+    // And back to All writes `priority=all` rather than dropping the
+    // parameter: with no parameter the page opens on the role's default view
+    // (which may be Hot), so a dropped parameter would make a refresh — or a
+    // copied link — show something other than All.
     await page.getByRole("group", { name: /filter by priority/i })
       .getByRole("button", { name: /^all$/i })
       .click();
 
-    await expect(page).not.toHaveURL(/priority=/);
+    await expect(page).toHaveURL(/[?&]priority=all/);
   });
 
   test("the filter does not stack history entries", async ({ page }) => {

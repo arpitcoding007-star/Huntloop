@@ -216,6 +216,8 @@ export function sourceLabel(via: string | null): string {
   if (!via || via === "manual") return "Added or analyzed by hand";
   if (via === "scan") return "Source scans";
   if (via === "import") return "CSV import";
+  // "Go after their customers" (0039): grouped, so the question is whether it works.
+  if (via.startsWith("competitor:")) return "Competitors' customers";
   if (via.startsWith("provider:")) {
     const name = via.slice("provider:".length);
     return `${name.charAt(0).toUpperCase()}${name.slice(1)} search`;

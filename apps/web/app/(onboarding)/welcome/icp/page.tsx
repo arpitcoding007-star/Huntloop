@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { IcpStep } from "./IcpStep";
+import { getSavedIcpFields } from "../../../../lib/data/onboarding";
 
 /**
  * Step four.
@@ -17,7 +18,10 @@ export default async function IcpPage({
   const { org } = await searchParams;
   if (!org) redirect("/welcome/company");
 
-  return <IcpStep org={org} />;
+  // Coming back to this step edits the saved profile rather than redrafting it.
+  const saved = await getSavedIcpFields(org);
+
+  return <IcpStep org={org} saved={saved} />;
 }
 
 export const metadata = { title: "Ideal customer" };

@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import { fail, mutate, ok, requireOrgId, type ActionResult } from "../../../../lib/data/org";
+import { recordAudit } from "../../../../lib/data/audit";
+import { resolveDataSource } from "../../../../lib/data/source";
 import {
   campaignSchema,
   parseForm,
@@ -256,5 +258,135 @@ export async function deleteStepAction(
 
     revalidatePath(`/${org}/outreach`);
     return ok(undefined, "Step removed.");
+  });
+}
+
+/* ── Mailboxes and enrollments (§14.2 gaps) ──────────────────────────────── */
+
+/**
+ * Disconnect a mailbox. The stored tokens are wiped, not merely ignored —
+ * "disconnect" should mean the credential leaves this database, as it does for
+ * HubSpot. Sends already queued on it fail as "mailbox unavailable" and their
+ * enrollments wait for another mailbox. Reconnecting the same address later
+ * restores the row.
+ */
+export async function disconnectMailboxAction(
+  org: string,
+  mailboxId: string,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(mailboxId);
+  if (!id.success) return fail("That mailbox reference isn't valid.");
+
+  return mutate(org, "disconnectMailbox", async ({ db, orgId }) => {
+    const { data, error } = await db
+      .from("mailboxes")
+      .update({
+        oauth_token_enc: null,
+        refresh_token_enc: null,
+        status: "disconnected",
+        deleted_at: new Date().toISOString(),
+      })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("email")
+      .maybeSingle();
+    if (error) return fail(`That mailbox could not be disconnected: ${error.message}`);
+    if (!data) return fail("That mailbox is no longer connected.");
+
+    await recordAudit(db, orgId, {
+      action: "mailbox.disconnected",
+      targetType: "mailbox",
+      targetId: id.data,
+      meta: { email: data.email },
+    });
+    revalidatePath(`/${org}/outreach`);
+    return ok(undefined, `${data.email} is disconnected and its access has been removed.`);
+  });
+}
+
+export interface EnrollmentRow {
+  id: string;
+  opportunityId: string;
+  company: string;
+  status: string;
+  currentStep: number;
+  nextActionAt: string | null;
+  parkedReason: string | null;
+}
+
+/** Who is enrolled in a campaign — loaded when the list is opened. */
+export async function listEnrollmentsAction(
+  org: string,
+  campaignId: string,
+): Promise<ActionResult<EnrollmentRow[]>> {
+  const id = uuidSchema.safeParse(campaignId);
+  if (!id.success) return fail("That campaign reference isn't valid.");
+
+  const { db } = await resolveDataSource();
+  if (!db) return ok([]);
+  const orgId = await requireOrgId(org, "listEnrollments");
+
+  const { data, error } = await db
+    .from("enrollments")
+    .select("id, opportunity_id, status, current_step, next_action_at, parked_reason, opportunities!inner(companies!inner(name))")
+    .eq("org_id", orgId)
+    .eq("campaign_id", id.data)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (error) return fail(`The enrollments could not be read: ${error.message}`);
+
+  /* eslint-disable @typescript-eslint/no-explicit-any -- embedded rows. */
+  return ok(
+    ((data ?? []) as any[]).map((e) => {
+      const opp = Array.isArray(e.opportunities) ? e.opportunities[0] : e.opportunities;
+      const company = opp ? (Array.isArray(opp.companies) ? opp.companies[0] : opp.companies) : null;
+      return {
+        id: String(e.id),
+        opportunityId: String(e.opportunity_id),
+        company: String(company?.name ?? "An opportunity"),
+        status: String(e.status),
+        currentStep: Number(e.current_step ?? 0),
+        nextActionAt: e.next_action_at ?? null,
+        parkedReason: e.parked_reason ?? null,
+      };
+    }),
+  );
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * Resume a parked enrollment, or stop one. Parking is the engine saying
+ * "this needs a person" (a rejected draft, no address, no mailbox); resuming
+ * asks it to try the step again on the next run.
+ */
+export async function setEnrollmentStatusAction(
+  org: string,
+  enrollmentId: string,
+  next: "active" | "stopped",
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(enrollmentId);
+  if (!id.success) return fail("That enrollment reference isn't valid.");
+  if (next !== "active" && next !== "stopped") return fail("That isn't a status an enrollment can have.");
+
+  return mutate(org, "setEnrollmentStatus", async ({ db, orgId }) => {
+    const { data, error } = await db
+      .from("enrollments")
+      .update(
+        next === "active"
+          ? { status: "active", parked_reason: null, next_action_at: new Date().toISOString() }
+          : { status: "stopped", next_action_at: null },
+      )
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .in("status", next === "active" ? ["parked", "paused"] : ["active", "parked", "paused"])
+      .is("deleted_at", null)
+      .select("campaign_id")
+      .maybeSingle();
+    if (error) return fail(`That could not be changed: ${error.message}`);
+    if (!data) return fail("That enrollment has already moved on.");
+    revalidatePath(`/${org}/outreach`);
+    return ok(undefined, next === "active" ? "Resumed. The step is retried on the engine's next run." : "Stopped.");
   });
 }

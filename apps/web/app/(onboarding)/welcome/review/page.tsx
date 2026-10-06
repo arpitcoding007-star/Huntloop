@@ -213,7 +213,7 @@ export default async function ReviewPage({
           <Button
             variant="secondary"
             icon={Mail}
-            href={`/${org}/settings`}
+            href={`/${org}/outreach`}
             linkComponent={Link}
           >
             Connect a mailbox

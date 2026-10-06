@@ -14,6 +14,8 @@ import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { limitRefusal } from "../../../../lib/rate-limit";
 import { resolveDataSource } from "../../../../lib/data/source";
 import { firstRunStageSchema, orgSlugSchema, parseInput } from "../../../../lib/validation";
+import { engineReadiness, followActiveIcp } from "../../../../lib/data/engine";
+import { setOnboardingStep } from "../../../../lib/data/onboarding";
 
 
 /**
@@ -182,4 +184,39 @@ export async function runStageAction(
     const result = await RUNNERS[resolved](orgId);
     return ok(result);
   });
+}
+
+/**
+ * "Skip — open my workspace" (M-05).
+ *
+ * The stages above are driven by this screen, so leaving stops them. What
+ * keeps going is the engine: this marks the profile's saved search due now,
+ * so discovery — and the enrichment and scoring the engine chains after it —
+ * continues on the next tick instead of waiting for the daily schedule. The
+ * scoring-rule draft is the one stage with no engine equivalent; Settings →
+ * Scoring offers it.
+ *
+ * Returns whether anything will actually pick the work up, so the screen does
+ * not claim the work continues on a deployment where nothing drains the queue.
+ */
+export async function continueInBackgroundAction(
+  org: string,
+): Promise<ActionResult<{ continuing: boolean }>> {
+  const slug = parseInput(orgSlugSchema, org, "organisation");
+  if (!slug.ok) return fail(slug.error);
+
+  const { db } = await resolveDataSource();
+  if (!db) return ok({ continuing: false });
+
+  const queued = await mutate(slug.value, "continueFirstRun", async ({ db, orgId }) => {
+    const engine = await engineReadiness(db, orgId);
+    if (!engine.configured) return ok({ continuing: false });
+    const result = await followActiveIcp(db, orgId, { runNow: true });
+    return ok({ continuing: result.searching });
+  });
+  if (!queued.ok) return queued;
+
+  // Setup is past building either way; the dashboard's setup card links back.
+  await setOnboardingStep(slug.value, "review");
+  return queued;
 }

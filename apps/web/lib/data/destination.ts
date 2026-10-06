@@ -1,4 +1,5 @@
 import "server-only";
+import { cookies } from "next/headers";
 import { ONBOARDING_STEPS, type OnboardingStep } from "./onboarding";
 import { resolveDataSource } from "./source";
 import { DEMO_HOME } from "../demo";
@@ -206,11 +207,15 @@ export async function resolveDestination(preferredSlug?: string): Promise<Destin
     return { kind: "new-user", path: "/welcome" };
   }
 
+  /* No explicit preference → the workspace the user last worked in, which the
+     proxy remembers on every workspace navigation (M-03). */
+  const remembered = preferredSlug ?? (await lastWorkspace());
+
   /* A remembered choice wins, when it is still a workspace they belong to.
      The check matters: a user removed from an org would otherwise be sent to
      a 404 forever by their own cookie. */
   const preferred =
-    preferredSlug && memberships.find((m) => m.slug === preferredSlug);
+    remembered && memberships.find((m) => m.slug === remembered);
 
   const chosen = preferred || (memberships.length === 1 ? memberships[0] : null);
 
@@ -255,8 +260,21 @@ export function continueTarget(destination: Destination): ContinueTarget | null 
   }
 }
 
-/** The cookie the org picker writes so a returning user skips it. */
+/**
+ * The cookie that remembers the last workspace opened, so a returning user
+ * skips the picker. Written by the proxy on workspace navigations and by
+ * `finishOnboarding`.
+ */
 export const LAST_ORG_COOKIE = "huntloop.org";
+
+async function lastWorkspace(): Promise<string | undefined> {
+  try {
+    return (await cookies()).get(LAST_ORG_COOKIE)?.value;
+  } catch {
+    // Called outside a request (tests, scripts): nothing is remembered.
+    return undefined;
+  }
+}
 
 /**
  * `resolveDestination`, for the public marketing pages.

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { BuildingStep } from "./BuildingStep";
 import { captureForViewer } from "../../../../lib/analytics";
+import { isEngineRunning } from "../../../../lib/data/engine";
 
 export default async function BuildingPage({
   searchParams,
@@ -12,7 +13,7 @@ export default async function BuildingPage({
 
   await captureForViewer("onboarding_step_viewed", { step: "building" });
 
-  return <BuildingStep org={org} />;
+  return <BuildingStep org={org} engineConfigured={isEngineRunning()} />;
 }
 
 export const metadata = { title: "Building your workspace" };

@@ -12,7 +12,7 @@ import { finishOnboarding } from "../actions";
  * the post-auth resolver stops sending this user back into the flow, and it
  * remembers the workspace so a returning multi-org user skips the picker.
  *
- * ── Why a failure still navigates ────────────────────────────────────────
+ * ── Why a failure does not trap anyone ───────────────────────────────────
  *
  * Because the user is finished either way. Everything they entered is already
  * saved — the profile, the sources, the discovered companies — and the only
@@ -21,8 +21,10 @@ import { finishOnboarding } from "../actions";
  * possible trade: they would lose access to a workspace that is, in every
  * respect that matters, ready.
  *
- * The cost of failing open is that the resolver may offer setup again on the
- * next sign-in. That is recoverable in one click; being stuck here is not.
+ * So a failure says what happened and offers the workspace anyway. It used to
+ * set the note and navigate in the same tick, so the note was never seen
+ * (M-06). The cost of continuing is that the dashboard may offer setup again;
+ * that is recoverable in one click, being stuck here is not.
  */
 export function FinishButton({ org }: { org: string }) {
   const router = useRouter();
@@ -40,20 +42,26 @@ export function FinishButton({ org }: { org: string }) {
             const result = await finishOnboarding(org);
             if (!result.ok) {
               setNote(
-                "Your workspace is ready — we just couldn't tick setup off. " +
-                  "You may be offered it again next time you sign in.",
+                "Your workspace is ready — we just couldn't tick setup off, so " +
+                  "you may be offered it again. Try once more, or open it anyway.",
               );
+              return;
             }
             router.push(`/${org}/dashboard`);
           })
         }
       >
-        {pending ? "Opening…" : "Take me to my workspace"}
+        {pending ? "Opening…" : note ? "Try again" : "Take me to my workspace"}
       </Button>
       {note && (
-        <span role="status" className="text-[13px] text-fg-muted">
-          {note}
-        </span>
+        <>
+          <Button variant="ghost" size="lg" onClick={() => router.push(`/${org}/dashboard`)}>
+            Open it anyway
+          </Button>
+          <p role="status" className="w-full text-[13px] text-fg-muted">
+            {note}
+          </p>
+        </>
       )}
     </div>
   );

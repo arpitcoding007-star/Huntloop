@@ -10,6 +10,7 @@ import {
   type IcpExclusions,
 } from "@huntloop/db/icp";
 import type { CompanyUnderstanding } from "@huntloop/ai";
+import { canonicalizeDomain } from "@huntloop/db/identity";
 import { fail, mutate, ok, type ActionResult } from "./org";
 import { currentViewer } from "./membership";
 import { resolveDataSource } from "./source";
@@ -17,6 +18,7 @@ import { hasOnboardingSchema } from "./onboarding-schema";
 import {
   ONBOARDING_STEPS as STEPS,
   GOALS as GOAL_VALUES,
+  OUTREACH_CHANNELS,
   USER_ROLES as ROLE_VALUES,
   isBefore as stepIsBefore,
   type Goal,
@@ -239,6 +241,39 @@ export async function getOnboardingState(
     hasProduct: (product.count ?? 0) > 0,
     hasIcp: (icp.count ?? 0) > 0,
     sourceCount: sources.count ?? 0,
+  };
+}
+
+/**
+ * The goals and channel already saved, so returning to step three shows the
+ * answers rather than an empty form (M-09). Null when there is nothing to read.
+ */
+export async function getSavedGoals(
+  orgSlug: string,
+): Promise<{ goals: Goal[]; channel: OutreachChannel | null } | null> {
+  const { db } = await resolveDataSource();
+  if (!db) return null;
+
+  const viewer = await currentViewer(orgSlug);
+  if (!viewer || viewer.kind !== "member") return null;
+  if (!(await hasOnboardingSchema(db))) return null;
+
+  const { data } = await db
+    .from("organizations")
+    .select("goals, settings")
+    .eq("id", viewer.orgId)
+    .maybeSingle();
+  if (!data) return null;
+
+  const row = data as { goals: unknown; settings: unknown };
+  const settings = (row.settings ?? {}) as { outreach?: { channel?: unknown } };
+  const channel = settings.outreach?.channel;
+  return {
+    goals: (Array.isArray(row.goals) ? row.goals : []).filter(isGoal),
+    channel:
+      typeof channel === "string" && (OUTREACH_CHANNELS as readonly string[]).includes(channel)
+        ? (channel as OutreachChannel)
+        : null,
   };
 }
 
@@ -473,9 +508,19 @@ export async function saveCompanyStep(
        for confirmation when the workspace was created, and `0001` makes it
        unique — a rename here could collide with another tenant's slug and
        fail a write that has already half-succeeded. */
+    /* The domain follows the reading too. "Start over" with a different
+       address reuses the workspace the first reading created (M-08), and
+       leaving the first domain on it would let colleagues at the wrong company
+       discover it (`0027`). A described company with no website keeps
+       whatever it had. */
+    const domain = understanding.url ? canonicalizeDomain(understanding.url) : null;
     await db
       .from("organizations")
-      .update({ name: understanding.companyName })
+      .update(
+        domain
+          ? { name: understanding.companyName, primary_domain: domain }
+          : { name: understanding.companyName },
+      )
       .eq("id", orgId);
 
     await advance(db, orgId, await currentStep(db, orgId), "goals");
@@ -1079,4 +1124,93 @@ export async function getOnboardingIcp(orgSlug: string): Promise<Icp | null> {
     // better outcome than a 500 on the setup flow.
     return null;
   }
+}
+
+/**
+ * The saved profile, flattened into the ICP step's editable fields.
+ *
+ * Returning to step four used to re-run `draft_icp` — a paid model call — and
+ * replace whatever the user had saved with a fresh draft (M-09). With a saved
+ * profile the step opens on it instead, and re-drafting is an explicit choice.
+ */
+export interface SavedIcpFields {
+  segments: string[];
+  industries: string[];
+  sizes: string[];
+  regions: string[];
+  triggers: string[];
+  technologies: string[];
+  businessModels: string[];
+  painPoints: string[];
+  useCases: string[];
+  exampleCompanies: string[];
+  exclusions: string[];
+  personaName: string;
+  titles: string[];
+  seniority: string[];
+  departments: string[];
+  excludeTitles: string[];
+}
+
+export async function getSavedIcpFields(orgSlug: string): Promise<SavedIcpFields | null> {
+  const { db } = await resolveDataSource();
+  if (!db) return null;
+
+  const viewer = await currentViewer(orgSlug);
+  if (!viewer || viewer.kind !== "member") return null;
+
+  const { data: icpRow } = await db
+    .from("icps")
+    .select("id, criteria, negative_criteria")
+    .eq("org_id", viewer.orgId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!icpRow) return null;
+
+  let icp: Icp;
+  try {
+    icp = parseIcp(
+      (icpRow as { criteria: unknown }).criteria,
+      (icpRow as { negative_criteria: unknown }).negative_criteria,
+    );
+  } catch {
+    return null;
+  }
+
+  const { data: persona } = await db
+    .from("personas")
+    .select("name, title_patterns, seniority, departments, exclude_titles")
+    .eq("org_id", viewer.orgId)
+    .eq("icp_id", (icpRow as { id: string }).id)
+    .is("deleted_at", null)
+    .order("priority", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const list = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const c = icp.criteria;
+  const p = (persona ?? {}) as Record<string, unknown>;
+
+  return {
+    segments: c.segments ?? [],
+    industries: c.industries ?? [],
+    sizes: c.sizes ?? [],
+    regions: c.regions ?? [],
+    triggers: c.triggers ?? [],
+    technologies: c.technologies ?? [],
+    businessModels: c.businessModels ?? [],
+    painPoints: c.painPoints ?? [],
+    useCases: c.useCases ?? [],
+    exampleCompanies: c.exampleCompanies ?? [],
+    exclusions: icp.exclusions.exclusions ?? [],
+    personaName: typeof p.name === "string" ? p.name : "",
+    titles: list(p.title_patterns),
+    seniority: list(p.seniority),
+    departments: list(p.departments),
+    excludeTitles: list(p.exclude_titles),
+  };
 }

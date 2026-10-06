@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDb } from "../../../lib/data/source";
 import { AcceptInvite } from "./AcceptInvite";
@@ -63,12 +62,16 @@ export default async function InvitePage({
         <span className="font-medium text-fg">{data.user.email}</span>. An
         invitation can only be accepted by the address it was sent to — if that
         is not this one,{" "}
-        <Link
-          href="/auth/signout"
-          className="hl-focusable rounded-sm text-brand-text underline underline-offset-2"
-        >
-          sign out
-        </Link>{" "}
+        {/* A form, because sign-out is POST-only; a link answered 405 (M-16). */}
+        <form method="post" action="/auth/signout" className="inline">
+          <input type="hidden" name="next" value={`/invite/${token}`} />
+          <button
+            type="submit"
+            className="hl-focusable rounded-sm text-brand-text underline underline-offset-2"
+          >
+            sign out
+          </button>
+        </form>{" "}
         and sign in as the invited address first.
       </p>
 

@@ -169,7 +169,13 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
   const rules = await loadRules(ctx, icp.id);
   const ruled = applyRules(
     rules,
-    ruleFacts(company, observed, await loadEventTypes(ctx, companyId), qualification),
+    ruleFacts(
+      company,
+      observed,
+      await loadEventTypes(ctx, companyId),
+      qualification,
+      await loadCompetitorRelations(ctx, companyId),
+    ),
     { score: qualification.score, priority: qualification.priority as RulePriority },
   );
 
@@ -550,6 +556,41 @@ async function loadEventTypes(ctx: JobContext, companyId: string): Promise<strin
   return [...new Set(rows.map((row) => String(row.event_type)))];
 }
 
+export interface CompetitorRelations {
+  uses: string[];
+  evaluating: string[];
+  former: string[];
+}
+
+/**
+ * Which active competitors this company uses, is evaluating or has left, by
+ * name — from evidence-backed signals only. A signal with no evidence is a
+ * guess, and a rule that moves a score on a guess is the failure `0015` was
+ * written to prevent.
+ */
+async function loadCompetitorRelations(
+  ctx: JobContext,
+  companyId: string,
+): Promise<CompetitorRelations> {
+  const { data } = await ctx.scope
+    .select("company_competitor_signals", "relationship, evidence_id, competitors!inner(name, status, deleted_at)")
+    .eq("company_id", companyId)
+    .in("relationship", ["uses", "evaluating", "former"])
+    .not("evidence_id", "is", null)
+    .limit(100);
+
+  const out: CompetitorRelations = { uses: [], evaluating: [], former: [] };
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const raw = row.competitors as Record<string, unknown> | Record<string, unknown>[] | null;
+    const competitor = Array.isArray(raw) ? raw[0] : raw;
+    if (!competitor || competitor.deleted_at || competitor.status !== "active") continue;
+    const list = out[row.relationship as keyof CompetitorRelations];
+    const name = String(competitor.name ?? "").trim();
+    if (list && name && !list.includes(name)) list.push(name);
+  }
+  return out;
+}
+
 /**
  * Everything a rule may ask about, in one flat object.
  *
@@ -571,6 +612,7 @@ export function ruleFacts(
   observed: ObservedEvidence[],
   eventTypes: string[],
   qualification: { score: number; priority: string },
+  competitors: CompetitorRelations = { uses: [], evaluating: [], former: [] },
 ): RuleFacts {
   return {
     "company.name": str(company.name),
@@ -590,6 +632,9 @@ export function ruleFacts(
     "signals.event_types": eventTypes,
     "score.model_score": qualification.score,
     "score.priority": qualification.priority,
+    "competitors.uses": competitors.uses,
+    "competitors.evaluating": competitors.evaluating,
+    "competitors.former": competitors.former,
   };
 }
 

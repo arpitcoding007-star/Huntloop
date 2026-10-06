@@ -8,6 +8,7 @@ import {
   CardBody,
   CardHeader,
   ConfirmButton,
+  Confirmed,
   Field,
   FormMessage,
   Input,
@@ -24,6 +25,7 @@ import type { IcpRecord, Persona } from "../../../../../lib/data/icp";
 import type { Product } from "../../../../../lib/data/product";
 import { LookAlikeResult } from "../../../../_components/LookAlikeResult";
 import type { LookAlikePreview } from "../../../../../lib/data/look-alike-preview";
+import { REGION_OPTIONS, SIZE_BANDS } from "../../../../../lib/onboarding/steps";
 import {
   activateIcpAction,
   deleteIcpAction,
@@ -68,6 +70,8 @@ export function IcpEditor({
      would make the empty state impossible to word, since it could not tell
      "you have none" from "you are adding one". */
   const [creating, setCreating] = useState(icps.length === 0);
+  /* Shown here rather than inside the form, which remounts on create. */
+  const [created, setCreated] = useState<string | null>(null);
 
   const selected = creating ? null : (icps.find((i) => i.id === selectedId) ?? icps[0] ?? null);
 
@@ -99,6 +103,8 @@ export function IcpEditor({
         </Card>
       )}
 
+      {created && !creating && <Confirmed title={created} />}
+
       <IcpForm
         key={creating ? "new" : (selected?.id ?? "none")}
         org={org}
@@ -106,10 +112,24 @@ export function IcpEditor({
         products={products}
         canWrite={canWrite}
         onCancelCreate={icps.length > 0 ? () => setCreating(false) : undefined}
+        /* M-13: a created profile is selected for editing, so a second click
+           edits it instead of creating a duplicate, and its personas appear. */
+        onCreated={(id, message) => {
+          setSelectedId(id);
+          setCreating(false);
+          setCreated(message ?? "ICP created.");
+        }}
       />
 
       {canWrite && !creating && (
-        <Button variant="secondary" icon={Plus} onClick={() => setCreating(true)}>
+        <Button
+          variant="secondary"
+          icon={Plus}
+          onClick={() => {
+            setCreated(null);
+            setCreating(true);
+          }}
+        >
           Add another ICP
         </Button>
       )}
@@ -209,18 +229,20 @@ function IcpForm({
   products,
   canWrite,
   onCancelCreate,
+  onCreated,
 }: {
   org: string;
   icp: IcpRecord | null;
   products: Product[];
   canWrite: boolean;
   onCancelCreate?: () => void;
+  onCreated?: (id: string, message?: string) => void;
 }) {
   const [name, setName] = useState(icp?.name ?? "");
   const [productId, setProductId] = useState(icp?.productId ?? products[0]?.id ?? "");
   const [segments, setSegments] = useState(joinList(icp?.segments));
-  const [sizes, setSizes] = useState(joinList(icp?.sizes));
-  const [regions, setRegions] = useState(joinList(icp?.regions));
+  const [sizes, setSizes] = useState<string[]>(icp?.sizes ?? []);
+  const [regions, setRegions] = useState<string[]>(icp?.regions ?? []);
   const [triggers, setTriggers] = useState(joinList(icp?.triggers));
   const [examples, setExamples] = useState(joinList(icp?.exampleCompanies));
   const [exclusions, setExclusions] = useState(joinList(icp?.exclusions));
@@ -247,8 +269,8 @@ function IcpForm({
         name: name || "Untitled",
         productId: productId.startsWith("demo-") ? "" : productId,
         segments: splitList(segments),
-        sizes: splitList(sizes),
-        regions: splitList(regions),
+        sizes,
+        regions,
         triggers: splitList(triggers),
         exampleCompanies: splitList(examples),
         exclusions: splitList(exclusions),
@@ -270,14 +292,17 @@ function IcpForm({
         // Same reasoning for the product: demo products have no row to link.
         productId: productId.startsWith("demo-") ? "" : productId,
         segments: splitList(segments),
-        sizes: splitList(sizes),
-        regions: splitList(regions),
+        sizes,
+        regions,
         triggers: splitList(triggers),
         exampleCompanies: splitList(examples),
         exclusions: splitList(exclusions),
       });
-      if (res.ok) setResult({ ok: true, message: res.message });
-      else {
+      if (res.ok) {
+        const isCreate = !icp?.id || icp.id.startsWith("demo-");
+        if (isCreate && onCreated) onCreated(res.data.id, res.message);
+        else setResult({ ok: true, message: res.message });
+      } else {
         setResult({ ok: false, error: res.error });
         setFieldErrors(res.fieldErrors ?? {});
       }
@@ -345,29 +370,26 @@ function IcpForm({
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Company sizes" hint="One per line." error={fieldErrors.sizes}>
-            {(a) => (
-              <ListInput
-                {...a}
-                value={sizes}
-                onChange={(e) => setSizes(e.target.value)}
-                disabled={!canWrite || pending}
-                rows={3}
-              />
-            )}
-          </Field>
+          {/* The same fixed choices onboarding offers. The size bands parse
+              into the numeric range a provider filter takes, so free text here
+              searched on nothing; values saved before this are kept and shown. */}
+          <PresetField
+            label="Company sizes"
+            options={SIZE_BANDS}
+            values={sizes}
+            onChange={setSizes}
+            disabled={!canWrite || pending}
+            error={fieldErrors.sizes}
+          />
 
-          <Field label="Regions" hint="One per line." error={fieldErrors.regions}>
-            {(a) => (
-              <ListInput
-                {...a}
-                value={regions}
-                onChange={(e) => setRegions(e.target.value)}
-                disabled={!canWrite || pending}
-                rows={3}
-              />
-            )}
-          </Field>
+          <PresetField
+            label="Regions"
+            options={REGION_OPTIONS}
+            values={regions}
+            onChange={setRegions}
+            disabled={!canWrite || pending}
+            error={fieldErrors.regions}
+          />
         </div>
 
         <Field
@@ -708,5 +730,65 @@ function PersonaForm({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A fixed set of choices plus whatever older free-text values the profile
+ * already holds, so switching the field to presets loses nothing.
+ */
+function PresetField({
+  label,
+  options,
+  values,
+  onChange,
+  disabled,
+  error,
+}: {
+  label: string;
+  options: readonly string[];
+  values: string[];
+  onChange: (next: string[]) => void;
+  disabled: boolean;
+  error?: string;
+}) {
+  const toggle = (value: string) =>
+    onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
+  const custom = values.filter((v) => !options.includes(v));
+
+  return (
+    <fieldset>
+      <legend className="block text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase">
+        {label}
+      </legend>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {[...options, ...custom].map((option) => {
+          const on = values.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={on}
+              disabled={disabled}
+              onClick={() => toggle(option)}
+              title={options.includes(option) ? undefined : "Saved earlier as free text"}
+              className={[
+                "hl-focusable h-8 rounded-md border px-3 text-[13px] transition-colors duration-[120ms] disabled:opacity-60",
+                on
+                  ? "border-brand-border bg-brand-surface text-brand-text"
+                  : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
+              ].join(" ")}
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[12px] text-danger">
+          {error}
+        </p>
+      )}
+    </fieldset>
   );
 }

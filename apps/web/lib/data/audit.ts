@@ -55,7 +55,10 @@ export type AuditAction =
   | "suppression.removed"
   | "source.scanned"
   | "ai.decision_overridden"
-  | "data.exported";
+  | "data.exported"
+  | "competitor.added"
+  | "competitor.removed"
+  | "icp.proposal_applied";
 
 export interface AuditEntry {
   action: AuditAction;
