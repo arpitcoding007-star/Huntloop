@@ -38,6 +38,7 @@ import {
 } from "../src/tasks/qualify-opportunity.ts";
 import { explainWhyNow, type WhyNowInput } from "../src/tasks/explain-why-now.ts";
 import { salesAgent, type AgentInput } from "../src/tasks/sales-agent.ts";
+import { explainPerformance, type ExplainPerformanceInput } from "../src/tasks/explain-performance.ts";
 import {
   MAX_SIGNALS,
   extractSignals,
@@ -2078,6 +2079,59 @@ console.log("\npersonalize_message — a banned phrase fails the run, in every f
   }
 
   expectEqual("`findBannedPhrase` returns null on clean text", findBannedPhrase(clean.body), null);
+}
+
+/* ── explain_performance — it may connect figures, never produce one ─────── */
+
+console.log("\nexplain_performance — numbers come only from the facts it cites");
+{
+  const input: ExplainPerformanceInput = {
+    periodLabel: "Last 30 days",
+    facts: [
+      { id: "f1", text: "Reply rate: 18% of 50 companies first contacted (previous period 9% of 44)." },
+      { id: "f2", text: "LinkedIn first touches got replies 31% of the time against 6% for everything else." },
+      { id: "f3", text: "2 deals at meeting or proposal stage have had no activity for 14+ days." },
+    ],
+  };
+  const good = {
+    summary: [{ text: "Replies rose to 18% from 9%, driven by LinkedIn at 31%.", factIds: ["f1", "f2"] }],
+    suggestions: [
+      { text: "Consider opening on LinkedIn by default and chasing the 2 stalled deals.", factIds: ["f2", "f3"] },
+    ],
+  };
+  {
+    const { client, seen } = scriptedClient(good);
+    const r = await runTask(explainPerformance, input, ctx(client, spyRecorder().recorder));
+    expectEqual("a grounded summary passes", r.output.summary.length, 1);
+    expectEqual("and keeps its suggestion", r.output.suggestions.length, 1);
+    expectEqual(
+      "the schema only offers the ids that were sent",
+      JSON.stringify(seen[0]?.schema).includes('"enum":["f1","f2","f3"]'),
+      true,
+    );
+  }
+  const run = (json: unknown) => () => runTask(explainPerformance, input, ctx(scriptedClient(json).client, spyRecorder().recorder));
+  await expectThrows(
+    "an invented number is refused",
+    run({ ...good, summary: [{ text: "Replies doubled to 40%.", factIds: ["f1"] }] }),
+    /states 40/,
+  );
+  await expectThrows(
+    "a sentence that cites nothing is refused",
+    run({ ...good, summary: [{ text: "Things went well.", factIds: [] }] }),
+    /cites no fact/,
+  );
+  await expectThrows(
+    "a fact id that was not sent is refused",
+    run({ ...good, summary: [{ text: "Replies rose.", factIds: ["f9"] }] }),
+    /not sent/,
+  );
+  await expectThrows(
+    "with one fact there is nothing to connect, and nothing is spent",
+    () =>
+      runTask(explainPerformance, { periodLabel: "x", facts: [input.facts[0]!] }, ctx(scriptedClient(good).client, spyRecorder().recorder)),
+    /fewer than two facts/,
+  );
 }
 
 console.log(

@@ -269,3 +269,21 @@ export async function followActiveIcp(
   await requestRecompute(db, orgId, "icp_change");
   return query.queryId ? { searching: true } : { searching: false, reason: query.reason };
 }
+
+/**
+ * Whether discovery is paused because the review backlog is full (0010's cap,
+ * applied to paid discovery since 0038). Null when it cannot be read — a
+ * banner that guessed would be worse than none.
+ */
+export async function backlogState(
+  db: TenantClient,
+  orgId: string,
+): Promise<{ saturated: boolean; openCount: number; cap: number } | null> {
+  const { data, error } = await db.rpc("backlog_state_for_org", { p_org: orgId });
+  if (error) return null;
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { open_count?: number; cap?: number; saturated?: boolean }
+    | null;
+  if (!row) return null;
+  return { saturated: Boolean(row.saturated), openCount: Number(row.open_count ?? 0), cap: Number(row.cap ?? 0) };
+}

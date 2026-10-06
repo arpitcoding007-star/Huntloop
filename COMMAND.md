@@ -138,10 +138,10 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 | **Home** | No (single item) | Command Center → `/{org}/dashboard` |
 | **Hunt** | Yes — "Find and qualify the accounts worth pursuing." | Opportunities → `/{org}/opportunities` · Companies → `/{org}/companies` · Analyze a URL → `/{org}/analyze` · Imports → `/{org}/imports` |
 | **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
-| **Learn** | Yes — "What the loop is teaching you." | Analytics → `/{org}/analytics` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` |
+| **Learn** | Yes — "What the loop is teaching you." | Performance → `/{org}/performance` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` |
 | **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
-| **Operate** | No | Engine → `/{org}/ops` |
+| **Operate** | Yes — "Is the engine running, and what is it costing?" | Engine → `/{org}/ops` · AI spend → `/{org}/analytics` |
 | **Settings** (rail footer) | Yes — "How this workspace is set up." | General → `/{org}/settings` · Product · ICP · Scoring → `/{org}/settings/scoring` · Integrations → `/{org}/settings/integrations` · Data & privacy → `/{org}/settings/privacy` |
 
 - **Active state:** longest-prefix match of `pathname` against all item hrefs (detail pages light their list page). Product/ICP appear under both Company and Settings; the section you came from stays lit.
@@ -880,11 +880,28 @@ No drag-and-drop.
 
 ## 9. Learn
 
-### 9.1 Analytics → "AI spend" `/{org}/analytics`
-**Reached from:** Learn rail "Analytics", jump-to. **Read-only page.**
-Content: Last 30 days stat cards (Total spend, Cache hit rate, Failed, No outcome = stranded runs), "Spend by task" and "Spend by model" breakdowns, **Runs** DataTable (status badges Succeeded/Failed/No outcome). Empty: "No model calls yet". No links, filters or exports.
+### 9.1 Performance `/{org}/performance[?period=7d|30d|90d|month|last-month]`
+**Reached from:** Learn rail "Performance", jump-to. Definitions and statistics live in `lib/performance/compute.ts` (pure, unit-tested); rows from `lib/data/performance.ts` (paginated, ceilings stated on screen when hit).
 
-> ⚠️ **FLOW MISMATCH M-11** — the nav item "Analytics" (in the Learn section, "What the loop is teaching you") opens a page titled **"AI spend"** that reports model cost only; there are no loop/outcome analytics behind this label. See §14.
+| Element | Action |
+|---|---|
+| Period links (Last 7 / 30 / 90 days, This month, Last month) | `?period=`; the previous window is the same length, immediately before |
+| **What the data says** | Insight cards: a segment called better/worse only when its 95% Wilson interval does not overlap the rest (≥ 10 each side); reply-rate change only when a two-proportion test clears 1.96 (≥ 30 each side); volume change ≥ 50%; dominant loss reason (≥ 5 closed, ≥ 40% share; missing capability called out); stalled deals. Each shows its basis; segment insights link to the breakdown. Small samples → "Not enough outreach in this period to compare…" |
+| **Summary** → **Summarise this period** / **Write it again** (`canSpend`) | SA `explainPerformanceAction` → recomputes the figures server-side, builds the closed fact list (`lib/performance/facts.ts`) and runs `explain_performance` (Sonnet; every sentence cites fact ids; any number not in its cited facts is rejected). Rendered with an INFERENCE badge; each sentence expands to its sources; suggestions listed separately. No key → worked example quoting the top two facts. Rate-limited, spend-guarded, not persisted |
+| Funnel stat cards (Found, Qualified, First contacted, First replied, Positive replies, Meetings, Won) with change vs previous; **CSV** | CSV → `GET /{org}/performance/export?period=&table=funnel` |
+| Reply rate / Meeting rate / Time to an answer cards | Cohort = companies whose first outbound touch (any channel) fell in the period; replies and meetings counted after that touch, up to now; medians in days |
+| **Where replies come from** — tabs First channel / Source / Trigger / Priority / Owner; **CSV** (`table=segments`) | Table: contacted, replied, reply rate with 95% range, meetings; a row expands to up to 25 company links → opportunity detail |
+| **Why deals ended** (+ CSV `table=reasons`) | Lost / Not a fit / Lost to (competitor) tallies for the period |
+| **Your pace** | Outbound touches you made this week and meetings on accounts you own this month, against workspace goals with an even-pace marker. Owner/admin: **Set goals / Edit goals** → Touches per week, Meetings per month → SA `saveGoalsAction` (`settings.goals`) |
+| **Stalled deals** | Meeting/proposal with no activity ≥ 14 days → opportunity links |
+| **What it cost** | Model spend, provider credits (never converted to money), spend per qualified opportunity and per meeting; **Full AI spend →** `/{org}/analytics` |
+| Demo | `DemoFigures`; fixtures have no outreach, so the "not enough data" state is the real one |
+
+CSV export (`performance/export/route.ts`): member check (404 otherwise); tables funnel / segments / reasons / stalled; cells starting `= + - @` are neutralised (`lib/csv-write.ts`).
+
+### 9.1b AI spend `/{org}/analytics` (Operate rail)
+**Reached from:** Operate rail "AI spend", Performance "Full AI spend →", jump-to. **Read-only page.**
+Content: Last 30 days stat cards (Total spend, Cache hit rate, Failed, No outcome = stranded runs), "Spend by task" and "Spend by model" breakdowns, **Runs** DataTable (status badges Succeeded/Failed/No outcome). Empty: "No model calls yet". No links, filters or exports.
 
 ### 9.2 Intelligence `/{org}/intelligence`
 **Read-only.** Figures (Facts · Inferences · Open questions · Triggers); **Evidence** (EvidenceList with source links; empty "No evidence yet — Evidence arrives from a hunt or from Analyze a URL…"); **Triggers** (with "Happened" freshness); **Decisions and overrides** (with "Overruled by a human" badge). Demo → DemoFigures. No actions.
@@ -1007,7 +1024,7 @@ Note the free-text Company sizes / Regions here vs. fixed option chips in onboar
 | **Scan now** (aria-disabled) | Engine not driven | Tooltip explains `CRON_SECRET` unset vs. set-but-never-called |
 | **Add a source** (`canWrite`) | Always | Toggles SourceForm: Name\*, Kind (News/Blog/Jobs/Social/Code/Funding/Regulatory/Community/Podcast/Custom), URL → **Add source** (SA `saveSourceAction`, enabled immediately: "Source added. It will be read on the next hunt.") · **Cancel** |
 
-**Banners:** "Nothing is reading these sources on a timer." (engine not driven) · "{n} of {m} sources are not returning full results." (degraded/unavailable).
+**Banners:** "Nothing is reading these sources on a timer." (engine not driven) · "{n} of {m} sources are not returning full results." (degraded/unavailable) · "Discovery is paused: {n} opportunities are waiting for review, which is at your backlog limit of {cap}…" with **triage them** (→ `/opportunities`) and **Settings** links (when `backlog_state_for_org` is saturated; since 0038 the cap pauses paid discovery as well as scans, without costing a query its turn).
 
 **Monitored list** (empty: "Nothing is being monitored…"): name, kind, "Scanned {age}"/"Never scanned", documents/evidence counts, last error, status dot (Healthy/Degraded/Unavailable).
 | Row control (`canWrite`) | Action |
@@ -1084,6 +1101,7 @@ Figures Unassigned · Assigned · Yours. Two lists: **Nobody is working on these
 | **Retry once** (admin) | SA `retryJobAction` → "Queued for one more attempt. It runs on the next tick." / "…no longer failed, so nothing was retried." |
 | **Cancel** (admin) | SA `cancelJobAction` → "Cancelled. It will not run." |
 | **By job** table | Per job: state, count, backlog (static) |
+| **Data providers · last 24 hours** | Per provider and capability (`provider_health`, 0019): calls, cached, credits, p95 latency, rate-limited badge, failure-rate badge (over calls actually made). Empty: "No provider was called in the last 24 hours." |
 | "This organisation is most of the queue" | > 80% of queue and > 50 queued |
 
 ---
@@ -1177,14 +1195,13 @@ flowchart TD
 | **M-08** | `welcome/company/CompanyStep.tsx runResearch` | After the first research creates workspace A, **Start over** with a different domain calls `researchCompanyAction(url, undefined)` → `createWorkspace` creates workspace B; A is orphaned mid-onboarding | Re-research reuses the workspace already created in this session | Pass `state.org ?? org` to `researchCompanyAction` |
 | **M-09** | `welcome/goals/GoalsStep.tsx`, `welcome/icp/IcpStep.tsx` | Revisiting Goals shows an empty form; revisiting ICP re-runs the model draft (cost) and discards saved edits in the form | Back/progress navigation shows saved answers for editing | Load `onboarding.goals/channel` into GoalsStep; load the saved ICP when one exists instead of drafting |
 | **M-10** | `(marketing)/DomainInput.tsx` call sites in `discover/page.tsx`, `for/[useCase]`, `compare/[approach]` | Default `canResearch=true` → always `/discover`, even when anonymous research is disabled; "try another address" loops to the same refusal | Follows `publicResearchEnabled()` like the landing page (→ `/signup?d=`) | Pass `canResearch={publicResearchEnabled()}` at every call site |
-| **M-11** | Sidebar Learn → "Analytics" → `analytics/page.tsx` | Page is titled "AI spend" and shows only model cost | Label matches content | Rename nav item to "AI spend" (or move it under Operate), or build loop analytics |
 | **M-12** | `lib/data/nudges.ts` "tighten-icp" → `/learn` | Copy promises a proposed tighter ICP and a what-would-have-changed diff; destination only offers a generic analysis | Destination provides the promised proposal, or copy matches what exists | Adjust copy/CTA, or implement ICP-refinement proposals |
 | **M-13** | `settings/icp/IcpEditor.tsx` | `creating` state is never cleared after **Create ICP** succeeds; form stays in create mode, personas hidden; a second click creates a duplicate ICP | After create, the new ICP is selected in edit mode | On success, `setCreating(false)` and select the returned id |
 | **M-14** | `settings/icp/actions.ts saveIcpAction` (insert branch) | First ICP (auto-active) created in Settings does not call `followActiveIcp`; no discovery search until an edit/activation/"Hunt now" | Creating an active ICP builds its search like saving one does | Call `followActiveIcp(db, orgId, { runNow: false })` when inserting with `is_active = true` |
 | **M-15** | `settings/scoring/ScoringRules.tsx RuleForm` vs `actions.ts saveRuleAction` | Header says "Saved switched off. Nothing changes until you turn it on." but edits to a running rule stay active and apply immediately | Copy is accurate, or edits to active rules require re-activation | Show different copy when editing an active rule (or deactivate on edit) |
 | **M-16** | `invite/[token]/page.tsx` | "sign out" is a GET link to `/auth/signout`, which is POST-only → 405 | Signs the user out and returns to the invite (or login) | Replace with a `<form method="post" action="/auth/signout">` button |
 
-Fixed and removed from the register: **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); the panels are now one exclusive state. **M-07** — success messages lived inside panels that unmount on success (Opportunities EnrollPanel, Companies CompanyForm, Sources SourceForm); each now hands its message to the parent, which shows it after the panel closes.
+Fixed and removed from the register: **M-17** — on opportunity detail, opening Assign or Add to campaign left an open Disagree panel open (`OpportunityActions.tsx`); the panels are now one exclusive state. **M-07** — success messages lived inside panels that unmount on success (Opportunities EnrollPanel, Companies CompanyForm, Sources SourceForm); each now hands its message to the parent, which shows it after the panel closes. **M-11** — "Analytics" opened a model-spend page; Learn now has **Performance** (outcome analytics) and spend moved to Operate as **AI spend**.
 
 ### 14.2 Gaps & dead ends (not mismatches, but undefined or incomplete flows)
 
@@ -1228,7 +1245,9 @@ Fixed and removed from the register: **M-17** — on opportunity detail, opening
 | `/{org}/needs-you` | Engage rail (count), dashboard rail header | Inbox threads/drafts, opportunity detail, learn, sources, opportunities |
 | `/{org}/inbox` | Engage rail, dashboard, Needs you items, opportunity timeline (email subjects) | Opportunity detail (thread company link) |
 | `/{org}/pipeline` | Engage rail, dashboard | Detail |
-| `/{org}/analytics` · `/intelligence` | Learn rail | — |
+| `/{org}/performance` | Learn rail | Opportunity detail (segment drill-down, stalled), `/analytics`, CSV export |
+| `/{org}/analytics` | Operate rail, Performance | — |
+| `/{org}/intelligence` | Learn rail | — |
 | `/{org}/learn` | Learn rail, nudges | Detail, sources, settings/scoring, memory |
 | `/{org}/memory` | Learn rail, learn | External source URLs |
 | `/{org}/settings` | Settings rail, account menu, privacy links, "Connect a mailbox" (M-04) | — |
@@ -1295,7 +1314,7 @@ flowchart LR
 
 `Planned` · `In progress` · `Shipped (<hash>)` · `Deferred` · `Rejected`.
 
-**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11) ships with P2. Two defects found while building P1 were fixed in the same work and are recorded in §16.8.
+**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11), **P2** and **P2B** are **Shipped** too (migration `0038_discovery_backpressure.sql`; §9.1, §9.1b, §10.5, §11.3). Defects found on the way are recorded in §16.8.
 
 ### 16.1 Diagnosis — what the audit actually found
 
@@ -1712,4 +1731,5 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 | Date | Change |
 |---|---|
 | 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |
+| 2026-10-06 | **P2 + P2B shipped**: Performance (cohort funnel, Wilson/z-tested insights, breakdowns with drill-down, loss reasons, goals and pace, stalled deals, cost per outcome, CSV, grounded `explain_performance` narrative); M-11 fixed; paid discovery honours the backlog cap (0038); provider health on Engine; discovery pause shown on Sources and in Needs you. |
 | 2026-10-06 | **P0 (1–3) and P1 shipped.** Found and fixed on the way: (1) at autonomy 0–1, first-step drafts had no thread until sent, so the Inbox (threads only) never showed them while the dashboard counted them — the approval queue was unreachable; (2) sequences drafted the next step on top of an unapproved draft, so follow-ups to unsent emails piled up — `advance_enrollments` now holds an enrollment while a draft awaits approval, sets `messages.opportunity_id` on drafts, and stops sequences on opportunities closed as not a fit; (3) `erase_contact` redacted mail *to* a person but not their own replies — now both. The opportunity brief goes two-column at xl instead of lg (at 1024px its main column was ~240px). |

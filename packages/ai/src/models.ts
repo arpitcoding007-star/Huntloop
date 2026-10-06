@@ -44,7 +44,9 @@ export type TaskName =
   | "draft_scoring_rules"
   | "analyze_performance"
   | "research_competitor"
-  | "draft_icp";
+  | "draft_icp"
+  | "explain_performance"
+  | "workspace_assistant";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -82,6 +84,16 @@ export const ROUTES: Record<TaskName, Route> = {
      to C, 50–500 employees, North America" for everyone, and that answer is
      never obviously wrong enough for a user to reject it. */
   draft_icp: { model: MODELS.opus, effort: "high" },
+  /* Connects figures that were already computed; it cannot produce one (its
+     parser rejects any number its cited facts do not contain). Summarising a
+     closed list is mid-tier work, and this runs on a screen people open
+     weekly, so the cheaper model is the right default. */
+  explain_performance: { model: MODELS.sonnet, effort: "medium" },
+  /* The workspace co-pilot (P4). Answers from tools over the workspace's own
+     rows, with citations checked against what the tools returned. Mid-tier by
+     default because it is conversational and frequent; nothing it says is
+     acted on without a person pressing a button. */
+  workspace_assistant: { model: MODELS.sonnet, effort: "medium" },
 };
 
 /**

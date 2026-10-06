@@ -31,6 +31,8 @@ const ROUTES = [
   `/${ORG}/inbox`,
   `/${ORG}/pipeline`,
   `/${ORG}/analytics`,
+  `/${ORG}/performance`,
+  `/${ORG}/needs-you`,
   `/${ORG}/intelligence`,
   `/${ORG}/learn`,
   `/${ORG}/memory`,

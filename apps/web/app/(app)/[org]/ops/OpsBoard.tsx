@@ -248,6 +248,46 @@ export function OpsBoard({
               </Card>
             )}
 
+          {/* Providers, last 24 hours (0019 provider_health). A failure rate is
+              over calls actually made — cache hits and refusals are not
+              provider failures. */}
+          <section aria-labelledby="providers-heading" className="space-y-3">
+            <SectionLabel>
+              <span id="providers-heading">Data providers · last 24 hours</span>
+            </SectionLabel>
+            {snapshot.providers.length === 0 ? (
+              <p className="text-[13px] text-fg-muted">No provider was called in the last 24 hours.</p>
+            ) : (
+              <Card flush>
+                <CardBody>
+                  <ul className="divide-y divide-line-subtle">
+                    {snapshot.providers.map((p) => {
+                      const made = p.succeeded + p.failed + p.rateLimited;
+                      const failRate = made > 0 ? p.failed / made : 0;
+                      return (
+                        <li key={`${p.provider}-${p.capability}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[13px]">
+                          <span className="text-fg">
+                            {p.provider} <span className="text-fg-muted">· {p.capability.replace(/_/g, " ")}</span>
+                          </span>
+                          <span className="flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
+                            <span className="hl-tabular">{p.calls} calls</span>
+                            <span className="hl-tabular">{p.cacheHits} cached</span>
+                            <span className="hl-tabular">{p.credits} credits</span>
+                            {p.p95Ms !== null && <span className="hl-tabular">p95 {p.p95Ms} ms</span>}
+                            {p.rateLimited > 0 && <Badge variant="warning">{p.rateLimited} rate-limited</Badge>}
+                            <Badge variant={failRate > 0.2 ? "danger" : failRate > 0 ? "warning" : "success"}>
+                              {made === 0 ? "no live calls" : `${Math.round(failRate * 100)}% failed`}
+                            </Badge>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </CardBody>
+              </Card>
+            )}
+          </section>
+
           {result && <FormMessage result={result} />}
         </>
       )}

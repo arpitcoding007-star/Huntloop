@@ -170,6 +170,15 @@ export {
 } from "./tasks/explain-why-now.ts";
 
 export {
+  MAX_FACTS,
+  explainPerformance,
+  type ExplainPerformanceInput,
+  type NarrativeLine,
+  type PerformanceFact,
+  type PerformanceNarrative,
+} from "./tasks/explain-performance.ts";
+
+export {
   MAX_HISTORY,
   MAX_QUESTION_CHARS,
   citableClaims,

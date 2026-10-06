@@ -129,3 +129,44 @@ test.describe("pipeline", () => {
     expect(await stage.inputValue()).toBe(before);
   });
 });
+
+test.describe("performance", () => {
+  test("explains itself, and says when there is not enough data", async ({ page }) => {
+    const errors = watchForErrors(page);
+    await page.goto(`/${ORG}/performance`);
+    await expect(page.getByRole("heading", { name: "Performance", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /what the data says/i })).toBeVisible();
+    await expect(page.getByText(/not enough outreach in this period/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /where replies come from/i })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("periods are links", async ({ page }) => {
+    await page.goto(`/${ORG}/performance`);
+    await page.getByRole("link", { name: "Last 90 days" }).click();
+    await expect(page).toHaveURL(/period=90d/);
+    await expect(page.getByRole("link", { name: "Last 90 days" })).toHaveAttribute("aria-current", "page");
+  });
+
+  test("the summary is labelled an inference and quotes its sources", async ({ page }) => {
+    await page.goto(`/${ORG}/performance`);
+    await page.getByRole("button", { name: /summarise this period/i }).click();
+    await expect(page.getByText(/worked example/i)).toBeVisible();
+    await expect(page.getByText("Inference").first()).toBeVisible();
+  });
+
+  test("exports CSV that a spreadsheet will not execute", async ({ request }) => {
+    const res = await request.get(`/${ORG}/performance/export?period=30d&table=funnel`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("text/csv");
+    const body = await res.text();
+    expect(body.split(/\r?\n/)[0]).toBe("measure,this period,previous period");
+  });
+
+  test("Learn names it Performance, and spend lives under Operate", async ({ page }) => {
+    await page.goto(`/${ORG}/performance`);
+    await expect(page.getByRole("link", { name: "Performance" }).first()).toBeVisible();
+    await page.goto(`/${ORG}/analytics`);
+    await expect(page.getByRole("link", { name: "AI spend" }).first()).toBeVisible();
+  });
+});

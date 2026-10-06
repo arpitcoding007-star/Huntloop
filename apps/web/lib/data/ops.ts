@@ -59,10 +59,26 @@ export interface QueuePressure {
   shareOfQueue: number | null;
 }
 
+/** One provider capability over the last 24 hours — `provider_health` (0019). */
+export interface ProviderHealthRow {
+  provider: string;
+  capability: string;
+  calls: number;
+  cacheHits: number;
+  succeeded: number;
+  failed: number;
+  rateLimited: number;
+  credits: number;
+  p95Ms: number | null;
+  lastFailureAt: string | null;
+}
+
 export interface OpsSnapshot {
   health: JobHealthRow[];
   dead: DeadLetter[];
   pressure: QueuePressure | null;
+  /** Provider calls in the last 24 hours. Empty when none were made. */
+  providers: ProviderHealthRow[];
 }
 
 /**
@@ -77,7 +93,7 @@ export async function opsSnapshot(
   orgId: string,
   deadLimit = 50,
 ): Promise<OpsSnapshot> {
-  const [health, dead, pressure] = await Promise.all([
+  const [health, dead, pressure, providers] = await Promise.all([
     db
       .from("job_health")
       .select("job_name, status, jobs, newest, oldest_due_seconds, exhausted")
@@ -94,6 +110,13 @@ export async function opsSnapshot(
       .select("queued, running, oldest_due, share_of_queue")
       .eq("org_id", orgId)
       .maybeSingle(),
+    /* The view was built in 0019 and nothing read it (COMMAND.md §16.1 D1).
+       It is the answer to "is Apollo down, or is it us?". */
+    db
+      .from("provider_health")
+      .select("provider, capability, calls, cache_hits, succeeded, failed, rate_limited, credits, p95_ms, last_failure_at")
+      .eq("org_id", orgId)
+      .order("calls", { ascending: false }),
   ]);
 
   return {
@@ -130,5 +153,17 @@ export async function opsSnapshot(
               : Number(pressure.data.share_of_queue),
         }
       : null,
+    providers: (providers.data ?? []).map((row) => ({
+      provider: String(row.provider),
+      capability: String(row.capability),
+      calls: Number(row.calls ?? 0),
+      cacheHits: Number(row.cache_hits ?? 0),
+      succeeded: Number(row.succeeded ?? 0),
+      failed: Number(row.failed ?? 0),
+      rateLimited: Number(row.rate_limited ?? 0),
+      credits: Number(row.credits ?? 0),
+      p95Ms: row.p95_ms === null || row.p95_ms === undefined ? null : Number(row.p95_ms),
+      lastFailureAt: row.last_failure_at ? String(row.last_failure_at) : null,
+    })),
   };
 }

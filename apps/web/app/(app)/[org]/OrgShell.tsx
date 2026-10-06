@@ -16,6 +16,7 @@ import { AccountMenu } from "./AccountMenu";
 import {
   Activity,
   BarChart3,
+  Coins,
   Brain,
   Building,
   Building2,
@@ -192,8 +193,10 @@ export function OrgShell({
       description: "What the loop is teaching you.",
       icon: Sparkles,
       items: [
-        // The flag goes in the same commit that adds the page — this one.
-        { label: "Analytics", href: `/${org}/analytics`, icon: BarChart3 },
+        /* M-11: "Analytics" opened a page that only reported model spend.
+           Performance is the outcome analytics the label promised; spend
+           moved to Operate, where it is the engine's running cost. */
+        { label: "Performance", href: `/${org}/performance`, icon: BarChart3 },
         {
           label: "Intelligence",
           href: `/${org}/intelligence`,
@@ -246,12 +249,13 @@ export function OrgShell({
     {
       id: "operate",
       label: "Operate",
+      description: "Is the engine running, and what is it costing?",
       icon: Activity,
       items: [
         /* `JOB-01`. It answers "why has nothing happened", which is a
-           question asked occasionally and urgently, not a workflow of its
-           own — so a single page, and no panel. */
+           question asked occasionally and urgently. */
         { label: "Engine", href: `/${org}/ops`, icon: Activity },
+        { label: "AI spend", href: `/${org}/analytics`, icon: Coins },
       ],
     },
   ];

@@ -3484,6 +3484,47 @@ console.log("\n0037 — the activity ledger and the daily loop");
 }
 
 
+// ── 0038 — paid discovery respects the backlog cap ──────────────────────────
+console.log("\n0038 — discovery pauses for a saturated backlog, without losing its turn");
+{
+  const ORG = "38383838-0038-0038-0038-000000000038";
+  await db.query(
+    `insert into organizations (id, name, slug, settings) values ($1, 'Backlog Co', 'backlog-0038', '{"engine":{"backlogCap":1}}'::jsonb)`,
+    [ORG],
+  );
+  await db.query(
+    `insert into companies (id, org_id, canonical_domain, name)
+     values ('38383838-0038-0038-0038-0000000000c1', $1, 'full-0038.test', 'Full')`,
+    [ORG],
+  );
+  await db.query(
+    `insert into opportunities (org_id, company_id, priority, priority_reason, status)
+     values ($1, '38383838-0038-0038-0038-0000000000c1', 'warm', 'Waiting for review.', 'qualified')`,
+    [ORG],
+  );
+  await db.query(
+    `insert into discovery_queries (org_id, name, filters, filters_hash, is_enabled, next_run_at)
+     values ($1, 'q-0038', '{}'::jsonb, 'h-0038', true, now() - interval '1 minute')`,
+    [ORG],
+  );
+
+  const first = await db.query<{ org_id: string }>(`select org_id from public.claim_due_discovery_queries(100)`);
+  if (!first.rows.some((r) => r.org_id === ORG)) ok("a workspace at its backlog cap is not claimed");
+  else fail("a workspace at its backlog cap is not claimed", "claimed");
+
+  const still = await db.query<{ due: boolean }>(
+    `select next_run_at <= now() as due from discovery_queries where org_id = $1`,
+    [ORG],
+  );
+  if (still.rows[0]?.due) ok("and its query stays due rather than losing a turn");
+  else fail("and its query stays due rather than losing a turn", "advanced");
+
+  await db.query(`update organizations set settings = '{"engine":{"backlogCap":0}}'::jsonb where id = $1`, [ORG]);
+  const second = await db.query<{ org_id: string }>(`select org_id from public.claim_due_discovery_queries(100)`);
+  if (second.rows.some((r) => r.org_id === ORG)) ok("with the cap lifted (0 = unlimited) it is claimed");
+  else fail("with the cap lifted (0 = unlimited) it is claimed", "not claimed");
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );

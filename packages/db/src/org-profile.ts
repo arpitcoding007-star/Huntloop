@@ -106,11 +106,24 @@ export const DEFAULT_QUIET_AFTER_BUSINESS_DAYS = 4;
 /** Bounds on the follow-up setting: one business day to a month of them. */
 export const QUIET_AFTER_RANGE = { min: 1, max: 20 } as const;
 
+/**
+ * The workspace's own targets, per person (COMMAND.md §16.3-E). Shown as pace
+ * on the Performance screen, never as a leaderboard. Null means no goal set,
+ * and the screen shows the count without a target rather than against zero.
+ */
+export interface OrgGoals {
+  touchesPerWeek: number | null;
+  meetingsPerMonth: number | null;
+}
+
+export const GOAL_RANGE = { touchesPerWeek: 500, meetingsPerMonth: 200 } as const;
+
 export interface OrgProfile {
   voice: OrgVoice;
   engine: OrgEngineSettings;
   compliance: OrgComplianceSettings;
   followup: OrgFollowupSettings;
+  goals: OrgGoals;
 }
 
 export const EMPTY_ORG_PROFILE: OrgProfile = {
@@ -118,6 +131,7 @@ export const EMPTY_ORG_PROFILE: OrgProfile = {
   engine: { backlogCap: null },
   compliance: { postalAddress: null },
   followup: { quietAfterBusinessDays: null },
+  goals: { touchesPerWeek: null, meetingsPerMonth: null },
 };
 
 /**
@@ -137,6 +151,7 @@ export function parseOrgProfile(settings: unknown): OrgProfile {
   const engine = object(root.engine);
   const compliance = object(root.compliance);
   const followup = object(root.followup);
+  const goals = object(root.goals);
 
   const tone = typeof voice.tone === "string" && isOrgTone(voice.tone) ? voice.tone : null;
 
@@ -149,6 +164,10 @@ export function parseOrgProfile(settings: unknown): OrgProfile {
     engine: { backlogCap: cap(engine.backlogCap) },
     compliance: { postalAddress: address(compliance.postalAddress) },
     followup: { quietAfterBusinessDays: quietAfter(followup.quietAfterBusinessDays) },
+    goals: {
+      touchesPerWeek: goal(goals.touchesPerWeek, GOAL_RANGE.touchesPerWeek),
+      meetingsPerMonth: goal(goals.meetingsPerMonth, GOAL_RANGE.meetingsPerMonth),
+    },
   };
 }
 
@@ -181,8 +200,13 @@ export function serializeOrgProfile(profile: OrgProfile): Record<string, unknown
     followup.quietAfterBusinessDays = profile.followup.quietAfterBusinessDays;
   }
 
+  const goals: Record<string, unknown> = {};
+  if (profile.goals.touchesPerWeek !== null) goals.touchesPerWeek = profile.goals.touchesPerWeek;
+  if (profile.goals.meetingsPerMonth !== null) goals.meetingsPerMonth = profile.goals.meetingsPerMonth;
+
   const out: Record<string, unknown> = {};
   if (Object.keys(voice).length) out.voice = voice;
+  if (Object.keys(goals).length) out.goals = goals;
   if (Object.keys(followup).length) out.followup = followup;
   if (Object.keys(engine).length) out.engine = engine;
   if (Object.keys(compliance).length) out.compliance = compliance;
@@ -300,5 +324,13 @@ function quietAfter(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isInteger(n)) return null;
   if (n < QUIET_AFTER_RANGE.min || n > QUIET_AFTER_RANGE.max) return null;
+  return n;
+}
+
+/** A positive whole number up to `max`, or null. */
+function goal(value: unknown, max: number): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > max) return null;
   return n;
 }

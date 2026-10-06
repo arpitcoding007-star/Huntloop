@@ -597,6 +597,12 @@ export const logActivitySchema = z
     path: ["direction"],
   });
 
+/** Workspace goals, per person — `organizations.settings.goals`. */
+export const goalsSchema = z.object({
+  touchesPerWeek: z.number().int("A whole number.").min(1).max(500).nullable(),
+  meetingsPerMonth: z.number().int("A whole number.").min(1).max(200).nullable(),
+});
+
 /** One next step per opportunity, with an optional due date. */
 export const nextStepSchema = z.object({
   text: z.string().trim().min(1, "Say what the next step is.").max(280),

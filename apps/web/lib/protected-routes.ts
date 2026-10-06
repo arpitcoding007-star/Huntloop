@@ -35,6 +35,7 @@ export const WORKSPACE_SECTIONS = [
   "opportunities",
   "ops",
   "outreach",
+  "performance",
   "pipeline",
   "settings",
   "sources",

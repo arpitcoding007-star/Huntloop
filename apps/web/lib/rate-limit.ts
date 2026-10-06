@@ -148,6 +148,10 @@ const LIMITS: Partial<Record<LimitedAction, Limit>> = {
      per org at a time; this is the belt to that constraint's braces, and it is
      per-org rather than per-user because the cost lands on the org. */
   analyze_performance: { perUser: 6, perOrg: 12, windowSeconds: 3600 },
+  /* A summary of figures that change slowly; a handful an hour is plenty. */
+  explain_performance: { perUser: 10, perOrg: 30, windowSeconds: 3600 },
+  /* Conversational: generous per person, bounded per org. */
+  workspace_assistant: { perUser: 60, perOrg: 300, windowSeconds: 3600 },
 };
 
 /**

@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { Note } from "@huntloop/ui";
 import {
+  backlogState,
   isEngineRunning,
   isInngestDriving,
   lastTickAt,
@@ -38,12 +41,30 @@ export default async function SourcesPage({
   const db = source === "live" ? await getDb() : null;
   const lastTick =
     db && viewer.kind === "member" ? await lastTickAt(db, viewer.orgId) : null;
+  const backlog = db && viewer.kind === "member" ? await backlogState(db, viewer.orgId) : null;
 
   return (
     <>
       {source !== "live" && (
         <div className="px-6 pt-6 lg:px-8">
           <DemoFigures what="These are example sources, not the ones on your account." />
+        </div>
+      )}
+      {backlog?.saturated && (
+        <div className="px-6 pt-6 lg:px-8">
+          <Note tone="warning">
+            Discovery is paused: {backlog.openCount} opportunities are waiting for review, which is
+            at your backlog limit of {backlog.cap}. Scans and searches resume on their own once some
+            are worked —{" "}
+            <Link href={`/${org}/opportunities`} className="underline underline-offset-2">
+              triage them
+            </Link>{" "}
+            or raise the limit under{" "}
+            <Link href={`/${org}/settings`} className="underline underline-offset-2">
+              Settings
+            </Link>
+            .
+          </Note>
         </div>
       )}
       <SourceManager
