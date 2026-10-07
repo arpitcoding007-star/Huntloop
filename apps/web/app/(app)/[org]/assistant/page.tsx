@@ -1,3 +1,5 @@
+import { QuestionCard } from "../QuestionCard";
+import { getQuestionFor } from "../../../../lib/data/questions";
 import { notFound } from "next/navigation";
 import { isAiConfigured } from "@huntloop/ai";
 import { getAssistantHistory } from "../../../../lib/data/assistant";
@@ -21,7 +23,10 @@ export default async function AssistantPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: history, source } = await getAssistantHistory(org);
+  const [{ data: history, source }, questionKey] = await Promise.all([
+    getAssistantHistory(org),
+    getQuestionFor(org, "assistant"),
+  ]);
   const db = await getDb();
   const userId = db ? ((await db.auth.getUser()).data.user?.id ?? null) : null;
 
@@ -41,6 +46,7 @@ export default async function AssistantPage({
       )}
 
       <div className="mt-6">
+        {history.length > 0 && <QuestionCard org={org} questionKey={questionKey} />}
         <AssistantChat
           org={org}
           history={history}

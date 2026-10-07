@@ -1,3 +1,5 @@
+import { QuestionCard } from "../QuestionCard";
+import { getQuestionFor } from "../../../../lib/data/questions";
 import { notFound } from "next/navigation";
 import { listDrafts, listThreads } from "../../../../lib/data/inbox";
 import { listMembers } from "../../../../lib/data/team";
@@ -23,10 +25,11 @@ export default async function InboxPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: threads, source }, { data: drafts }, { data: members }] = await Promise.all([
+  const [{ data: threads, source }, { data: drafts }, { data: members }, questionKey] = await Promise.all([
     listThreads(org),
     listDrafts(org),
     listMembers(org),
+    getQuestionFor(org, "inbox"),
   ]);
 
   return (
@@ -45,6 +48,8 @@ export default async function InboxPage({
       )}
 
       <div className="mt-6">
+        {/* K4: asked where the answer matters — while reviewing drafts. */}
+        {drafts.length > 0 && <QuestionCard org={org} questionKey={questionKey} />}
         <InboxView
           org={org}
           threads={threads}

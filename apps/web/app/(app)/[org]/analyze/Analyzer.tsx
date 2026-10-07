@@ -92,12 +92,15 @@ export function Analyzer({
   org,
   initialUrl = "",
   autoRun = false,
+  question = null,
 }: {
   org: string;
   /** `?url=` — the address the first-job screen was given (K1). */
   initialUrl?: string;
   /** `?run=1` — start at once, because the person already asked for it. */
   autoRun?: boolean;
+  /** A just-in-time question (K4), shown under the heading. */
+  question?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -183,6 +186,8 @@ export function Analyzer({
           <span className="text-fg-secondary">including when it isn&rsquo;t.</span>
         </p>
       </header>
+
+      {question && <div className="mt-6">{question}</div>}
 
       {/* A rate limit is not a failure, and rendering it as one gives the user
           a "Try again" button for something that will not succeed for another

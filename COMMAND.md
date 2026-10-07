@@ -202,6 +202,23 @@ Card disappears once `completedAt` set, step `done`, or nothing is missing.
 - **Loading:** `[org]/loading.tsx` skeleton (title + 6 rows) for every section; `opportunities/loading.tsx` overrides.
 - **Error:** `[org]/error.tsx` — shell stays up; `ErrorState` "This screen failed to load. Nothing was changed." + `Reference: {digest}` + **Try again** (`reset()` re-renders the segment) + **Go to the home page** (→ `/`). Error sent to Sentry.
 
+#### 1.1.10 Just-in-time questions (`QuestionCard`, K4, `0044`)
+One question at most per screen, picked by `nextQuestion` (`lib/questions/planner.ts`) from the typed catalog (`lib/questions/catalog.ts`) — never invented by a model. Loader `getQuestionFor(org, surface)` reads only the caller's `user_questions` and memory keys.
+
+| Surface | Shown when | Questions (in order, first not yet known) |
+|---|---|---|
+| Dashboard (§6.3) | No LearningNewsCard showing | "In a sentence, what do you sell…?" (only without a product) · "What are you focused on this quarter?" |
+| Inbox (§8.2) | Drafts are waiting | "How do you sign your emails?" · "How long should a first email be?" (Short / Medium / Whatever the message needs) |
+| Ask Huntloop (§9.5) | The conversation has turns | "How do you like answers laid out?" (Answer first / Bullets / Table for numbers) |
+| Analyze (§7.3) | Always | "When you look into a company, what matters most to you?" |
+
+Rules: skipped when the person already stated or Huntloop learned the same key; never asked again once answered or **Don't ask again**; **Not now** snoozes 7 days; at most **3 handled per day** (a card merely shown does not count). Each card says why it asks.
+
+| Element | Action |
+|---|---|
+| Choice buttons / text + **Save** | SA `answerQuestionAction` (`app/(app)/[org]/questions-actions.ts`): validated against the catalog; becomes a **stated** personal preference in the catalog's words (a "whatever" choice stores nothing); `user_questions` → answered; `question_answered` signal → "Thanks — Huntloop will work that way for you. Change it any time under Settings → You." |
+| **Not now** / **Don't ask again** | SA `declineQuestionAction` → snoozed (7 days) / dismissed; the card disappears |
+
 ### 1.2 Shared UI primitives (`packages/ui`) — behaviour contracts used everywhere
 
 | Primitive | Interaction contract |
@@ -625,6 +642,8 @@ The **first chosen goal** then moves its section to the top and replaces the lea
 ### 6.3 Personalised sections
 Section order and the lead sentence follow the person's role and **goals — the person's own (`profiles.goals`, `0044`) when set, the workspace's otherwise** (`getOnboardingState`).
 
+**QuestionCard** (§1.1.10, surface `dashboard`) — when the LearningNewsCard is not showing.
+
 **LearningNewsCard** "Huntloop noticed how you work" — when learned preferences were created since the person last pressed **Got it** (`preference_state.reviewed_at`), or proposals are waiting: lists up to three, **Review or undo** → `/{org}/settings/you`, **Got it** → SA `acknowledgeLearningAction` (hides it until something new is learned; proposals keep it visible).
 
 **PersonalStartCard** "Your workspace is ready" — only for a personal workspace (`workspace_kind = 'personal'`) with no active ICP, above the sections: **Research a company** → `/{org}/analyze` · **Import a list** → `/{org}/imports` · **Find customers for me** → `/welcome/company?org={org}` (the company steps of §4.2–§4.7 on the existing workspace; saving the company step renames it and sets `workspace_kind = 'company'`).
@@ -781,7 +800,7 @@ Success closes the form and the message shows above the list (M-07 fixed); the r
 **Reached from:** company names on Companies (§7.2). One company across every profile it fits: **Opportunities** (each a company × profile pair → opportunity detail) and **Not qualified yet**; **History** — one timeline across all its opportunities; the opportunity brief sections computed for the company; **People on file** (LinkedIn links); **Funding and leadership**.
 
 ### 7.3 Analyze a URL `/{org}/analyze[?url=][&run=1]`
-**`?url=`** prefills the input; **`&run=1`** (from the first-job screen, §4.1b) starts the analysis once on load and then `router.replace`s the address without `run`, so a refresh does not spend a second run.
+**QuestionCard** under the heading (§1.1.10, surface `analyze`). **`?url=`** prefills the input; **`&run=1`** (from the first-job screen, §4.1b) starts the analysis once on load and then `router.replace`s the address without `run`, so a refresh does not spend a second run.
 
 **Reached from:** first-job screen (Research), Hunt rail, dashboard header + chip, opportunities header/empty state, jump-to. **Viewer without spend rights → `PermissionDenied` (required role: member)**.
 
@@ -885,6 +904,7 @@ sequenceDiagram
 |---|---|
 | **Approve** | SA `approveMessageAction` (as before); disabled with reason when no recipient |
 | **Edit** → Subject / Body → **Save changes** / **Cancel** | SA `editDraftAction`: keeps recipient/step/evidence; stores the AI original once (`original_subject`/`original_body_text`), `edited_by/at`; stays unapproved — "Saved. It still waits for your approval." An AI draft's edit is also measured (`editFeatures`: words, greeting, sign-off, bullets, exclamation marks, deleted phrases) into a `draft_edited` signal (K3) |
+| **QuestionCard** above the queue (§1.1.10, surface `inbox`) | Only while drafts are waiting |
 | **Redraft with a note** (AI drafts in a campaign) → What should change? → **Redraft** / **Cancel** | SA `redraftAction`: puts the enrollment back on the draft's step with `enrollments.redraft_note`, withdraws the draft, records a `draft_regenerated` signal → "Redrafting with your note. The new draft appears here within a few minutes." The engine's next tick writes the step again with the note as a **task-only instruction** (highest precedence, never a memory) and clears it. Without `0044`: refused with a sentence, nothing withdrawn |
 | **Written with N preferences** (disclosure; shown when the draft recorded `applied_memory_ids`, `0044`) | Lists each preference the writer was given: the viewer's own ("Yours" / "Learned about you") with **Not here** (SA `dismissAppliedAction` — one contradiction + an `applied_dismissed` signal) and **Stop using it** (SA `setPreferenceStatusAction` → paused); workspace ones labelled "Workspace"; the sender's private ones counted only ("N of the sender's personal preferences — private to them"); **Manage your preferences** → `/{org}/settings/you`. Drafts are written with the sender's preferences: the opportunity owner, or a one-person workspace's member (`loadGuidance`) |
 | **Reject** → Why (optional) → **Reject draft** / **Cancel** | SA `rejectDraftAction` (an AI draft's rejection is also a `draft_rejected` signal, with the reason): soft-deletes with `rejected_by/at/reason` (timeline: "Draft rejected"); parks its enrollment — "Rejected. Its sequence is paused so nothing follows up on it." |
@@ -982,6 +1002,7 @@ Personal memories are not listed here at all — they live on Settings → You (
 | **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`). A follow-up that corrects the last answer ("shorter", "as bullets", "from now on…" — `isCorrection`) is recorded as an `assistant_correction` signal (K3). The asker's own preferences (§10.8) are passed as *how this person likes answers* — style only, never citable; workspace memories stay citable records (K2) |
 | Answer: **Based on** citations | Each cited record links to its page; with nothing on file the answer says **Not in your records** |
 | Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `savePreferenceAction` (remember → your own private preference, category "About you", listed under Settings → You) |
+| **QuestionCard** above the conversation (§1.1.10, surface `assistant`) | Once the conversation has turns |
 | **Written with N preferences** under a stored answer | Same disclosure as Inbox drafts (§8.2); ids stored in `conversation_messages.applied_memory_ids` |
 | Clear the conversation | SA `clearAssistantAction` deletes this person's turns |
 | No model key / demo | **Worked example** |
@@ -1585,7 +1606,7 @@ Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization
 | **K1** Individual entry | "What do you want to get done first?" after You (§4.1b); personal workspace without a website; Analyze `?url=&run=1` (§7.3); dashboard PersonalStartCard and personal goals (§6.3); a personal workspace becomes a company one through the company step. Feature-level prompts for what a feature still needs arrive with K4's question planner | **Shipped** (this branch) |
 | **K2** Settings → You | §10.8: You told us / Learned / Waiting for you / Shared by teammates / Workspace policy; correct, pause, forget, share, promote; pause learning; reset; export. "Written with" on drafts (§8.2) and answers (§9.5); the assistant reads the asker's preferences; `recordSignal` (`lib/data/signals.ts`) is the single, pause-aware signal writer | **Shipped** (this branch) |
 | **K3** Learn from corrections | Signals: draft edited (measured), rejected, **redraft with a note** (§8.2), assistant corrections (§9.5), score overrides and ruled-out companies with a reason. Hourly sweeper `schedule_preferences` → `learn_preferences` per person: `styleCandidates` (`packages/db/src/style.ts`, counted, ≥ 3 examples on ≥ 2 drafts) + `infer_preferences` (Sonnet, only for new typed notes, ≥ 3 cited); merged by key — stated and declined items are never overwritten; style applies itself, targeting is proposed; evidence linked; signals kept 180 days. Dashboard LearningNewsCard (§6.3). Decay and contradiction from K0's `confidenceOf` | **Shipped** (this branch) |
-| **K4** Just-in-time questions | Typed catalog, planner, budget (1 per screen, 3 per day), surfaces | Planned |
+| **K4** Just-in-time questions | §1.1.10: six typed questions on Dashboard, Inbox, Ask Huntloop and Analyze; `nextQuestion` (1 per screen, 3 handled per day, snooze 7 days, never repeats, skips what is known); answers become stated preferences in the catalog's words | **Shipped** (this branch) |
 | **K5** Broader learning | Research patterns, output formats, recurring tasks, high-risk targeting proposals | Planned |
 | **K6** Measurement | Per-person edit trend, undo rate, questions per day | Planned |
 
@@ -1824,6 +1845,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **K4 shipped on `feat/personal-learning`**: just-in-time questions (§1.1.10). |
 | 2026-10-07 | **K3 shipped on `feat/personal-learning`**: signals from edits, rejections, redrafts, corrections, overrides and losses; the per-person learner; Redraft with a note; I-noticed card. Found on the way: K0's draft insert named `applied_memory_ids` unconditionally, which would have failed every draft on a database without `0044` — the insert now retries without it. |
 | 2026-10-07 | **K2 shipped on `feat/personal-learning`**: Settings → You (§10.8), Written-with on drafts and assistant answers, assistant reads the asker's preferences, Memory shows only workspace knowledge. Found on the way: the assistant presented a person's own memories to the model as "a note the team taught Huntloop" — now passed as answer preferences. |
 | 2026-10-07 | **K1 shipped on `feat/personal-learning`**: first-job fork `/welcome/start` (§4.1b), personal workspaces, Analyze `?url=&run=1` (§7.3), PersonalStartCard and personal goals (§6.3). Nobody is sent to company research by default any more. |

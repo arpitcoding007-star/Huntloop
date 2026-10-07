@@ -1,3 +1,5 @@
+import { QuestionCard } from "../QuestionCard";
+import { getQuestionFor } from "../../../../lib/data/questions";
 import { PermissionDenied } from "@huntloop/ui";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { Analyzer } from "./Analyzer";
@@ -42,7 +44,15 @@ export default async function AnalyzePage({
   }
 
   const initialUrl = (url ?? "").trim().slice(0, 2048);
-  return <Analyzer org={org} initialUrl={initialUrl} autoRun={run === "1" && Boolean(initialUrl)} />;
+  const questionKey = await getQuestionFor(org, "analyze");
+  return (
+    <Analyzer
+      org={org}
+      initialUrl={initialUrl}
+      autoRun={run === "1" && Boolean(initialUrl)}
+      question={<QuestionCard org={org} questionKey={questionKey} />}
+    />
+  );
 }
 
 export const metadata = { title: "Analyze a URL" };

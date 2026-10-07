@@ -1,3 +1,5 @@
+import { QuestionCard } from "../QuestionCard";
+import { getQuestionFor } from "../../../../lib/data/questions";
 import { Fragment, type ReactNode } from "react";
 import { HuntNowButton } from "./HuntNowButton";
 import Link from "next/link";
@@ -93,7 +95,7 @@ export default async function DashboardPage({
   const { org } = await params;
   /* `chrome` is the layout's own request-cached lookup, so the eyebrow can
      name the workspace — not echo the URL slug — at no extra cost. */
-  const [viewer, { data }, onboarding, icpQuality, nudge, chrome, learningNews] = await Promise.all([
+  const [viewer, { data }, onboarding, icpQuality, nudge, chrome, learningNews, questionKey] = await Promise.all([
     currentViewer(org),
     getDashboard(org),
     getOnboardingState(org),
@@ -101,6 +103,7 @@ export default async function DashboardPage({
     getNudge(org),
     getShellChrome(org),
     getLearningNews(org),
+    getQuestionFor(org, "dashboard"),
   ]);
 
   /* The layout this person gets. Order and defaults only — never capability;
@@ -552,6 +555,8 @@ export default async function DashboardPage({
         {/* A personal workspace (K1) that has not said what it sells yet: what
             it can do now, and the way into the part that needs a company. */}
         {learningNews && <LearningNewsCard org={org} news={learningNews} />}
+        {/* K4: one question at most, and only when nothing above is asking. */}
+        {!learningNews && <QuestionCard org={org} questionKey={questionKey} />}
 
         {onboarding?.workspaceKind === "personal" && !onboarding.hasIcp && (
           <PersonalStartCard org={org} />
