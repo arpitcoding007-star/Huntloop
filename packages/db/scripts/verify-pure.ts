@@ -70,7 +70,7 @@ import {
   orderPreferences,
   type PreferenceRow,
 } from "../src/preferences.ts";
-import { editFeatures, styleCandidates, type StyleSignal } from "../src/style.ts";
+import { changeRatio, editFeatures, styleCandidates, type StyleSignal } from "../src/style.ts";
 
 let failures = 0;
 let checks = 0;
@@ -894,6 +894,10 @@ console.log("\nstyle — habits are counted, not guessed (0044)");
     ...["a", "b", "c", "d", "e"].map((id, i) => sig(id, `d${i}`, { wordsBefore: 100, wordsAfter: 60 })),
     sig("z", "d9", { wordsBefore: 100, wordsAfter: 140 }),
   ]);
+  expectEqual("a draft approved as written changed by nothing", changeRatio("Hi Sam, quick note.", "Hi Sam, quick note."), 0);
+  expectEqual("moving a sentence costs nothing", changeRatio("One two. Three four.", "Three four. One two."), 0);
+  expectEqual("a full rewrite is a full change", changeRatio("alpha beta", "gamma delta"), 1);
+  expect("half kept is about half changed", Math.abs(changeRatio("a b c d", "a b x y") - 0.5) < 1e-9);
   expectEqual(
     "and the odd one out is recorded against it",
     mostly.find((c) => c.key === "email.length")?.contradictingIds,

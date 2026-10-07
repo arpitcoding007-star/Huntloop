@@ -208,3 +208,25 @@ export function styleCandidates(signals: StyleSignal[]): StyleCandidate[] {
 function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/**
+ * How much of a draft a person changed, 0–1 (K6): one minus the share of
+ * words the two versions have in common, counted as multisets so moving a
+ * sentence costs nothing and rewriting it costs everything. 0 = approved as
+ * written; 1 = nothing kept.
+ */
+export function changeRatio(before: string, after: string): number {
+  const bag = (text: string) => {
+    const counts = new Map<string, number>();
+    for (const w of text.toLowerCase().match(/[\p{L}\p{N}'’]+/gu) ?? []) counts.set(w, (counts.get(w) ?? 0) + 1);
+    return counts;
+  };
+  const a = bag(before);
+  const b = bag(after);
+  const size = (m: Map<string, number>) => [...m.values()].reduce((n, c) => n + c, 0);
+  const longest = Math.max(size(a), size(b));
+  if (longest === 0) return 0;
+  let common = 0;
+  for (const [w, c] of a) common += Math.min(c, b.get(w) ?? 0);
+  return 1 - common / longest;
+}

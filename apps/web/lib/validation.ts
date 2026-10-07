@@ -782,6 +782,17 @@ export const personalPreferenceSchema = z.object({
   appliesTo: z.array(z.enum(PREFERENCE_TASK_VALUES)).max(PREFERENCE_TASK_VALUES.length).default([]),
 });
 
+/** A just-in-time question (K4): which one, and the answer as typed or chosen. */
+export const questionAnswerSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_.]{1,80}$/, "That question isn't one Huntloop asks."),
+  answer: z.string().trim().max(300, "Keep it under 300 characters."),
+});
+
+export const questionDeclineSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_.]{1,80}$/, "That question isn't one Huntloop asks."),
+  mode: z.enum(["later", "never"]),
+});
+
 /** "What do you want to get done first?" (K1). A URL only for `research`. */
 export const firstJobSchema = z
   .object({

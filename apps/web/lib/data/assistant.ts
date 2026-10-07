@@ -2,6 +2,7 @@ import "server-only";
 import { currentUserId, requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 import { writtenWith, type WrittenWith } from "./written-with";
+import { recurringQuestions, type RecurringQuestion } from "../learning/recurring";
 
 /** One stored turn of the workspace assistant (0041), for replay on the page. */
 export interface AssistantHistoryTurn {
@@ -57,4 +58,42 @@ export async function getAssistantHistory(orgSlug: string): Promise<Loaded<Assis
     },
     () => [],
   );
+}
+
+/**
+ * The questions this person asks again and again (K5) — from their own turns
+ * in the last 60 days, offered back as one-click suggestions.
+ */
+export async function getUsualQuestions(orgSlug: string): Promise<RecurringQuestion[]> {
+  const { data } = await load<RecurringQuestion[]>(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getUsualQuestions");
+      const userId = await currentUserId(db);
+      if (!userId) return [];
+      const { data: conversation } = await db
+        .from("conversations")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("user_id", userId)
+        .eq("scope", "workspace")
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!conversation) return [];
+      const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+      const { data: turns } = await db
+        .from("conversation_messages")
+        .select("content, created_at")
+        .eq("org_id", orgId)
+        .eq("conversation_id", conversation.id)
+        .eq("role", "user")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      return recurringQuestions(
+        ((turns ?? []) as { content: string; created_at: string }[]).map((t) => ({ content: String(t.content), at: String(t.created_at) })),
+      );
+    },
+    () => [],
+  );
+  return data;
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import { APPLY_THRESHOLD, PREFERENCE_CATEGORIES, confidenceOf, type PreferenceCategory } from "@huntloop/db/preferences";
+import { changeRatio } from "@huntloop/db/style";
 import { canAdmin, currentViewer } from "./membership";
 import { currentUserId, requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
@@ -332,6 +333,81 @@ export async function getLearningNews(orgSlug: string): Promise<LearningNews | n
       return items.length || proposed ? { learned: items, proposed } : null;
     },
     () => null,
+  );
+  return data;
+}
+
+/**
+ * Is it working? (K6) — whether Huntloop needs less correction over time,
+ * measured on the person's own approvals: how much they changed AI drafts
+ * before approving them, this 30 days against the 30 before.
+ */
+export interface LearningTrend {
+  recent: { drafts: number; edited: number; averageChange: number | null };
+  previous: { drafts: number; edited: number; averageChange: number | null };
+  activeLearned: number;
+  questionsAnswered: number;
+  /** "Not here" on a Written-with list, last 30 days. */
+  dismissed: number;
+}
+
+export async function getLearningTrend(orgSlug: string): Promise<LearningTrend | null> {
+  const { data } = await load<LearningTrend | null>(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getLearningTrend");
+      const me = await currentUserId(db);
+      if (!me) return null;
+      const now = Date.now();
+      const thirty = new Date(now - 30 * 86_400_000).toISOString();
+      const sixty = new Date(now - 60 * 86_400_000).toISOString();
+
+      const [drafts, learned, answered, dismissed] = await Promise.all([
+        db
+          .from("messages")
+          .select("body_text, original_body_text, edited_at, approved_at")
+          .eq("org_id", orgId)
+          .eq("ai_generated", true)
+          .eq("approved_by", me)
+          .gte("approved_at", sixty)
+          .limit(1000),
+        db.from("memories").select("id", { count: "exact", head: true })
+          .eq("org_id", orgId).eq("scope", "user").eq("scope_id", me)
+          .eq("origin", "learned").eq("status", "active").is("deleted_at", null),
+        db.from("user_questions").select("question_key", { count: "exact", head: true })
+          .eq("org_id", orgId).eq("user_id", me).eq("status", "answered"),
+        db.from("preference_signals").select("id", { count: "exact", head: true })
+          .eq("org_id", orgId).eq("user_id", me).eq("kind", "applied_dismissed").gte("created_at", thirty),
+      ]);
+      if (learned.error || answered.error) return null;
+
+      const window = (from: string, to: string | null) => {
+        const rows = ((drafts.data ?? []) as { body_text: string | null; original_body_text: string | null; edited_at: string | null; approved_at: string }[])
+          .filter((r) => r.approved_at >= from && (to === null || r.approved_at < to));
+        const changes = rows.map((r) =>
+          r.edited_at && r.original_body_text ? changeRatio(r.original_body_text, r.body_text ?? "") : 0,
+        );
+        return {
+          drafts: rows.length,
+          edited: rows.filter((r) => r.edited_at).length,
+          averageChange: changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null,
+        };
+      };
+
+      return {
+        recent: window(thirty, null),
+        previous: window(sixty, thirty),
+        activeLearned: learned.count ?? 0,
+        questionsAnswered: answered.count ?? 0,
+        dismissed: dismissed.count ?? 0,
+      };
+    },
+    () => ({
+      recent: { drafts: 18, edited: 5, averageChange: 0.09 },
+      previous: { drafts: 14, edited: 9, averageChange: 0.27 },
+      activeLearned: 2,
+      questionsAnswered: 3,
+      dismissed: 1,
+    }),
   );
   return data;
 }

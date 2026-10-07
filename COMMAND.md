@@ -1003,6 +1003,7 @@ Personal memories are not listed here at all — they live on Settings → You (
 | Answer: **Based on** citations | Each cited record links to its page; with nothing on file the answer says **Not in your records** |
 | Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `savePreferenceAction` (remember → your own private preference, category "About you", listed under Settings → You) |
 | **QuestionCard** above the conversation (§1.1.10, surface `assistant`) | Once the conversation has turns |
+| **Your usual questions** (chips above the input) | Questions this person asked on ≥ 2 different days in the last 60 days, latest wording, at most 3 (`getUsualQuestions` → `recurringQuestions`; computed from their own turns, nothing stored; clearing the conversation clears them). Click → asks it |
 | **Written with N preferences** under a stored answer | Same disclosure as Inbox drafts (§8.2); ids stored in `conversation_messages.applied_memory_ids` |
 | Clear the conversation | SA `clearAssistantAction` deletes this person's turns |
 | No model key / demo | **Worked example** |
@@ -1165,7 +1166,7 @@ Endpoint: connected → "Push to HubSpot" appears on every opportunity detail (�
 | **Pause learning** / **Resume learning** | SA `setLearningPausedAction` → `profiles.learning_paused`; while paused `recordSignal` writes nothing; what exists still applies |
 | **Export** | SA `exportMyLearningAction` → RPC `export_my_learning` → JSON download (your memories, signals, questions) |
 | **Reset what it learned** (ConfirmButton "Reset — keep what I told it") | SA `resetLearnedAction` → soft-deletes your learned memories, deletes your signals |
-| **Waiting for you** (proposed, high-risk — e.g. targeting) → **Yes, do this** / **No** | SA `setPreferenceStatusAction` → active (counts as reinforcement) / rejected (never proposed again) |
+| **Waiting for you** (proposed, high-risk — e.g. targeting; a targeting item says yes changes the agent and Ask Huntloop only, with a link to **add it to the ideal customer profile** → `/{org}/settings/icp` for discovery and scoring) → **Yes, do this** / **No** | SA `setPreferenceStatusAction` → active (counts as reinforcement) / rejected (never proposed again) |
 | **You told us** — stated and adopted items; **Add a preference** → form: What should Huntloop do?* · What it's about (category) · Use it for (Emails Huntloop drafts / Ask Huntloop / The opportunity agent; none = everything) → **Save** | SA `savePreferenceAction` (user scope, `origin='stated'`, `risk` from category) |
 | **Learned from how you work** — each with "Learned · N examples", category, tasks, Paused / Fading / Shared badges, and **Why Huntloop thinks this** (the cited signals, newest first) | — |
 | Per item: **Edit** / **Correct** | Opens the form; saving a learned item turns it into a stated one (Note says so) |
@@ -1174,6 +1175,7 @@ Endpoint: connected → "Push to HubSpot" appears on every opportunity detail (�
 | Per item (admins): **Make it workspace policy** | SA `promotePreferenceAction` → organisation-scope copy, `origin='promoted'`, `promoted_from`; appears in Memory |
 | Per item: **Forget** (ConfirmButton) | SA `forgetPreferenceAction`: stated → soft-deleted; learned → kept as rejected so it is not learned again; evidence links deleted |
 | **Shared by teammates** (admins; hides anything already adopted) → **Make it workspace policy** | SA `promotePreferenceAction` |
+| **Is it working?** (K6) — StatCards | **Changed per draft, last 30 days** (average `changeRatio` between the AI original and what you approved; 0% for drafts approved unedited) vs the 30 days before · **Drafts you approved** (n edited first) · **Learned and in use** · **Questions answered** (+ "Not here" count). Loader `getLearningTrend` |
 | **Workspace policy** (read-only) | Active organisation memories; "Adopted from a teammate" / "Learned" badges. "Where one of yours says otherwise, yours wins for you" |
 
 Empty states: "Nothing yet" (with examples) for You told us; "Nothing learned yet" for Learned.
@@ -1607,8 +1609,8 @@ Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization
 | **K2** Settings → You | §10.8: You told us / Learned / Waiting for you / Shared by teammates / Workspace policy; correct, pause, forget, share, promote; pause learning; reset; export. "Written with" on drafts (§8.2) and answers (§9.5); the assistant reads the asker's preferences; `recordSignal` (`lib/data/signals.ts`) is the single, pause-aware signal writer | **Shipped** (this branch) |
 | **K3** Learn from corrections | Signals: draft edited (measured), rejected, **redraft with a note** (§8.2), assistant corrections (§9.5), score overrides and ruled-out companies with a reason. Hourly sweeper `schedule_preferences` → `learn_preferences` per person: `styleCandidates` (`packages/db/src/style.ts`, counted, ≥ 3 examples on ≥ 2 drafts) + `infer_preferences` (Sonnet, only for new typed notes, ≥ 3 cited); merged by key — stated and declined items are never overwritten; style applies itself, targeting is proposed; evidence linked; signals kept 180 days. Dashboard LearningNewsCard (§6.3). Decay and contradiction from K0's `confidenceOf` | **Shipped** (this branch) |
 | **K4** Just-in-time questions | §1.1.10: six typed questions on Dashboard, Inbox, Ask Huntloop and Analyze; `nextQuestion` (1 per screen, 3 handled per day, snooze 7 days, never repeats, skips what is known); answers become stated preferences in the catalog's words | **Shipped** (this branch) |
-| **K5** Broader learning | Research patterns, output formats, recurring tasks, high-risk targeting proposals | Planned |
-| **K6** Measurement | Per-person edit trend, undo rate, questions per day | Planned |
+| **K5** Broader learning | **Shipped:** recurring questions as "Your usual questions" (§9.5); targeting proposals from overrides and losses (K3) with the ICP link (§10.8); answer format from corrections and the question (K3/K4). **Deferred:** learning research focus from which companies are analysed, and recurring-task digests — both need usage tracking the product does not do today (§16.6 rejects time tracking); revisit with an explicit opt-in | **Partly shipped** (this branch) |
+| **K6** Measurement | "Is it working?" on Settings → You (§10.8): change per approved draft this 30 days vs the previous 30, drafts edited, learned items in use, questions answered, "Not here" count. `changeRatio` in `packages/db/src/style.ts` | **Shipped** (this branch) |
 
 ### 16.4 Phases
 
@@ -1845,6 +1847,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **K5 (partly) and K6 shipped on `feat/personal-learning`**: usual questions in Ask Huntloop, targeting proposals link to the ICP, "Is it working?" on Settings → You. Research-focus learning and recurring-task digests deferred (need usage tracking). |
 | 2026-10-07 | **K4 shipped on `feat/personal-learning`**: just-in-time questions (§1.1.10). |
 | 2026-10-07 | **K3 shipped on `feat/personal-learning`**: signals from edits, rejections, redrafts, corrections, overrides and losses; the per-person learner; Redraft with a note; I-noticed card. Found on the way: K0's draft insert named `applied_memory_ids` unconditionally, which would have failed every draft on a database without `0044` — the insert now retries without it. |
 | 2026-10-07 | **K2 shipped on `feat/personal-learning`**: Settings → You (§10.8), Written-with on drafts and assistant answers, assistant reads the asker's preferences, Memory shows only workspace knowledge. Found on the way: the assistant presented a person's own memories to the model as "a note the team taught Huntloop" — now passed as answer preferences. |

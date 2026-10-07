@@ -1,6 +1,6 @@
 # Personal mode, adaptive onboarding and the learning layer — implementation plan
 
-Status: **Proposed** (2026-10-07). Not yet in COMMAND.md §16; add it as §16.3-K once accepted.
+Status: **Implemented on branch `feat/personal-learning`** (2026-10-07) — K0–K4 and K6 shipped, K5 partly (research-focus learning and recurring-task digests deferred). The live record, with every screen and action, is COMMAND.md §16.3-K, §1.1.10, §10.8.
 
 ## 1. Goal
 

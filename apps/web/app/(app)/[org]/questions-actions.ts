@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../lib/data/org";
 import { recordSignal } from "../../../lib/data/signals";
+import { parseForm, questionAnswerSchema, questionDeclineSchema } from "../../../lib/validation";
 import { questionByKey } from "../../../lib/questions/catalog";
 import { SNOOZE_DAYS } from "../../../lib/questions/planner";
 
@@ -20,9 +21,11 @@ export async function answerQuestionAction(
   key: string,
   answer: string,
 ): Promise<ActionResult<undefined>> {
-  const q = questionByKey(key);
+  const parsed = parseForm(questionAnswerSchema, { key, answer });
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+  const q = questionByKey(parsed.value.key);
   if (!q) return fail("That question isn't one Huntloop asks.");
-  const text = String(answer ?? "").trim();
+  const text = parsed.value.answer;
 
   let preference: string | null;
   if (q.input.kind === "choice") {
@@ -92,9 +95,10 @@ export async function declineQuestionAction(
   key: string,
   mode: "later" | "never",
 ): Promise<ActionResult<undefined>> {
-  const q = questionByKey(key);
+  const parsed = parseForm(questionDeclineSchema, { key, mode });
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+  const q = questionByKey(parsed.value.key);
   if (!q) return fail("That question isn't one Huntloop asks.");
-  if (mode !== "later" && mode !== "never") return fail("That isn't an option.");
 
   return mutate(
     org,

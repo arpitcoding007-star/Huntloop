@@ -2,7 +2,7 @@ import { QuestionCard } from "../QuestionCard";
 import { getQuestionFor } from "../../../../lib/data/questions";
 import { notFound } from "next/navigation";
 import { isAiConfigured } from "@huntloop/ai";
-import { getAssistantHistory } from "../../../../lib/data/assistant";
+import { getAssistantHistory, getUsualQuestions } from "../../../../lib/data/assistant";
 import { canSpend, canWrite, currentViewer } from "../../../../lib/data/membership";
 import { getDb } from "../../../../lib/data/source";
 import { DemoFigures } from "../DemoFigures";
@@ -23,9 +23,10 @@ export default async function AssistantPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: history, source }, questionKey] = await Promise.all([
+  const [{ data: history, source }, questionKey, usual] = await Promise.all([
     getAssistantHistory(org),
     getQuestionFor(org, "assistant"),
+    getUsualQuestions(org),
   ]);
   const db = await getDb();
   const userId = db ? ((await db.auth.getUser()).data.user?.id ?? null) : null;
@@ -50,6 +51,7 @@ export default async function AssistantPage({
         <AssistantChat
           org={org}
           history={history}
+          usual={usual}
           userId={userId}
           canAsk={canSpend(viewer) && source === "live"}
           canWrite={canWrite(viewer)}

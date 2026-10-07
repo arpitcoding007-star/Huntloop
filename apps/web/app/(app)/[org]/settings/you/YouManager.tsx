@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Badge,
   Button,
@@ -10,10 +11,12 @@ import {
   FormMessage,
   Note,
   Select,
+  StatCard,
+  StatGrid,
   Textarea,
 } from "@huntloop/ui";
 import { Download, Pause, Play, Plus, RotateCcw, Share2, Trash2, Undo2 } from "lucide-react";
-import type { MyLearning, PersonalPreference } from "../../../../../lib/data/personal-learning";
+import type { LearningTrend, MyLearning, PersonalPreference } from "../../../../../lib/data/personal-learning";
 import {
   CATEGORY_LABELS,
   PREFERENCE_CATEGORY_VALUES,
@@ -42,7 +45,17 @@ type Result = { ok: true; message?: string } | { ok: false; error: string } | nu
  *   Learned           concluded from what you did, each with its evidence
  *   Workspace policy  the team's — yours win where they disagree
  */
-export function YouManager({ org, learning, live }: { org: string; learning: MyLearning; live: boolean }) {
+export function YouManager({
+  org,
+  learning,
+  trend = null,
+  live,
+}: {
+  org: string;
+  learning: MyLearning;
+  trend?: LearningTrend | null;
+  live: boolean;
+}) {
   const [result, setResult] = useState<Result>(null);
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState<PersonalPreference | "new" | null>(null);
@@ -163,6 +176,16 @@ export function YouManager({ org, learning, live }: { org: string; learning: MyL
             {proposed.map((p) => (
               <li key={p.id} className="rounded-md border border-warning-border bg-surface p-3">
                 <PreferenceBody p={p} />
+                {p.category === "targeting" && (
+                  <p className="mt-1.5 text-[12px] text-fg-muted">
+                    Saying yes makes the opportunity agent and Ask Huntloop work this way for you. It
+                    doesn&rsquo;t change which companies are found or how they&rsquo;re scored — for that,{" "}
+                    <Link href={`/${org}/settings/icp`} className="hl-focusable rounded-sm font-medium text-fg underline decoration-dotted underline-offset-2">
+                      add it to the ideal customer profile
+                    </Link>
+                    .
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Button size="sm" variant="primary" disabled={!live || pending}
                     onClick={() => run(() => setPreferenceStatusAction(org, p.id, "active"))}>
@@ -255,6 +278,32 @@ export function YouManager({ org, learning, live }: { org: string; learning: MyL
         </section>
       )}
 
+      {/* ── Is it working? (K6) ──────────────────────────────────────────── */}
+      {trend && (
+        <section aria-labelledby="you-trend">
+          <SectionHeading id="you-trend" title="Is it working?"
+            hint="How much you change Huntloop's drafts before approving them — it should fall as Huntloop learns how you write." />
+          <StatGrid className="mt-3" columns={4}>
+            <StatCard
+              label="Changed per draft, last 30 days"
+              value={percent(trend.recent.averageChange)}
+              hint={trend.previous.averageChange === null ? "Nothing to compare with yet" : `${percent(trend.previous.averageChange)} the 30 days before`}
+            />
+            <StatCard
+              label="Drafts you approved"
+              value={trend.recent.drafts}
+              hint={`${trend.recent.edited} edited first`}
+            />
+            <StatCard label="Learned and in use" value={trend.activeLearned} aiGenerated />
+            <StatCard
+              label="Questions answered"
+              value={trend.questionsAnswered}
+              hint={trend.dismissed ? `${trend.dismissed} "Not here" in 30 days` : undefined}
+            />
+          </StatGrid>
+        </section>
+      )}
+
       {/* ── Workspace policy ─────────────────────────────────────────────── */}
       <section aria-labelledby="you-workspace">
         <SectionHeading id="you-workspace" title="Workspace policy"
@@ -278,6 +327,10 @@ export function YouManager({ org, learning, live }: { org: string; learning: MyL
       </section>
     </div>
   );
+}
+
+function percent(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value * 100)}%`;
 }
 
 function SectionHeading({ id, title, hint }: { id: string; title: string; hint: string }) {

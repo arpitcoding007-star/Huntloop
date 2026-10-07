@@ -54,6 +54,7 @@ function fromHistory(history: AssistantHistoryTurn[]): Turn[] {
 export function AssistantChat({
   org,
   history,
+  usual = [],
   userId,
   canAsk,
   canWrite,
@@ -61,6 +62,8 @@ export function AssistantChat({
 }: {
   org: string;
   history: AssistantHistoryTurn[];
+  /** Questions this person asks again and again (K5). */
+  usual?: { text: string; days: number }[];
   userId: string | null;
   canAsk: boolean;
   canWrite: boolean;
@@ -139,6 +142,20 @@ export function AssistantChat({
         <p role="alert" className="text-[13px] text-danger">
           {error}
         </p>
+      )}
+
+      {canAsk && usual.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Your usual questions</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {usual.map((q) => (
+              <Button key={q.text} size="sm" variant="secondary" disabled={pending} onClick={() => ask(q.text)}
+                title={`You asked this on ${q.days} different days`}>
+                {q.text}
+              </Button>
+            ))}
+          </div>
+        </div>
       )}
 
       {canAsk ? (
