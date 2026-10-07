@@ -26,9 +26,9 @@ import { canonicalizeDomain } from "@huntloop/db/identity";
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; d?: string; org?: string }>;
+  searchParams: Promise<{ new?: string; d?: string; org?: string; edit?: string }>;
 }) {
-  const { new: isNew, d, org } = await searchParams;
+  const { new: isNew, d, org, edit } = await searchParams;
   await captureForViewer("onboarding_step_viewed", { step: "you" });
 
   /* Carried from `/discover` via signup, so the company step opens with the
@@ -67,7 +67,9 @@ export default async function WelcomePage({
        Unless they came back on purpose: the progress bar and the back link
        carry `?org=`, and a visit with it is somebody editing their answer.
        Forwarding them would make step one a link that can never be reached. */
-    if (profile?.role && !isNew && !org) {
+    /* `?edit=1` is the start screen's "Back to You" — somebody changing an
+       answer before they have a workspace, which `?org=` cannot express. */
+    if (profile?.role && !isNew && !org && !edit) {
       const memberships = await listMemberships();
       const first = memberships?.[0];
       if (first) {
@@ -82,7 +84,9 @@ export default async function WelcomePage({
               : stepPath(first.slug, first.step),
         );
       }
-      redirect(domain ? `/welcome/company?d=${encodeURIComponent(domain)}` : "/welcome/company");
+      /* No workspace yet: ask what they want to do first (K1), rather than
+         assuming it is company research. */
+      redirect(domain ? `/welcome/start?d=${encodeURIComponent(domain)}` : "/welcome/start");
     }
   }
 
@@ -92,8 +96,8 @@ export default async function WelcomePage({
         First — who are you?
       </h1>
       <p className="mt-1.5 max-w-lg text-[14px] leading-[1.6] text-fg-muted">
-        Two questions, then we&rsquo;ll read your website and do the rest.
-        Huntloop lays itself out around how you work.
+        Two questions, then you choose what to do first. Huntloop lays itself
+        out around how you work.
       </p>
 
       <div className="mt-6">

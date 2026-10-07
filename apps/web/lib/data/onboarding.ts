@@ -145,6 +145,8 @@ export interface OnboardingState {
   hasProduct: boolean;
   hasIcp: boolean;
   sourceCount: number;
+  /** `personal`: one person's workspace with no company behind it (0044). */
+  workspaceKind: "company" | "personal";
 }
 
 /**
@@ -180,7 +182,7 @@ export async function getOnboardingState(
      itself and the dashboard falls back to the balanced layout. */
   if (!(await hasOnboardingSchema(db))) return null;
 
-  const [org, profile, product, icp, sources] = await Promise.all([
+  const [org, profile, product, icp, sources, personal] = await Promise.all([
     db
       .from("organizations")
       .select("id, name, slug, onboarding_step, onboarding_completed_at, goals")
@@ -212,6 +214,7 @@ export async function getOnboardingState(
       .eq("org_id", viewer.orgId)
       .eq("is_enabled", true)
       .is("deleted_at", null),
+    personalState(db, viewer.orgId),
   ]);
 
   if (!org.data) return null;
@@ -234,14 +237,37 @@ export async function getOnboardingState(
     // someone who may not need it, rather than skipping setup for someone who
     // does and leaving them with an empty workspace and no explanation.
     step: isStep(row.onboarding_step) ? row.onboarding_step : "you",
-    goals: (row.goals ?? []).filter(isGoal),
+    /* The person's own goals first, the workspace's otherwise. They only
+       rank the dashboard, and a teammate's answer is not this person's. */
+    goals: (personal.goals.length ? personal.goals : (row.goals ?? [])).filter(isGoal),
     completedAt: row.onboarding_completed_at,
     role: isRole(profile?.role) ? profile.role : null,
     fullName: typeof profile?.full_name === "string" ? profile.full_name : null,
     hasProduct: (product.count ?? 0) > 0,
     hasIcp: (icp.count ?? 0) > 0,
     sourceCount: sources.count ?? 0,
+    workspaceKind: personal.kind,
   };
+}
+
+/**
+ * `0044`'s two columns, read apart from the main query so a database that
+ * has not had it yet answers "company, no personal goals" instead of failing
+ * the whole state.
+ */
+async function personalState(
+  db: TenantClient,
+  orgId: string,
+): Promise<{ kind: "company" | "personal"; goals: Goal[] }> {
+  const [org, auth] = await Promise.all([
+    db.from("organizations").select("workspace_kind").eq("id", orgId).maybeSingle(),
+    db.auth.getUser(),
+  ]);
+  const kind = (org.data as { workspace_kind?: string } | null)?.workspace_kind === "personal" ? "personal" : "company";
+  if (!auth.data.user) return { kind, goals: [] };
+  const { data } = await db.from("profiles").select("goals").eq("id", auth.data.user.id).maybeSingle();
+  const goals = (data as { goals?: unknown } | null)?.goals;
+  return { kind, goals: Array.isArray(goals) ? goals.filter(isGoal) : [] };
 }
 
 /**
@@ -522,6 +548,11 @@ export async function saveCompanyStep(
           : { name: understanding.companyName },
       )
       .eq("id", orgId);
+
+    /* A personal workspace that now has a company behind it is a company
+       workspace (K1). Separate and tolerant: before `0044` the column does not
+       exist, and the rename above must not fail for it. */
+    await db.from("organizations").update({ workspace_kind: "company" }).eq("id", orgId);
 
     await advance(db, orgId, await currentStep(db, orgId), "goals");
     revalidatePath(`/${orgSlug}`, "layout");
@@ -870,6 +901,43 @@ export async function completeOnboarding(
   if (await isDemoMode()) return ok(undefined);
 
   return mutate(orgSlug, "completeOnboarding", async ({ db, orgId }) => {
+    await advance(db, orgId, await currentStep(db, orgId), "done");
+    revalidatePath(`/${orgSlug}`, "layout");
+    return ok(undefined);
+  });
+}
+
+/**
+ * A workspace for one person, finished on creation (K1, `0044`).
+ *
+ * Nothing about it needs setting up before it is useful: research, imports
+ * and the assistant work without a product or a profile, and the features
+ * that need one ask for it when they are opened. So the marker goes straight
+ * to `done`, and the person's goals are written to *their* profile — the
+ * org's goals drive the scheduler, which has nothing to schedule here yet.
+ *
+ * Both writes past the first are tolerant of a database without `0044`: the
+ * workspace still opens, it is just not labelled personal.
+ */
+export async function makePersonalWorkspace(
+  orgSlug: string,
+  goals: Goal[],
+): Promise<ActionResult<undefined>> {
+  if (await isDemoMode()) return ok(undefined);
+
+  return mutate(orgSlug, "makePersonalWorkspace", async ({ db, orgId }) => {
+    const { error: kindError } = await db
+      .from("organizations")
+      .update({ workspace_kind: "personal" })
+      .eq("id", orgId);
+    if (kindError) console.error(`makePersonalWorkspace(kind): ${kindError.message}`);
+
+    const { data: auth } = await db.auth.getUser();
+    if (auth.user && goals.length) {
+      const { error: goalError } = await db.from("profiles").update({ goals }).eq("id", auth.user.id);
+      if (goalError) console.error(`makePersonalWorkspace(goals): ${goalError.message}`);
+    }
+
     await advance(db, orgId, await currentStep(db, orgId), "done");
     revalidatePath(`/${orgSlug}`, "layout");
     return ok(undefined);

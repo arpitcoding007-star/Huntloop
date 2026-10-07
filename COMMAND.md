@@ -4,7 +4,7 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-10-06** against branch `feat/p3-p6-roadmap` (P0–P6 of §16; P3–P6 in PR #2).
+> Last full sync: **2026-10-07** against branch `feat/personal-learning` (P0–P6 of §16, P3–P6 in PR #2; §16.3-K in progress).
 >
 > **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
@@ -405,11 +405,17 @@ Triggered only by account menu "Sign out" (hidden form POST; CSRF-safe). Supabas
 
 **Shell (`app/(onboarding)/welcome/layout.tsx`):** header logo → `/` (landing then offers "Continue setup"), ThemeToggle, **OnboardingProgress**, step content. Loading skeleton while steps render.
 
-**Visible steps:** 1 You (`/welcome`) → 2 Your company (`/welcome/company`) → 3 Your goals (`/welcome/goals`) → 4 Ideal customer (`/welcome/icp`) → 5 Sources (`/welcome/sources`). Then hidden steps **building** (`/welcome/building`) → **review** (`/welcome/review`) → **done** (`/{org}/dashboard`). The server-side marker is `organizations.onboarding_step`.
+**First-job fork (K1, `0044`):** after step 1 a person with no workspace is asked **"What do you want to get done first?"** (`/welcome/start`, §4.1b). Three answers create a **personal workspace** (no website, `organizations.workspace_kind = 'personal'`, onboarding finished on creation) and land on the work; only **Find new customers for my company** continues into the company steps below.
+
+**Visible steps (company path):** 1 You (`/welcome`) → 2 Your company (`/welcome/company`) → 3 Your goals (`/welcome/goals`) → 4 Ideal customer (`/welcome/icp`) → 5 Sources (`/welcome/sources`). Then hidden steps **building** (`/welcome/building`) → **review** (`/welcome/review`) → **done** (`/{org}/dashboard`). The server-side marker is `organizations.onboarding_step`.
 
 ```mermaid
 flowchart LR
-  Y["1 You"] -->|"saveYou"| C["2 Company"]
+  Y["1 You"] -->|"saveYou"| F["First job /welcome/start"]
+  F -->|"Research a company (startFirstJob)"| AZ["/{org}/analyze?url= (runs once)"]
+  F -->|"Work through a list"| IM2["/{org}/imports"]
+  F -->|"Look around first"| DB2["/{org}/dashboard"]
+  F -->|"Find new customers"| C["2 Company"]
   C -->|"research + save"| G["3 Goals"]
   G -->|"saveGoals"| I["4 ICP"]
   I -->|"saveIcp"| S["5 Sources"]
@@ -433,18 +439,30 @@ Steps 3–7 **require `?org=`**; without it the page redirects to `/welcome/comp
 ### 4.1 Step 1 — "First — who are you?" `/welcome`
 **Server branches (before render):**
 - No session (DB configured) → `/login?next=/welcome`.
-- Profile already has a role **and** no `?new` **and** no `?org` → forward: first membership done → `/{slug}/dashboard`; at you/company → `/welcome/company?org={slug}` (+`&d=`); else → `stepPath`; no membership → `/welcome/company` (+`?d=`).
+- Profile already has a role **and** no `?new`, `?org` or `?edit` → forward: first membership done → `/{slug}/dashboard`; at you/company → `/welcome/company?org={slug}` (+`&d=`); else → `stepPath`; no membership → `/welcome/start` (+`?d=`). `?edit=1` (the start screen's "Back to You") shows the form instead.
 - Otherwise render the form (prefilled name/role).
 
 | Element | Action |
 |---|---|
 | Your name (required, autofocus if empty) | Hint "From your account…" when prefilled |
 | "What do you do?" — 7 role radio cards (Founder or CEO, Founder-led sales/GTM, Sales/AE, SDR/BDR, RevOps/Growth, Marketing, Agency or consultant) | Selects role (drives dashboard layout & agency copy later) |
-| **Continue** (disabled until name + role) | SA `saveYou` → `profiles` updated → returns `next`: existing membership done → `/{slug}/dashboard`; existing unfinished → `/welcome/company?org={slug}`; none → `/welcome/company`. Client appends `d` carry and `router.push` |
+| **Continue** (disabled until name + role) | SA `saveYou` → `profiles` updated → returns `next`: existing membership done → `/{slug}/dashboard`; existing unfinished → `/welcome/company?org={slug}`; none → `/welcome/start` (`/welcome/start?new=1` when `?new=1`). Client appends `d` carry and `router.push` |
 
 Branches: field errors under each field; general error `role=alert`; "Saving…".
 
 > ⚠️ **FLOW MISMATCH M-02** — `/welcome?new=1` ("Create another workspace" on `/orgs`, "Set up another client" dashboard action) renders this step, but `saveYou` ignores `new` and forwards to the **existing** workspace, so a second workspace cannot be created through the UI. See §14.
+
+### 4.1b First job — "What do you want to get done first?" `/welcome/start[?new][&d]`
+**Server branches:** no session → `/login?next=/welcome`; profile has no role → `/welcome`; a membership exists and no `?new` → forwarded as `/welcome` would. No progress bar (it is a fork, not a step).
+
+| Element | Action |
+|---|---|
+| 4 radio cards: **Research a company or account** · **Work through a list I already have** · **Look around first** · **Find new customers for my company** ("…for a client" when role = agency) | Selects the job |
+| **Which company?** (shown for Research; prefilled from `?d`) | Website, required for Research |
+| **Research it** / **Continue** (disabled until a job, and a URL for Research) | SA `startFirstJob({job, url})` (`welcome/actions.ts`). **hunt** → `/welcome/company` (+`?d=`). Otherwise: `provision` a workspace named "{First name}'s workspace" at `/{firstname}` (suffix on collision; reused if it already exists) → `makePersonalWorkspace` (sets `workspace_kind = 'personal'`, writes `profiles.goals` — research/import → qualify, explore → learn — and advances to `done`) → sets the `huntloop.org` cookie → **research** `/{org}/analyze?url={url}&run=1` · **import** `/{org}/imports` · **explore** `/{org}/dashboard` |
+| ← **Back to You** | `/welcome?edit=1` |
+
+Branches: an address that is not a website → "That doesn't look like a website address." under the field; other failures `role=alert`; "Opening…" while pending.
 
 ### 4.2 Step 2 — "What does your company sell?" `/welcome/company[?org][&d]`
 Phases: **input → researching → review → saving**.
@@ -604,6 +622,10 @@ The **first chosen goal** then moves its section to the top and replaces the lea
 | "Analyze a company URL →" | Always | → `/{org}/analyze` |
 
 ### 6.3 Personalised sections
+Section order and the lead sentence follow the person's role and **goals — the person's own (`profiles.goals`, `0044`) when set, the workspace's otherwise** (`getOnboardingState`).
+
+**PersonalStartCard** "Your workspace is ready" — only for a personal workspace (`workspace_kind = 'personal'`) with no active ICP, above the sections: **Research a company** → `/{org}/analyze` · **Import a list** → `/{org}/imports` · **Find customers for me** → `/welcome/company?org={org}` (the company steps of §4.2–§4.7 on the existing workspace; saving the company step renames it and sets `workspace_kind = 'company'`).
+
 | Section | Elements → Destination |
 |---|---|
 | **counts** (Priority) | StatCards Hot / Warm / Watch / Ignore → `/{org}/opportunities?priority=hot\|warm\|watch\|ignore` (pre-filters the table, §7.1) |
@@ -755,8 +777,10 @@ Success closes the form and the message shows above the list (M-07 fixed); the r
 ### 7.2.1 Company detail `/{org}/companies/{id}`
 **Reached from:** company names on Companies (§7.2). One company across every profile it fits: **Opportunities** (each a company × profile pair → opportunity detail) and **Not qualified yet**; **History** — one timeline across all its opportunities; the opportunity brief sections computed for the company; **People on file** (LinkedIn links); **Funding and leadership**.
 
-### 7.3 Analyze a URL `/{org}/analyze`
-**Reached from:** Hunt rail, dashboard header + chip, opportunities header/empty state, jump-to. **Viewer without spend rights → `PermissionDenied` (required role: member)**.
+### 7.3 Analyze a URL `/{org}/analyze[?url=][&run=1]`
+**`?url=`** prefills the input; **`&run=1`** (from the first-job screen, §4.1b) starts the analysis once on load and then `router.replace`s the address without `run`, so a refresh does not spend a second run.
+
+**Reached from:** first-job screen (Research), Hunt rail, dashboard header + chip, opportunities header/empty state, jump-to. **Viewer without spend rights → `PermissionDenied` (required role: member)**.
 
 ```mermaid
 flowchart LR
@@ -1253,7 +1277,7 @@ Closed since the last sync (verified in code): "Check your email" has **Resend**
 | `/discover` | DomainInput | `/signup?d=`, `/login`, `/` |
 | `/login` | Many (see §3.1) | Email → `/auth/callback` → destination |
 | `/signup` | Start free, discover, DomainInput (research off), invite gate | Same as login |
-| `/welcome/*` | Callback (new user), SetupCard, `/orgs` Finish setup, `continueTarget`, invite (new user) | Next step, `/{org}/dashboard`, `/{org}/imports`, `/{org}/settings/*`, `/{org}/team` |
+| `/welcome/*` | Callback (new user), SetupCard, `/orgs` Finish setup, `continueTarget`, invite (new user), dashboard PersonalStartCard (→ `/welcome/company?org=`) | Next step, `/welcome/start` (§4.1b), `/{org}/dashboard`, `/{org}/analyze?url=&run=1`, `/{org}/imports`, `/{org}/settings/*`, `/{org}/team` |
 | `/orgs` | Switcher, account menu, callback (multi) | `/{slug}/dashboard`, `stepPath`, `/welcome?new=1` |
 | `/{org}/dashboard` | Home rail, callback, onboarding finish, `/orgs` | Opportunities (filtered), detail, companies, analyze, sources, outreach, inbox, pipeline, learn, settings/icp, settings/scoring, imports |
 | `/{org}/opportunities` | Hunt rail, dashboard, companies `?company=`, detail back | Detail, analyze, sources |
@@ -1531,7 +1555,7 @@ Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization
 | Phase | Contents | Status |
 |---|---|---|
 | **K0** Foundations | `0044`: personal memories private to their subject (RLS), `memories.origin / category / risk / status / applies_to / support / contradicts / shared_at / promoted_from`, `preference_signals`, `memory_evidence`, `preference_state`, `user_questions`, `profiles.goals / learning_paused`, `organizations.workspace_kind`, `messages` and `conversation_messages.applied_memory_ids`, workspace export without colleagues' personal memories, `export_my_learning`. `resolvePreferences` (`packages/db/src/preferences.ts`) is the one selector; `applicableMemories` is a view of it. Drafts now read the **sender's** preferences (opportunity owner, or a one-person workspace's member) and record which memories they were written with | **Shipped** (this branch) |
-| **K1** Individual entry | "What do you want to get done first?" after You; personal workspace without a website; feature-level gates instead of onboarding gates; personal goals on the dashboard | Planned |
+| **K1** Individual entry | "What do you want to get done first?" after You (§4.1b); personal workspace without a website; Analyze `?url=&run=1` (§7.3); dashboard PersonalStartCard and personal goals (§6.3); a personal workspace becomes a company one through the company step. Feature-level prompts for what a feature still needs arrive with K4's question planner | **Shipped** (this branch) |
 | **K2** Settings → You | What you told us / What we learned / Waiting for you / Workspace policy; correct, pause, forget, share, promote; pause learning; export; "Written with" on drafts and answers | Planned |
 | **K3** Learn from corrections | Signals from draft edits, rejections, regenerations and assistant corrections; deterministic style learner; `infer_preferences`; reinforcement, contradiction, decay | Planned |
 | **K4** Just-in-time questions | Typed catalog, planner, budget (1 per screen, 3 per day), surfaces | Planned |
@@ -1773,6 +1797,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **K1 shipped on `feat/personal-learning`**: first-job fork `/welcome/start` (§4.1b), personal workspaces, Analyze `?url=&run=1` (§7.3), PersonalStartCard and personal goals (§6.3). Nobody is sent to company research by default any more. |
 | 2026-10-07 | **§16.3-K added; K0 shipped on `feat/personal-learning`** (`0044`). Found on the way: user-scoped memories were readable *and editable* by every member under `0004`'s generic tenant policy, and `export_organization` handed an admin every colleague's personal memories — both fixed. Drafts ignored the sender's own preferences (`loadGuidance` read organisation scope only) — fixed. Draft edits were stored with the AI original (`0037`) and nothing learned from them — K3. |
 | 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |
 | 2026-10-06 | **§16.3-J complete**: `analyze_performance` reads accepted competitors and demand themes and can conclude `competitive_positioning` and `product_demand` findings citing them by id (`0043`); Learn links company, competitor and theme citations. §14.2 re-verified against the code and trimmed to the four gaps that remain. |

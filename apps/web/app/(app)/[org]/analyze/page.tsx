@@ -19,10 +19,13 @@ import { Analyzer } from "./Analyzer";
  */
 export default async function AnalyzePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ org: string }>;
+  searchParams: Promise<{ url?: string; run?: string }>;
 }) {
   const { org } = await params;
+  const { url, run } = await searchParams;
   const viewer = await currentViewer(org);
 
   if (!canSpend(viewer)) {
@@ -38,7 +41,8 @@ export default async function AnalyzePage({
     );
   }
 
-  return <Analyzer org={org} />;
+  const initialUrl = (url ?? "").trim().slice(0, 2048);
+  return <Analyzer org={org} initialUrl={initialUrl} autoRun={run === "1" && Boolean(initialUrl)} />;
 }
 
 export const metadata = { title: "Analyze a URL" };

@@ -7,6 +7,7 @@ import {
   REASON_CATEGORIES,
 } from "@huntloop/db/activity";
 import {
+  FIRST_JOBS,
   GOALS,
   MAX_GOALS,
   FIRST_RUN_STAGES,
@@ -759,6 +760,17 @@ export const youStepSchema = z.object({
   fullName: z.string().trim().min(1, "We need something to call you.").max(120),
   role: z.enum(USER_ROLES),
 });
+
+/** "What do you want to get done first?" (K1). A URL only for `research`. */
+export const firstJobSchema = z
+  .object({
+    job: z.enum(FIRST_JOBS),
+    url: z.string().trim().max(2048).optional(),
+  })
+  .refine((v) => v.job !== "research" || Boolean(v.url), {
+    message: "Which company should Huntloop read?",
+    path: ["url"],
+  });
 
 /**
  * Step two without a website: the company, in the owner's own words.

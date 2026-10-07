@@ -7,6 +7,7 @@ import { getDefaultNeedsYou } from "../../../../lib/data/needs-you";
 import { NeedsYouList } from "../needs-you/NeedsYouList";
 import { getShellChrome } from "../../../../lib/data/chrome";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
+import { PersonalStartCard } from "./PersonalStartCard";
 import { personalize, type DashboardSection } from "../../../../lib/data/personalization";
 import { getIcpQuality } from "../../../../lib/data/icp-quality";
 import { IcpQualityCard } from "./IcpQualityCard";
@@ -545,6 +546,12 @@ export default async function DashboardPage({
         {/* Ordered by role and goal — see the record above. The fragment
             carries the key, because a section is a JSX expression rather than
             a component and cannot take one itself. */}
+        {/* A personal workspace (K1) that has not said what it sells yet: what
+            it can do now, and the way into the part that needs a company. */}
+        {onboarding?.workspaceKind === "personal" && !onboarding.hasIcp && (
+          <PersonalStartCard org={org} />
+        )}
+
         {layout.order.map((name) => (
           <Fragment key={name}>{sections[name]}</Fragment>
         ))}

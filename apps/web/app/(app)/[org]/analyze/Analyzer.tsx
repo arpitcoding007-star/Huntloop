@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -87,8 +88,20 @@ const URGENCY_LABELS: Record<Urgency, string> = {
   this_quarter: "This quarter",
 };
 
-export function Analyzer({ org }: { org: string }) {
-  const [url, setUrl] = useState("");
+export function Analyzer({
+  org,
+  initialUrl = "",
+  autoRun = false,
+}: {
+  org: string;
+  /** `?url=` — the address the first-job screen was given (K1). */
+  initialUrl?: string;
+  /** `?run=1` — start at once, because the person already asked for it. */
+  autoRun?: boolean;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [url, setUrl] = useState(initialUrl);
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
   const [state, setState] = useState<AnalyzeState>({});
   const [timing, setTiming] = useState<WhyNowState | "running" | null>(null);
@@ -100,8 +113,23 @@ export function Analyzer({ org }: { org: string }) {
     { ok: true; message?: string; id?: string } | { ok: false; error: string } | null
   >(null);
 
+  /* Once, and then the flag leaves the address: a refresh or a shared link
+     must not spend a second run nobody asked for. The ref survives React's
+     development double-mount, which would otherwise start two. */
+  const started = useRef(false);
+  useEffect(() => {
+    if (!autoRun || !initialUrl || started.current) return;
+    started.current = true;
+    router.replace(`${pathname}?url=${encodeURIComponent(initialUrl)}`);
+    run(initialUrl);
+  }, []);
+
   function analyze(e: React.FormEvent) {
     e.preventDefault();
+    run(url);
+  }
+
+  function run(target: string) {
     setPhase("running");
     setState({});
     setTiming(null);
@@ -109,7 +137,7 @@ export function Analyzer({ org }: { org: string }) {
        "Acme saved" under a fresh analysis of somebody else. */
     setSaved(null);
     startTransition(async () => {
-      const next = await analyzeUrlAction(org, url);
+      const next = await analyzeUrlAction(org, target);
       setState(next);
       // A failed run returns to the input state rather than to a demo verdict.
       // Substituting the worked example here would put an invented assessment

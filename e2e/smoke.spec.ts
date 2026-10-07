@@ -51,6 +51,8 @@ const ROUTES = [
      `company`, and this list was not updated. `lib/analytics.ts` records the
      same merge from the other side, keeping `product` as a retired funnel
      step so historical data stays readable. */
+  /* K1: the first-job fork between step one and company setup. */
+  "/welcome/start",
   "/welcome/company",
   "/welcome/goals",
   "/welcome/icp",

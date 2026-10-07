@@ -44,6 +44,11 @@ export function OnboardingProgress() {
   const params = useSearchParams();
   const org = params.get("org");
 
+  /* The first-job fork is not one of the five, and only one of its answers
+     leads into them — a bar there would be a promise of steps most people
+     never see. It has its own way back. */
+  const fork = pathname === "/welcome/start";
+
   const current = Math.max(
     0,
     VISIBLE_STEPS.findIndex((s) => s.href === pathname),
@@ -86,6 +91,8 @@ export function OnboardingProgress() {
     : current > 0
       ? VISIBLE_STEPS[current - 1]
       : null;
+
+  if (fork) return null;
 
   return (
     <nav aria-label="Setup progress">

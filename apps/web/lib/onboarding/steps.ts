@@ -198,6 +198,63 @@ export function isGoal(v: unknown): v is Goal {
   return typeof v === "string" && (GOALS as readonly string[]).includes(v);
 }
 
+/* ── The first job (K1, COMMAND.md §16.3-K) ──────────────────────────────── */
+
+/**
+ * "What do you want to get done first?" — asked straight after step one.
+ *
+ * Three of the four need nothing about the person's own company, so they get
+ * a personal workspace and land on the work itself; only `hunt` — finding
+ * companies to sell to — needs a product and a profile, and it is the old
+ * company-first flow, unchanged. Whatever a job did not ask is asked later,
+ * at the moment a feature needs it, rather than up front.
+ */
+export const FIRST_JOBS = ["research", "import", "explore", "hunt"] as const;
+
+export type FirstJob = (typeof FIRST_JOBS)[number];
+
+export const FIRST_JOB_OPTIONS: readonly {
+  value: FirstJob;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "research",
+    label: "Research a company or account",
+    description: "Paste a website. You get a sourced read on it in about a minute.",
+  },
+  {
+    value: "import",
+    label: "Work through a list I already have",
+    description: "Upload a CSV of companies; Huntloop reads and ranks them.",
+  },
+  {
+    value: "explore",
+    label: "Look around first",
+    description: "Open an empty workspace. Huntloop asks what it needs as you go.",
+  },
+  {
+    value: "hunt",
+    label: "Find new customers for my company",
+    description: "Tell us what you sell and who buys it, and we search the market.",
+  },
+];
+
+/**
+ * What a first job says about the person's goals — the dashboard's ranking.
+ * `hunt` is answered properly on the goals screen it leads to.
+ */
+export const FIRST_JOB_GOALS: Record<FirstJob, Goal[]> = {
+  research: ["qualify"],
+  import: ["qualify"],
+  explore: ["learn"],
+  hunt: [],
+};
+
+export function isFirstJob(v: unknown): v is FirstJob {
+  return typeof v === "string" && (FIRST_JOBS as readonly string[]).includes(v);
+}
+
 /* ── Outreach channel ────────────────────────────────────────────────────── */
 
 export const OUTREACH_CHANNELS = ["email", "manual", "export", "undecided"] as const;

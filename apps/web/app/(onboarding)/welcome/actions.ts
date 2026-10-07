@@ -6,6 +6,7 @@ import { resolveDataSource } from "../../../lib/data/source";
 import { listMemberships, LAST_ORG_COOKIE } from "../../../lib/data/destination";
 import {
   completeOnboarding,
+  makePersonalWorkspace,
   saveGoalsStep,
   saveIcpStep,
   saveSourcesStep,
@@ -21,6 +22,7 @@ import {
 import type { ActionResult } from "../../../lib/data/org";
 import { fail, ok } from "../../../lib/data/org";
 import {
+  firstJobSchema,
   goalsStepSchema,
   icpStepSchema,
   onboardingStepSchema,
@@ -32,6 +34,7 @@ import {
   youStepSchema,
 } from "../../../lib/validation";
 import { stepIcp } from "../../../lib/onboarding/icp-step";
+import { FIRST_JOB_GOALS, type FirstJob } from "../../../lib/onboarding/steps";
 import { RESERVED_SLUGS, slugify } from "../../../lib/slug";
 import { capture, captureForViewer } from "../../../lib/analytics";
 
@@ -106,7 +109,85 @@ export async function saveYou(
     });
   }
 
-  return ok({ next: "/welcome/company" });
+  /* Nobody is sent to company research by default any more (K1). The next
+     screen asks what they want to do first, and only one answer needs it. */
+  return ok({ next: creatingAnother ? "/welcome/start?new=1" : "/welcome/start" });
+}
+
+/* ── Step 1½ · The first job (K1) ────────────────────────────────────────── */
+
+/**
+ * "What do you want to get done first?"
+ *
+ * `hunt` is the company-first flow and goes to step two as before. Every
+ * other answer gets a personal workspace — no website, nothing to configure —
+ * and lands on the job itself: Analyze with the address already in it, the
+ * import screen, or the dashboard. A workspace is still created first,
+ * because research is metered per workspace (see `createWorkspace`).
+ *
+ * Idempotent through `provision`'s own check: pressing it twice, or coming
+ * back with the browser's back button, reuses the workspace it made.
+ */
+export async function startFirstJob(input: {
+  job: string;
+  url?: string;
+}): Promise<ActionResult<{ next: string }>> {
+  const parsed = parseForm(firstJobSchema, input);
+  if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
+  const job = parsed.value.job as FirstJob;
+
+  if (job === "hunt") return ok({ next: "/welcome/company" });
+
+  let url: string | null = null;
+  if (job === "research") {
+    const domain = canonicalizeDomain(parsed.value.url ?? "");
+    if (!domain) {
+      return fail("That doesn't look like a website address.", { url: "Try something like acme.com." });
+    }
+    url = parsed.value.url!.trim();
+  }
+
+  const person = await personalName();
+  const created = await provision({
+    name: person ? `${person}'s workspace` : "My workspace",
+    domain: null,
+    slugFrom: person ?? "my-workspace",
+  });
+  if (!created.ok) return created;
+  const slug = created.data.slug;
+
+  const made = await makePersonalWorkspace(slug, FIRST_JOB_GOALS[job]);
+  if (!made.ok) return made;
+
+  await captureForViewer("onboarding_step_completed", { step: "first_job", job });
+
+  const store = await cookies();
+  store.set(LAST_ORG_COOKIE, slug, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+  const next =
+    job === "research"
+      ? `/${slug}/analyze?url=${encodeURIComponent(url!)}&run=1`
+      : job === "import"
+        ? `/${slug}/imports`
+        : `/${slug}/dashboard`;
+  return ok({ next });
+}
+
+/** The first name step one saved — "Alex's workspace", at `/alex`. */
+async function personalName(): Promise<string | null> {
+  const { db } = await resolveDataSource();
+  if (!db) return null;
+  const { data: auth } = await db.auth.getUser();
+  if (!auth.user) return null;
+  const { data } = await db.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle();
+  const first = String((data as { full_name?: string } | null)?.full_name ?? "").trim().split(/s+/)[0];
+  return first || null;
 }
 
 /* ── Step 2 · The workspace, from a domain ───────────────────────────────── */
@@ -196,10 +277,13 @@ async function provision({
   name,
   domain,
   preferredSlug,
+  slugFrom,
 }: {
   name: string;
   domain: string | null;
   preferredSlug?: string;
+  /** What to derive the address from when it is not the name or domain. */
+  slugFrom?: string;
 }): Promise<ActionResult<WorkspaceResult>> {
   let chosen: string | null = null;
   if (preferredSlug?.trim()) {
@@ -213,7 +297,7 @@ async function provision({
     chosen = parsed.value;
   }
 
-  const base = chosen ?? slugify(domain ? (rootLabel(domain) ?? domain) : name);
+  const base = chosen ?? slugify(domain ? (rootLabel(domain) ?? domain) : (slugFrom ?? name));
   if (!base) {
     return fail("We couldn't build a workspace address from that. Type one below.");
   }
