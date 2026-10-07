@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Badge,
   Button,
@@ -100,6 +101,15 @@ export function MemoryManager({
         <Figure label="You wrote" value={written.length} />
         <Figure label="Huntloop concluded" value={derived.length} />
       </div>
+
+      <p className="text-[13px] text-fg-muted">
+        This is the workspace&rsquo;s knowledge, shared by everyone in it. How <em>you</em> like
+        to work — and what Huntloop learned about it — is private, under{" "}
+        <Link href={`/${org}/settings/you`} className="hl-focusable rounded-sm font-medium text-fg underline decoration-dotted underline-offset-2 hover:text-brand-text">
+          Settings → You
+        </Link>
+        .
+      </p>
 
       <FormMessage result={result} />
 
@@ -587,7 +597,11 @@ function MemoryForm({
             >
               {/* "team" is listed only for a memory that already has it: there
                   is no teams table to pick a subject from. */}
-              {MEMORY_SCOPES.filter((s) => s !== "team" || memory?.scope === "team").map((s) => (
+              {/* "user" lives on Settings → You (K2): a personal memory is
+                  private, and this screen is the workspace's. */}
+              {MEMORY_SCOPES.filter(
+                (s) => (s !== "team" || memory?.scope === "team") && (s !== "user" || memory?.scope === "user"),
+              ).map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>

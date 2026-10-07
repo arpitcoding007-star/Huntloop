@@ -7,7 +7,8 @@ import { ArrowUpRight, Brain, CalendarCheck, RotateCcw, Send } from "lucide-reac
 import type { AssistantHistoryTurn } from "../../../../lib/data/assistant";
 import { askAssistantAction, clearAssistantAction, type AssistantTurn } from "./actions";
 import { setNextStepAction } from "../opportunities/[id]/activity-actions";
-import { saveMemoryAction } from "../memory/actions";
+import { savePreferenceAction } from "../settings/you/actions";
+import { WrittenWith } from "../WrittenWith";
 
 const SUGGESTED = [
   "What should I focus on today?",
@@ -39,6 +40,8 @@ function fromHistory(history: AssistantHistoryTurn[]): Turn[] {
             href: a.href,
           })),
           example: false,
+          messageId: t.id,
+          writtenWith: t.writtenWith,
         },
   );
 }
@@ -116,6 +119,11 @@ export function AssistantChat({
             ) : (
               <li key={i}>
                 <AssistantAnswerCard org={org} turn={t} userId={userId} canWrite={canWrite} />
+                {t.messageId && (
+                  <div className="mt-1.5 pl-1">
+                    <WrittenWith org={org} data={t.writtenWith} subject={{ type: "conversation_message", id: t.messageId }} />
+                  </div>
+                )}
               </li>
             ),
           )}
@@ -290,7 +298,8 @@ function ProposedAction({
         action.kind === "set_next_step" && opportunityId
           ? await setNextStepAction(org, opportunityId, { text, dueAt: null })
           : action.kind === "remember" && userId
-            ? await saveMemoryAction(org, { scope: "user", scopeId: userId, key: "", content: text })
+            ? /* Your own, private (K2): it lands under Settings → You. */
+              await savePreferenceAction(org, { content: text, category: "context", appliesTo: [] })
             : null;
       if (!res) return;
       setResult(res.ok ? { ok: true, message: res.message ?? "Done." } : { ok: false, error: res.error });

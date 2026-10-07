@@ -1,4 +1,5 @@
 import "server-only";
+import { writtenWith, type WrittenWith } from "./written-with";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
@@ -283,6 +284,8 @@ export interface Draft {
   opportunityId: string | null;
   company: string | null;
   campaign: string | null;
+  /** The preferences it was written with (K2, `0044`); null before it. */
+  writtenWith?: WrittenWith | null;
 }
 
 export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
@@ -306,6 +309,8 @@ export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
         .limit(100);
       if (error) throw new Error(`listDrafts: ${error.message}`);
 
+      const applied = await writtenWith(db, "messages", ((data ?? []) as { id: string }[]).map((r) => String(r.id)));
+
       /* eslint-disable @typescript-eslint/no-explicit-any -- nested select, no generated types */
       return ((data ?? []) as any[]).map((row): Draft => {
         const one = (v: any) => (Array.isArray(v) ? v[0] : v);
@@ -323,6 +328,7 @@ export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
           opportunityId: opp?.id ? String(opp.id) : (row.opportunity_id ?? null),
           company: opp?.companies?.name ?? null,
           campaign: one(enrollment?.campaigns)?.name ?? null,
+          writtenWith: applied.get(String(row.id)) ?? null,
         };
       });
       /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -50,7 +50,14 @@ export function questionTerms(question: string): string[] {
 export async function gatherWorkspaceRecords(
   db: TenantClient,
   input: { orgSlug: string; orgId: string; userId: string; question: string },
-): Promise<{ records: AssistantRecord[]; hrefs: Map<string, string> }> {
+): Promise<{
+  records: AssistantRecord[];
+  hrefs: Map<string, string>;
+  /** How this person likes answers — their own preferences, highest first (K2). */
+  preferences: string[];
+  /** Every memory the answer is given, for `conversation_messages.applied_memory_ids`. */
+  appliedMemoryIds: string[];
+}> {
   const { orgSlug, orgId, userId, question } = input;
   const records: AssistantRecord[] = [];
   const hrefs = new Map<string, string>();
@@ -252,12 +259,21 @@ export async function gatherWorkspaceRecords(
   });
   hrefs.set("source:health", `/${orgSlug}/sources`);
 
-  for (const m of memories.slice(0, 15)) {
+  /* The workspace's notes are records the answer may lean on; the person's
+     own preferences are how to answer, not something to cite (K2). */
+  const team = memories.filter((m) => m.scope !== "user").slice(0, 15);
+  const personal = memories.filter((m) => m.scope === "user").slice(0, 12);
+  for (const m of team) {
     records.push({ ref: `memory:${m.id}`, type: "memory", title: "A note the team taught Huntloop", facts: [m.content] });
     hrefs.set(`memory:${m.id}`, `/${orgSlug}/memory`);
   }
 
-  return { records, hrefs };
+  return {
+    records,
+    hrefs,
+    preferences: personal.map((m) => m.content),
+    appliedMemoryIds: [...team, ...personal].map((m) => m.id),
+  };
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

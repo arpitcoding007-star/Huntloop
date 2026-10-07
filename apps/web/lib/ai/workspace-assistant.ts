@@ -30,7 +30,14 @@ export type AssistantOutcome =
 
 export async function askWorkspace(
   orgSlug: string,
-  input: { workspaceName: string; role: string | null; records: AssistantRecord[]; history: AgentTurn[]; question: string },
+  input: {
+    workspaceName: string;
+    role: string | null;
+    records: AssistantRecord[];
+    history: AgentTurn[];
+    question: string;
+    preferences?: string[];
+  },
 ): Promise<AssistantOutcome> {
   const resolved = await resolveRecorder(orgSlug);
   if (!resolved.ok) return { ok: false, error: resolved.error };

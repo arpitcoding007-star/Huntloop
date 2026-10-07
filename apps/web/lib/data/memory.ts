@@ -89,6 +89,8 @@ export async function listMemories(orgSlug: string): Promise<Loaded<Memory[]>> {
             "expires_at, created_at, source_type, source_url, source_label, tags, truncated",
         )
         .eq("org_id", orgId)
+        /* Personal memories are listed on Settings → You (K2), not here. */
+        .neq("scope", "user")
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 

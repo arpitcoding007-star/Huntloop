@@ -44,6 +44,7 @@ import {
   Target,
   Upload,
   UserCheck,
+  UserRound,
   Users,
   Zap,
 } from "lucide-react";
@@ -285,6 +286,8 @@ export function OrgShell({
       icon: Settings,
       items: [
         { label: "General", href: `/${org}/settings`, icon: Building },
+        /* K2: one person's preferences and what Huntloop learned about them. */
+        { label: "You", href: `/${org}/settings/you`, icon: UserRound },
         { label: "Product", href: `/${org}/settings/product`, icon: Package },
         { label: "ICP", href: `/${org}/settings/icp`, icon: Target },
         { label: "Scoring", href: `/${org}/settings/scoring`, icon: Gauge },

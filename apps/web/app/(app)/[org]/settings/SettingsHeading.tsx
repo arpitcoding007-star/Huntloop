@@ -15,6 +15,10 @@ const PAGES: Record<string, { title: string; description: string }> = {
     title: "General",
     description: "The workspace's name, and the voice Huntloop writes in.",
   },
+  "/you": {
+    title: "You",
+    description: "How you like to work, and what Huntloop has learned about it. Private to you.",
+  },
   "/product": {
     title: "Product",
     description: "What this organisation sells.",

@@ -1,5 +1,6 @@
 "use server";
 
+import { writtenWith, type WrittenWith } from "../../../../lib/data/written-with";
 import { revalidatePath } from "next/cache";
 import type { AssistantAction } from "@huntloop/ai";
 import { askWorkspace } from "../../../../lib/ai/workspace-assistant";
@@ -26,6 +27,9 @@ export interface AssistantTurn {
   unresolved: string[];
   actions: (AssistantAction & { href: string | null })[];
   example: boolean;
+  /** The stored answer, and what it was written with (K2). Null for a worked example. */
+  messageId?: string | null;
+  writtenWith?: WrittenWith | null;
 }
 
 export async function askAssistantAction(
@@ -67,6 +71,7 @@ export async function askAssistantAction(
       records: gathered.records,
       history,
       question: parsed.data,
+      preferences: gathered.preferences,
     });
     if (!outcome.ok) return fail(outcome.error);
 
@@ -81,10 +86,13 @@ export async function askAssistantAction(
       href: a.ref ? (gathered.hrefs.get(a.ref) ?? null) : null,
     }));
 
+    let messageId: string | null = null;
+    let applied: WrittenWith | null = null;
+
     /* Both turns in one statement, so a question is never stored without its
        answer. A worked example is not stored: it answered nothing. */
     if (outcome.source === "live") {
-      const { error } = await db.from("conversation_messages").insert([
+      const turns = (applied: boolean) => [
         { org_id: orgId, conversation_id: conversationId, role: "user", content: parsed.data },
         {
           org_id: orgId,
@@ -93,8 +101,20 @@ export async function askAssistantAction(
           content: outcome.answer.answer,
           citations,
           actions,
+          /* What the answer was written with (K2). Without `0044` the column
+             is missing, and the answer is still worth keeping. */
+          ...(applied ? { applied_memory_ids: gathered.appliedMemoryIds } : {}),
         },
-      ]);
+      ];
+      let { data: stored, error } = await db.from("conversation_messages").insert(turns(true)).select("id, role");
+      if (error?.code === "42703") {
+        ({ data: stored, error } = await db.from("conversation_messages").insert(turns(false)).select("id, role"));
+      }
+      const answerRow = ((stored ?? []) as { id: string; role: string }[]).find((r) => r.role === "assistant");
+      if (answerRow) {
+        messageId = String(answerRow.id);
+        applied = (await writtenWith(db, "conversation_messages", [messageId])).get(messageId) ?? null;
+      }
       await db
         .from("conversations")
         .update({ last_message_at: new Date().toISOString() })
@@ -110,6 +130,8 @@ export async function askAssistantAction(
       unresolved: outcome.answer.unresolved,
       actions,
       example: outcome.source !== "live",
+      messageId,
+      writtenWith: applied,
     });
   });
 }

@@ -63,6 +63,13 @@ export interface AssistantInput {
   records: AssistantRecord[];
   history: AgentTurn[];
   question: string;
+  /**
+   * How this person likes to be answered — what they told Huntloop and what
+   * it learned (`resolvePreferences`, highest precedence first). Style only:
+   * never a source of facts, never citable. Optional so older callers and the
+   * worked example need not pass it.
+   */
+  preferences?: string[];
 }
 
 export type AssistantActionKind = "open" | "set_next_step" | "remember";
@@ -141,6 +148,15 @@ an action has happened — it happens only if they press it.
 
 Lead with the answer. A few sentences, or a short list when the answer is
 genuinely a list of accounts or steps. No preamble.
+
+## How this person likes answers
+
+You may be given their preferences — things they told Huntloop, or that it
+learned from how they work. Follow them for format, length, tone and what to
+emphasise; when two conflict, the earlier one in the list wins, and the
+question itself beats all of them. They are never facts and never citable,
+and they never relax the rule above: a preference for "always give a number"
+does not let you invent one.
 `,
 );
 
@@ -202,6 +218,10 @@ export const workspaceAssistant: LLMTask<AssistantInput, AssistantAnswer> = {
       wrapUntrusted("conversation so far", history),
       "",
       wrapUntrusted("the question", input.question.slice(0, ASSISTANT_MAX_QUESTION)),
+      "",
+      input.preferences?.length
+        ? wrapUntrusted("how this person likes answers", input.preferences.slice(0, 12).map((p) => `- ${p}`).join("\n"))
+        : "(no answer preferences recorded)",
       "",
       "Cite records by their reference exactly as shown in brackets.",
     ].join("\n");

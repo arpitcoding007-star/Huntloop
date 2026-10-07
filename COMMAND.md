@@ -142,7 +142,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 | **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` · Competitors → `/{org}/competitors` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
 | **Operate** | Yes — "Is the engine running, and what is it costing?" | Engine → `/{org}/ops` · AI spend → `/{org}/analytics` |
-| **Settings** (rail footer) | Yes — "How this workspace is set up." | General → `/{org}/settings` · Product · ICP · Scoring → `/{org}/settings/scoring` · Integrations → `/{org}/settings/integrations` · Data & privacy → `/{org}/settings/privacy` |
+| **Settings** (rail footer) | Yes — "How this workspace is set up." | General → `/{org}/settings` · **You** → `/{org}/settings/you` (§10.8) · Product · ICP · Scoring → `/{org}/settings/scoring` · Integrations → `/{org}/settings/integrations` · Data & privacy → `/{org}/settings/privacy` |
 
 - **Active state:** longest-prefix match of `pathname` against all item hrefs (detail pages light their list page). Product/ICP appear under both Company and Settings; the section you came from stays lit.
 - **Panel footer:** `SidebarQuota` meter (`chrome.quota` label, used / limit) — omitted when plan unlimited/unknown. Not interactive.
@@ -167,6 +167,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 
 | Item | Shown when | Action → Destination |
 |---|---|---|
+| What Huntloop knows about you | Signed in | → `/{org}/settings/you` (§10.8) |
 | Account & privacy | Signed in | → `/{org}/settings/privacy` (§10.7) |
 | Workspace settings | Always | → `/{org}/settings` (§10.1) |
 | Integrations | Always | → `/{org}/settings/integrations` (§10.6) |
@@ -882,6 +883,7 @@ sequenceDiagram
 |---|---|
 | **Approve** | SA `approveMessageAction` (as before); disabled with reason when no recipient |
 | **Edit** → Subject / Body → **Save changes** / **Cancel** | SA `editDraftAction`: keeps recipient/step/evidence; stores the AI original once (`original_subject`/`original_body_text`), `edited_by/at`; stays unapproved — "Saved. It still waits for your approval." |
+| **Written with N preferences** (disclosure; shown when the draft recorded `applied_memory_ids`, `0044`) | Lists each preference the writer was given: the viewer's own ("Yours" / "Learned about you") with **Not here** (SA `dismissAppliedAction` — one contradiction + an `applied_dismissed` signal) and **Stop using it** (SA `setPreferenceStatusAction` → paused); workspace ones labelled "Workspace"; the sender's private ones counted only ("N of the sender's personal preferences — private to them"); **Manage your preferences** → `/{org}/settings/you`. Drafts are written with the sender's preferences: the opportunity owner, or a one-person workspace's member (`loadGuidance`) |
 | **Reject** → Why (optional) → **Reject draft** / **Cancel** | SA `rejectDraftAction`: soft-deletes with `rejected_by/at/reason` (timeline: "Draft rejected"); parks its enrollment — "Rejected. Its sequence is paused so nothing follows up on it." |
 
 Threads: card anchor `#thread-{id}`; **{company} ↗** link → `/{org}/opportunities/{id}` when attached; **Who handles** select (Nobody + members; shown when > 1 member) → SA `assignThreadAction`; an unapproved draft inside a thread shows **Review in the approval queue** (→ `#draft-{id}`) instead of its own Approve. Figures now include "Waiting for approval". Replies a person queues record them as `approved_by` (attribution on the timeline).
@@ -967,16 +969,17 @@ The "tighten-icp" nudge's promise is kept on ICP settings (§10.3): **Suggested 
 | **Remove this memory** ConfirmButton | SA `deleteMemoryAction` → "Memory removed. The agent will stop using it." |
 | Source link on card | External, new tab |
 
-Colleagues' personal memories are not listed (RLS, `0044`). Memories in status proposed / paused / rejected, and learned ones that have faded, are not applied to any prompt (`resolvePreferences`). "What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
+Personal memories are not listed here at all — they live on Settings → You (§10.8), linked from the line under the figures; the scope picker offers **user** only on an existing user-scoped memory. Memories in status proposed / paused / rejected, and learned ones that have faded, are not applied to any prompt (`resolvePreferences`). "What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
 
 ### 9.5 Ask Huntloop `/{org}/assistant`
 **Reached from:** Learn rail "Ask Huntloop" [AI], jump-to. The workspace co-pilot (§16.3-G).
 
 | Element | Action |
 |---|---|
-| **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`) |
+| **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`). The asker's own preferences (§10.8) are passed as *how this person likes answers* — style only, never citable; workspace memories stay citable records (K2) |
 | Answer: **Based on** citations | Each cited record links to its page; with nothing on file the answer says **Not in your records** |
-| Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `saveMemoryAction` |
+| Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `savePreferenceAction` (remember → your own private preference, category "About you", listed under Settings → You) |
+| **Written with N preferences** under a stored answer | Same disclosure as Inbox drafts (§8.2); ids stored in `conversation_messages.applied_memory_ids` |
 | Clear the conversation | SA `clearAssistantAction` deletes this person's turns |
 | No model key / demo | **Worked example** |
 
@@ -1126,9 +1129,30 @@ Endpoint: connected → "Push to HubSpot" appears on every opportunity detail (�
 | **Requests from people in your database**: Email address → **Export everything held** | SA `exportContactAction` → browser downloads JSON (`Downloaded {file}.`) |
 | Retype the address → **Erase permanently** (danger, enabled only when both addresses match) | SA `eraseContactAction` → contact points/person deleted, bodies redacted (mail **to and from** the person, and any AI original kept beside an edited draft), hand-written activities about the person lose their text, suppression hash kept; fields cleared |
 | Retention sentence "Organisation" link | → `/{org}/settings` |
-| **Your own data** → **Export this workspace** | SA `exportOrganizationAction` → JSON download (includes the activity ledger in full since 0037) |
+| **Your own data** → **Export this workspace** | SA `exportOrganizationAction` → JSON download (includes the activity ledger in full since 0037; colleagues' personal preferences are private and excluded since 0044 — each person exports their own from §10.8) |
 | **Delete this workspace** (owner only): type `{org}` → **Delete workspace** | SA `deleteOrganizationAction` → full reload to `/orgs` (→ `/welcome` if no workspaces left, dashboard if one) |
 | **Delete your account**: type "delete my account" → **Delete my account** | SA `deleteOwnAccountAction` (refused if sole owner of a live workspace, naming it) → full reload to `/login` |
+
+### 10.8 You `/{org}/settings/you` (K2, `0044`)
+**Reached from:** Settings panel "You", account menu "What Huntloop knows about you", Memory's "Settings → You" link, every **Written with** disclosure ("Manage your preferences"). Loader `getMyLearning` (`lib/data/personal-learning.ts`). Every write is the caller's own and admits viewers (`minRole: "viewer"`), except **Make it workspace policy** (admin). Demo → example preferences, controls disabled. Database without `0044` → Note naming the migration.
+
+| Element | Action |
+|---|---|
+| **Pause learning** / **Resume learning** | SA `setLearningPausedAction` → `profiles.learning_paused`; while paused `recordSignal` writes nothing; what exists still applies |
+| **Export** | SA `exportMyLearningAction` → RPC `export_my_learning` → JSON download (your memories, signals, questions) |
+| **Reset what it learned** (ConfirmButton "Reset — keep what I told it") | SA `resetLearnedAction` → soft-deletes your learned memories, deletes your signals |
+| **Waiting for you** (proposed, high-risk — e.g. targeting) → **Yes, do this** / **No** | SA `setPreferenceStatusAction` → active (counts as reinforcement) / rejected (never proposed again) |
+| **You told us** — stated and adopted items; **Add a preference** → form: What should Huntloop do?* · What it's about (category) · Use it for (Emails Huntloop drafts / Ask Huntloop / The opportunity agent; none = everything) → **Save** | SA `savePreferenceAction` (user scope, `origin='stated'`, `risk` from category) |
+| **Learned from how you work** — each with "Learned · N examples", category, tasks, Paused / Fading / Shared badges, and **Why Huntloop thinks this** (the cited signals, newest first) | — |
+| Per item: **Edit** / **Correct** | Opens the form; saving a learned item turns it into a stated one (Note says so) |
+| Per item: **Pause** / **Turn back on** | SA `setPreferenceStatusAction` |
+| Per item: **Share with workspace** / **Stop sharing** | SA `sharePreferenceAction` → `shared_at`; makes it readable to admins only |
+| Per item (admins): **Make it workspace policy** | SA `promotePreferenceAction` → organisation-scope copy, `origin='promoted'`, `promoted_from`; appears in Memory |
+| Per item: **Forget** (ConfirmButton) | SA `forgetPreferenceAction`: stated → soft-deleted; learned → kept as rejected so it is not learned again; evidence links deleted |
+| **Shared by teammates** (admins; hides anything already adopted) → **Make it workspace policy** | SA `promotePreferenceAction` |
+| **Workspace policy** (read-only) | Active organisation memories; "Adopted from a teammate" / "Learned" badges. "Where one of yours says otherwise, yours wins for you" |
+
+Empty states: "Nothing yet" (with examples) for You told us; "Nothing learned yet" for Learned.
 
 ---
 
@@ -1556,7 +1580,7 @@ Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization
 |---|---|---|
 | **K0** Foundations | `0044`: personal memories private to their subject (RLS), `memories.origin / category / risk / status / applies_to / support / contradicts / shared_at / promoted_from`, `preference_signals`, `memory_evidence`, `preference_state`, `user_questions`, `profiles.goals / learning_paused`, `organizations.workspace_kind`, `messages` and `conversation_messages.applied_memory_ids`, workspace export without colleagues' personal memories, `export_my_learning`. `resolvePreferences` (`packages/db/src/preferences.ts`) is the one selector; `applicableMemories` is a view of it. Drafts now read the **sender's** preferences (opportunity owner, or a one-person workspace's member) and record which memories they were written with | **Shipped** (this branch) |
 | **K1** Individual entry | "What do you want to get done first?" after You (§4.1b); personal workspace without a website; Analyze `?url=&run=1` (§7.3); dashboard PersonalStartCard and personal goals (§6.3); a personal workspace becomes a company one through the company step. Feature-level prompts for what a feature still needs arrive with K4's question planner | **Shipped** (this branch) |
-| **K2** Settings → You | What you told us / What we learned / Waiting for you / Workspace policy; correct, pause, forget, share, promote; pause learning; export; "Written with" on drafts and answers | Planned |
+| **K2** Settings → You | §10.8: You told us / Learned / Waiting for you / Shared by teammates / Workspace policy; correct, pause, forget, share, promote; pause learning; reset; export. "Written with" on drafts (§8.2) and answers (§9.5); the assistant reads the asker's preferences; `recordSignal` (`lib/data/signals.ts`) is the single, pause-aware signal writer | **Shipped** (this branch) |
 | **K3** Learn from corrections | Signals from draft edits, rejections, regenerations and assistant corrections; deterministic style learner; `infer_preferences`; reinforcement, contradiction, decay | Planned |
 | **K4** Just-in-time questions | Typed catalog, planner, budget (1 per screen, 3 per day), surfaces | Planned |
 | **K5** Broader learning | Research patterns, output formats, recurring tasks, high-risk targeting proposals | Planned |
@@ -1797,6 +1821,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **K2 shipped on `feat/personal-learning`**: Settings → You (§10.8), Written-with on drafts and assistant answers, assistant reads the asker's preferences, Memory shows only workspace knowledge. Found on the way: the assistant presented a person's own memories to the model as "a note the team taught Huntloop" — now passed as answer preferences. |
 | 2026-10-07 | **K1 shipped on `feat/personal-learning`**: first-job fork `/welcome/start` (§4.1b), personal workspaces, Analyze `?url=&run=1` (§7.3), PersonalStartCard and personal goals (§6.3). Nobody is sent to company research by default any more. |
 | 2026-10-07 | **§16.3-K added; K0 shipped on `feat/personal-learning`** (`0044`). Found on the way: user-scoped memories were readable *and editable* by every member under `0004`'s generic tenant policy, and `export_organization` handed an admin every colleague's personal memories — both fixed. Drafts ignored the sender's own preferences (`loadGuidance` read organisation scope only) — fixed. Draft edits were stored with the AI original (`0037`) and nothing learned from them — K3. |
 | 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |

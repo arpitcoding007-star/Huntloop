@@ -46,13 +46,15 @@ const ROUTES = [
   /* Both added by the compliance work: the screens that let somebody set a
      retention window, export a workspace and honour an erasure request. */
   `/${ORG}/settings/privacy`,
+  /* K2: one person's preferences and what Huntloop learned about them. */
+  `/${ORG}/settings/you`,
   "/welcome",
+  /* K1: the first-job fork between step one and company setup. */
+  "/welcome/start",
   /* `/welcome/product` was here and 404s — the product step was folded into
      `company`, and this list was not updated. `lib/analytics.ts` records the
      same merge from the other side, keeping `product` as a retired funnel
      step so historical data stays readable. */
-  /* K1: the first-job fork between step one and company setup. */
-  "/welcome/start",
   "/welcome/company",
   "/welcome/goals",
   "/welcome/icp",

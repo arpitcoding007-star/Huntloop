@@ -13,6 +13,7 @@ import {
   Plug,
   Settings,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import {
   Avatar,
@@ -75,6 +76,9 @@ export function AccountMenu({
   useShortcutsHotkey(setShortcutsOpen);
 
   const items: MenuItem[] = [
+    ...(account
+      ? [{ label: "What Huntloop knows about you", icon: UserRound, href: `/${org}/settings/you` }]
+      : []),
     ...(account
       ? [{ label: "Account & privacy", icon: ShieldCheck, href: `/${org}/settings/privacy` }]
       : []),

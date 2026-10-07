@@ -18,6 +18,7 @@ import {
 } from "@huntloop/ui";
 import { AlertTriangle, ArrowUpRight, Check, Inbox as InboxIcon, Pencil, Sparkles, X } from "lucide-react";
 import type { Draft, Message, MessageEventKind, Thread } from "../../../../lib/data/inbox";
+import { WrittenWith } from "../WrittenWith";
 import {
   approveMessageAction,
   assignThreadAction,
@@ -588,6 +589,8 @@ function DraftCard({
             )}
           </Field>
         )}
+
+        <WrittenWith org={org} data={draft.writtenWith} subject={{ type: "message", id: draft.id }} />
 
         {canWrite && (
           <div className="flex flex-wrap items-center gap-2">

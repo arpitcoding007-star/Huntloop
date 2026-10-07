@@ -15,6 +15,7 @@ import {
   OUTREACH_CHANNELS,
   USER_ROLES,
 } from "./onboarding/steps";
+import { PREFERENCE_CATEGORY_VALUES, PREFERENCE_TASK_VALUES } from "./learning/vocabulary";
 
 /**
  * Schemas for everything that crosses a Server Action boundary.
@@ -759,6 +760,19 @@ export const youStepSchema = z.object({
      more. The lower bound is 1 because mononyms exist. */
   fullName: z.string().trim().min(1, "We need something to call you.").max(120),
   role: z.enum(USER_ROLES),
+});
+
+/** A preference a person states on Settings → You (K2, `0044`). */
+export const personalPreferenceSchema = z.object({
+  id: uuidSchema.optional(),
+  content: z
+    .string()
+    .trim()
+    .min(1, "Say what Huntloop should do.")
+    .max(1000, "Keep it to a few sentences — a preference is read into every prompt it applies to."),
+  category: z.enum(PREFERENCE_CATEGORY_VALUES),
+  /* Empty means every task that reads preferences. */
+  appliesTo: z.array(z.enum(PREFERENCE_TASK_VALUES)).max(PREFERENCE_TASK_VALUES.length).default([]),
 });
 
 /** "What do you want to get done first?" (K1). A URL only for `research`. */
