@@ -63,6 +63,13 @@ import {
   describeFilters,
   translateIcp,
 } from "../src/discovery.ts";
+import {
+  APPLY_THRESHOLD,
+  asGuidance,
+  confidenceOf,
+  orderPreferences,
+  type PreferenceRow,
+} from "../src/preferences.ts";
 
 let failures = 0;
 let checks = 0;
@@ -755,6 +762,68 @@ console.log("\ncrypto — what a stolen row is worth");
 
   if (saved === undefined) delete process.env.MAILBOX_ENCRYPTION_KEY;
   else process.env.MAILBOX_ENCRYPTION_KEY = saved;
+}
+
+// ── preferences.ts — what applies, in what order ───────────────────────────
+console.log("\npreferences — precedence, fading and conflicts (0044)");
+{
+  const now = new Date("2026-10-07T00:00:00Z");
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
+  const row = (over: Partial<PreferenceRow>): PreferenceRow => ({
+    id: "m", scope: "organization", key: null, content: "x", origin: "stated", category: null,
+    appliesTo: [], support: 0, contradicts: 0, lastReinforcedAt: null, createdAt: daysAgo(1), ...over,
+  });
+
+  expect("a stated memory is fully trusted", confidenceOf(row({ scope: "user" }), now) === 1);
+  const fresh = confidenceOf(row({ scope: "user", origin: "learned", support: 4, lastReinforcedAt: daysAgo(0) }), now);
+  expect("a learned one is earned from its support", Math.abs(fresh - 0.8) < 1e-9, String(fresh));
+  const old = confidenceOf(row({ scope: "user", origin: "learned", support: 4, lastReinforcedAt: daysAgo(90) }), now);
+  expect("and halves after 90 days without reinforcement", Math.abs(old - 0.4) < 1e-9, String(old));
+
+  const contradicted = orderPreferences(
+    [row({ id: "c", scope: "user", origin: "learned", support: 2, contradicts: 2, lastReinforcedAt: daysAgo(0) })],
+    { task: "personalize_message" },
+    now,
+  );
+  expect("contradicted as often as supported, it stops applying", contradicted.applied.length === 0);
+  const faded = orderPreferences(
+    [row({ id: "f", scope: "user", origin: "learned", support: 4, lastReinforcedAt: daysAgo(120) })],
+    { task: "personalize_message" },
+    now,
+  );
+  expect("below the threshold a faded preference stops applying", faded.applied.length === 0 && 0.8 * Math.pow(0.5, 120 / 90) < APPLY_THRESHOLD);
+
+  const resolved = orderPreferences(
+    [
+      row({ id: "org-tone", key: "tone", content: "Formal" }),
+      row({ id: "learned-tone", scope: "user", origin: "learned", key: "tone", content: "Casual", support: 5, lastReinforcedAt: daysAgo(0) }),
+      row({ id: "stated-len", scope: "user", key: "length", content: "Under 80 words" }),
+      row({ id: "acct", scope: "account", content: "They hate jargon" }),
+      row({ id: "only-agent", scope: "user", appliesTo: ["sales_agent"], content: "Bullets" }),
+    ],
+    { task: "personalize_message", temporary: ["This one formal — it's a CFO"] },
+    now,
+  );
+  expectEqual(
+    "task instruction, then stated, then learned, then account, then workspace",
+    resolved.applied.map((p) => p.id ?? "task"),
+    ["task", "stated-len", "learned-tone", "acct"],
+  );
+  expectEqual(
+    "the workspace's tone is suppressed by the person's, and says by what",
+    resolved.suppressed.map((p) => [p.id, p.suppressedBy]),
+    [["org-tone", "learned-tone"]],
+  );
+  expect("a memory for another task is not applied", !resolved.applied.some((p) => p.id === "only-agent"));
+  expectEqual(
+    "as guidance, the person's own word comes last (later overrides)",
+    asGuidance(resolved).at(-1),
+    "This one formal — it's a CFO",
+  );
+  expect(
+    "a task-only instruction has no row and no origin a screen could mistake for a memory",
+    resolved.applied[0]!.id === null && resolved.applied[0]!.origin === "task",
+  );
 }
 
 console.log(

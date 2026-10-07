@@ -47,7 +47,7 @@ const MEMORY_SCOPES: readonly MemoryScope[] = [
 const SCOPE_HELP: Record<MemoryScope, string> = {
   organization: "Everyone in this organisation. Takes no subject — it is about the org itself.",
   team: "One team. Needs the team it belongs to.",
-  user: "One person. Nobody else retrieves it.",
+  user: "Just you. Private: nobody else can read it, admins included.",
   account: "One company. Retrieved whenever that company is in play.",
   opportunity: "One opportunity. Goes away with it.",
 };

@@ -17,6 +17,7 @@
     "./discovery": "./src/discovery.ts",
     "./activity": "./src/activity.ts",
     "./memory": "./src/memory.ts",
+    "./preferences": "./src/preferences.ts",
     "./needs-you": "./src/needs-you.ts"
   },
   "scripts": {

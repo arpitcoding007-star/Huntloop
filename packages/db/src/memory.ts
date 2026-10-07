@@ -9,7 +9,11 @@
  * What applies to a request is the organisation's memories, plus — only when
  * the request is about them — the requesting person's own, the account's
  * (the company) and the opportunity's. Expired memories never apply.
+ *
+ * Since `0044` this is a view of `resolvePreferences`: the same rows, in the
+ * same precedence, with proposed, paused and faded memories left out.
  */
+import { resolvePreferences, type PreferenceKind } from "./preferences.ts";
 
 /** The minimal query surface both the tenant and the admin client provide. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +26,8 @@ export interface MemoryContext {
   /** `companies.id` — account-scoped memories. */
   accountId?: string | null;
   opportunityId?: string | null;
+  /** The task reading them, for `applies_to`. */
+  task?: string;
 }
 
 export interface ApplicableMemory {
@@ -29,45 +35,21 @@ export interface ApplicableMemory {
   scope: "organization" | "user" | "account" | "opportunity" | "team";
   content: string;
   source: "user" | "derived";
+  kind: PreferenceKind;
 }
-
-/** Bounded so a workspace with hundreds of notes cannot flood a prompt. */
-const LIMIT_PER_SCOPE = 15;
 
 export async function applicableMemories(
   db: Client,
   context: MemoryContext,
 ): Promise<ApplicableMemory[]> {
-  const now = new Date().toISOString();
-  const wanted: Array<{ scope: ApplicableMemory["scope"]; id: string | null }> = [
-    { scope: "organization", id: null },
-  ];
-  if (context.userId) wanted.push({ scope: "user", id: context.userId });
-  if (context.accountId) wanted.push({ scope: "account", id: context.accountId });
-  if (context.opportunityId) wanted.push({ scope: "opportunity", id: context.opportunityId });
-
-  const results = await Promise.all(
-    wanted.map(async ({ scope, id }) => {
-      let query = db
-        .from("memories")
-        .select("id, scope, content, source")
-        .eq("org_id", context.orgId)
-        .eq("scope", scope)
-        .eq("kind", "durable")
-        .is("deleted_at", null)
-        .or(`expires_at.is.null,expires_at.gt.${now}`)
-        .order("created_at", { ascending: false })
-        .limit(LIMIT_PER_SCOPE);
-      query = id === null ? query.is("scope_id", null) : query.eq("scope_id", id);
-      const { data } = await query;
-      return (data ?? []) as Array<Record<string, unknown>>;
-    }),
-  );
-
-  return results.flat().map((row): ApplicableMemory => ({
-    id: String(row.id),
-    scope: row.scope as ApplicableMemory["scope"],
-    content: String(row.content ?? "").trim(),
-    source: row.source === "derived" ? "derived" : "user",
-  })).filter((m) => m.content);
+  const { applied } = await resolvePreferences(db, { ...context, task: context.task ?? "" });
+  return applied
+    .filter((p) => p.id !== null && p.scope !== "task")
+    .map((p) => ({
+      id: p.id!,
+      scope: p.scope as ApplicableMemory["scope"],
+      content: p.text,
+      source: p.origin === "learned" ? "derived" : "user",
+      kind: p.kind,
+    }));
 }

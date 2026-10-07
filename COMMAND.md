@@ -938,12 +938,12 @@ The "tighten-icp" nudge's promise is kept on ICP settings (§10.3): **Suggested 
 |---|---|
 | Figures You wrote / Huntloop concluded | Static |
 | **Add a document** (`canWrite`) | IngestForm: toggle **From a link** / **From a file** · Address (URL) *or* File — PDF, Word (.docx), .txt/.md/.csv, ≤ 4 MB. Text files are read in the browser; PDF/DOCX are posted to `POST /api/memory/extract` (writers only; type judged by magic bytes, not the declared type; zip-bomb bounded; stores nothing), which returns their text. A scanned PDF with no text layer is refused with "Paste the text instead". The text appears in an editable **What will be stored** box ("Reading {file}…" while extracting) · Label · Tags (comma) → **Store it** (SA `ingestMemoryAction`, "Reading…"; disabled until URL/text) · **Cancel** |
-| **Add a memory** (`canWrite`) | MemoryForm: **Who this applies to** (organization / team / user / account / opportunity, with help text) · **Subject** (filterable picker of named people / companies / opportunities, required for non-org scopes; `team` is offered only on a memory that already has it) · Label · **What to remember**\* → **Add memory** (SA `saveMemoryAction`) · **Cancel** |
+| **Add a memory** (`canWrite`) | MemoryForm: **Who this applies to** (organization / team / user / account / opportunity, with help text) · **Subject** (filterable picker of companies / opportunities, required for non-org scopes; for **user** the only choice is yourself — a personal memory is private to its person, admins included (`0044`), and `saveMemoryAction` refuses one written for a colleague with "A personal memory can only be about you."; `team` is offered only on a memory that already has it) · Label · **What to remember**\* → **Add memory** (SA `saveMemoryAction`) · **Cancel** |
 | Memory card **Edit** (user-written only) | Swaps to MemoryForm → **Save memory** |
 | **Remove this memory** ConfirmButton | SA `deleteMemoryAction` → "Memory removed. The agent will stop using it." |
 | Source link on card | External, new tab |
 
-"What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
+Colleagues' personal memories are not listed (RLS, `0044`). Memories in status proposed / paused / rejected, and learned ones that have faded, are not applied to any prompt (`resolvePreferences`). "What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
 
 ### 9.5 Ask Huntloop `/{org}/assistant`
 **Reached from:** Learn rail "Ask Huntloop" [AI], jump-to. The workspace co-pilot (§16.3-G).
@@ -1521,6 +1521,23 @@ Each area: current state → Kima insight (the underlying problem only) → Hunt
 - **Kima insight:** teaching the agent should accept whatever the user has (PDFs, decks, screenshots, call notes), and conversations should yield durable knowledge.
 - **Huntloop solution:** a scope picker instead of raw UUIDs (Phase 3); server-side PDF / DOCX text extraction with size caps (Phase 6); learning targets extended to competitors and demand (Phase 6, **done** — `0043`); "propose memory" from the co-pilot (Phase 4). Screenshots / vision deferred until users ask.
 
+#### K. Personal mode, adaptive onboarding and the learning layer — phases K0–K6 · **L–XL** · worth building: **yes**
+
+Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization-plan.md). Branch `feat/personal-learning`, migration `0044_personal_learning.sql`.
+
+- **Goal:** an individual can start without "Research my company"; Huntloop asks only what a task needs, when it needs it; it learns how each person works and needs less instruction over time; it keeps **stated**, **learned**, **task-only** and **long-term** knowledge apart; people can see, correct, pause and delete what it learned.
+- **Rules:** a learned item always cites ≥ 3 of the person's own actions (never content they read); **low-risk** items (style, format, layout) apply themselves, labelled, with undo; **high-risk** items (targeting, ICP, scoring, sources, cadence) are only ever proposed; precedence is task instruction > stated > learned > opportunity > account > workspace; personal preferences are private and reach the workspace only when their owner shares them and an admin promotes them.
+
+| Phase | Contents | Status |
+|---|---|---|
+| **K0** Foundations | `0044`: personal memories private to their subject (RLS), `memories.origin / category / risk / status / applies_to / support / contradicts / shared_at / promoted_from`, `preference_signals`, `memory_evidence`, `preference_state`, `user_questions`, `profiles.goals / learning_paused`, `organizations.workspace_kind`, `messages` and `conversation_messages.applied_memory_ids`, workspace export without colleagues' personal memories, `export_my_learning`. `resolvePreferences` (`packages/db/src/preferences.ts`) is the one selector; `applicableMemories` is a view of it. Drafts now read the **sender's** preferences (opportunity owner, or a one-person workspace's member) and record which memories they were written with | **Shipped** (this branch) |
+| **K1** Individual entry | "What do you want to get done first?" after You; personal workspace without a website; feature-level gates instead of onboarding gates; personal goals on the dashboard | Planned |
+| **K2** Settings → You | What you told us / What we learned / Waiting for you / Workspace policy; correct, pause, forget, share, promote; pause learning; export; "Written with" on drafts and answers | Planned |
+| **K3** Learn from corrections | Signals from draft edits, rejections, regenerations and assistant corrections; deterministic style learner; `infer_preferences`; reinforcement, contradiction, decay | Planned |
+| **K4** Just-in-time questions | Typed catalog, planner, budget (1 per screen, 3 per day), surfaces | Planned |
+| **K5** Broader learning | Research patterns, output formats, recurring tasks, high-risk targeting proposals | Planned |
+| **K6** Measurement | Per-person edit trend, undo rate, questions per day | Planned |
+
 ### 16.4 Phases
 
 Ordered by user value × business value ÷ (dependency depth + regression risk), not by the order of the Kima audit.
@@ -1750,10 +1767,13 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 4. **Multi-product timing.** Build P5 now, or wait for a paying customer with more than one product? Recommended: wait.
 5. **Plan packaging.** Which phases are gated by plan (master context §56)? The team view and the workspace co-pilot are natural Professional / Team features.
 
+**Decided 2026-10-07 for §16.3-K** (owner accepted the recommendations): (1) low-risk learned preferences apply themselves, labelled, with one-click undo; (2) personal preferences stay per workspace for now; (3) a personal workspace becomes a team one by inviting people, never by merging; (4) stated preferences and Settings → You on every plan, automatic learning may be gated later; (5) a user-scoped memory a colleague wrote *about* someone stays with that person, and its author stops seeing it.
+
 ### 16.8 Change log
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **§16.3-K added; K0 shipped on `feat/personal-learning`** (`0044`). Found on the way: user-scoped memories were readable *and editable* by every member under `0004`'s generic tenant policy, and `export_organization` handed an admin every colleague's personal memories — both fixed. Drafts ignored the sender's own preferences (`loadGuidance` read organisation scope only) — fixed. Draft edits were stored with the AI original (`0037`) and nothing learned from them — K3. |
 | 2026-10-06 | §16 created from the Kima benchmark and a full repository inspection. All items Planned. |
 | 2026-10-06 | **§16.3-J complete**: `analyze_performance` reads accepted competitors and demand themes and can conclude `competitive_positioning` and `product_demand` findings citing them by id (`0043`); Learn links company, competitor and theme citations. §14.2 re-verified against the code and trimmed to the four gaps that remain. |
 | 2026-10-06 | **P3–P6 implemented** (migrations `0039`–`0042`): competitors and their research, brief sections and deal value, notifications and digests, Ask Huntloop, product list and company page, prospect demand, PDF/DOCX Memory ingest. Every remaining FLOW MISMATCH (M-01…M-16) fixed. Found on the way: `0042`'s erasure trigger read `new.subject` on `activities` rows (PL/pgSQL resolves every field an `and` chain names), so `erase_contact` failed for anyone with a manual activity — split into nested `if`s. |

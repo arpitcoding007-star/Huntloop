@@ -110,6 +110,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0041_workspace_assistant.sql", probe: "migration_0041_applied", kind: "rpc" },
   { file: "0042_demand_intelligence.sql", probe: "demand_themes", kind: "table" },
   { file: "0043_learning_competitors_demand.sql", probe: "migration_0043_applied", kind: "rpc" },
+  { file: "0044_personal_learning.sql", probe: "migration_0044_applied", kind: "rpc" },
 ];
 
 /**

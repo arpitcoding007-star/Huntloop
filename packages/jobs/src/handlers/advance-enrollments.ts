@@ -36,6 +36,7 @@ import {
   type MessageEvidence,
 } from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
+import { asGuidance, resolvePreferences } from "@huntloop/db/preferences";
 import { isSendableEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
@@ -118,7 +119,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       "enrollments",
       `id, campaign_id, opportunity_id, current_step, mailbox_id,
        campaigns!inner(id, name, status, autonomy_level, product_id),
-       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status)`,
+       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id)`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -256,6 +257,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       subject: draft.subject,
       body_text: draft.body,
       ai_generated: draft.aiGenerated,
+      applied_memory_ids: draft.appliedMemoryIds,
       // §62 rule 9, as a column. A message whose evidence_ids do not cover its
       // claims fails review; one that cites nothing is a generic email, which
       // is a different and lesser thing but still honest about itself.
@@ -438,6 +440,8 @@ interface Draft {
   body: string;
   citedEvidenceIds: string[];
   aiGenerated: boolean;
+  /** The memories the writer was given (0044), for `messages.applied_memory_ids`. */
+  appliedMemoryIds: string[];
 }
 
 /**
@@ -473,7 +477,7 @@ async function draftMessage(
   try {
     const evidence = await loadEvidence(scope, String(input.opportunity.id));
     const product = await loadProduct(scope, input.campaign.product_id);
-    const guidance = await loadGuidance(scope);
+    const guidance = await loadGuidance(scope, input.opportunity);
     const competitors = await loadCompetitors(scope, String(input.opportunity.company_id));
     /* The evidence behind a competitor relationship is citable like any other
        claim — that is how a named competitor stays traceable. */
@@ -491,7 +495,7 @@ async function draftMessage(
       step: input.step.position,
       template: { subject: input.step.subject, body: input.step.body },
       evidence,
-      guidance,
+      guidance: guidance.lines,
       competitors: competitors.list,
     });
 
@@ -500,6 +504,7 @@ async function draftMessage(
       body: run.output.body,
       citedEvidenceIds: run.output.citedEvidenceIds,
       aiGenerated: true,
+      appliedMemoryIds: guidance.memoryIds,
     };
   } catch (e) {
     if (!(e instanceof AiUnavailable)) throw e;
@@ -519,6 +524,7 @@ async function draftMessage(
       body: fill(input.step.body, companyName, input.recipient.name),
       citedEvidenceIds: [],
       aiGenerated: false,
+      appliedMemoryIds: [],
     };
   }
 }
@@ -603,24 +609,33 @@ async function loadProduct(scope: OrgScope, productId: string | null): Promise<s
 }
 
 /**
- * House style, from `memories`.
+ * House style, from `memories` — the workspace's, then the sender's own.
  *
- * Organization-scoped only. §37's hierarchy means a user-scoped memory belongs
- * to one salesperson, and a background job has no salesperson — applying one
- * person's tone rule to a colleague's campaign is exactly the leak the scope
- * column exists to prevent.
+ * §37's hierarchy means a user-scoped memory belongs to one salesperson, so
+ * the job applies one only for the person this email goes out as: the
+ * opportunity's owner, or — in a one-person workspace — its only member.
+ * With neither there is no sender to speak for, and only workspace guidance
+ * applies; one person's tone rule on a colleague's campaign is the leak the
+ * scope column exists to prevent.
+ *
+ * Selection, fading and precedence are `resolvePreferences`'s (0044).
  */
-async function loadGuidance(scope: OrgScope): Promise<string[]> {
-  const { data } = await scope
-    .select("memories", "content")
-    .eq("scope", "organization")
-    .eq("kind", "durable")
-    .is("deleted_at", null)
-    .limit(10);
-
-  const memories = (data ?? [])
-    .map((row: Record<string, unknown>) => String(row.content))
-    .filter(Boolean);
+export async function loadGuidance(
+  scope: OrgScope,
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- embedded rows */
+  opportunity: any,
+): Promise<{ lines: string[]; memoryIds: string[] }> {
+  const sender = await senderOf(scope, opportunity?.owner_id ?? null);
+  const resolved = await resolvePreferences(
+    { from: (table: string) => ({ select: (columns: string) => scope.select(table, columns) }) },
+    {
+      orgId: scope.orgId,
+      userId: sender,
+      task: "personalize_message",
+      accountId: opportunity?.company_id ? String(opportunity.company_id) : null,
+      opportunityId: opportunity?.id ? String(opportunity.id) : null,
+    },
+  );
 
   /* The org's voice profile goes *first*, so a memory somebody wrote can
      contradict it and win — the task treats later guidance as overriding, and
@@ -630,7 +645,19 @@ async function loadGuidance(scope: OrgScope): Promise<string[]> {
   const { data: org } = await scope.organization("settings").maybeSingle();
 
   const voice = voiceGuidance(parseOrgProfile(org?.settings).voice);
-  return [...voice, ...memories];
+  const memoryIds = resolved.applied.flatMap((p) => (p.id ? [p.id] : []));
+  if (memoryIds.length) {
+    await scope.update("memories", { last_applied_at: new Date().toISOString() }).in("id", memoryIds);
+  }
+  return { lines: [...voice, ...asGuidance(resolved)], memoryIds };
+}
+
+/** Who an email goes out as: the opportunity's owner, or a sole member. */
+async function senderOf(scope: OrgScope, ownerId: string | null): Promise<string | null> {
+  if (ownerId) return String(ownerId);
+  const { data } = await scope.select("memberships", "user_id").limit(2);
+  const rows = (data ?? []) as { user_id: string }[];
+  return rows.length === 1 ? String(rows[0]!.user_id) : null;
 }
 
 async function stop(scope: OrgScope, id: string, reason: string): Promise<void> {

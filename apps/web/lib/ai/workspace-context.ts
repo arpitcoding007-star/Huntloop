@@ -101,7 +101,7 @@ export async function gatherWorkspaceRecords(
       .eq("is_enabled", true)
       .is("deleted_at", null)
       .limit(50),
-    applicableMemories(db, { orgId, userId }),
+    applicableMemories(db, { orgId, userId, task: "workspace_assistant" }),
   ]);
 
   /* ── Needs you ─────────────────────────────────────────────────────────── */

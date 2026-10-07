@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { FetchRefused, UnreadableContent, extract, fetchPage } from "@huntloop/jobs";
-import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import {
   memoryIngestSchema,
   memorySchema,
@@ -72,6 +72,14 @@ export async function saveMemoryAction(
   }
 
   return mutate(org, "saveMemory", async ({ db, orgId }) => {
+    /* 0044: a personal memory is private to the person it is about, so the
+       database refuses one written for a colleague. Said here in words. */
+    if (value.scope === "user" && scopeId !== (await currentUserId(db))) {
+      return fail("A personal memory can only be about you.", {
+        scopeId: "Personal memories are private to their person. For a note about how to work with a colleague's accounts, scope it to the account instead.",
+      });
+    }
+
     const row = {
       org_id: orgId,
       scope: value.scope,

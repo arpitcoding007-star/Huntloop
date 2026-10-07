@@ -35,7 +35,7 @@ import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
-import { advanceOne, APPROVAL_RECHECK_MS } from "../src/handlers/advance-enrollments.ts";
+import { advanceOne, APPROVAL_RECHECK_MS, loadGuidance } from "../src/handlers/advance-enrollments.ts";
 import { onCompanySite } from "../src/handlers/research-company.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
@@ -3079,6 +3079,58 @@ console.log("\nadvance_enrollments — an opportunity closed as not a fit stops 
     "and nothing is drafted",
     !calls.some((c) => c.table === "messages" && c.verb === "insert"),
   );
+}
+
+console.log("\nadvance_enrollments — a draft is written with its sender's preferences (0044)");
+{
+  const memories = (r: { filters: [string, unknown][] }) => {
+    const scope = r.filters.find(([k]) => k === "eq:scope")?.[1];
+    const subject = r.filters.find(([k]) => k === "eq:scope_id")?.[1];
+    if (scope === "organization") {
+      return { data: [{ id: "m-org", scope, key: "tone", content: "Formal", origin: "stated" }], error: null };
+    }
+    if (scope === "user" && subject === "owner-1") {
+      return { data: [{ id: "m-mine", scope, key: "tone", content: "Casual, under 80 words", origin: "stated" }], error: null };
+    }
+    return { data: [], error: null };
+  };
+
+  const owned = fakeClient({ "select:memories": memories });
+  const withOwner = await loadGuidance(new OrgScope(ORG_A, owned.client), {
+    id: "opp-1", company_id: "co-1", owner_id: "owner-1",
+  });
+  expectEqual(
+    "the owner's own preference wins over the workspace's on the same key",
+    withOwner.memoryIds,
+    ["m-mine"],
+  );
+  expect(
+    "and is what the writer reads last",
+    withOwner.lines.at(-1) === "Casual, under 80 words",
+    JSON.stringify(withOwner.lines),
+  );
+  expect(
+    "and the draft can say what it was written with",
+    owned.calls.some((c) => c.table === "memories" && c.verb === "update"),
+  );
+
+  const team = fakeClient({
+    "select:memories": memories,
+    "select:memberships": { data: [{ user_id: "owner-1" }, { user_id: "colleague" }], error: null },
+  });
+  const unowned = await loadGuidance(new OrgScope(ORG_A, team.client), { id: "opp-2", company_id: "co-2", owner_id: null });
+  expectEqual("with no owner in a team, nobody's personal preference applies", unowned.memoryIds, ["m-org"]);
+  expect(
+    "and no personal memories are even asked for",
+    !team.calls.some((c) => c.table === "memories" && c.filters.some(([k, v]) => k === "eq:scope" && v === "user")),
+  );
+
+  const solo = fakeClient({
+    "select:memories": memories,
+    "select:memberships": { data: [{ user_id: "owner-1" }], error: null },
+  });
+  const personal = await loadGuidance(new OrgScope(ORG_A, solo.client), { id: "opp-3", company_id: "co-3", owner_id: null });
+  expectEqual("in a one-person workspace, its only member is the sender", personal.memoryIds, ["m-mine"]);
 }
 
 /* ── prospect_competitor_customers — a named customer, matched or not ─── */

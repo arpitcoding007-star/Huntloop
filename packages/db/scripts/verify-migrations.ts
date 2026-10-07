@@ -3565,6 +3565,171 @@ console.log("\n0043 — findings about competitors and demand cite them by id");
   else fail("and an older finding cites no competitor or theme", JSON.stringify(row));
 }
 
+// ── 0044 — personal memories are private; signals belong to their person ────
+console.log("\n0044 — a personal memory is private to the person it is about");
+{
+  const ORG = "44444444-0044-0044-0044-000000000044";
+  const ALICE = "44444444-0044-0044-0044-0000000000a1"; // owner
+  const BOB = "44444444-0044-0044-0044-0000000000b1"; // member
+  const VIC = "44444444-0044-0044-0044-0000000000c1"; // viewer
+  await db.query(
+    `insert into auth.users (id, email) values ($1, 'alice@0044.test'), ($2, 'bob@0044.test'), ($3, 'vic@0044.test')`,
+    [ALICE, BOB, VIC],
+  );
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'Personal Co', 'personal-0044')`, [ORG]);
+  await db.query(
+    `insert into memberships (org_id, user_id, role) values ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $4, 'viewer')`,
+    [ORG, ALICE, BOB, VIC],
+  );
+  await db.query(
+    `insert into memories (id, org_id, scope, scope_id, content, origin)
+     values ('44444444-0044-0044-0044-00000000e001', $1, 'user', $2, 'Bob keeps emails short', 'learned'),
+            ('44444444-0044-0044-0044-00000000e002', $1, 'organization', null, 'House style', 'stated')`,
+    [ORG, BOB],
+  );
+
+  const as = async (uid: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [uid]);
+  };
+
+  await db.exec("begin");
+  await as(BOB);
+  const own = await db.query<{ n: number }>(`select count(*)::int as n from memories where org_id = $1`, [ORG]);
+  if (own.rows[0]!.n === 2) ok("the subject sees their personal memory and the workspace's");
+  else fail("the subject sees their personal memory and the workspace's", `saw ${own.rows[0]!.n}`);
+  await db.exec("rollback");
+
+  await db.exec("begin");
+  await as(ALICE);
+  const admin = await db.query<{ n: number }>(
+    `select count(*)::int as n from memories where org_id = $1 and scope = 'user'`,
+    [ORG],
+  );
+  if (admin.rows[0]!.n === 0) ok("an owner cannot read a colleague's unshared personal memory");
+  else fail("an owner cannot read a colleague's unshared personal memory", `saw ${admin.rows[0]!.n}`);
+  const edited = await db.query(
+    `update memories set content = 'changed' where id = '44444444-0044-0044-0044-00000000e001' returning id`,
+  );
+  if (edited.rows.length === 0) ok("nor edit it");
+  else fail("nor edit it", "updated");
+  await expectRejectTx(
+    db,
+    "nor write a personal memory for somebody else",
+    `insert into memories (org_id, scope, scope_id, content) values ($1, 'user', $2, 'x')`,
+    [ORG, BOB],
+  );
+  await db.exec("rollback");
+
+  await db.exec("begin");
+  await as(VIC);
+  await expectAccept(
+    db,
+    "a viewer may keep personal preferences",
+    `insert into memories (org_id, scope, scope_id, content) values ($1, 'user', $2, 'Bullets please')`,
+    [ORG, VIC],
+  );
+  await expectRejectTx(
+    db,
+    "but still cannot write the workspace's",
+    `insert into memories (org_id, scope, scope_id, content) values ($1, 'organization', null, 'x')`,
+    [ORG],
+  );
+  await db.exec("rollback");
+
+  await db.query(`update memories set shared_at = now() where id = '44444444-0044-0044-0044-00000000e001'`);
+  await db.exec("begin");
+  await as(ALICE);
+  const shared = await db.query<{ n: number }>(
+    `select count(*)::int as n from memories where org_id = $1 and scope = 'user'`,
+    [ORG],
+  );
+  if (shared.rows[0]!.n === 1) ok("once shared, an admin can read it to promote it");
+  else fail("once shared, an admin can read it to promote it", `saw ${shared.rows[0]!.n}`);
+  await db.exec("rollback");
+
+  await db.exec("begin");
+  await as(VIC);
+  const viewerShared = await db.query<{ n: number }>(
+    `select count(*)::int as n from memories where org_id = $1 and scope = 'user' and scope_id <> $2`,
+    [ORG, VIC],
+  );
+  if (viewerShared.rows[0]!.n === 0) ok("and a non-admin still cannot");
+  else fail("and a non-admin still cannot", `saw ${viewerShared.rows[0]!.n}`);
+  await db.exec("rollback");
+
+  await expectReject(
+    db,
+    "only a personal memory can be shared",
+    `update memories set shared_at = now() where id = '44444444-0044-0044-0044-00000000e002'`,
+  );
+
+  await db.query(
+    `insert into preference_signals (id, org_id, user_id, kind, features)
+     values ('44444444-0044-0044-0044-00000000f001', $1, $2, 'draft_edited', '{"wordDelta":-30}'::jsonb)`,
+    [ORG, BOB],
+  );
+  await db.exec("begin");
+  await as(ALICE);
+  const theirs = await db.query<{ n: number }>(`select count(*)::int as n from preference_signals where org_id = $1`, [ORG]);
+  if (theirs.rows[0]!.n === 0) ok("a colleague's signals are invisible, even to an owner");
+  else fail("a colleague's signals are invisible, even to an owner", `saw ${theirs.rows[0]!.n}`);
+  await expectRejectTx(
+    db,
+    "and nobody can record a signal for someone else",
+    `insert into preference_signals (org_id, user_id, kind) values ($1, $2, 'draft_edited')`,
+    [ORG, BOB],
+  );
+  const exported = await db.query<{ e: { memories: unknown[] } }>(`select public.export_organization($1) as e`, [ORG]);
+  const leaked = (exported.rows[0]!.e.memories as { scope: string }[]).filter((m) => m.scope === "user");
+  if (leaked.length === 0) ok("the workspace export leaves colleagues' personal memories out");
+  else fail("the workspace export leaves colleagues' personal memories out", `${leaked.length} included`);
+  await db.exec("rollback");
+
+  await db.exec("begin");
+  await as(BOB);
+  const mine = await db.query<{ e: { memories: unknown[]; signals: unknown[] } }>(
+    `select public.export_my_learning($1) as e`,
+    [ORG],
+  );
+  const e = mine.rows[0]!.e;
+  if (e.memories.length === 1 && e.signals.length === 1) ok("a person can export what Huntloop learned about them");
+  else fail("a person can export what Huntloop learned about them", JSON.stringify(e).slice(0, 120));
+  await expectRejectTx(
+    db,
+    "a question key is a dotted identifier",
+    `insert into user_questions (org_id, user_id, question_key) values ($1, $2, 'Not A Key')`,
+    [ORG, BOB],
+  );
+  await expectAccept(
+    db,
+    "and a person can be asked one",
+    `insert into user_questions (org_id, user_id, question_key) values ($1, $2, 'outreach.signoff')`,
+    [ORG, BOB],
+  );
+  await db.exec("rollback");
+
+  const derived = await db.query<{ origin: string }>(
+    `insert into memories (org_id, scope, content, source) values ($1, 'organization', 'Concluded', 'derived') returning origin`,
+    [ORG],
+  );
+  if (derived.rows[0]?.origin === "learned") ok("a memory the product concluded is marked learned");
+  else fail("a memory the product concluded is marked learned", derived.rows[0]?.origin);
+
+  await expectReject(
+    db,
+    "a third personal goal is refused",
+    `update profiles set goals = array['discover','qualify','learn'] where id = $1`,
+    [BOB],
+  );
+  await expectReject(
+    db,
+    "and a workspace kind outside the set",
+    `update organizations set workspace_kind = 'family' where id = $1`,
+    [ORG],
+  );
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );

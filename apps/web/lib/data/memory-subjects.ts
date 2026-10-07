@@ -47,10 +47,11 @@ export async function listMemorySubjects(orgSlug: string): Promise<Loaded<Memory
           .limit(LIMIT),
       ]);
       return {
-        user: members.map((m) => ({
-          id: m.userId,
-          label: m.isYou ? `${m.name ?? m.email ?? "You"} (you)` : (m.name ?? m.email ?? "A member"),
-        })),
+        /* Only yourself: a personal memory is private to the person it is
+           about (0044), and one written for a colleague is refused. */
+        user: members
+          .filter((m) => m.isYou)
+          .map((m) => ({ id: m.userId, label: `${m.name ?? m.email ?? "You"} (you)` })),
         account: ((companies.data ?? []) as any[]).map((c) => ({
           id: String(c.id),
           label: `${c.name} · ${c.canonical_domain}`,

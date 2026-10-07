@@ -55,6 +55,7 @@ export async function loadAgentContext(
       userId: input.userId,
       accountId: input.companyId,
       opportunityId: input.opportunityId,
+      task: "sales_agent",
     }),
   ]);
 
