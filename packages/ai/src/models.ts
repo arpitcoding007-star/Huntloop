@@ -47,7 +47,8 @@ export type TaskName =
   | "draft_icp"
   | "explain_performance"
   | "workspace_assistant"
-  | "cluster_demand";
+  | "cluster_demand"
+  | "infer_preferences";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -99,6 +100,10 @@ export const ROUTES: Record<TaskName, Route> = {
      ids sent and every new theme is a proposal a person accepts, so this is
      mid-tier work; it runs at most daily per workspace. */
   cluster_demand: { model: MODELS.sonnet, effort: "medium" },
+  /* Groups one person's short notes into standing instructions, each citing
+     three of them; style items apply with an undo, targeting ones wait for a
+     yes. Mid-tier, and at most once a day per person. */
+  infer_preferences: { model: MODELS.sonnet, effort: "medium" },
 };
 
 /**

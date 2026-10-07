@@ -397,3 +397,22 @@ export async function exportMyLearningAction(
     PERSONAL,
   );
 }
+
+/** "Got it" on the dashboard's "I noticed…" card. */
+export async function acknowledgeLearningAction(org: string): Promise<ActionResult<undefined>> {
+  return mutate(
+    org,
+    "acknowledgeLearning",
+    async ({ db, orgId }) => {
+      const me = await currentUserId(db);
+      if (!me) return fail("Your session expired. Sign in again.");
+      const { error } = await db
+        .from("preference_state")
+        .upsert({ org_id: orgId, user_id: me, reviewed_at: new Date().toISOString() }, { onConflict: "org_id,user_id" });
+      if (error) return fail(`That could not be saved: ${error.message}`);
+      revalidatePath(`/${org}/dashboard`);
+      return ok(undefined);
+    },
+    PERSONAL,
+  );
+}

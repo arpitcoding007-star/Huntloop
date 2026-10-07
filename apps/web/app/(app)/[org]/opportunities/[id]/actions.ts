@@ -11,6 +11,7 @@ import {
   ok,
   type ActionResult,
 } from "../../../../../lib/data/org";
+import { recordSignal } from "../../../../../lib/data/signals";
 import { agentQuestionSchema, priorityBandSchema, uuidSchema } from "../../../../../lib/validation";
 
 /**
@@ -294,6 +295,18 @@ export async function overridePriorityAction(
       p_human: parsed.data,
       p_reason: reason?.trim() || null,
     });
+
+    /* K3: a disagreement with a reason is something the person said about
+       who is a fit. Several alike may become a *proposed* targeting
+       preference; it is never applied without their yes. */
+    if (reason?.trim()) {
+      await recordSignal(db, orgId, {
+        kind: "score_override",
+        subjectType: "opportunity",
+        subjectId: id.data,
+        note: `${previous} → ${parsed.data}: ${reason.trim()}`,
+      });
+    }
 
     revalidatePath(`/${org}/opportunities/${id.data}`);
     revalidatePath(`/${org}/opportunities`);

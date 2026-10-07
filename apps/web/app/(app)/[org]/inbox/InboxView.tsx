@@ -16,13 +16,14 @@ import {
   Select,
   Textarea,
 } from "@huntloop/ui";
-import { AlertTriangle, ArrowUpRight, Check, Inbox as InboxIcon, Pencil, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, Inbox as InboxIcon, Pencil, RefreshCw, Sparkles, X } from "lucide-react";
 import type { Draft, Message, MessageEventKind, Thread } from "../../../../lib/data/inbox";
 import { WrittenWith } from "../WrittenWith";
 import {
   approveMessageAction,
   assignThreadAction,
   editDraftAction,
+  redraftAction,
   rejectDraftAction,
   replyToThreadAction,
   setThreadStatusAction,
@@ -505,7 +506,8 @@ function DraftCard({
   now: string;
   onResult: (r: Result) => void;
 }) {
-  const [mode, setMode] = useState<"read" | "edit" | "reject">("read");
+  const [mode, setMode] = useState<"read" | "edit" | "reject" | "redraft">("read");
+  const [note, setNote] = useState("");
   const [subject, setSubject] = useState(draft.subject ?? "");
   const [body, setBody] = useState(draft.bodyText ?? "");
   const [reason, setReason] = useState("");
@@ -590,6 +592,18 @@ function DraftCard({
           </Field>
         )}
 
+        {mode === "redraft" && (
+          <Field
+            label="What should change?"
+            hint="For this draft only. Huntloop rewrites it on its next run; ask for the same thing a few times and it offers to make it a habit."
+            error={errors.note}
+          >
+            {(field) => (
+              <Input {...field} value={note} maxLength={500} disabled={pending} placeholder="Shorter, and lead with the hiring news" onChange={(e) => setNote(e.target.value)} />
+            )}
+          </Field>
+        )}
+
         <WrittenWith org={org} data={draft.writtenWith} subject={{ type: "message", id: draft.id }} />
 
         {canWrite && (
@@ -609,6 +623,11 @@ function DraftCard({
                 <Button size="sm" variant="secondary" icon={Pencil} disabled={pending} onClick={() => setMode("edit")}>
                   Edit
                 </Button>
+                {draft.aiGenerated && draft.campaign && (
+                  <Button size="sm" variant="ghost" icon={RefreshCw} disabled={pending} onClick={() => setMode("redraft")}>
+                    Redraft with a note
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" icon={X} disabled={pending} onClick={() => setMode("reject")}>
                   Reject
                 </Button>
@@ -639,6 +658,21 @@ function DraftCard({
                     setMode("read");
                   }}
                 >
+                  Cancel
+                </Button>
+              </>
+            )}
+            {mode === "redraft" && (
+              <>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={pending || !note.trim()}
+                  onClick={() => start(async () => void report(await redraftAction(org, draft.id, note)))}
+                >
+                  {pending ? "Sending…" : "Redraft"}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={pending} onClick={() => setMode("read")}>
                   Cancel
                 </Button>
               </>

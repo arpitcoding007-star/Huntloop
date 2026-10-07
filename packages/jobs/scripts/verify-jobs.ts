@@ -37,6 +37,7 @@ import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
 import { advanceOne, APPROVAL_RECHECK_MS, loadGuidance } from "../src/handlers/advance-enrollments.ts";
 import { onCompanySite } from "../src/handlers/research-company.ts";
+import { learnPreferencesJob } from "../src/handlers/learn-preferences.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
 import type { JobHandler } from "../src/registry.ts";
 
@@ -615,6 +616,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
          enrichment refresh. Spends credits, so it is listed by hand. */
       "schedule_followups",
       "schedule_learning",
+      /* 0044: each person's habits. Hourly; the model only for new notes. */
+      "schedule_preferences",
       "schedule_recomputes",
       "schedule_scans",
       "schedule_sends",
@@ -650,7 +653,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
           row.job_name !== "schedule_learning" &&
           row.job_name !== "enforce_retention" &&
           row.job_name !== "send_digests" &&
-          row.job_name !== "schedule_demand",
+          row.job_name !== "schedule_demand" &&
+          row.job_name !== "schedule_preferences",
       )
       .every((row) => row.idempotency_key === row.job_name),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
@@ -3131,6 +3135,72 @@ console.log("\nadvance_enrollments — a draft is written with its sender's pref
   });
   const personal = await loadGuidance(new OrgScope(ORG_A, solo.client), { id: "opp-3", company_id: "co-3", owner_id: null });
   expectEqual("in a one-person workspace, its only member is the sender", personal.memoryIds, ["m-mine"]);
+}
+
+console.log("\nlearn_preferences — three edits become a habit; the person's word wins (0044)");
+{
+  const now = new Date("2026-10-07T12:00:00Z");
+  const edit = (id: string, draft: string) => ({
+    id, kind: "draft_edited", note: null, subject_id: draft, learned_at: null,
+    features: { wordsBefore: 120, wordsAfter: 70 },
+  });
+  const signals = [edit("s1", "d1"), edit("s2", "d2"), edit("s3", "d3")];
+  const run = async (memories: unknown[], paused = false) => {
+    const admin = fakeClient({ "select:profiles": { data: { learning_paused: paused }, error: null } });
+    setAdminClientForTests(admin.client);
+    const { client, calls } = fakeClient({
+      "select:preference_signals": { data: signals, error: null },
+      "select:memories": { data: memories, error: null },
+      "insert:memories": { data: { id: "m-new" }, error: null },
+    });
+    const outcome = await learnPreferencesJob({
+      scope: new OrgScope(ORG_A, client),
+      payload: { userId: "u1" },
+      job: {} as never,
+      now,
+    });
+    setAdminClientForTests(null);
+    return { outcome, calls };
+  };
+
+  const fresh = await run([]);
+  const insertedRows = fresh.calls.find((c) => c.table === "memories" && c.verb === "insert")?.payload as
+    | Record<string, unknown>[]
+    | undefined;
+  const inserted = insertedRows?.[0];
+  expect("a new learned preference is written", inserted?.key === "email.length", JSON.stringify(inserted));
+  expect(
+    "as the person's own, learned, active — style applies itself",
+    inserted?.scope === "user" && inserted?.scope_id === "u1" && inserted?.origin === "learned" && inserted?.status === "active",
+  );
+  const evidence = fresh.calls.find((c) => c.table === "memory_evidence" && c.verb === "upsert")?.payload as { signal_id: string }[] | undefined;
+  expectEqual("citing the three edits", evidence?.map((e) => e.signal_id), ["s1", "s2", "s3"]);
+  expect(
+    "and the edits are marked considered",
+    fresh.calls.some((c) => c.table === "preference_signals" && c.verb === "update"),
+  );
+
+  const stated = await run([
+    { id: "m1", key: "email.length", content: "Write long, detailed emails.", origin: "stated", status: "active", support: 0, deleted_at: null },
+  ]);
+  expect(
+    "something the person stated is never overwritten by what was learned",
+    !stated.calls.some((c) => c.table === "memories" && (c.verb === "insert" || c.verb === "update")),
+  );
+
+  const declined = await run([
+    { id: "m2", key: "email.length", content: "Keep emails short.", origin: "learned", status: "rejected", support: 3, deleted_at: null },
+  ]);
+  expect(
+    "nor is something they declined proposed again",
+    !declined.calls.some((c) => c.table === "memories" && (c.verb === "insert" || c.verb === "update")),
+  );
+
+  const paused = await run([], true);
+  expect(
+    "and with learning paused, nothing is read or written",
+    !paused.calls.some((c) => c.table === "memories") && paused.outcome.ok,
+  );
 }
 
 /* ── prospect_competitor_customers — a named customer, matched or not ─── */

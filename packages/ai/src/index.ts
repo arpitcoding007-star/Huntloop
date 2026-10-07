@@ -218,3 +218,15 @@ export {
   type ClusterOutput,
   type DemandKind,
 } from "./tasks/cluster-demand.ts";
+
+export {
+  MAX_NEW_PREFERENCES,
+  MAX_PREFERENCE_NOTES,
+  MIN_PREFERENCE_SUPPORT,
+  inferPreferences,
+  type InferInput,
+  type InferOutput,
+  type InferredCategory,
+  type InferredPreference,
+  type InferredTask,
+} from "./tasks/infer-preferences.ts";

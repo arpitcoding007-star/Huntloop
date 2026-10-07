@@ -237,15 +237,16 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
     return advanceStep(scope, enrollmentId, step, mailboxId, autonomous, String(existing.id));
   }
 
+  const redraftNote = await readRedraftNote(scope, enrollmentId);
   const draft = await draftMessage(scope, {
     opportunity,
     campaign,
     step,
     recipient,
+    redraftNote,
   });
 
-  const { data: message, error: messageError } = await scope
-    .insert("messages", {
+  const row = {
       enrollment_id: enrollmentId,
       step_id: step.id,
       mailbox_id: mailboxId,
@@ -267,9 +268,19 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       // awaiting a human from a message on its way out, and §46's ladder is
       // the only thing that sets it.
       scheduled_at: autonomous ? new Date().toISOString() : null,
-    })
-    .select("id")
-    .maybeSingle();
+  };
+  let { data: message, error: messageError } = await scope.insert("messages", row).select("id").maybeSingle();
+  if (messageError?.code === "42703") {
+    /* Before 0044 there is no `applied_memory_ids`; the draft matters more
+       than the record of what it was written with. */
+    const { applied_memory_ids: _applied, ...legacy } = row;
+    void _applied;
+    ({ data: message, error: messageError } = await scope.insert("messages", legacy).select("id").maybeSingle());
+  }
+  /* The note was for this draft; once it exists, it is spent. */
+  if (redraftNote && message) {
+    await scope.update("enrollments", { redraft_note: null }).eq("id", enrollmentId);
+  }
 
   if (messageError?.code === "23505") {
     // Another run drafted this step between the check above and here.
@@ -465,6 +476,8 @@ async function draftMessage(
     campaign: any;
     step: Step;
     recipient: Recipient;
+    /** "Redraft with a note" — for this draft only (0044). */
+    redraftNote?: string | null;
   },
 ): Promise<Draft> {
   const { data: company } = await scope
@@ -477,7 +490,7 @@ async function draftMessage(
   try {
     const evidence = await loadEvidence(scope, String(input.opportunity.id));
     const product = await loadProduct(scope, input.campaign.product_id);
-    const guidance = await loadGuidance(scope, input.opportunity);
+    const guidance = await loadGuidance(scope, input.opportunity, input.redraftNote ? [input.redraftNote] : []);
     const competitors = await loadCompetitors(scope, String(input.opportunity.company_id));
     /* The evidence behind a competitor relationship is citable like any other
        claim — that is how a named competitor stays traceable. */
@@ -624,6 +637,8 @@ export async function loadGuidance(
   scope: OrgScope,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- embedded rows */
   opportunity: any,
+  /** This draft's own instructions; highest precedence, never stored as memory. */
+  temporary: string[] = [],
 ): Promise<{ lines: string[]; memoryIds: string[] }> {
   const sender = await senderOf(scope, opportunity?.owner_id ?? null);
   const resolved = await resolvePreferences(
@@ -634,6 +649,7 @@ export async function loadGuidance(
       task: "personalize_message",
       accountId: opportunity?.company_id ? String(opportunity.company_id) : null,
       opportunityId: opportunity?.id ? String(opportunity.id) : null,
+      temporary,
     },
   );
 
@@ -650,6 +666,17 @@ export async function loadGuidance(
     await scope.update("memories", { last_applied_at: new Date().toISOString() }).in("id", memoryIds);
   }
   return { lines: [...voice, ...asGuidance(resolved)], memoryIds };
+}
+
+/**
+ * The note a person left with "Redraft with a note" (0044), read on its own so
+ * a database without the column drafts as before rather than not at all.
+ */
+async function readRedraftNote(scope: OrgScope, enrollmentId: string): Promise<string | null> {
+  const { data, error } = await scope.select("enrollments", "redraft_note").eq("id", enrollmentId).maybeSingle();
+  if (error) return null;
+  const note = (data as { redraft_note?: string | null } | null)?.redraft_note;
+  return typeof note === "string" && note.trim() ? note.trim() : null;
 }
 
 /** Who an email goes out as: the opportunity's owner, or a sole member. */

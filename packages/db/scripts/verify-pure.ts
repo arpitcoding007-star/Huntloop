@@ -70,6 +70,7 @@ import {
   orderPreferences,
   type PreferenceRow,
 } from "../src/preferences.ts";
+import { editFeatures, styleCandidates, type StyleSignal } from "../src/style.ts";
 
 let failures = 0;
 let checks = 0;
@@ -823,6 +824,80 @@ console.log("\npreferences — precedence, fading and conflicts (0044)");
   expect(
     "a task-only instruction has no row and no origin a screen could mistake for a memory",
     resolved.applied[0]!.id === null && resolved.applied[0]!.origin === "task",
+  );
+}
+
+// ── style.ts — what repeats across a person's edits (K3) ───────────────────
+console.log("\nstyle — habits are counted, not guessed (0044)");
+{
+  const ai = {
+    subject: "Quick question about your custody roadmap",
+    body: "Hi Sam,\n\nI hope this email finds you well! I noticed your team wrote about permissioning, and I wanted to reach out because we help desks like yours ship agents that move funds safely. Would you be open to a quick call next week to explore whether this could be a fit?\n\nBest regards,\nThe Huntloop team",
+  };
+  const mine = {
+    subject: "Custody permissioning",
+    body: "Hey Sam,\n\nSaw your post on permissioning. We help desks ship agents that move funds safely.\n\nWorth 15 minutes?\n\nCheers,\nAlex",
+  };
+  const f = editFeatures(ai, mine);
+  expect("an edit is measured in words", f.wordsBefore > 40 && f.wordsAfter < 25, JSON.stringify([f.wordsBefore, f.wordsAfter]));
+  expectEqual("the greeting word on each side", [f.greetingBefore, f.greetingAfter], ["hi", "hey"]);
+  expectEqual(
+    "and the sign-off, joined across its two lines",
+    [f.signoffBefore, f.signoffAfter],
+    ["Best regards, The Huntloop team", "Cheers, Alex"],
+  );
+  expect("exclamation marks taken out are counted", f.exclamationsBefore === 1 && f.exclamationsAfter === 0);
+  expect(
+    "deleted phrases are kept, at most five",
+    f.removedPhrases.length > 0 && f.removedPhrases.length <= 5 && f.removedPhrases.includes("hope this email"),
+    JSON.stringify(f.removedPhrases),
+  );
+
+  const sig = (id: string, subjectId: string, features: Partial<ReturnType<typeof editFeatures>>): StyleSignal => ({
+    id,
+    subjectId,
+    features,
+  });
+  expectEqual("two edits are not a habit", styleCandidates([sig("a", "d1", f), sig("b", "d2", f)]).length, 0);
+  expectEqual(
+    "three edits of one draft are not a habit either",
+    styleCandidates([sig("a", "d1", f), sig("b", "d1", f), sig("c", "d1", f)]).length,
+    0,
+  );
+
+  const three = styleCandidates([sig("a", "d1", f), sig("b", "d2", f), sig("c", "d3", f)]);
+  const keys = three.map((c) => c.key);
+  expect(
+    "three edits across drafts are",
+    ["email.length", "email.signoff", "email.greeting", "email.exclamations"].every((k) => keys.includes(k)),
+    JSON.stringify(keys),
+  );
+  const length = three.find((c) => c.key === "email.length")!;
+  expectEqual("each cites the edits it came from", length.signalIds, ["a", "b", "c"]);
+  expect("and is phrased as an instruction with a number", /about \d+ words/.test(length.content), length.content);
+  expectEqual(
+    "a sign-off is quoted as the person wrote it",
+    three.find((c) => c.key === "email.signoff")!.content,
+    'Sign off exactly as: "Cheers, Alex".',
+  );
+
+  const mixed = styleCandidates([
+    sig("a", "d1", { wordsBefore: 100, wordsAfter: 60 }),
+    sig("b", "d2", { wordsBefore: 100, wordsAfter: 60 }),
+    sig("c", "d3", { wordsBefore: 100, wordsAfter: 60 }),
+    sig("d", "d4", { wordsBefore: 100, wordsAfter: 140 }),
+    sig("e", "d5", { wordsBefore: 100, wordsAfter: 150 }),
+  ]);
+  expectEqual("edits that pull both ways are not a habit", mixed.filter((c) => c.key === "email.length").length, 0);
+
+  const mostly = styleCandidates([
+    ...["a", "b", "c", "d", "e"].map((id, i) => sig(id, `d${i}`, { wordsBefore: 100, wordsAfter: 60 })),
+    sig("z", "d9", { wordsBefore: 100, wordsAfter: 140 }),
+  ]);
+  expectEqual(
+    "and the odd one out is recorded against it",
+    mostly.find((c) => c.key === "email.length")?.contradictingIds,
+    ["z"],
   );
 }
 

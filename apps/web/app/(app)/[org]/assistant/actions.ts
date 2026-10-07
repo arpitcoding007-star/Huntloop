@@ -1,6 +1,8 @@
 "use server";
 
 import { writtenWith, type WrittenWith } from "../../../../lib/data/written-with";
+import { recordSignal } from "../../../../lib/data/signals";
+import { isCorrection } from "../../../../lib/learning/corrections";
 import { revalidatePath } from "next/cache";
 import type { AssistantAction } from "@huntloop/ai";
 import { askWorkspace } from "../../../../lib/ai/workspace-assistant";
@@ -64,6 +66,13 @@ export async function askAssistantAction(
     const history = ((prior ?? []) as { role: string; content: string }[])
       .filter((r) => r.role === "user" || r.role === "assistant")
       .map((r) => ({ role: r.role as "user" | "assistant", content: String(r.content) }));
+
+    /* K3: "shorter", "as bullets", "from now on…" after an answer is how this
+       person likes answers — a signal, and the question itself is this
+       answer's task-only instruction. */
+    if (history.some((t) => t.role === "assistant") && isCorrection(parsed.data)) {
+      await recordSignal(db, orgId, { kind: "assistant_correction", subjectType: "conversation", subjectId: conversationId, note: parsed.data });
+    }
 
     const outcome = await askWorkspace(org, {
       workspaceName: onboarding?.orgName ?? org,

@@ -69,6 +69,8 @@ import { sendNotifications } from "./handlers/send-notifications.ts";
 import { sendDigests } from "./handlers/send-digests.ts";
 import { scheduleDemand } from "./handlers/schedule-demand.ts";
 import { clusterDemandJob } from "./handlers/cluster-demand.ts";
+import { schedulePreferences } from "./handlers/schedule-preferences.ts";
+import { learnPreferencesJob } from "./handlers/learn-preferences.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -103,4 +105,6 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   send_digests: sendDigests,
   schedule_demand: scheduleDemand,
   cluster_demand: clusterDemandJob,
+  schedule_preferences: schedulePreferences,
+  learn_preferences: learnPreferencesJob,
 };

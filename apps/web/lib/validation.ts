@@ -600,6 +600,13 @@ export const draftEditSchema = z.object({
 });
 
 /** Why a person refused a draft. Optional, short, and kept on the row. */
+/** "Redraft with a note" (K3): what to change, for this draft only. */
+export const redraftNoteSchema = z
+  .string()
+  .trim()
+  .min(1, "Say what to change — for example, \"shorter, and lead with the hiring news\".")
+  .max(500, "Keep the note under 500 characters.");
+
 export const rejectionReasonSchema = z
   .string()
   .trim()

@@ -215,6 +215,9 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   /* 0042: spends at most one mid-tier call per workspace per day (the
      handler's own staleness rule), plus one per explicit "Group now". */
   "schedule_demand",
+  /* 0044: counts each person's new signals; the model is called only for new
+     typed notes, at most every six hours per person (`learn_preferences`). */
+  "schedule_preferences",
 ]);
 
 /**
@@ -231,7 +234,12 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
  * it. A missed hour costs nothing, because being due is decided from
  * `learning_runs` inside the handler rather than from having been enqueued.
  */
-const HOURLY: ReadonlySet<JobName> = new Set<JobName>(["schedule_learning", "send_digests", "schedule_demand"]);
+const HOURLY: ReadonlySet<JobName> = new Set<JobName>([
+  "schedule_learning",
+  "send_digests",
+  "schedule_demand",
+  "schedule_preferences",
+]);
 
 /**
  * Sweepers that only need asking once a day.

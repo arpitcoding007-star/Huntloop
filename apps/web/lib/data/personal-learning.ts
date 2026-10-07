@@ -273,3 +273,65 @@ const DEMO: MyLearning = {
   ],
   shared: [],
 };
+
+/**
+ * What Huntloop learned since the person last said "Got it" — the dashboard's
+ * "I noticed…" card (K3). Learned items that apply themselves are announced
+ * once; proposals stay until answered.
+ */
+export interface LearningNews {
+  learned: { id: string; content: string }[];
+  proposed: number;
+}
+
+export async function getLearningNews(orgSlug: string): Promise<LearningNews | null> {
+  const { data } = await load<LearningNews | null>(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getLearningNews");
+      const me = await currentUserId(db);
+      if (!me) return null;
+      const { data: state } = await db
+        .from("preference_state")
+        .select("reviewed_at")
+        .eq("org_id", orgId)
+        .eq("user_id", me)
+        .maybeSingle();
+      const since = (state as { reviewed_at?: string | null } | null)?.reviewed_at ?? null;
+
+      let learned = db
+        .from("memories")
+        .select("id, content")
+        .eq("org_id", orgId)
+        .eq("scope", "user")
+        .eq("scope_id", me)
+        .eq("origin", "learned")
+        .eq("status", "active")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(3);
+      if (since) learned = learned.gt("created_at", since);
+
+      const [fresh, waiting] = await Promise.all([
+        learned,
+        db
+          .from("memories")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", orgId)
+          .eq("scope", "user")
+          .eq("scope_id", me)
+          .eq("status", "proposed")
+          .is("deleted_at", null),
+      ]);
+      // Before 0044 these columns do not exist: no news is the right answer.
+      if (fresh.error || waiting.error) return null;
+      const items = ((fresh.data ?? []) as { id: string; content: string }[]).map((r) => ({
+        id: String(r.id),
+        content: String(r.content),
+      }));
+      const proposed = waiting.count ?? 0;
+      return items.length || proposed ? { learned: items, proposed } : null;
+    },
+    () => null,
+  );
+  return data;
+}

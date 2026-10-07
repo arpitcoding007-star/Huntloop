@@ -8,9 +8,12 @@ import {
   ok,
   type ActionResult,
 } from "../../../../lib/data/org";
+import { editFeatures } from "@huntloop/db/style";
+import { recordSignal } from "../../../../lib/data/signals";
 import {
   draftEditSchema,
   parseForm,
+  redraftNoteSchema,
   rejectionReasonSchema,
   replyBodySchema,
   threadStatusSchema,
@@ -392,6 +395,21 @@ export async function editDraftAction(
       .is("sent_at", null);
     if (error) return fail(`That draft could not be saved: ${error.message}`);
 
+    /* K3: how the person changed what Huntloop wrote — measured, not stored
+       as text. Only for AI drafts: editing your own words teaches nothing
+       about how Huntloop should write. */
+    if (draft.ai_generated) {
+      await recordSignal(db, orgId, {
+        kind: "draft_edited",
+        subjectType: "message",
+        subjectId: id.data,
+        features: { ...editFeatures(
+          { subject: draft.subject, body: draft.body_text ?? "" },
+          { subject: parsed.value.subject, body: parsed.value.body },
+        ) },
+      });
+    }
+
     revalidatePath(`/${org}/inbox`);
     return ok(undefined, "Saved. It still waits for your approval.");
   });
@@ -436,6 +454,10 @@ export async function rejectDraftAction(
       .is("sent_at", null);
     if (error) return fail(`That draft could not be rejected: ${error.message}`);
 
+    if (read.draft.ai_generated) {
+      await recordSignal(db, orgId, { kind: "draft_rejected", subjectType: "message", subjectId: id.data, note: why });
+    }
+
     if (read.draft.enrollment_id) {
       await db
         .from("enrollments")
@@ -457,6 +479,82 @@ export async function rejectDraftAction(
         ? "Rejected. Its sequence is paused so nothing follows up on it."
         : "Rejected. Nothing will be sent.",
     );
+  });
+}
+
+/**
+ * "Redraft with a note" (K3, `0044`) — an instruction for this draft only.
+ *
+ * The draft is withdrawn and its enrollment is put back one step with the
+ * note on it; the engine's next tick writes the step again with the note as
+ * a task-only instruction (highest precedence, never stored as a memory) and
+ * clears it. The note is also recorded as a signal, so a person who keeps
+ * asking for the same thing is eventually offered it as a standing preference.
+ */
+export async function redraftAction(
+  org: string,
+  messageId: string,
+  note: string,
+): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(messageId);
+  if (!id.success) return fail("That message reference isn't valid.");
+  const parsedNote = redraftNoteSchema.safeParse(note);
+  if (!parsedNote.success) return fail(parsedNote.error.issues[0]?.message ?? "That note could not be read.");
+
+  return mutate(org, "redraft", async ({ db, orgId }) => {
+    const read = await readDraft(db, orgId, id.data);
+    if (!read.ok) return fail(read.error);
+    if (!read.draft.ai_generated || !read.draft.enrollment_id) {
+      return fail("Only a draft Huntloop wrote for a sequence can be redrafted. Edit this one instead.");
+    }
+
+    const { data: message } = await db
+      .from("messages")
+      .select("step_id, sequence_steps(position)")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    const stepRow = message as { sequence_steps?: { position?: number } | { position?: number }[] } | null;
+    const step = Array.isArray(stepRow?.sequence_steps) ? stepRow?.sequence_steps[0] : stepRow?.sequence_steps;
+    if (typeof step?.position !== "number") return fail("This draft's sequence step could not be found.");
+
+    /* The enrollment first: if this workspace's database cannot hold a note
+       yet, nothing is withdrawn. */
+    const { error: enrollmentError } = await db
+      .from("enrollments")
+      .update({
+        current_step: step.position,
+        next_action_at: new Date().toISOString(),
+        redraft_note: parsedNote.data,
+      })
+      .eq("id", read.draft.enrollment_id)
+      .eq("org_id", orgId);
+    if (enrollmentError) {
+      return fail(
+        enrollmentError.code === "42703"
+          ? "Redrafting needs migration 0044, which this workspace's database doesn't have yet. Edit the draft instead."
+          : `That draft could not be redrafted: ${enrollmentError.message}`,
+      );
+    }
+
+    const { error } = await db
+      .from("messages")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("scheduled_at", null)
+      .is("sent_at", null);
+    if (error) return fail(`That draft could not be withdrawn: ${error.message}`);
+
+    await recordSignal(db, orgId, {
+      kind: "draft_regenerated",
+      subjectType: "message",
+      subjectId: id.data,
+      note: parsedNote.data,
+    });
+
+    revalidatePath(`/${org}/inbox`);
+    return ok(undefined, "Redrafting with your note. The new draft appears here within a few minutes.");
   });
 }
 

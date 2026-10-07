@@ -35,6 +35,7 @@
 --   memory_evidence                the observations behind a learned memory
 --   preference_state               when a person's signals were last learned from
 --   user_questions                 just-in-time questions, asked once (K4)
+--   enrollments.redraft_note       a one-draft instruction, cleared once used
 --   messages / conversation_messages.applied_memory_ids
 --                                  what a draft or an answer was written with
 
@@ -215,6 +216,9 @@ create table if not exists public.preference_state (
   user_id         uuid not null references auth.users(id) on delete cascade,
   last_learned_at timestamptz,
   requested_at    timestamptz,
+  -- When the person last acknowledged what was learned ("Got it"); newer
+  -- learned memories are announced on the dashboard until then.
+  reviewed_at     timestamptz,
   primary key (org_id, user_id)
 );
 
@@ -253,6 +257,16 @@ create policy user_questions_own on public.user_questions
 drop trigger if exists user_questions_touch on public.user_questions;
 create trigger user_questions_touch before update on public.user_questions
   for each row execute function public.touch_updated_at();
+
+-- ── This task only: "Redraft with a note" ─────────────────────────────────
+--
+-- A person asking for one draft to be rewritten ("shorter — it's a CFO")
+-- gives an instruction for that draft alone. It is held on the enrollment
+-- until the engine has written the new draft, then cleared; it is never a
+-- memory. Repeated, the same instruction becomes a learned proposal (K3).
+
+alter table public.enrollments
+  add column if not exists redraft_note text check (redraft_note is null or length(redraft_note) <= 500);
 
 -- ── What an output was written with ───────────────────────────────────────
 

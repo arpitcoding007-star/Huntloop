@@ -18,6 +18,7 @@
     "./activity": "./src/activity.ts",
     "./memory": "./src/memory.ts",
     "./preferences": "./src/preferences.ts",
+    "./style": "./src/style.ts",
     "./needs-you": "./src/needs-you.ts"
   },
   "scripts": {

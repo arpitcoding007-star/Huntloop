@@ -85,7 +85,10 @@ export type JobName =
   | "send_digests"
   /* 0042: demand intelligence — group what prospects said into themes. */
   | "schedule_demand"
-  | "cluster_demand";
+  | "cluster_demand"
+  /* 0044: the learning layer — one person's habits, from their own actions. */
+  | "schedule_preferences"
+  | "learn_preferences";
 
 export interface JobRow {
   id: string;

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import { recordSignal } from "../../../../lib/data/signals";
 import {
   opportunityStatusSchema,
   outcomeReasonSchema,
@@ -87,6 +88,17 @@ export async function setOpportunityStatusAction(
            outcome, and let it carry the reason that was finally given. */
         await db.from("outcomes").update(why).eq("id", already[0]!.id).eq("org_id", orgId);
       }
+    }
+
+    /* K3: why a company was ruled out, in the person's words — raw material
+       for a proposed targeting preference, never applied without a yes. */
+    if ((parsed.data === "lost" || parsed.data === "archived") && reason?.ok && reason.value.reason?.trim()) {
+      await recordSignal(db, orgId, {
+        kind: "disqualified",
+        subjectType: "opportunity",
+        subjectId: id.data,
+        note: [reason.value.category, reason.value.reason.trim()].filter(Boolean).join(": "),
+      });
     }
 
     revalidatePath(`/${org}/pipeline`);

@@ -8,6 +8,8 @@ import { NeedsYouList } from "../needs-you/NeedsYouList";
 import { getShellChrome } from "../../../../lib/data/chrome";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
 import { PersonalStartCard } from "./PersonalStartCard";
+import { LearningNewsCard } from "./LearningNewsCard";
+import { getLearningNews } from "../../../../lib/data/personal-learning";
 import { personalize, type DashboardSection } from "../../../../lib/data/personalization";
 import { getIcpQuality } from "../../../../lib/data/icp-quality";
 import { IcpQualityCard } from "./IcpQualityCard";
@@ -91,13 +93,14 @@ export default async function DashboardPage({
   const { org } = await params;
   /* `chrome` is the layout's own request-cached lookup, so the eyebrow can
      name the workspace — not echo the URL slug — at no extra cost. */
-  const [viewer, { data }, onboarding, icpQuality, nudge, chrome] = await Promise.all([
+  const [viewer, { data }, onboarding, icpQuality, nudge, chrome, learningNews] = await Promise.all([
     currentViewer(org),
     getDashboard(org),
     getOnboardingState(org),
     getIcpQuality(org),
     getNudge(org),
     getShellChrome(org),
+    getLearningNews(org),
   ]);
 
   /* The layout this person gets. Order and defaults only — never capability;
@@ -548,6 +551,8 @@ export default async function DashboardPage({
             a component and cannot take one itself. */}
         {/* A personal workspace (K1) that has not said what it sells yet: what
             it can do now, and the way into the part that needs a company. */}
+        {learningNews && <LearningNewsCard org={org} news={learningNews} />}
+
         {onboarding?.workspaceKind === "personal" && !onboarding.hasIcp && (
           <PersonalStartCard org={org} />
         )}
