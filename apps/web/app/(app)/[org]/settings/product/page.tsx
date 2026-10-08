@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../../lib/data/membership";
-import { listProducts } from "../../../../../lib/data/product";
+import { getProductStats, listProducts } from "../../../../../lib/data/product";
 import { DemoFigures } from "../../DemoFigures";
 import { ProductList } from "./ProductList";
 
@@ -22,14 +22,17 @@ export default async function ProductPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: products, source } = await listProducts(org);
+  const [{ data: products, source }, { data: stats }] = await Promise.all([
+    listProducts(org),
+    getProductStats(org),
+  ]);
 
   return (
     <div className="space-y-6">
       {source !== "live" && (
         <DemoFigures what="This is an example product, not the one on your account." />
       )}
-      <ProductList org={org} products={products} canWrite={canWrite(viewer)} />
+      <ProductList org={org} products={products} stats={stats} canWrite={canWrite(viewer)} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Note } from "@huntloop/ui";
 import {
+  backlogByProfile,
   backlogState,
   isEngineRunning,
   isInngestDriving,
@@ -41,7 +42,10 @@ export default async function SourcesPage({
   const db = source === "live" ? await getDb() : null;
   const lastTick =
     db && viewer.kind === "member" ? await lastTickAt(db, viewer.orgId) : null;
-  const backlog = db && viewer.kind === "member" ? await backlogState(db, viewer.orgId) : null;
+  const [backlog, byProfile] =
+    db && viewer.kind === "member"
+      ? await Promise.all([backlogState(db, viewer.orgId), backlogByProfile(db, viewer.orgId)])
+      : [null, null];
 
   return (
     <>
@@ -66,6 +70,20 @@ export default async function SourcesPage({
             .
           </Note>
         </div>
+      )}
+      {/* Which profile is filling the one workspace cap — shown once more than
+          one profile has work waiting, which is when it stops being obvious. */}
+      {backlog && byProfile && byProfile.length > 1 && (
+        <p className="px-6 pt-4 text-[12px] text-fg-muted lg:px-8">
+          Review backlog {backlog.openCount} of {backlog.cap}:{" "}
+          {byProfile.map((p, i) => (
+            <span key={p.profile}>
+              {i > 0 && " · "}
+              {p.profile} <span className="hl-tabular text-fg-secondary">{p.count}</span>
+            </span>
+          ))}
+          . The limit is shared by every profile.
+        </p>
       )}
       <SourceManager
         org={org}

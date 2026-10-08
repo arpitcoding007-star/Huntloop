@@ -45,6 +45,52 @@ import { uuidSchema } from "../../../../lib/validation";
 /** A ceiling on one call. See the note in the body. */
 const MAX_PER_CALL = 200;
 
+/**
+ * Archive a selection — the list's "clean up" (§7.1.1).
+ *
+ * Archiving is not "not a fit": no reason is recorded and nothing is taught to
+ * the learning loop, because clearing a backlog says nothing about whether
+ * these companies would have bought. Only opportunities still before contact
+ * are archived; a selection that includes a live conversation leaves that one
+ * where it is and says so. The ledger records each stage change, active
+ * sequences stop on their next run (`advance_enrollments` skips archived
+ * opportunities), and the backlog cap counts fewer open opportunities, which
+ * is what resumes paused discovery.
+ */
+export async function archiveOpportunitiesAction(
+  org: string,
+  opportunityIds: string[],
+): Promise<ActionResult<{ archived: number }>> {
+  const ids = [...new Set(opportunityIds)];
+  if (ids.length === 0) return fail("Select at least one opportunity first.");
+  if (ids.length > MAX_PER_CALL) return fail(`Archive at most ${MAX_PER_CALL} at a time.`);
+  if (!ids.every((id) => uuidSchema.safeParse(id).success)) return fail("One of those references isn't valid.");
+
+  return mutate(org, "archiveOpportunities", async ({ db, orgId }) => {
+    const { data, error } = await db
+      .from("opportunities")
+      .update({ status: "archived", next_step: null, next_step_due_at: null })
+      .eq("org_id", orgId)
+      .in("id", ids)
+      .in("status", ["discovered", "researching", "qualified", "assigned"])
+      .is("deleted_at", null)
+      .select("id");
+    if (error) return fail(`Those could not be archived: ${error.message}`);
+
+    const archived = data?.length ?? 0;
+    revalidatePath(`/${org}/opportunities`);
+    revalidatePath(`/${org}/pipeline`);
+    revalidatePath(`/${org}/dashboard`);
+    revalidatePath(`/${org}/needs-you`);
+    const kept = ids.length - archived;
+    return ok(
+      { archived },
+      `Archived ${archived} ${archived === 1 ? "opportunity" : "opportunities"}.` +
+        (kept > 0 ? ` ${kept} already contacted or closed ${kept === 1 ? "was" : "were"} left as ${kept === 1 ? "it was" : "they were"}.` : ""),
+    );
+  });
+}
+
 export async function enrollOpportunitiesAction(
   org: string,
   campaignId: string,

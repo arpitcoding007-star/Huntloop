@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Badge, Button, Card, CardBody, FormMessage, Note, Textarea } from "@huntloop/ui";
-import { ArrowUpRight, Brain, CalendarCheck, RotateCcw, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Badge, Button, Card, CardBody, ConfirmButton, Field, FormMessage, Note, Select, Textarea } from "@huntloop/ui";
+import { ArrowUpRight, Brain, CalendarCheck, Send, Trash2 } from "lucide-react";
 import type { AssistantHistoryTurn } from "../../../../lib/data/assistant";
-import { askAssistantAction, clearAssistantAction, type AssistantTurn } from "./actions";
+import { askAssistantAction, deleteConversationAction, type AssistantTurn } from "./actions";
 import { setNextStepAction } from "../opportunities/[id]/activity-actions";
 import { savePreferenceAction } from "../settings/you/actions";
 import { WrittenWith } from "../WrittenWith";
@@ -53,6 +54,10 @@ function fromHistory(history: AssistantHistoryTurn[]): Turn[] {
  */
 export function AssistantChat({
   org,
+  conversationId,
+  title = null,
+  focus = null,
+  products = [],
   history,
   usual = [],
   userId,
@@ -61,6 +66,13 @@ export function AssistantChat({
   aiConfigured,
 }: {
   org: string;
+  /** The open conversation, or null for a new one (0045). */
+  conversationId: string | null;
+  title?: string | null;
+  /** The open conversation's product focus. */
+  focus?: string | null;
+  /** Products a new conversation may focus on; empty hides the picker. */
+  products?: { id: string; name: string }[];
   history: AssistantHistoryTurn[];
   /** Questions this person asks again and again (K5). */
   usual?: { text: string; days: number }[];
@@ -69,10 +81,15 @@ export function AssistantChat({
   canWrite: boolean;
   aiConfigured: boolean;
 }) {
+  const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>(() => fromHistory(history));
   const [question, setQuestion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [productId, setProductId] = useState("");
+  /* The conversation this view writes to. A new one gets its id from the
+     first stored answer, and later questions continue it. */
+  const [current, setCurrent] = useState<string | null>(conversationId);
 
   const ask = (q: string) => {
     const text = q.trim();
@@ -81,14 +98,51 @@ export function AssistantChat({
     setTurns((t) => [...t, { role: "user", content: text }]);
     setQuestion("");
     start(async () => {
-      const res = await askAssistantAction(org, text);
-      if (res.ok) setTurns((t) => [...t, { role: "assistant", ...res.data }]);
-      else setError(res.error);
+      const res = await askAssistantAction(org, text, {
+        conversationId: current,
+        productId: current ? null : productId || null,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setTurns((t) => [...t, { role: "assistant", ...res.data }]);
+      /* A stored answer in a new conversation: put it in the address and the
+         list. A worked example is not stored, so there is nothing to open. */
+      if (!current && res.data.messageId && res.data.conversationId) {
+        setCurrent(res.data.conversationId);
+        router.replace(`/${org}/assistant?c=${res.data.conversationId}`);
+      }
     });
   };
 
   return (
     <div className="space-y-4">
+      {(title || focus) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            {title && <h2 className="truncate text-[15px] font-medium text-fg">{title}</h2>}
+            {focus && <Badge variant="neutral" size="sm">Focus: {focus}</Badge>}
+          </div>
+          {conversationId && (
+            <ConfirmButton
+              size="sm"
+              icon={Trash2}
+              label="Delete conversation"
+              confirmLabel="Delete it"
+              pending={pending}
+              onConfirm={() =>
+                start(async () => {
+                  const res = await deleteConversationAction(org, conversationId);
+                  if (res.ok) router.replace(`/${org}/assistant?c=new`);
+                  else setError(res.error);
+                })
+              }
+            />
+          )}
+        </div>
+      )}
+
       {!aiConfigured && (
         <Note tone="warning">
           No model is connected on this deployment, so answers are a worked example built from your
@@ -101,8 +155,23 @@ export function AssistantChat({
           <CardBody className="space-y-3">
             <p className="text-[13px] text-fg-secondary">
               Ask about your pipeline, your results or what to do next. Answers come only from this
-              workspace&rsquo;s records, and say so when the records don&rsquo;t cover it.
+              workspace&rsquo;s records, and say so when the records don&rsquo;t cover it. Correct an
+              answer and it learns how you like them.
             </p>
+            {products.length > 0 && canAsk && (
+              <Field label="Focus" hint="Narrow this conversation to one product's opportunities. Optional." className="max-w-[320px]">
+                {(f) => (
+                  <Select {...f} value={productId} disabled={pending} onChange={(e) => setProductId(e.target.value)}>
+                    <option value="">The whole workspace</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {SUGGESTED.map((s) => (
                 <Button key={s} size="sm" variant="secondary" disabled={!canAsk || pending} onClick={() => ask(s)}>
@@ -192,23 +261,6 @@ export function AssistantChat({
         </p>
       )}
 
-      {turns.length > 0 && canAsk && (
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={RotateCcw}
-          disabled={pending}
-          onClick={() =>
-            start(async () => {
-              const res = await clearAssistantAction(org);
-              if (res.ok) setTurns([]);
-              else setError(res.error);
-            })
-          }
-        >
-          Start over
-        </Button>
-      )}
     </div>
   );
 }

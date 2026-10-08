@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isEncryptionConfigured } from "@huntloop/db";
 import { configuredProviders } from "@huntloop/jobs";
@@ -59,11 +60,19 @@ export default async function OutreachPage({
 
   return (
     <div className="mx-auto w-full max-w-[1000px] px-6 py-8 lg:px-8">
-      <header>
-        <h1 className="hl-heading text-fg">Outreach</h1>
-        <p className="mt-1 text-[13px] text-fg-muted">
-          What would go out, and who approves it first
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="hl-heading text-fg">Outreach</h1>
+          <p className="mt-1 text-[13px] text-fg-muted">
+            What would go out, and who approves it first
+          </p>
+        </div>
+        <Link
+          href={`/${org}/outreach/log`}
+          className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
+        >
+          Outreach log →
+        </Link>
       </header>
 
       {source !== "live" && (

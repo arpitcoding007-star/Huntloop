@@ -15,6 +15,7 @@ import {
   type Priority,
 } from "@huntloop/ui";
 import type { CompetitorOption } from "../../../../lib/data/competitors";
+import type { PipelineExtra } from "../../../../lib/data/pipeline";
 import type { Assignment } from "../../../../lib/data/team";
 import { setOpportunityStatusAction } from "./actions";
 
@@ -63,12 +64,18 @@ export function PipelineBoard({
   opportunities,
   competitors = [],
   canWrite,
+  extras = {},
+  now,
 }: {
   org: string;
   opportunities: Assignment[];
   /** For "lost to whom". Empty when the workspace has named none. */
   competitors?: CompetitorOption[];
   canWrite: boolean;
+  /** Last touch, next step, sequence progress and value per opportunity. */
+  extras?: Record<string, PipelineExtra>;
+  /** The server's clock, so every age on the board is measured from one instant. */
+  now: string;
 }) {
   const [result, setResult] = useState<
     { ok: true; message?: string } | { ok: false; error: string } | null
@@ -130,13 +137,17 @@ export function PipelineBoard({
         <div className="flex min-w-max gap-3">
           {[...STAGES, { key: "closed", label: "Closed" } as const].map((stage) => {
             const cards = columns.get(stage.key) ?? [];
+            const value = cards.reduce((s, o) => s + (extras[o.id]?.valueCents ?? 0), 0);
             return (
               <section key={stage.key} className="w-[260px] shrink-0">
                 <header className="flex items-center justify-between px-1 pb-2">
                   <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
                     {stage.label}
                   </h2>
-                  <span className="font-mono text-[12px] text-fg-muted">{cards.length}</span>
+                  <span className="font-mono text-[12px] text-fg-muted">
+                    {cards.length}
+                    {value > 0 && <span className="ml-1.5">· {money(value)}</span>}
+                  </span>
                 </header>
 
                 <div className="space-y-2">
@@ -152,6 +163,8 @@ export function PipelineBoard({
                         opportunity={o}
                         competitors={competitors}
                         canWrite={canWrite}
+                        extra={extras[o.id]}
+                        now={now}
                         onResult={setResult}
                       />
                     ))
@@ -171,12 +184,16 @@ function PipelineCard({
   opportunity,
   competitors,
   canWrite,
+  extra,
+  now,
   onResult,
 }: {
   org: string;
   opportunity: Assignment;
   competitors: CompetitorOption[];
   canWrite: boolean;
+  extra: PipelineExtra | undefined;
+  now: string;
   onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
 }) {
   const [pending, start] = useTransition();
@@ -211,7 +228,12 @@ function PipelineCard({
         ) : (
           <Badge variant="neutral">Unassigned</Badge>
         )}
+        {extra?.valueCents ? (
+          <span className="hl-tabular text-[12px] text-fg-secondary">{money(extra.valueCents)}</span>
+        ) : null}
       </div>
+
+      {extra && <CardFacts extra={extra} now={now} />}
 
       {canWrite && (
         <label className="mt-2 block">
@@ -249,6 +271,71 @@ function PipelineCard({
       )}
     </Card>
   );
+}
+
+const CHANNEL: Record<string, string> = {
+  email: "email",
+  linkedin: "LinkedIn",
+  phone: "phone",
+  meeting: "meeting",
+  chat: "chat",
+  other: "other",
+};
+
+/** "today", "1 day ago", "12 days ago" — whole days on the server's clock. */
+function ago(iso: string, now: string): string {
+  const days = Math.max(0, Math.floor((Date.parse(now) - Date.parse(iso)) / 86_400_000));
+  return days === 0 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+function due(iso: string, now: string): { text: string; late: boolean } {
+  const days = Math.floor((Date.parse(iso) - Date.parse(now)) / 86_400_000);
+  if (days < 0) return { text: `overdue ${-days} ${days === -1 ? "day" : "days"}`, late: true };
+  if (days === 0) return { text: "due today", late: false };
+  return { text: `due in ${days} ${days === 1 ? "day" : "days"}`, late: false };
+}
+
+/**
+ * Whether the deal is moving, in three short lines: the last touch (which way,
+ * on what, how long ago), the next step and when it is due, and how far an
+ * active sequence has got. A line with nothing to say is left out rather than
+ * filled with a dash.
+ */
+function CardFacts({ extra, now }: { extra: PipelineExtra; now: string }) {
+  const step = extra.nextStep ? (extra.nextStepDueAt ? due(extra.nextStepDueAt, now) : null) : null;
+  return (
+    <dl className="mt-2 space-y-0.5 text-[12px] leading-[1.45]">
+      <div className="flex gap-1.5">
+        <dt className="shrink-0 text-fg-muted">Last touch</dt>
+        <dd className="min-w-0 truncate text-fg-secondary">
+          {extra.lastTouch
+            ? `${extra.lastTouch.direction === "inbound" ? "They replied" : "Reached out"} · ${CHANNEL[extra.lastTouch.channel] ?? extra.lastTouch.channel} · ${ago(extra.lastTouch.at, now)}`
+            : "None yet"}
+        </dd>
+      </div>
+      {extra.nextStep && (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-fg-muted">Next</dt>
+          <dd className="min-w-0 truncate text-fg-secondary" title={extra.nextStep}>
+            {extra.nextStep}
+            {step && <span className={step.late ? "text-warning-text" : "text-fg-muted"}> · {step.text}</span>}
+          </dd>
+        </div>
+      )}
+      {extra.sequence && (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-fg-muted">Sequence</dt>
+          <dd className="text-fg-secondary">
+            {extra.sequence.sent}/{extra.sequence.total} emails sent
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+function money(cents: number): string {
+  return `${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
 const LOSS_REASONS = [

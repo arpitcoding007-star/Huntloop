@@ -50,6 +50,7 @@ function revalidateOpportunity(org: string, id: string) {
   revalidatePath(`/${org}/pipeline`);
   revalidatePath(`/${org}/dashboard`);
   revalidatePath(`/${org}/needs-you`);
+  revalidatePath(`/${org}/outreach/log`);
 }
 
 async function readOpportunity(db: TenantClient, orgId: string, id: string) {

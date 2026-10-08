@@ -1,24 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Button, Confirmed } from "@huntloop/ui";
 import { Plus } from "lucide-react";
-import type { Product } from "../../../../../lib/data/product";
+import type { Product, ProductStats } from "../../../../../lib/data/product";
 import { ProductForm } from "./ProductForm";
 
 /**
- * Every product the workspace sells (§14.2: the screen managed only the
- * first). Campaigns already choose which product they sell and message
- * drafting reads that product, so a second product is useful today; scoring
- * against several profiles at once is the separate multi-product phase.
+ * Every product the workspace sells, as cards you can read at a glance — what
+ * it does, who it is for, and how many open opportunities it has — with the
+ * editor for the selected one below (§10.2). Products are data, not
+ * navigation: a card links to the opportunity list filtered to it rather than
+ * to a page of its own.
  */
 export function ProductList({
   org,
   products,
+  stats = {},
   canWrite,
 }: {
   org: string;
   products: Product[];
+  /** Profiles and open opportunities per product id. */
+  stats?: Record<string, ProductStats>;
   canWrite: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(products[0]?.id ?? null);
@@ -29,41 +34,87 @@ export function ProductList({
 
   return (
     <div className="space-y-4">
-      {(products.length > 1 || (products.length > 0 && canWrite)) && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Products">
-          {products.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              aria-pressed={!creating && selected?.id === p.id}
-              onClick={() => {
-                setCreating(false);
-                setSelectedId(p.id);
-                setNotice(null);
-              }}
-              className={[
-                "hl-focusable h-8 rounded-md border px-3 text-[13px] transition-colors duration-[120ms]",
-                !creating && selected?.id === p.id
-                  ? "border-brand-border bg-brand-surface text-brand-text"
-                  : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
-              ].join(" ")}
-            >
-              {p.name}
-            </button>
-          ))}
-          {canWrite && !creating && (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={Plus}
-              onClick={() => {
-                setCreating(true);
-                setNotice(null);
-              }}
-            >
-              Add a product
-            </Button>
-          )}
+      {products.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+              {products.length === 1 ? "Your product" : `Your products · ${products.length}`}
+            </h2>
+            {canWrite && !creating && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Plus}
+                onClick={() => {
+                  setCreating(true);
+                  setNotice(null);
+                }}
+              >
+                Add a product
+              </Button>
+            )}
+          </div>
+          <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-label="Products">
+            {products.map((p) => {
+              const s = stats[p.id];
+              const isSelected = !creating && selected?.id === p.id;
+              return (
+                <li key={p.id}>
+                  <article
+                    className={[
+                      "flex h-full flex-col rounded-lg border p-3 transition-colors duration-[120ms]",
+                      isSelected ? "border-brand-border bg-brand-surface" : "border-line-subtle bg-surface",
+                    ].join(" ")}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => {
+                        setCreating(false);
+                        setSelectedId(p.id);
+                        setNotice(null);
+                      }}
+                      className="hl-focusable -m-1 rounded-md p-1 text-left"
+                    >
+                      <span className="block truncate text-[14px] font-medium text-fg">{p.name}</span>
+                      {p.website && (
+                        <span className="block truncate font-mono text-[11px] text-fg-muted">
+                          {p.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                        </span>
+                      )}
+                      <span className="mt-1.5 line-clamp-2 block text-[12px] leading-[1.5] text-fg-secondary">
+                        {p.description || "No description yet — what it does is what every fit is judged against."}
+                      </span>
+                    </button>
+                    <dl className="mt-2 space-y-0.5 text-[12px]">
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="shrink-0 text-fg-muted">For</dt>
+                        <dd className="min-w-0 truncate text-fg-secondary">
+                          {s?.profiles.length ? s.profiles.join(", ") : "No customer profile bound yet"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-[12px]">
+                      <Link
+                        href={`/${org}/opportunities?product=${p.id}`}
+                        className="hl-focusable rounded-sm text-brand-text underline-offset-2 hover:underline"
+                      >
+                        {s?.open ?? 0} open {s?.open === 1 ? "opportunity" : "opportunities"} →
+                      </Link>
+                      {!s?.profiles.length && (
+                        <Link
+                          href={`/${org}/settings/icp`}
+                          className="hl-focusable rounded-sm text-fg-muted underline-offset-2 hover:underline"
+                        >
+                          Bind a profile
+                        </Link>
+                      )}
+                    </div>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

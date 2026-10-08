@@ -28,7 +28,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ org:
     ? (url.searchParams.get("table") as Table)
     : "segments";
 
-  const { data } = await getPerformance(org, period);
+  const { data } = await getPerformance(org, period, url.searchParams.get("scope") === "mine" ? "mine" : "everyone");
   const p = data.performance;
   const rate = (r: number | null) => (r === null ? null : Math.round(r * 1000) / 10);
 

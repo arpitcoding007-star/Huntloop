@@ -3,7 +3,7 @@ import { getQuestionFor } from "../../../../lib/data/questions";
 import { Fragment, type ReactNode } from "react";
 import { HuntNowButton } from "./HuntNowButton";
 import Link from "next/link";
-import { canSpend, currentViewer } from "../../../../lib/data/membership";
+import { canSpend, canWrite, currentViewer } from "../../../../lib/data/membership";
 import { getDashboard } from "../../../../lib/data/dashboard";
 import { getDefaultNeedsYou } from "../../../../lib/data/needs-you";
 import { NeedsYouList } from "../needs-you/NeedsYouList";
@@ -634,7 +634,7 @@ export default async function DashboardPage({
               {attention.length > RAIL_LIMIT ? `See all ${attention.length} →` : "Open the queue →"}
             </Link>
           </div>
-          <NeedsYouList org={org} items={attention.slice(0, RAIL_LIMIT)} compact />
+          <NeedsYouList org={org} items={attention.slice(0, RAIL_LIMIT)} canWrite={canWrite(viewer)} compact />
         </aside>
       )}
       </div>

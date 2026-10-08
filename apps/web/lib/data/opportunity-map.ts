@@ -60,6 +60,28 @@ export interface OpportunityRow {
   triggerDate: string | null;
   evidence: { kind: "fact" | "inference" | "unknown" }[];
   industry: string;
+  /** The raw `opportunity_status`, for rules; `status` is its label. */
+  stage: string;
+  /** When Huntloop first found it. */
+  firstSeenAt: string | null;
+  /** The company row, so siblings can be found. Null on fixtures. */
+  companyId: string | null;
+  /** The product this opportunity was found for, through its profile (P5). */
+  product: { id: string; name: string } | null;
+  /** The customer profile it was scored against. */
+  profile: string | null;
+  /**
+   * The same company's other opportunities on this list — one per profile it
+   * fits. Filled by `withAlsoFits` once the whole list is mapped.
+   */
+  alsoFits: AlsoFit[];
+}
+
+export interface AlsoFit {
+  id: string;
+  /** The product's name, or the profile's when the profile has no product. */
+  label: string;
+  priority: Priority;
 }
 
 export interface OpportunityDetail {
@@ -177,10 +199,14 @@ export interface TriggerRow {
 
 export interface ListQueryRow {
   id: string;
+  /** Optional so older shapes (and the tests written against them) still map. */
+  company_id?: string;
   priority: Priority;
   priority_reason: string;
   status: string;
   first_seen_at: string;
+  /** The profile, and through it the product (P5). Null when unbound. */
+  icps?: ListIcpRow | ListIcpRow[] | null;
   companies: {
     name: string;
     canonical_domain: string;
@@ -188,6 +214,22 @@ export interface ListQueryRow {
     company_triggers: TriggerRow[];
   };
   opportunity_scores: ScoreRow[];
+}
+
+interface ListIcpRow {
+  name: string | null;
+  products: ListProductRow | ListProductRow[] | null;
+}
+
+interface ListProductRow {
+  id: string;
+  name: string;
+  deleted_at: string | null;
+}
+
+/** A to-one embed arrives as an object, or as a one-element array. */
+function one<T>(v: T | T[] | null | undefined): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
 export interface DetailQueryRow {
@@ -414,9 +456,20 @@ export function mapListRow(
 ): OpportunityRow {
   const score = latestScore(r.opportunity_scores);
   const newest = liveTriggers(r.companies.company_triggers)[0];
+  const icp = one(r.icps);
+  const product = one(icp?.products);
 
   return {
     id: r.id,
+    stage: r.status,
+    firstSeenAt: r.first_seen_at ?? null,
+    companyId: r.company_id ?? null,
+    /* A removed product keeps its id on the profile until someone rebinds it.
+       Offering it as a filter would be an option for something no screen
+       shows any more. */
+    product: product && product.deleted_at === null ? { id: product.id, name: product.name } : null,
+    profile: icp?.name ?? null,
+    alsoFits: [],
     company: r.companies.name,
     domain: r.companies.canonical_domain,
     industry: r.companies.industry ?? "—",
@@ -435,6 +488,41 @@ export function mapListRow(
     evidence,
   };
 }
+
+/**
+ * Cross-reference a mapped list: each row learns which other rows are the same
+ * company under a different profile. "Also fits" is cross-sell — the company
+ * is already worth a conversation, and this says about what else.
+ *
+ * Only rows on the list count, so nothing is fetched twice and an archived
+ * sibling is not offered. Siblings keep the list's order (verdict, then
+ * score), so the strongest other fit comes first.
+ */
+export function withAlsoFits<
+  T extends Pick<OpportunityRow, "id" | "companyId" | "product" | "profile" | "priority" | "alsoFits">,
+>(rows: T[]): T[] {
+  const byCompany = new Map<string, T[]>();
+  for (const r of rows) {
+    if (!r.companyId) continue;
+    const list = byCompany.get(r.companyId) ?? [];
+    list.push(r);
+    byCompany.set(r.companyId, list);
+  }
+  return rows.map((r) => {
+    const siblings = r.companyId ? (byCompany.get(r.companyId) ?? []) : [];
+    if (siblings.length < 2) return r;
+    return {
+      ...r,
+      alsoFits: siblings
+        .filter((s) => s.id !== r.id)
+        .map((s) => ({ id: s.id, label: s.product?.name ?? s.profile ?? "Another profile", priority: s.priority })),
+    };
+  });
+}
+
+/* The stale rule lives in its own module so the client list can import it
+   without this file's dependencies; re-exported here beside the row shape. */
+export { isStale, STALE_AFTER_DAYS } from "../opportunities/stale";
 
 /** `person_id` → the latest contact-fit score and its explanation. */
 export type ContactFit = Map<string, { score: number; explanation: string | null }>;

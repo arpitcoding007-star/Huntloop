@@ -47,6 +47,7 @@ export function AgentPanel({
   company,
   history,
   canAsk,
+  initialQuestion,
 }: {
   org: string;
   opportunityId: string;
@@ -58,8 +59,10 @@ export function AgentPanel({
    * `canSpend` is the role check for it.
    */
   canAsk: boolean;
+  /** Put in the box on arrival (Needs you → Draft). Never sent on its own. */
+  initialQuestion?: string;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialQuestion ?? "");
   const [pending, start] = useTransition();
   const [result, setResult] = useState<Result>(null);
   /* Turns added in this session, appended to what the server loaded. The page
@@ -106,7 +109,7 @@ export function AgentPanel({
   };
 
   return (
-    <Card flush>
+    <Card flush id="ask" className="scroll-mt-20">
       <CardHeader
         title={
           <span className="flex items-center gap-2">

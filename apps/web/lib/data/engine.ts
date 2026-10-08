@@ -302,6 +302,35 @@ export async function followActiveIcp(
 }
 
 /**
+ * The review backlog split by customer profile — the same rows
+ * `open_opportunity_count` (0010) counts: before review (discovered,
+ * researching, qualified) and not Ignore. The cap itself stays one number for
+ * the workspace; this says which profile is filling it, which matters once
+ * several products each have their own profile. Null when it cannot be read.
+ */
+export async function backlogByProfile(
+  db: TenantClient,
+  orgId: string,
+): Promise<{ profile: string; count: number }[] | null> {
+  const { data, error } = await db
+    .from("opportunities")
+    .select("icp_id, icps(name)")
+    .eq("org_id", orgId)
+    .in("status", ["discovered", "researching", "qualified"])
+    .neq("priority", "ignore")
+    .is("deleted_at", null)
+    .limit(10_000);
+  if (error) return null;
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { icp_id: string | null; icps: { name: string } | { name: string }[] | null }[]) {
+    const icp = Array.isArray(row.icps) ? row.icps[0] : row.icps;
+    const name = row.icp_id ? (icp?.name ?? "A removed profile") : "No profile";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([profile, count]) => ({ profile, count })).sort((a, b) => b.count - a.count);
+}
+
+/**
  * Whether discovery is paused because the review backlog is full (0010's cap,
  * applied to paid discovery since 0038). Null when it cannot be read — a
  * banner that guessed would be worse than none.

@@ -100,6 +100,9 @@ export default async function OpportunitiesPage({
            same reason `parsePriority` is strict: it arrives from a URL, and the
            only thing it may do downstream is filter rows already rendered. */
         initialQuery={parseCompany(query.company)}
+        /* `?product=` only ever selects among products the rows carry; the
+           table ignores an id it has no row for. */
+        initialProduct={typeof query.product === "string" ? query.product.slice(0, 64) : undefined}
         // Resolved on the server and passed down, rather than read in the client
         // component: the role is not something the browser should be asked to
         // determine, even for a rendering decision. See lib/data/membership.ts.

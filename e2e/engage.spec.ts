@@ -290,7 +290,10 @@ test.describe("memory", () => {
     // The subject is picked by name from a list, not typed as a raw id.
     await expect(page.getByRole("combobox", { name: /^subject/i })).toBeHidden();
 
-    await page.getByRole("combobox", { name: /who this applies to/i }).selectOption("user");
+    /* "account" rather than "user": personal memories moved to Settings → You
+       (K2), so this screen offers only workspace scopes — and account is one
+       that needs a subject. */
+    await page.getByRole("combobox", { name: /who this applies to/i }).selectOption("account");
     await expect(page.getByRole("combobox", { name: /^subject/i })).toBeVisible();
   });
 });

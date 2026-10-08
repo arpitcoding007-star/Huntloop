@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   Badge,
   Button,
+  ConfirmButton,
   DataTable,
   EmptyState,
   Field,
@@ -17,10 +18,11 @@ import {
   type Column,
   type Priority,
 } from "@huntloop/ui";
-import { Binoculars, Eye, Flame, Plus, Radar, Send, Thermometer } from "lucide-react";
+import { Archive, Binoculars, Eye, Flame, Hourglass, Plus, Radar, Send, Thermometer } from "lucide-react";
 import type { OpportunityRow } from "../../../../lib/data/opportunities";
+import { isStale, STALE_AFTER_DAYS } from "../../../../lib/opportunities/stale";
 import type { CampaignTarget } from "../../../../lib/data/outreach";
-import { enrollOpportunitiesAction } from "./actions";
+import { archiveOpportunitiesAction, enrollOpportunitiesAction } from "./actions";
 import { RefreshButton } from "../RefreshButton";
 
 /**
@@ -53,6 +55,7 @@ export function OpportunityTable({
   now,
   initialPriority,
   initialQuery,
+  initialProduct,
   canWrite,
   campaigns,
 }: {
@@ -74,6 +77,8 @@ export function OpportunityTable({
    * about where it lands.
    */
   initialQuery?: string;
+  /** Seeded from `?product=` (a product id, or "none"). Ignored when unknown. */
+  initialProduct?: string;
   /**
    * Whether to render the write affordances. Resolved on the server — this is
    * a rendering decision, not an authorization one; RLS is the boundary and
@@ -96,6 +101,37 @@ export function OpportunityTable({
     initialPriority ?? "all",
   );
   const priority = priorityValue;
+
+  /* P5: products are data, not navigation, so a workspace selling several
+     gets a filter rather than a page each. Built from the rows rather than
+     from Settings, so every option has something behind it; shown only when
+     there is a choice to make. */
+  const products = useMemo(() => {
+    const seen = new Map<string, string>();
+    let unbound = 0;
+    for (const o of all) {
+      if (o.product) seen.set(o.product.id, o.product.name);
+      else unbound++;
+    }
+    return {
+      options: [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      unbound,
+    };
+  }, [all]);
+  const productFilterShown = products.options.length > 1 || (products.options.length === 1 && products.unbound > 0);
+  const [productValue, setProductValue] = useState<string>(() =>
+    initialProduct && (initialProduct === "none" || all.some((o) => o.product?.id === initialProduct))
+      ? initialProduct
+      : "all",
+  );
+  const product = productFilterShown ? productValue : "all";
+  const setProduct = useCallback((next: string) => {
+    setProductValue(next);
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("product");
+    else url.searchParams.set("product", next);
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
 
   /**
    * UX-10. Keep the address bar honest without re-running the server.
@@ -133,15 +169,37 @@ export function OpportunityTable({
     direction: "desc",
   });
 
+  /* "Stale": untouched for 60+ days with no recent trigger —
+     the rows that fill the backlog cap and pause discovery. A view for
+     clearing them in bulk, not a verdict. */
+  const [staleOnly, setStaleOnly] = useState(false);
+  const staleIds = useMemo(() => {
+    const at = new Date(now);
+    return new Set(all.filter((o) => isStale(o, at)).map((o) => o.id));
+  }, [all, now]);
+  const [archiving, startArchive] = useTransition();
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  /* Priority counts follow the product filter, so the chips describe the rows
+     they would show. */
+  const inProduct = useMemo(
+    () =>
+      (product === "all"
+        ? all
+        : all.filter((o) => (product === "none" ? o.product === null : o.product?.id === product))
+      ).filter((o) => !staleOnly || staleIds.has(o.id)),
+    [all, product, staleOnly, staleIds],
+  );
+
   const counts = useMemo(() => {
     const c: Record<Priority, number> = { hot: 0, warm: 0, watch: 0, ignore: 0 };
-    for (const o of all) c[o.priority]++;
+    for (const o of inProduct) c[o.priority]++;
     return c;
-  }, [all]);
+  }, [inProduct]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let out = all;
+    let out = inProduct;
     if (priority !== "all") out = out.filter((o) => o.priority === priority);
     if (q) {
       out = out.filter((o) =>
@@ -165,7 +223,8 @@ export function OpportunityTable({
       }
       return 0;
     });
-  }, [all, priority, query, scope, sort]);
+  }, [inProduct, priority, query, scope, sort]);
+  const filtered = query !== "" || priority !== "all" || product !== "all" || staleOnly;
 
   const columns: Column<OpportunityRow>[] = [
     {
@@ -174,13 +233,35 @@ export function OpportunityTable({
       width: "26%",
       sortable: true,
       render: (o) => (
-        <Link
-          href={`/${org}/opportunities/${o.id}`}
-          className="hl-focusable block min-w-0 rounded-sm"
-        >
-          <div className="truncate font-medium text-fg">{o.company}</div>
-          <div className="truncate font-mono text-[11px] text-fg-muted">{o.domain}</div>
-        </Link>
+        <div className="min-w-0">
+          <Link
+            href={`/${org}/opportunities/${o.id}`}
+            className="hl-focusable block min-w-0 rounded-sm"
+          >
+            <div className="truncate font-medium text-fg">{o.company}</div>
+            <div className="truncate font-mono text-[11px] text-fg-muted">{o.domain}</div>
+            {productFilterShown && o.product && (
+              <div className="truncate text-[11px] text-fg-muted">For {o.product.name}</div>
+            )}
+          </Link>
+          {/* Siblings are links of their own, not part of the row's link: one
+              anchor inside another is invalid and opens the wrong page. */}
+          {o.alsoFits.length > 0 && (
+            <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-fg-muted">
+              <span>Also fits</span>
+              {o.alsoFits.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/${org}/opportunities/${s.id}`}
+                  className="hl-focusable rounded-sm border border-line px-1.5 py-px text-fg-secondary hover:border-brand-border hover:text-fg"
+                  title={`${o.company} as a ${s.priority} opportunity for ${s.label}`}
+                >
+                  {s.label} · {s.priority}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -274,28 +355,68 @@ export function OpportunityTable({
 
           The chips are the survivor because they are the control: they carry
           `aria-pressed`, they filter, and they already show the counts. */}
-      <div className="mt-6 flex flex-wrap gap-1.5" role="group" aria-label="Filter by priority">
-        {FILTERS.map((f) => (
+      <div className="mt-6 flex flex-wrap items-center gap-1.5">
+        {productFilterShown && (
+          <Select
+            aria-label="Filter by product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+            className="mr-1.5 h-8 w-auto min-w-[180px] text-[13px]"
+          >
+            <option value="all">All products ({all.length})</option>
+            {products.options.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({all.filter((o) => o.product?.id === p.id).length})
+              </option>
+            ))}
+            {products.unbound > 0 && <option value="none">No product ({products.unbound})</option>}
+          </Select>
+        )}
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by priority">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={priority === f.value}
+              onClick={() => setPriority(f.value)}
+              className={[
+                "hl-focusable inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-[13px]",
+                "transition-colors duration-[120ms]",
+                priority === f.value
+                  ? "border-brand-border bg-brand-surface text-brand-text"
+                  : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
+              ].join(" ")}
+            >
+              <f.icon className="size-3.5" strokeWidth={1.75} />
+              {f.label}
+              {f.value !== "all" && (
+                <span className="hl-tabular text-fg-muted">{counts[f.value]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        {staleIds.size > 0 && (
           <button
-            key={f.value}
             type="button"
-            aria-pressed={priority === f.value}
-            onClick={() => setPriority(f.value)}
+            aria-pressed={staleOnly}
+            onClick={() => {
+              setStaleOnly((on) => !on);
+              setSelected([]);
+            }}
+            title={`Found ${STALE_AFTER_DAYS}+ days ago, never contacted, no trigger in 90 days`}
             className={[
               "hl-focusable inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-[13px]",
               "transition-colors duration-[120ms]",
-              priority === f.value
+              staleOnly
                 ? "border-brand-border bg-brand-surface text-brand-text"
                 : "border-line bg-surface text-fg-secondary hover:border-brand-border hover:bg-hover hover:text-fg",
             ].join(" ")}
           >
-            <f.icon className="size-3.5" strokeWidth={1.75} />
-            {f.label}
-            {f.value !== "all" && (
-              <span className="hl-tabular text-fg-muted">{counts[f.value]}</span>
-            )}
+            <Hourglass className="size-3.5" strokeWidth={1.75} />
+            Stale
+            <span className="hl-tabular text-fg-muted">{staleIds.size}</span>
           </button>
-        ))}
+        )}
       </div>
 
       {/* Below the filters and above the table, because that is where the
@@ -317,6 +438,14 @@ export function OpportunityTable({
       )}
       {notice && !enrolling && (
         <FormMessage result={{ ok: true, message: notice }} className="mt-3" />
+      )}
+      {archiveError && <FormMessage result={{ ok: false, error: archiveError }} className="mt-3" />}
+      {staleOnly && (
+        <p className="mt-3 text-[12px] text-fg-muted">
+          Found {STALE_AFTER_DAYS}+ days ago, never contacted, and no trigger in the last 90 days.
+          Select them and archive to clear the backlog — archiving records no reason and teaches the
+          learning loop nothing. Discovery that paused for a full backlog resumes on its next run.
+        </p>
       )}
 
       <FilterBar
@@ -352,6 +481,25 @@ export function OpportunityTable({
                 Add to campaign
               </Button>
             )}
+            {canWrite && (
+              <ConfirmButton
+                size="sm"
+                icon={Archive}
+                label="Archive"
+                confirmLabel={`Archive ${selected.length}?`}
+                pending={archiving}
+                onConfirm={() =>
+                  startArchive(async () => {
+                    const res = await archiveOpportunitiesAction(org, selected);
+                    if (res.ok) {
+                      setArchiveError(null);
+                      setSelected([]);
+                      setNotice(res.message ?? "Archived.");
+                    } else setArchiveError(res.error);
+                  })
+                }
+              />
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
               Clear
             </Button>
@@ -374,7 +522,7 @@ export function OpportunityTable({
           <EmptyState
             className="border-0 bg-transparent"
             title={
-              query || priority !== "all"
+              filtered
                 ? "No opportunities match this filter"
                 : "No opportunities discovered yet"
             }
@@ -389,17 +537,19 @@ export function OpportunityTable({
              * to be stuck.
              */
             description={
-              query || priority !== "all"
-                ? "Try a different priority or search field."
+              filtered
+                ? "Try a different product, priority or search field."
                 : "Nothing has been qualified against your ICP yet. Analyze a company you already have in mind, or check where Huntloop is looking."
             }
             action={
-              query || priority !== "all" ? (
+              filtered ? (
                 <Button
                   variant="secondary"
                   onClick={() => {
                     setQuery("");
                     setPriority("all");
+                    setProduct("all");
+                    setStaleOnly(false);
                   }}
                 >
                   Clear filters

@@ -26,6 +26,7 @@ const periodSchema = z.enum(PERIODS);
 export async function explainPerformanceAction(
   org: string,
   period: string,
+  scope: string = "everyone",
 ): Promise<
   | { ok: true; source: "live" | "unconfigured"; narrative: PerformanceNarrative; facts: PerformanceFact[] }
   | { ok: false; error: string; retryAt?: string | null }
@@ -33,7 +34,7 @@ export async function explainPerformanceAction(
   const parsed = periodSchema.safeParse(period);
   if (!parsed.success) return { ok: false, error: "That isn't a period this screen has." };
 
-  const { data } = await getPerformance(org, parsed.data);
+  const { data } = await getPerformance(org, parsed.data, scope === "mine" ? "mine" : "everyone");
   const facts = performanceFacts(data.performance);
   const outcome = await explain(org, PERIOD_LABEL[parsed.data], facts);
   if (!outcome.ok) return { ok: false, error: outcome.error, retryAt: outcome.retryAt ?? null };

@@ -14,7 +14,18 @@ import { explainPerformanceAction } from "./actions";
  * task that writes it cannot introduce a number the figures do not contain;
  * this component's job is to make that visible rather than to ask for trust.
  */
-export function Narrative({ org, period, canAsk }: { org: string; period: string; canAsk: boolean }) {
+export function Narrative({
+  org,
+  period,
+  scope = "everyone",
+  canAsk,
+}: {
+  org: string;
+  period: string;
+  /** "mine" summarises the viewer's own accounts — the same figures the page shows. */
+  scope?: string;
+  canAsk: boolean;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
@@ -42,7 +53,7 @@ export function Narrative({ org, period, canAsk }: { org: string; period: string
           onClick={() =>
             start(async () => {
               setError(null);
-              const res = await explainPerformanceAction(org, period);
+              const res = await explainPerformanceAction(org, period, scope);
               if (res.ok) setResult({ source: res.source, narrative: res.narrative, facts: res.facts });
               else setError(res.error);
             })

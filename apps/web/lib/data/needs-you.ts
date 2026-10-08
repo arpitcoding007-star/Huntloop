@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { DEFAULT_QUIET_AFTER_BUSINESS_DAYS } from "@huntloop/db/org-profile";
+import type { TenantClient } from "@huntloop/db";
+import { DEFAULT_QUIET_AFTER_BUSINESS_DAYS, parseOrgProfile } from "@huntloop/db/org-profile";
 import { OPPORTUNITIES, NOW as FIXTURE_NOW } from "../fixtures/opportunities";
 import {
   gatherAttention,
@@ -9,6 +10,8 @@ import {
   type OwnershipFilter,
   type RankedItem,
 } from "../needs-you/rank";
+import { dailyGoal, oneLine, pickBuyer, type ContextPerson, type ItemContext } from "../needs-you/context";
+import { weekStart } from "../performance/compute";
 import { getOnboardingState } from "./onboarding";
 import { currentUserId, requireOrgId } from "./org";
 import { personalize } from "./personalization";
@@ -34,8 +37,11 @@ import { load, type Loaded } from "./source";
  *     says "Nothing needs you right now", which is a good and true state.
  */
 
+/** A ranked item, plus the opportunity's why-now and buyer when it has one. */
+export type NeedsYouItem = RankedItem & { context?: ItemContext };
+
 export interface NeedsYou {
-  items: RankedItem[];
+  items: NeedsYouItem[];
   /** How many items exist before the viewer's filter and snoozes. */
   total: number;
   filter: OwnershipFilter;
@@ -95,7 +101,7 @@ export async function getNeedsYou(
       });
 
       return {
-        items,
+        items: await withContext(db, orgId, items),
         total: candidates.length,
         filter,
         quietAfterBusinessDays: quietAfter,
@@ -103,6 +109,112 @@ export async function getNeedsYou(
       };
     },
     () => demo(orgSlug, filter),
+  );
+}
+
+/**
+ * Items about an account you could reach out to, as opposed to a conversation
+ * already under way (the thread is the context there) or the workspace.
+ */
+function wantsContext(item: RankedItem): boolean {
+  return Boolean(item.opportunityId) && (item.group === "follow-ups" || item.group === "opportunities");
+}
+
+/** Context is read for the first this-many items; the rest render without it. */
+const CONTEXT_LIMIT = 150;
+
+/**
+ * The why-now and the person to reach, for the items that are about reaching
+ * someone. One bounded read by opportunity id, after ranking, so only items
+ * that will be shown are looked up. It is decoration: if the read fails the
+ * queue renders as before, because a queue that errors over a missing name is
+ * worse than one without names.
+ */
+async function withContext(db: TenantClient, orgId: string, items: RankedItem[]): Promise<NeedsYouItem[]> {
+  const ids = [...new Set(items.filter(wantsContext).map((i) => String(i.opportunityId)))].slice(0, CONTEXT_LIMIT);
+  if (ids.length === 0) return items;
+
+  const { data, error } = await db
+    .from("opportunities")
+    .select("id, why_now, companies(people(first_name, last_name, title, is_decision_maker, deleted_at))")
+    .eq("org_id", orgId)
+    .in("id", ids);
+  if (error || !data) return items;
+
+  const byId = new Map<string, ItemContext>();
+  for (const row of data as unknown as {
+    id: string;
+    why_now: string | null;
+    companies: { people: ContextPerson[] | null } | { people: ContextPerson[] | null }[] | null;
+  }[]) {
+    const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+    byId.set(String(row.id), { whyNow: oneLine(row.why_now), buyer: pickBuyer(company?.people ?? []) });
+  }
+  return items.map((i) => {
+    const context = wantsContext(i) ? byId.get(String(i.opportunityId)) : undefined;
+    return context ? { ...i, context } : i;
+  });
+}
+
+/* ── Today's reach-outs ──────────────────────────────────────────────────── */
+
+export interface ReachOutProgress {
+  /** Outbound touches this person made today and this week (UTC days, Monday-first weeks). */
+  today: number;
+  week: number;
+  /** The workspace's weekly goal per person (Performance → Your pace), and its daily share. */
+  weeklyGoal: number | null;
+  dailyGoal: number | null;
+}
+
+/** The same touch kinds Performance counts, so the two numbers agree. */
+const TOUCH_KINDS = ["email_sent", "email_received", "message", "call", "meeting", "connection_request"];
+
+/**
+ * How many people this person has reached today, against the workspace goal.
+ *
+ * Counted exactly as Performance's "Your pace" counts it — outbound touches
+ * whose actor is this person, from the activity ledger — so the daily figure
+ * and the weekly one can never disagree. Days and weeks are UTC, which is also
+ * Performance's boundary; a workspace-local day would make the two drift.
+ */
+export async function getReachOutProgress(orgSlug: string): Promise<Loaded<ReachOutProgress>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getReachOutProgress");
+      const userId = await currentUserId(db);
+      const now = new Date();
+      const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const week = weekStart(now);
+
+      const count = (from: Date) =>
+        userId
+          ? db
+              .from("activities")
+              .select("id", { count: "exact", head: true })
+              .eq("org_id", orgId)
+              .eq("actor_id", userId)
+              .eq("direction", "outbound")
+              .in("kind", TOUCH_KINDS)
+              .gte("occurred_at", from.toISOString())
+              .is("deleted_at", null)
+          : Promise.resolve({ count: 0 });
+
+      const [today, thisWeek, org] = await Promise.all([
+        count(day),
+        count(week),
+        db.from("organizations").select("settings").eq("id", orgId).maybeSingle(),
+      ]);
+      const weeklyGoal = parseOrgProfile((org.data as { settings?: unknown } | null)?.settings).goals.touchesPerWeek;
+      return {
+        today: Number(today.count ?? 0),
+        week: Number(thisWeek.count ?? 0),
+        weeklyGoal,
+        dailyGoal: dailyGoal(weeklyGoal),
+      };
+    },
+    /* The fixtures have no touches, so the honest demo is zero against no goal. */
+    () => ({ today: 0, week: 0, weeklyGoal: null, dailyGoal: null }),
   );
 }
 
@@ -158,7 +270,15 @@ function demo(orgSlug: string, filter: OwnershipFilter): NeedsYou {
     quietAfterBusinessDays: DEFAULT_QUIET_AFTER_BUSINESS_DAYS,
   });
   return {
-    items,
+    items: items.map((i) => {
+      const o = wantsContext(i) ? OPPORTUNITIES.find((f) => f.id === i.opportunityId) : undefined;
+      if (!o) return i;
+      const buyer = o.buyers.find((b) => b.isDecisionMaker) ?? o.buyers[0];
+      return {
+        ...i,
+        context: { whyNow: oneLine(o.whyNow), buyer: buyer ? { name: buyer.name, title: buyer.title || null } : null },
+      };
+    }),
     total: candidates.length,
     filter,
     quietAfterBusinessDays: DEFAULT_QUIET_AFTER_BUSINESS_DAYS,

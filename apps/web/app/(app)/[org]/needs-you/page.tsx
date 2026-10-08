@@ -2,14 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardBody, EmptyState } from "@huntloop/ui";
 import { CheckCircle2 } from "lucide-react";
-import { currentViewer } from "../../../../lib/data/membership";
-import { defaultOwnership, getNeedsYou } from "../../../../lib/data/needs-you";
+import { canWrite, currentViewer } from "../../../../lib/data/membership";
+import { defaultOwnership, getNeedsYou, getReachOutProgress } from "../../../../lib/data/needs-you";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
 import { personalize } from "../../../../lib/data/personalization";
 import type { OwnershipFilter } from "../../../../lib/needs-you/rank";
 import { DemoFigures } from "../DemoFigures";
 import { NeedsYouList } from "./NeedsYouList";
 import { ClearSnoozesButton } from "./ClearSnoozesButton";
+import { ReachOutGoal } from "./ReachOutGoal";
 
 /**
  * "Needs you" — the whole queue. COMMAND.md §16.3-B.
@@ -47,7 +48,12 @@ export default async function NeedsYouPage({
     ? (requested as OwnershipFilter)
     : fallback;
 
-  const { data, source } = await getNeedsYou(org, filter);
+  const [{ data, source }, { data: progress }] = await Promise.all([
+    getNeedsYou(org, filter),
+    getReachOutProgress(org),
+  ]);
+  /* Goals are a workspace setting (Performance → Your pace), set by owners and admins. */
+  const canSetGoals = viewer.kind === "member" && (viewer.role === "owner" || viewer.role === "admin");
 
   return (
     <div className="mx-auto w-full max-w-[1100px] px-6 py-8 lg:px-8">
@@ -87,6 +93,10 @@ export default async function NeedsYouPage({
       )}
 
       <div className="mt-6">
+        <ReachOutGoal org={org} progress={progress} canSetGoals={canSetGoals} />
+      </div>
+
+      <div className="mt-6">
         {data.items.length === 0 ? (
           <Card>
             <CardBody>
@@ -102,7 +112,7 @@ export default async function NeedsYouPage({
             </CardBody>
           </Card>
         ) : (
-          <NeedsYouList org={org} items={data.items} grouped />
+          <NeedsYouList org={org} items={data.items} canWrite={canWrite(viewer)} grouped />
         )}
       </div>
 

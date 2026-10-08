@@ -4,7 +4,7 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-10-07** against branch `feat/personal-learning` (P0–P6 of §16, P3–P6 in PR #2; §16.3-K in progress).
+> Last full sync: **2026-10-07** against branch `feat/personal-learning` (P0–P6 of §16, P3–P6 in PR #2; §16.3-K; §16.3-L L1–L12, migration `0045`).
 >
 > **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
@@ -26,8 +26,8 @@ Simple link lists use tables (`Element | Where | Goes to | Notes`).
 5. [Workspace picker (`/orgs`)](#5-workspace-picker-orgs)
 6. [Home: Command Center](#6-home-command-center)
 7. [Hunt: Opportunities, Companies, Analyze, Imports](#7-hunt)
-8. [Engage: Outreach, Inbox, Pipeline](#8-engage)
-9. [Learn: Analytics, Intelligence, What we've learned, Memory](#9-learn)
+8. [Engage: Outreach, Outreach log, Inbox, Pipeline](#8-engage)
+9. [Learn: Performance (and its share report), Intelligence, What we've learned, Memory, Ask Huntloop](#9-learn)
 10. [Company & Settings](#10-company--settings)
 11. [Team & Operate](#11-team--operate)
 12. [Public token pages & external integrations](#12-public-token-pages--external-integrations)
@@ -112,7 +112,7 @@ Roles: **owner › admin › member › viewer** (see §11.1). `currentViewer(or
 
 ### 1.1 Workspace shell (`app/(app)/[org]/OrgShell.tsx`) — present on every `/{org}/*` page
 
-Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 240px **panel** of the selected section's pages · **`<main id="main">`** (only scroller) · hidden sign-out form.
+Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 240px **panel** of the selected section's pages · **`<main id="main">`** (only scroller) · hidden sign-out form. **Print:** top bar and sidebar are hidden and the fixed-height scroll container becomes normal flow (`print:` classes), so a page prints in full — used by the share report (§9.1c).
 
 #### 1.1.1 Skip link
 - **Element:** "Skip to content" anchor, first focusable element, visible only on keyboard focus.
@@ -137,7 +137,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 |---|---|---|
 | **Home** | No (single item) | Command Center → `/{org}/dashboard` |
 | **Hunt** | Yes — "Find and qualify the accounts worth pursuing." | Opportunities → `/{org}/opportunities` · Companies → `/{org}/companies` · Analyze a URL → `/{org}/analyze` · Imports → `/{org}/imports` |
-| **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
+| **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Outreach log → `/{org}/outreach/log` (§8.1b) · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
 | **Learn** | Yes — "What the loop is teaching you." | Performance → `/{org}/performance` · Ask Huntloop [AI] → `/{org}/assistant` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` · Prospect demand → `/{org}/demand` |
 | **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` · Competitors → `/{org}/competitors` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
@@ -671,7 +671,10 @@ The top 5 items of the ranked queue (§6.6), in this person's **default ownershi
 | Badge (Positive reply / Reply / Wrong person / Approve / Due today / Overdue / Gone quiet / Hot / No next step / Learning / Discovery paused / Sources / Freshness) + priority | Static |
 | Title (company, or thread subject / workspace subject) | Static |
 | "Why" sentence written by the ranker from the facts (ages, channel, classification, next-step text) | Static |
+| **Why now** · **Reach** lines — only on items about reaching someone (Follow-ups and New opportunities groups with an opportunity) | Why now = the opportunity's `why_now`, one line (full text on hover). Reach = a decision maker at the company, else anyone named there (`lib/needs-you/context.ts pickBuyer`); none → **No contact yet — find one** → `/{org}/opportunities/{id}#decision-makers`. Read after ranking, one bounded query for up to 150 items; a failed read renders the item without the lines |
 | Primary button (Reply / Log your reply / Find the right person / Review draft / Open / Follow up / Set next step / Review / Triage / Open sources) | Link → the item's `href` (email reply → `/{org}/inbox#thread-{id}`; draft → `/{org}/inbox#thread-{id}` or `#draft-{id}`; opportunity items → `/{org}/opportunities/{id}`; learning → `/learn`; sources → `/sources`; discovery paused / stale → `/opportunities`) |
+| **Log touch** (`canWrite`, items with the Why now/Reach lines) | Inline form: Channel (LinkedIn / Email / Phone / Other) · What happened (I reached out / They replied) · Note (optional) → **Log it** → SA `logActivityAction` (§7.1.2, kind `call` for phone, `message` otherwise) — same forward-only stage moves and reply outcome as the opportunity page; revalidates Needs you, the dashboard and the outreach log, so a resolved item leaves the queue. Message "{company}: Logged. Moved to contacted." · **Cancel** |
+| **Draft** (`canWrite`, same items) | → `/{org}/opportunities/{id}?ask=write#ask` — the opportunity's AgentPanel with "What should I write?" in the box, **not sent** (no spend on navigation) |
 | ⏰ **Snooze** menu: Later today (+4h) / Tomorrow morning (09:00 local) / Next week (Monday 09:00) | SA `snoozeAttentionAction` (`needs-you/actions.ts`) → upserts `attention_snoozes` (per user, max 30 days) → item hidden; message "Snoozed. It comes back on its own." Demo → "no database connected". Viewers may snooze (personal preference; not via `mutate`) |
 
 ### 6.6 Needs you `/{org}/needs-you[?filter=mine|unassigned|everyone]`
@@ -694,6 +697,7 @@ Ranked by `lib/needs-you/rank.ts` (pure, unit-tested): base weight per kind × p
 
 | Element | Action |
 |---|---|
+| **Reached out today** strip (above the groups) | Outbound touches this person made today (UTC day) and this week (Monday-first UTC), from `activities` with `actor_id` = viewer — the same count Performance → Your pace uses (`getReachOutProgress`). With a weekly goal (Performance → Set goals, `settings.goals.touchesPerWeek`): "{n} of {ceil(weekly/5)}" + meter, "Today's goal met" when reached, "{n} of {weekly} this week". No goal: counts only; owner/admin also see **Set a goal** → `/{org}/performance#goals`. Demo: 0, no goal |
 | Filter links **Mine / Unassigned / Everyone** | `?filter=` (link, shareable); default from role. Workspace items always shown |
 | Groups: Conversations · Follow-ups · New opportunities · Workspace health (count each) | Item cards as §6.5 |
 | Empty | "Nothing needs you right now" (Mine: suggests switching to Everyone) |
@@ -714,22 +718,26 @@ No dismiss control is wired (`onDismiss` not passed).
 
 ### 7.1 Opportunities
 
-#### 7.1.1 List `/{org}/opportunities[?priority=hot|warm|watch|ignore][&company=Name]`
+#### 7.1.1 List `/{org}/opportunities[?priority=hot|warm|watch|ignore][&company=Name][&product={id}|none]`
 **Reached from:** Hunt rail, dashboard priority cards (pre-filtered), "awaiting your review" chip, "Discovered" loop card, Companies "{n} open" link (`?company=`), detail page "← All opportunities", action rail (stale scores), jump-to.
 
-Server: `listOpportunities` (capped at `LIST_LIMIT`; notice "Showing the N highest-priority opportunities…" when hit) + `listCampaignTargets`; `canWrite` from viewer.
+Server: `listOpportunities` (capped at `LIST_LIMIT`; notice "Showing the N highest-priority opportunities…" when hit; each row carries its profile and, through `icps.product_id`, its product — a removed product counts as none; `withAlsoFits` cross-references rows of the same company) + `listCampaignTargets`; `canWrite` from viewer.
 
 | Element | Action → Result |
 |---|---|
 | **Analyze a URL** (header, `canWrite`) | → `/{org}/analyze` |
+| **Product** select ("All products (n)" · each product (n) · "No product (n)") — only when the rows carry ≥ 2 products, or 1 product plus unbound rows | Client filter; URL `?product=` via `history.replaceState`; an id no row carries is ignored. Priority chip counts follow it. Each company cell then also reads "For {product}" |
 | Priority chips All / Hot / Warm / Watch / Ignore (with counts) | Client filter; URL `?priority=` updated via `history.replaceState` (no navigation) |
 | FilterBar scope (Company / Domain / Industry) + search | Client filter. `?company=` pre-fills search |
 | Refresh (FilterBar right) | `router.refresh()` |
 | Row checkbox / select-all | Selection → FilterBar shows "{n} selected" + actions |
+| **Stale (n)** toggle (after the priority chips; only when n > 0) | Client filter to opportunities found ≥ 60 days ago, never past `assigned`, with no trigger in 90 days (`lib/opportunities/stale.ts isStale`, tested). Clears the selection; shows an explainer line. Combines with product/priority/search |
+| **Archive** (selection action, `canWrite`; ConfirmButton "Archive {n}?") | SA `archiveOpportunitiesAction` (`opportunities/actions.ts`, ≤ 200): status → `archived` and next step cleared **only for rows still before contact** (discovered/researching/qualified/assigned); others are left and counted in the message ("Archived {n} opportunities. {m} already contacted or closed were left as they were."). No reason, no outcome, nothing taught to learning; the ledger records each stage change; sequences stop on their next run; the backlog cap counts fewer open rows, so paused discovery resumes. Errors in the shared FormMessage |
 | **Add to campaign** (selection action, `canWrite`) | Toggles inline **EnrollPanel**. If no campaigns: aria-disabled with tooltip "There are no campaigns to add these to yet. Create one under Outreach." |
 | **Clear** (selection action) | Clears selection |
 | Sortable headers Company / Priority / Score / Why now | Toggle desc⇄asc |
 | **Company** cell (name + domain) | → `/{org}/opportunities/{id}` |
+| **Also fits** chips under the company (one per other opportunity on the list for the same company: product name, else profile name, + priority) | → that sibling's `/{org}/opportunities/{id}` |
 | PriorityBadge / ScorePill | Hover/focus panels with reason, dimensions, confidence |
 
 **EnrollPanel** (inline, not modal):
@@ -738,10 +746,10 @@ Branches: none selected / no campaign → tooltip reasons; errors ("That campaig
 
 On success the panel closes and the "{n} enrolled" confirmation shows under the filters (M-07 fixed).
 
-**Empty states:** filtered → "No opportunities match this filter" + **Clear filters**; none at all → "No opportunities discovered yet" + **Analyze a company URL** (→ `/analyze`) + **Review sources** (→ `/sources`).
+**Empty states:** filtered (search, priority, product or Stale) → "No opportunities match this filter" + **Clear filters** (resets all four); none at all → "No opportunities discovered yet" + **Analyze a company URL** (→ `/analyze`) + **Review sources** (→ `/sources`).
 
 #### 7.1.2 Detail `/{org}/opportunities/{id}`
-**Reached from:** list row, dashboard why-now card, pipeline card, onboarding review "See the working", Analyze "Open it". Unknown id → `notFound()`.
+**Reached from:** list row, list "Also fits" chips, dashboard why-now card, pipeline card, onboarding review "See the working", Analyze "Open it", Needs you (**Draft** → `?ask=write#ask`; "No contact yet" → `#decision-makers`), outreach log rows. Unknown id → `notFound()`. Anchors: `#decision-makers` (Decision makers card), `#ask` (AgentPanel).
 
 | Element | Action → Result |
 |---|---|
@@ -777,6 +785,7 @@ Assign / Enrol / Disagree / Not a fit are one exclusive panel state (opening one
 | **Remove** (own manual rows) | SA `deleteActivityAction` → soft delete |
 
 **AgentPanel** (per-user conversation, persisted):
+- `?ask=write` (from Needs you **Draft**) puts "What should I write?" in the textarea on arrival — not sent.
 - Suggested prompt chips (What should I write? · What should I not claim? · What do we actually know? · Prepare me for a meeting · Give me a different angle · Is this still a good opportunity?) → **fill the textarea only** (do not send).
 - Textarea + **Send** (icon) → SA `askAgentAction` → appends user + Huntloop turns; "Not established" box lists unresolved items; each answer has **Based on (n)** disclosure listing cited claims. Read-only role → Send aria-disabled "Your role is read-only…". Errors → FormMessage, draft kept.
 - Endpoint: answer rendered and saved to the conversation (reloads show history).
@@ -847,6 +856,8 @@ Server-side refusals: no rows, no company column, company without domain column.
 ### 8.1 Outreach `/{org}/outreach[?mailbox_connected=|?mailbox_error=]`
 **Reached from:** Engage rail, dashboard "Contacted", mailbox OAuth return, opportunity tooltips ("Create one under Outreach"). Demo → DemoFigures.
 
+Header link **Outreach log →** → `/{org}/outreach/log` (§8.1b).
+
 **Summary figures** (static): Campaigns · Active · Sending without approval (active & autonomy ≥ 3). Shared `FormMessage` shows every outcome on the page, seeded by the OAuth query-string notice ("{email} is connected and can send." / error text).
 
 #### Campaigns
@@ -886,6 +897,22 @@ sequenceDiagram
   C->>U: upsert mailbox (unique org+email) → /{org}/outreach?mailbox_connected={email}
 ```
 
+### 8.1b Outreach log `/{org}/outreach/log[?days=7|30|90][&channel=email|linkedin|phone|chat|other][&person=me|{userId}][&outcome=replied|waiting|no-response]`
+**Reached from:** Engage rail "Outreach log", Outreach header link, jump-to. A view over the activity ledger (`lib/data/outreach-log.ts`), not a separate store. Demo → DemoFigures and the empty state (fixtures have no touches).
+
+Rows: outbound touches with an opportunity — `email_sent`, `message`, `call`, `connection_request` — in the window, newest first, at most 500 ("Showing the newest 500…" when hit). **Outcome** per touch (`lib/outreach-log/outcome.ts`, pure, tested): **Replied** = any inbound touch on that opportunity after it, any channel · **No response** = none, and the workspace's quiet period (Settings → follow-up, default 4 business days) has passed · **Waiting** = otherwise. Outcomes are derived, never typed in.
+
+| Element | Action |
+|---|---|
+| Header link **Campaigns and mailboxes →** | → `/{org}/outreach` |
+| Summary "{n} reach-outs in the last {days} days · {r} replied ({%}) · {w} waiting · {q} no response" | Static; counts before the outcome filter |
+| Filters Period / Channel / Person (Everyone, Me, each member) / Outcome | `router.replace` to the URL (shareable; Back leaves the page). Unknown values fall back to defaults (`parseLogFilters`) |
+| Account cell (company + contact when the touch names one) | → `/{org}/opportunities/{id}` |
+| What cell (activity summary) | Emails: → `/{org}/inbox#thread-{id}`; others static |
+| By | You / member name / "Huntloop" (no actor: sent by a sequence) |
+| **Got a reply** (`canWrite`, outcome not Replied) | SA `logActivityAction` inbound on the touch's channel (phone → call) — stage → replied, reply outcome, sequences stop; the log revalidates and the row reads Replied. Message "{company}: Logged. Moved to replied." |
+| Empty | "No reach-outs in this period" / "No reach-outs match these filters" + **Open Needs you** → `/{org}/needs-you` |
+
 ### 8.2 Inbox `/{org}/inbox`
 **Reached from:** Engage rail, dashboard "Replied" card, action-rail "waiting on a reply" / "need approval". Demo → DemoFigures.
 
@@ -923,8 +950,14 @@ Columns: Discovered · Researching · Qualified · Assigned · Contacted · Repl
 | Card company name | → `/{org}/opportunities/{id}` |
 | PriorityBadge | Hover reason |
 | Owner badge | "Yours" / "Assigned" / "Unassigned" (static) |
+| Deal value (when entered, `0040`) | Static "$25,000" beside the badges |
+| **Last touch** line | "Reached out / They replied · {channel} · {n} days ago", or "None yet" (newest touch in the last 365 days; `lib/data/pipeline.ts getPipelineExtras`) |
+| **Next** line (when a next step is set) | Step text + "due in {n} days" / "due today" / "overdue {n} days" (warning colour) |
+| **Sequence** line (active enrollment with email steps) | "{sent}/{total} emails sent" — sent outbound messages of the enrollment against the email steps of the campaign's newest sequence |
 | **Stage** select (`canWrite`) — all 11 statuses | SA `setOpportunityStatusAction` → "Moved to {stage}." and card moves column after revalidation. Lost / not a fit **with a reason** also records a `disqualified` signal for the person (K3) |
 | Choosing **lost** | Does not move yet: inline "Why was {company} lost?" — Reason (They stopped responding / Chose a competitor / No budget / Wrong time / No real need / Needed something we do not offer / Not a fit after all / Never reached the right person / Something else) · To whom (competitor picker, when "Chose a competitor" and competitors exist) · Detail → **Mark lost** (reason saved on the `outcomes` row; timeline "Lost · {reason}") / **Skip** (moves without a reason) / **Cancel** (stays put) |
+
+Column headers show the count and, when any card in the column has a value, the column's value total. The page subtitle adds "{$} open pipeline from {n} of {m} open deals with a value" when any open deal has one — values are typed by people, never estimated. Demo: no extras (fixtures have no touches, steps or values).
 
 No drag-and-drop.
 
@@ -932,24 +965,36 @@ No drag-and-drop.
 
 ## 9. Learn
 
-### 9.1 Performance `/{org}/performance[?period=7d|30d|90d|month|last-month]`
+### 9.1 Performance `/{org}/performance[?period=7d|30d|90d|month|last-month][&scope=mine|everyone]`
 **Reached from:** Learn rail "Performance", jump-to. Definitions and statistics live in `lib/performance/compute.ts` (pure, unit-tested); rows from `lib/data/performance.ts` (paginated, ceilings stated on screen when hit).
 
 | Element | Action |
 |---|---|
-| Period links (Last 7 / 30 / 90 days, This month, Last month) | `?period=`; the previous window is the same length, immediately before |
+| **Me / Everyone** | `?scope=`; default **Me** for roles whose personalisation `defaultFilter` is `assigned` (SDR, AE — the same rule as Needs you's Mine), Everyone otherwise. Me = only opportunities the viewer owns, and only the touches and outcomes on them; a line says so with **See everyone**. Model spend and Your pace are unaffected. The narrative and CSV use the same scope |
+| Period links (Last 7 / 30 / 90 days, This month, Last month) | `?period=` (scope kept); the previous window is the same length, immediately before |
+| **Share report →** | → `/{org}/performance/report?period=&scope=` (§9.1c) |
 | **What the data says** | Insight cards: a segment called better/worse only when its 95% Wilson interval does not overlap the rest (≥ 10 each side); reply-rate change only when a two-proportion test clears 1.96 (≥ 30 each side); volume change ≥ 50%; dominant loss reason (≥ 5 closed, ≥ 40% share; missing capability called out); stalled deals. Each shows its basis; segment insights link to the breakdown. Small samples → "Not enough outreach in this period to compare…" |
 | **Summary** → **Summarise this period** / **Write it again** (`canSpend`) | SA `explainPerformanceAction` → recomputes the figures server-side, builds the closed fact list (`lib/performance/facts.ts`) and runs `explain_performance` (Sonnet; every sentence cites fact ids; any number not in its cited facts is rejected). Rendered with an INFERENCE badge; each sentence expands to its sources; suggestions listed separately. No key → worked example quoting the top two facts. Rate-limited, spend-guarded, not persisted |
 | Funnel stat cards (Found, Qualified, First contacted, First replied, Positive replies, Meetings, Won) with change vs previous; **CSV** | CSV → `GET /{org}/performance/export?period=&table=funnel` |
 | Reply rate / Meeting rate / Time to an answer cards | Cohort = companies whose first outbound touch (any channel) fell in the period; replies and meetings counted after that touch, up to now; medians in days |
-| **Where replies come from** — tabs First channel / Source / Trigger / Priority / Owner; **CSV** (`table=segments`) | Table: contacted, replied, reply rate with 95% range, meetings; a row expands to up to 25 company links → opportunity detail |
+| **Pipeline value** card | Open pipeline (sum of entered deal values on opportunities not won/lost/archived, "{n} of {m} open deals have a value") and Won in this period (by won-outcome date, "{n} won · {k} with a value"); empty hint points to Deal value on the opportunity. `pipelineValue` in `compute.ts`, tested |
+| **Where replies come from** — tabs First channel / Source / Trigger / Priority / Owner / **Product** (only when a product exists among the cohort; product through the opportunity's profile, else "No product"); **CSV** (`table=segments`, includes the product split) | Table: contacted, replied, reply rate with 95% range, meetings; a row expands to up to 25 company links → opportunity detail |
 | **Why deals ended** (+ CSV `table=reasons`) | Lost / Not a fit / Lost to (competitor) tallies for the period |
 | **Your pace** | Outbound touches you made this week and meetings on accounts you own this month, against workspace goals with an even-pace marker. Owner/admin: **Set goals / Edit goals** → Touches per week, Meetings per month → SA `saveGoalsAction` (`settings.goals`) |
 | **Stalled deals** | Meeting/proposal with no activity ≥ 14 days → opportunity links |
 | **What it cost** | Model spend, provider credits (never converted to money), spend per qualified opportunity and per meeting; **Full AI spend →** `/{org}/analytics` |
 | Demo | `DemoFigures`; fixtures have no outreach, so the "not enough data" state is the real one |
 
-CSV export (`performance/export/route.ts`): member check (404 otherwise); tables funnel / segments / reasons / stalled; cells starting `= + - @` are neutralised (`lib/csv-write.ts`).
+CSV export (`performance/export/route.ts`): member check (404 otherwise); `&scope=mine` honoured; tables funnel / segments / reasons / stalled; cells starting `= + - @` are neutralised (`lib/csv-write.ts`).
+
+### 9.1c Share report `/{org}/performance/report[?period=][&scope=]`
+**Reached from:** Performance **Share report →**. Read-only, the same figures Performance computes for that period and scope, laid out for paper (always the light theme via `data-theme="light"`, also in dark mode).
+
+| Element | Action |
+|---|---|
+| **← Back to Performance** | → `/{org}/performance?period=&scope=` (hidden when printed) |
+| **Print or save as PDF** | `window.print()` — the browser's dialog, where Save as PDF is a destination (hidden when printed) |
+| Sections | Header (workspace, period and dates, scope, generated date, demo/partial warnings) · What the data says · Funnel (this vs previous period, rates, median time to reply) · Pipeline value · Where replies come from (first channel; product when any) · Why deals ended · Stalled deals · Competitors (accepted ones: tier, prospects using / evaluating with evidence, deals lost to them, our advantage) · What it cost |
 
 ### 9.1b AI spend `/{org}/analytics` (Operate rail)
 **Reached from:** Operate rail "AI spend", Performance "Full AI spend →", jump-to. **Read-only page.**
@@ -994,18 +1039,21 @@ The "tighten-icp" nudge's promise is kept on ICP settings (§10.3): **Suggested 
 
 Personal memories are not listed here at all — they live on Settings → You (§10.8), linked from the line under the figures; the scope picker offers **user** only on an existing user-scoped memory. Memories in status proposed / paused / rejected, and learned ones that have faded, are not applied to any prompt (`resolvePreferences`). "What Huntloop worked out" (derived memories): removable, **not editable**. Empty: "Nothing remembered yet". Scoped memory cards show their subject by name ("Removed or not loaded" when it is gone).
 
-### 9.5 Ask Huntloop `/{org}/assistant`
-**Reached from:** Learn rail "Ask Huntloop" [AI], jump-to. The workspace co-pilot (§16.3-G).
+### 9.5 Ask Huntloop `/{org}/assistant[?c={conversationId}|new]`
+**Reached from:** Learn rail "Ask Huntloop" [AI], jump-to. The workspace co-pilot (§16.3-G). **Several saved conversations per person** (`0045`); `?c=` opens one, `?c=new` starts one, neither opens the most recent; an id that is not yours opens an empty new conversation. Layout ≥ lg: Conversations list and What it can see on the left, the conversation on the right; phones: list, conversation, then What it can see.
 
 | Element | Action |
 |---|---|
-| **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`). A follow-up that corrects the last answer ("shorter", "as bullets", "from now on…" — `isCorrection`) is recorded as an `assistant_correction` signal (K3). The asker's own preferences (§10.8) are passed as *how this person likes answers* — style only, never citable; workspace memories stay citable records (K2) |
+| **Conversations** list (newest first, ≤ 50; title = first question, product focus and last-answer date) · **New** | → `?c={id}` / `?c=new` |
+| **Focus** select (new conversation only, when the workspace has ≥ 2 products) | "The whole workspace" or one product → stored on the conversation (`conversations.product_id`). A focused conversation's pipeline, queue and opportunity records are only those found through the product's profiles; a first record tells the model performance, competitors, rules and sources stay workspace-wide. Badge "Focus: {product}" on the conversation |
+| **What it can see** panel | Plain list of what `workspace-context.ts` reads (queue and pipeline, hot/warm and named opportunities, last 30 days, competitors/rules/sources), **{n} notes the team taught it** → `/{org}/memory`, **{n} of your preferences** → `/{org}/settings/you` (counted with `applicableMemories`, the same selector the assistant uses), the focus when set, and that it learns from corrections |
+| **Your question** ("Ask about your pipeline…") → send | SA `askAssistantAction(org, question, { conversationId, productId })` — continues the open conversation, or creates one (title from the question, optional focus; before `0045` the one-per-person index makes it join the existing conversation, and a missing `product_id` column drops the focus) → first stored answer of a new conversation replaces the URL with `?c={id}` → `workspace_assistant` answers from this workspace's own records only (`lib/ai/workspace-context.ts`); the conversation is personal (RLS, `0041`). A follow-up that corrects the last answer ("shorter", "as bullets", "from now on…" — `isCorrection`) is recorded as an `assistant_correction` signal (K3). The asker's own preferences (§10.8) are passed as *how this person likes answers* — style only, never citable; workspace memories stay citable records (K2) |
 | Answer: **Based on** citations | Each cited record links to its page; with nothing on file the answer says **Not in your records** |
 | Proposed actions (set a next step, remember something) | Nothing happens until pressed → SA `setNextStepAction` / `savePreferenceAction` (remember → your own private preference, category "About you", listed under Settings → You) |
 | **QuestionCard** above the conversation (§1.1.10, surface `assistant`) | Once the conversation has turns |
-| **Your usual questions** (chips above the input) | Questions this person asked on ≥ 2 different days in the last 60 days, latest wording, at most 3 (`getUsualQuestions` → `recurringQuestions`; computed from their own turns, nothing stored; clearing the conversation clears them). Click → asks it |
+| **Your usual questions** (chips above the input) | Questions this person asked on ≥ 2 different days in the last 60 days, latest wording, at most 3 (`getUsualQuestions` → `recurringQuestions`; computed from their own turns across all their conversations, nothing stored; deleting conversations removes their turns from it). Click → asks it |
 | **Written with N preferences** under a stored answer | Same disclosure as Inbox drafts (§8.2); ids stored in `conversation_messages.applied_memory_ids` |
-| Clear the conversation | SA `clearAssistantAction` deletes this person's turns |
+| **Delete conversation** (ConfirmButton "Delete it") | SA `deleteConversationAction` deletes its turns and soft-deletes it → `?c=new` |
 | No model key / demo | **Worked example** |
 
 ### 9.6 Prospect demand `/{org}/demand` (H1 "What prospects ask for")
@@ -1053,8 +1101,9 @@ All `/{org}/settings/*` pages share `settings/layout.tsx`: eyebrow "Settings" + 
 No mailbox, billing or member controls live here.
 
 ### 10.2 Product `/{org}/settings/product`
-**Reached from:** Company rail "Product", Settings panel. Edits the **first** product only (`products[0]`); there is no multi-product list.
-Fields: Name\*, Website, What it does, Value propositions (one per line), Proof points (one per line) → **Save changes** / **Create product** when none exists (SA `saveProductAction`: "Product saved." / "Product created.") · **Remove this product** ConfirmButton (when a product exists; `deleteProductAction` → "Product removed."). Read-only role: disabled fields, no buttons. Title "Describe your product" when none exists.
+**Reached from:** Company rail "Product", Settings panel, opportunity list (indirectly, via `?product=`). **Every product as a card** (`ProductList.tsx`): name, website, what it does (2 lines), **For** = the customer profiles bound to it (or "No customer profile bound yet" + **Bind a profile** → `/{org}/settings/icp`), **{n} open opportunities →** → `/{org}/opportunities?product={id}` (counted through `icps.product_id`, `getProductStats`). Clicking a card (`aria-pressed`) selects it for the form below; **Add a product** (`canWrite`) opens an empty form (**Cancel** returns). No products → the empty form.
+**Draft from a website** (empty form, `canWrite`): URL + **Draft it** → SA `draftProductFromWebsiteAction` = onboarding's `research_company` (`lib/ai/research.ts`; metered, rate-limited, budget-checked) → fills Name, Website, What it does (what they sell + "For {buyers}") and a value proposition (the problem) from non-unknown findings; nothing saved until **Create product**. No model key → labelled worked example. Read-only role refused.
+Fields: Name\*, Website, What it does, Value propositions (one per line), Proof points (one per line) → **Save changes** / **Create product** (SA `saveProductAction`: "Product saved." / "Product created."; a created product becomes selected) · **Remove this product** ConfirmButton (when a product exists; `deleteProductAction` → "Product removed."; selection moves to another product). Read-only role: disabled fields, no buttons. Title "Your product", or "Describe your product" when creating.
 
 ### 10.3 ICP `/{org}/settings/icp`
 **Reached from:** Company rail "ICP", Settings panel, IcpQualityCard "Sharpen my profile", onboarding review "Review my profile".
@@ -1107,6 +1156,8 @@ Note the free-text Company sizes / Regions here vs. fixed option chips in onboar
 | **Add a source** (`canWrite`) | Always | Toggles SourceForm: Name\*, Kind (News/Blog/Jobs/Social/Code/Funding/Regulatory/Community/Podcast/Custom), URL → **Add source** (SA `saveSourceAction`, enabled immediately: "Source added. It will be read on the next hunt.") · **Cancel** |
 
 **Banners:** "Nothing is reading these sources on a timer." (engine not driven) · "{n} of {m} sources are not returning full results." (degraded/unavailable) · "Discovery is paused: {n} opportunities are waiting for review, which is at your backlog limit of {cap}…" with **triage them** (→ `/opportunities`) and **Settings** links (when `backlog_state_for_org` is saturated; since 0038 the cap pauses paid discovery as well as scans, without costing a query its turn).
+
+**Review backlog by profile** (when ≥ 2 profiles have opportunities waiting): "Review backlog {open} of {cap}: {profile} {n} · … The limit is shared by every profile." — the rows `open_opportunity_count` counts (before review, not Ignore), grouped by profile (`backlogByProfile`).
 
 **Monitored list** (empty: "Nothing is being monitored…"): name, kind, "Scanned {age}"/"Never scanned", documents/evidence counts, last error, status dot (Healthy/Degraded/Unavailable).
 | Row control (`canWrite`) | Action |
@@ -1330,25 +1381,27 @@ Closed since the last sync (verified in code): "Check your email" has **Resend**
 | `/welcome/*` | Callback (new user), SetupCard, `/orgs` Finish setup, `continueTarget`, invite (new user), dashboard PersonalStartCard (→ `/welcome/company?org=`) | Next step, `/welcome/start` (§4.1b), `/{org}/dashboard`, `/{org}/analyze?url=&run=1`, `/{org}/imports`, `/{org}/settings/*`, `/{org}/team` |
 | `/orgs` | Switcher, account menu, callback (multi) | `/{slug}/dashboard`, `stepPath`, `/welcome?new=1` |
 | `/{org}/dashboard` | Home rail, callback, onboarding finish, `/orgs` | Opportunities (filtered), detail, companies, analyze, sources, outreach, inbox, pipeline, learn, settings/icp, settings/scoring, imports |
-| `/{org}/opportunities` | Hunt rail, dashboard, companies `?company=`, detail back | Detail, analyze, sources |
-| `/{org}/opportunities/{id}` | List, dashboard why-now, pipeline, assignments, review, analyze "Open it", learn citations | List, external domain/LinkedIn/mailto, learn (nudge) |
+| `/{org}/opportunities` | Hunt rail, dashboard, companies `?company=`, detail back | Detail (row and "Also fits" chips), analyze, sources |
+| `/{org}/opportunities/{id}` | List (row, Also fits), dashboard why-now, pipeline, assignments, review, analyze "Open it", learn citations, Needs you (Draft `?ask=write#ask`, find a contact `#decision-makers`), outreach log | List, external domain/LinkedIn/mailto, learn (nudge) |
 | `/{org}/companies` | Hunt rail, dashboard | `/companies/{id}`, `/opportunities?company=` |
 | `/{org}/companies/{id}` | Companies (name link) | Opportunity detail, external LinkedIn |
 | `/{org}/analyze` | Hunt rail, dashboard, opportunities | Detail ("Open it") |
 | `/{org}/imports` | Hunt rail, onboarding building/review, dashboard first action | — (companies appear on `/companies`) |
-| `/{org}/outreach` | Engage rail, dashboard, OAuth return | Google/Microsoft consent (external) |
-| `/{org}/needs-you` | Engage rail (count), dashboard rail header | Inbox threads/drafts, opportunity detail, learn, sources, opportunities |
+| `/{org}/outreach` | Engage rail, dashboard, OAuth return, outreach log | Google/Microsoft consent (external), outreach log |
+| `/{org}/outreach/log` | Engage rail, Outreach header | Opportunity detail, inbox threads, outreach, needs you (empty state) |
+| `/{org}/needs-you` | Engage rail (count), dashboard rail header, outreach log (empty) | Inbox threads/drafts, opportunity detail (incl. `?ask=write#ask`, `#decision-makers`), learn, sources, opportunities, performance (`#goals`, Set a goal) |
 | `/{org}/inbox` | Engage rail, dashboard, Needs you items, opportunity timeline (email subjects) | Opportunity detail (thread company link) |
 | `/{org}/pipeline` | Engage rail, dashboard | Detail |
-| `/{org}/performance` | Learn rail | Opportunity detail (segment drill-down, stalled), `/analytics`, CSV export |
+| `/{org}/performance` | Learn rail, Needs you (Set a goal) | Opportunity detail (segment drill-down, stalled), `/analytics`, CSV export, share report |
+| `/{org}/performance/report` | Performance Share report | Performance; browser print |
 | `/{org}/analytics` | Operate rail, Performance | — |
 | `/{org}/intelligence` | Learn rail | — |
 | `/{org}/learn` | Learn rail, nudges | Detail, sources, settings/scoring, memory |
 | `/{org}/memory` | Learn rail, learn, Ask Huntloop (proposed memory) | External source URLs |
-| `/{org}/assistant` | Learn rail | Cited records (opportunity, company and other detail pages) |
+| `/{org}/assistant` | Learn rail | Cited records (opportunity, company and other detail pages), its own conversations (`?c=`), memory, settings/you |
 | `/{org}/demand` | Learn rail | — (shipped themes surface in Needs you) |
 | `/{org}/settings` | Settings rail, account menu, privacy links, "Connect a mailbox" (M-04) | — |
-| `/{org}/settings/product` · `/icp` · `/scoring` · `/integrations` · `/privacy` | Settings/Company rails, account menu (integrations, privacy), nudges, review | `/orgs` (workspace deleted), `/login` (account deleted), `/settings` |
+| `/{org}/settings/product` → `/opportunities?product=`, `/settings/icp` · `/icp` · `/scoring` · `/integrations` · `/privacy` | Settings/Company rails, account menu (integrations, privacy), nudges, review | `/orgs` (workspace deleted), `/login` (account deleted), `/settings` |
 | `/{org}/sources` | Company rail, dashboard, action rail, learn | — |
 | `/{org}/competitors` · `/competitors/{id}` | Company rail | Detail, back to list |
 | `/{org}/team` · `/team/assignments` | Team rail, review "Invite a teammate" | Detail (assignments) |
@@ -1612,6 +1665,25 @@ Full plan: [`docs/product/personalization-plan.md`](docs/product/personalization
 | **K5** Broader learning | **Shipped:** recurring questions as "Your usual questions" (§9.5); targeting proposals from overrides and losses (K3) with the ICP link (§10.8); answer format from corrections and the question (K3/K4). **Deferred:** learning research focus from which companies are analysed, and recurring-task digests — both need usage tracking the product does not do today (§16.6 rejects time tracking); revisit with an explicit opt-in | **Partly shipped** (this branch) |
 | **K6** Measurement | "Is it working?" on Settings → You (§10.8): change per approved draft this 30 days vs the previous 30, drafts edited, learned items in use, questions answered, "Not here" count. `changeRatio` in `packages/db/src/style.ts` | **Shipped** (this branch) |
 
+#### L. Follow-ups from the second Kima review (2026-10-07) · **S–M each** · worth building: **yes, the daily loop first**
+
+Screens from the same tool as §16.1 were checked item by item against the code. Most already exist in Huntloop in a stricter form; these are the gaps worth closing. New rejections are in §16.6.
+
+| # | Item | Status |
+|---|---|---|
+| L1 | Opportunities: product filter and **Also fits** chips (§7.1.1) | **Shipped** (this branch) |
+| L2 | Needs you: "Reached out today" against the daily share of the weekly goal; inline **Log touch** and **Draft** (§6.5–6.6) | **Shipped** (this branch) |
+| L3 | Needs you items: one-line why-now and who to reach, or "No contact yet — find one" (§6.5) | **Shipped** (this branch) |
+| L4 | Outreach log: every touch across channels, filter by channel / person / outcome, derived outcomes, one-click **Got a reply** (§8.1b). A hand-set "No response" was not built: the outcome is derived from the quiet period so it cannot disagree with the ledger | **Shipped** (this branch) |
+| L5 | Products as readable cards (what it does, who it is for, open opportunities each) and "Draft from a website" for a new product, reusing onboarding's research step (§10.2) | **Shipped** (this branch) |
+| L6 | Ask Huntloop: a "What it can see" panel (records, your preferences, workspace notes — no vanity counts) and a line saying it learns from corrections (§9.5) | **Shipped** (this branch) |
+| L7 | Performance: by-product breakdown and a "Me" default by role (§9.1) | **Shipped** (this branch) |
+| L8 | Pipeline cards: last touch, next step due, sequence progress (§8.3) | **Shipped** (this branch) |
+| L9 | One print-friendly "Share report" view of Performance and competitors (browser save-as-PDF) — not a reports menu (§9.1c) | **Shipped** (this branch) |
+| L10 | Several saved Ask Huntloop conversations; optional product focus (§9.5, migration `0045`) | **Shipped** (this branch) |
+| L11 | Bulk "archive stale" opportunities (§7.1.1); plus the review backlog by profile on Sources (§10.5) | **Shipped** (this branch) |
+| L12 | Pipeline value from entered deal values — Performance card, share report, Pipeline columns (§9.1, §8.3) | **Shipped** (this branch) |
+
 ### 16.4 Phases
 
 Ordered by user value × business value ÷ (dependency depth + regression risk), not by the order of the Kima audit.
@@ -1832,6 +1904,12 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 | Named per-person sections ("Pluto's Section") | **Rejected** | Covered by the owner filter, Assignments and the "Mine" filter in Needs you |
 | A separate weekly-learning approval page | **Not needed** | Learn's per-finding accept / decline already does this better |
 | LinkedIn automation or scraping | **Rejected** | Platform terms and master context §67; manual logging and copy-ready drafts only |
+| Separate co-pilot per product | **Rejected** | Several assistants with overlapping knowledge; an optional product focus on the one assistant (L10) covers it |
+| Hand-typed metrics and "Add Deal" numbers on the performance page | **Rejected** | Numbers must come from records; the benchmark's own pages contradicted each other because of this |
+| "Force run all" discovery | **Rejected** | Bypasses the backlog cap and spend guards (P2B) that stop paying for leads nobody will read |
+| Per-category "FULL" quota bars on the dashboard | **Rejected** | The backlog cap is shown where it can be acted on (Sources, Engine, Needs you) |
+| Rows of unlabelled icon actions on lists | **Rejected** | Inaccessible, unusable on phones, invites misclicks; selection actions and the detail page instead |
+| Vendor branding in the header ("Powered by …") | **Rejected** | Engine status lives on Engine |
 
 ### 16.7 Open decisions for the owner
 
@@ -1847,6 +1925,8 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-07 | **L5–L12 shipped on `feat/personal-learning`** with migration **`0045_assistant_conversations.sql`** (drops 0041's one-conversation-per-person index, adds `conversations.product_id`): product cards and draft-from-website, What it can see, saved and product-focused assistant conversations, Performance Me/Everyone + product split + pipeline value, share report with print styles for the shell, pipeline card facts and column values, Stale view with bulk archive, review backlog by profile on Sources. Production needs `0040`–`0045` before this deploys. |
+| 2026-10-07 | **§16.3-L added; L1–L4 shipped on `feat/personal-learning`** (no migration): product filter and Also fits on Opportunities, Needs you why-now/reach lines with inline Log touch and Draft, Reached out today, Outreach log. Found on the way: §10.2 still described the pre-P5 single-product form — corrected. |
 | 2026-10-07 | **K5 (partly) and K6 shipped on `feat/personal-learning`**: usual questions in Ask Huntloop, targeting proposals link to the ICP, "Is it working?" on Settings → You. Research-focus learning and recurring-task digests deferred (need usage tracking). |
 | 2026-10-07 | **K4 shipped on `feat/personal-learning`**: just-in-time questions (§1.1.10). |
 | 2026-10-07 | **K3 shipped on `feat/personal-learning`**: signals from edits, rejections, redrafts, corrections, overrides and losses; the per-person learner; Redraft with a note; I-noticed card. Found on the way: K0's draft insert named `applied_memory_ids` unconditionally, which would have failed every draft on a database without `0044` — the insert now retries without it. |

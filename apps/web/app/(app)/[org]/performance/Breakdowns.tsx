@@ -21,6 +21,7 @@ const TABS: { key: BreakdownKey; label: string }[] = [
   { key: "trigger", label: "Trigger" },
   { key: "priority", label: "Priority" },
   { key: "owner", label: "Owner" },
+  { key: "product", label: "Product" },
 ];
 
 const pct = (r: number | null) => (r === null ? "—" : `${Math.round(r * 100)}%`);
@@ -35,6 +36,9 @@ export function Breakdowns({
   /** Open on this breakdown — e.g. from an insight's "See the numbers". */
   focus?: BreakdownKey;
 }) {
+  /* Product only once there is a product to split by — a tab whose one row is
+     "No product" says nothing. */
+  const tabs = TABS.filter((t) => t.key !== "product" || breakdowns.product.some((s) => s.key !== "none"));
   const [tab, setTab] = useState<BreakdownKey>(focus ?? "channel");
   const [open, setOpen] = useState<string | null>(null);
   const rows = breakdowns[tab];
@@ -47,7 +51,7 @@ export function Breakdowns({
       />
       <CardBody className="space-y-3">
         <div role="tablist" aria-label="Split by" className="flex flex-wrap gap-1">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.key}
               type="button"

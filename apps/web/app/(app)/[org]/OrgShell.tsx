@@ -36,6 +36,7 @@ import {
   Package,
   Plug,
   Radar,
+  ScrollText,
   Swords,
   Send,
   Settings,
@@ -182,6 +183,9 @@ export function OrgShell({
           countTone: "attention",
         },
         { label: "Outreach", href: `/${org}/outreach`, icon: Send },
+        /* Every reach-out on every channel, with what came of it — a view
+           over the activity ledger, not a second store (§8.1b). */
+        { label: "Outreach log", href: `/${org}/outreach/log`, icon: ScrollText },
         // No count until something counts it. "12" was a fixture, and an
         // unread badge that is always 12 is a notification about nothing —
         // worse than none, because it is the one number a user learns to
@@ -339,8 +343,12 @@ export function OrgShell({
       sidebar and top bar included, off-screen. `h-dvh` rather than
       `h-screen` because 100vh on mobile includes the collapsing URL bar,
       which produces the same double scroll on phones.
+
+      Print: the fixed-height scroll container would print one screenful, so
+      for paper it becomes ordinary flow and the chrome goes (§9.1c — the
+      share report is the page this exists for).
     */
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-canvas">
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-canvas print:block print:h-auto print:overflow-visible print:bg-white">
       {/*
         Skip link. Every authenticated page renders ~17 nav items before
         <main>, so without this a keyboard or screen-reader user tabs the
@@ -362,6 +370,7 @@ export function OrgShell({
       </a>
 
       <TopBar
+        className="print:hidden"
         /*
           No crumbs: the workspace is named by the switcher in `logo`, which
           is the one thing a crumb here ever said that was true (audit UX-12
@@ -432,7 +441,7 @@ export function OrgShell({
         }
       />
 
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 print:block">
         {/* Scrim — only exists below lg, where the sidebar is an overlay. */}
         {navOpen && (
           <button
@@ -447,7 +456,7 @@ export function OrgShell({
           className={[
             "fixed inset-y-0 left-0 z-50 transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
             "motion-reduce:transition-none lg:static lg:z-auto",
-            "lg:shrink-0",
+            "lg:shrink-0 print:hidden",
             // Scoped to max-lg deliberately: an unprefixed `-translate-x-full`
             // outranks `lg:translate-x-0` in Tailwind's cascade, which would
             // translate the sidebar off-screen on desktop too.
@@ -493,7 +502,7 @@ export function OrgShell({
           />
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col print:block">
           {/*
           `tabIndex={-1}` is what makes the skip link actually skip. Without
           it, following `#main` moves the scroll position but leaves focus
@@ -503,7 +512,7 @@ export function OrgShell({
           <main
             id="main"
             tabIndex={-1}
-            className="relative min-h-0 min-w-0 flex-1 overflow-y-auto"
+            className="relative min-h-0 min-w-0 flex-1 overflow-y-auto print:overflow-visible"
           >
             {children}
           </main>

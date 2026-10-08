@@ -10,7 +10,7 @@ import { gatherWorkspaceRecords } from "../../../../lib/ai/workspace-context";
 import { getOnboardingState } from "../../../../lib/data/onboarding";
 import { canSpend, currentViewer } from "../../../../lib/data/membership";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
-import { agentQuestionSchema } from "../../../../lib/validation";
+import { agentQuestionSchema, uuidSchema } from "../../../../lib/validation";
 
 /**
  * The workspace assistant's one write path (COMMAND.md §16.3-G): ask, and keep
@@ -32,14 +32,25 @@ export interface AssistantTurn {
   /** The stored answer, and what it was written with (K2). Null for a worked example. */
   messageId?: string | null;
   writtenWith?: WrittenWith | null;
+  /** The conversation the turn was kept in — new when none was given (0045). */
+  conversationId?: string | null;
 }
 
 export async function askAssistantAction(
   org: string,
   question: string,
+  options: {
+    /** Continue this conversation; omitted or null starts a new one. */
+    conversationId?: string | null;
+    /** A new conversation's product focus. Ignored when continuing one: the focus is the conversation's. */
+    productId?: string | null;
+  } = {},
 ): Promise<ActionResult<AssistantTurn>> {
   const parsed = agentQuestionSchema.safeParse(question);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "That question could not be read.");
+  for (const id of [options.conversationId, options.productId]) {
+    if (id && !uuidSchema.safeParse(id).success) return fail("That reference isn't valid.");
+  }
 
   const viewer = await currentViewer(org);
   if (!canSpend(viewer)) return fail("Your role is read-only, so you cannot ask the assistant.");
@@ -48,8 +59,13 @@ export async function askAssistantAction(
     const userId = await currentUserId(db);
     if (!userId) return fail("You are no longer signed in.");
 
-    const conversationId = await workspaceConversation(db, orgId, userId);
-    if (!conversationId) return fail("Your conversation could not be opened.");
+    const conversation = await workspaceConversation(db, orgId, userId, {
+      id: options.conversationId ?? null,
+      productId: options.productId ?? null,
+      title: parsed.data,
+    });
+    if (!conversation) return fail("That conversation could not be opened. It may have been deleted.");
+    const conversationId = conversation.id;
 
     const [{ data: prior }, onboarding, gathered] = await Promise.all([
       db
@@ -60,7 +76,7 @@ export async function askAssistantAction(
         .order("created_at", { ascending: true })
         .limit(40),
       getOnboardingState(org),
-      gatherWorkspaceRecords(db, { orgSlug: org, orgId, userId, question: parsed.data }),
+      gatherWorkspaceRecords(db, { orgSlug: org, orgId, userId, question: parsed.data, productId: conversation.productId }),
     ]);
 
     const history = ((prior ?? []) as { role: string; content: string }[])
@@ -130,7 +146,6 @@ export async function askAssistantAction(
         .eq("id", conversationId)
         .eq("org_id", orgId);
       if (error) return fail(`The assistant answered, but the conversation could not be saved: ${error.message}`);
-      revalidatePath(`/${org}/assistant`);
     }
 
     return ok({
@@ -141,15 +156,20 @@ export async function askAssistantAction(
       example: outcome.source !== "live",
       messageId,
       writtenWith: applied,
+      conversationId,
     });
   });
 }
 
-/** Start the conversation over. The old turns are deleted — they are yours alone. */
-export async function clearAssistantAction(org: string): Promise<ActionResult<undefined>> {
+/**
+ * Delete one of your conversations. Its turns are deleted outright — they are
+ * yours alone — and the conversation is soft-deleted so the list drops it.
+ */
+export async function deleteConversationAction(org: string, conversationId: string): Promise<ActionResult<undefined>> {
+  if (!uuidSchema.safeParse(conversationId).success) return fail("That reference isn't valid.");
   return mutate(
     org,
-    "clearAssistant",
+    "deleteConversation",
     async ({ db, orgId }) => {
       const userId = await currentUserId(db);
       if (!userId) return fail("You are no longer signed in.");
@@ -157,48 +177,89 @@ export async function clearAssistantAction(org: string): Promise<ActionResult<un
         .from("conversations")
         .select("id")
         .eq("org_id", orgId)
+        .eq("id", conversationId)
         .eq("user_id", userId)
         .eq("scope", "workspace")
         .is("deleted_at", null)
         .maybeSingle();
-      if (conversation) {
-        await db.from("conversation_messages").delete().eq("org_id", orgId).eq("conversation_id", conversation.id);
-      }
+      if (!conversation) return fail("That conversation no longer exists.");
+      await db.from("conversation_messages").delete().eq("org_id", orgId).eq("conversation_id", conversationId);
+      await db
+        .from("conversations")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("org_id", orgId)
+        .eq("id", conversationId);
       revalidatePath(`/${org}/assistant`);
-      return ok(undefined, "Started over.");
+      return ok(undefined, "Conversation deleted.");
     },
     { minRole: "viewer" },
   );
 }
 
-/** The asker's workspace conversation, created on first use. */
+/** Titles are the first question, shortened at a word. */
+function titleFrom(question: string): string {
+  const flat = question.replace(/\s+/g, " ").trim();
+  if (flat.length <= 60) return flat;
+  const cut = flat.slice(0, 60);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40))}…`;
+}
+
+/**
+ * The conversation a question belongs to: the one named, if it is this
+ * person's; otherwise a new one titled by the question, with its product
+ * focus.
+ *
+ * Degrades before `0045`: without `product_id` the insert is retried without
+ * the focus, and while 0041's one-per-person index still exists a second
+ * conversation is refused (23505), so the question joins the existing one.
+ */
 async function workspaceConversation(
   db: import("@huntloop/db").TenantClient,
   orgId: string,
   userId: string,
-): Promise<string | null> {
-  const find = () =>
+  want: { id: string | null; productId: string | null; title: string },
+): Promise<{ id: string; productId: string | null } | null> {
+  const mine = () =>
     db
       .from("conversations")
-      .select("id")
+      .select("*")
       .eq("org_id", orgId)
       .eq("user_id", userId)
       .eq("scope", "workspace")
+      .is("deleted_at", null);
+
+  if (want.id) {
+    const { data } = await mine().eq("id", want.id).maybeSingle();
+    return data ? { id: String(data.id), productId: (data as { product_id?: string | null }).product_id ?? null } : null;
+  }
+
+  /* A focus must be one of this workspace's products. */
+  let productId = want.productId;
+  if (productId) {
+    const { data: product } = await db
+      .from("products")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("id", productId)
       .is("deleted_at", null)
       .maybeSingle();
-  const { data: existing } = await find();
-  if (existing) return String(existing.id);
+    if (!product) productId = null;
+  }
 
-  const { data: created, error } = await db
+  const row: Record<string, string> = { org_id: orgId, user_id: userId, scope: "workspace", title: titleFrom(want.title) };
+  let { data: created, error } = await db
     .from("conversations")
-    .insert({ org_id: orgId, user_id: userId, scope: "workspace", title: "Workspace assistant" })
+    .insert(productId ? { ...row, product_id: productId } : row)
     .select("id")
     .single();
-  if (created) return String(created.id);
-  // 23505: a second tab created it first. Read the one that won.
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    productId = null;
+    ({ data: created, error } = await db.from("conversations").insert(row).select("id").single());
+  }
+  if (created) return { id: String(created.id), productId };
   if (error?.code === "23505") {
-    const { data: again } = await find();
-    return again ? String(again.id) : null;
+    const { data: existing } = await mine().limit(1).maybeSingle();
+    return existing ? { id: String(existing.id), productId: null } : null;
   }
   return null;
 }

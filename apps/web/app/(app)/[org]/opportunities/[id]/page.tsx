@@ -52,10 +52,12 @@ import { DealValue } from "./DealValue";
  */
 export default async function OpportunityPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ org: string; id: string }>;
+  searchParams: Promise<{ ask?: string | string[] }>;
 }) {
-  const { org, id } = await params;
+  const [{ org, id }, query] = await Promise.all([params, searchParams]);
 
   const [{ data: o }, viewer, { data: members }, { data: campaigns }, { data: conversation }, { data: crmConnected }] =
     await Promise.all([
@@ -315,7 +317,7 @@ export default async function OpportunityPage({
 
         {/* ── Side column ──────────────────────────────────────────────── */}
         <div className="min-w-0 space-y-6">
-          <Card flush>
+          <Card flush id="decision-makers" className="scroll-mt-20">
             <CardHeader title="Decision makers" />
             <CardBody>
               {o.buyers.length === 0 ? (
@@ -431,6 +433,9 @@ export default async function OpportunityPage({
             company={o.company}
             history={conversation}
             canAsk={canSpend(viewer)}
+            /* Needs you → Draft lands here with `?ask=write`: the question is
+               put in the box, not asked, so following a link spends nothing. */
+            initialQuestion={query.ask === "write" ? "What should I write?" : undefined}
           />
         </div>
       </div>

@@ -3728,6 +3728,25 @@ console.log("\n0044 — a personal memory is private to the person it is about")
     `update organizations set workspace_kind = 'family' where id = $1`,
     [ORG],
   );
+
+  /* 0045: several assistant conversations per person, still theirs alone. */
+  await db.exec("begin");
+  await as(BOB);
+  await expectAccept(
+    db,
+    "a person can keep several assistant conversations",
+    `insert into conversations (org_id, user_id, scope, title)
+     values ($1, $2, 'workspace', 'Pipeline'), ($1, $2, 'workspace', 'Pricing')`,
+    [ORG, BOB],
+  );
+  await as(ALICE);
+  const others = await db.query<{ n: number }>(
+    `select count(*)::int as n from conversations where org_id = $1 and user_id = $2`,
+    [ORG, BOB],
+  );
+  if (others.rows[0]!.n === 0) ok("and a colleague still cannot read them");
+  else fail("and a colleague still cannot read them", `saw ${others.rows[0]!.n}`);
+  await db.exec("rollback");
 }
 
 console.log(

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { listAssignments } from "../../../../lib/data/team";
 import { listCompetitorOptions } from "../../../../lib/data/competitors";
+import { getPipelineExtras } from "../../../../lib/data/pipeline";
 import { DemoFigures } from "../DemoFigures";
 import { PipelineBoard } from "./PipelineBoard";
 
@@ -24,10 +25,16 @@ export default async function PipelinePage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: opportunities, source }, { data: competitors }] = await Promise.all([
+  const [{ data: opportunities, source }, { data: competitors }, { data: extras }] = await Promise.all([
     listAssignments(org),
     listCompetitorOptions(org),
+    getPipelineExtras(org),
   ]);
+
+  /* Open pipeline value (0040): only values people typed, and how many had one. */
+  const open = opportunities.filter((o) => !["won", "lost", "archived"].includes(o.status));
+  const valued = open.filter((o) => (extras[o.id]?.valueCents ?? 0) > 0);
+  const openCents = valued.reduce((s, o) => s + (extras[o.id]?.valueCents ?? 0), 0);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-6 py-8 lg:px-8">
@@ -37,6 +44,13 @@ export default async function PipelinePage({
           {opportunities.length}{" "}
           {opportunities.length === 1 ? "opportunity" : "opportunities"} · where
           each one has got to
+          {valued.length > 0 && (
+            <>
+              {" · "}
+              <span className="hl-tabular text-fg-secondary">{money(openCents)}</span> open pipeline
+              from {valued.length} of {open.length} open deals with a value
+            </>
+          )}
         </p>
       </header>
 
@@ -52,10 +66,16 @@ export default async function PipelinePage({
           opportunities={opportunities}
           competitors={competitors}
           canWrite={canWrite(viewer)}
+          extras={extras}
+          now={new Date().toISOString()}
         />
       </div>
     </div>
   );
+}
+
+function money(cents: number): string {
+  return `${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
 export const metadata = { title: "Pipeline" };

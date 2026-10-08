@@ -87,3 +87,57 @@ const DEMO: Product = {
   proofPoints: [],
   updatedAt: null,
 };
+
+/** What a product card says beyond the product itself (§10.2). */
+export interface ProductStats {
+  /** Customer profiles bound to the product — who it is for. */
+  profiles: string[];
+  /** Open opportunities found through those profiles. */
+  open: number;
+}
+
+const OPEN_LIMIT = 10_000;
+
+/**
+ * Per product: the profiles bound to it and how many open opportunities came
+ * through them. Products link to opportunities only through `icps.product_id`
+ * (P5), so an opportunity scored against an unbound profile counts for none.
+ * Read-only and allowed to fail to empty: the cards lose their counts, never
+ * the product list.
+ */
+export async function getProductStats(orgSlug: string): Promise<Loaded<Record<string, ProductStats>>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getProductStats");
+      const { data: icps } = await db
+        .from("icps")
+        .select("id, name, product_id")
+        .eq("org_id", orgId)
+        .not("product_id", "is", null)
+        .is("deleted_at", null);
+      const out: Record<string, ProductStats> = {};
+      const productOf = new Map<string, string>();
+      for (const icp of (icps ?? []) as { id: string; name: string; product_id: string }[]) {
+        const stats = (out[icp.product_id] ??= { profiles: [], open: 0 });
+        stats.profiles.push(icp.name);
+        productOf.set(String(icp.id), icp.product_id);
+      }
+      if (productOf.size === 0) return out;
+
+      const { data: opps } = await db
+        .from("opportunities")
+        .select("icp_id")
+        .eq("org_id", orgId)
+        .in("icp_id", [...productOf.keys()])
+        .not("status", "in", "(won,lost,archived)")
+        .is("deleted_at", null)
+        .limit(OPEN_LIMIT);
+      for (const o of (opps ?? []) as { icp_id: string | null }[]) {
+        const product = o.icp_id ? productOf.get(String(o.icp_id)) : undefined;
+        if (product && out[product]) out[product].open++;
+      }
+      return out;
+    },
+    () => ({ [DEMO.id]: { profiles: ["Founder-led B2B teams"], open: 3 } }),
+  );
+}

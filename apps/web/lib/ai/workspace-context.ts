@@ -20,7 +20,16 @@ import { performanceFacts } from "../performance/facts";
  * computes), the hottest opportunities, competitors, active scoring rules,
  * source health and the notes that apply to them. What depends on the
  * question: opportunities whose company it names.
+ *
+ * With a product focus (0045, a conversation's `product_id`), the pipeline,
+ * the queue and every opportunity record are narrowed to opportunities found
+ * through that product's profiles, and a first record says so. Performance,
+ * competitors, rules and sources stay workspace-wide — the focus record says
+ * that too, so an answer cannot pass them off as the product's.
  */
+
+/** Matches no row: an `in` filter for a product with no profiles. */
+const NO_ID = "00000000-0000-0000-0000-000000000000";
 
 const TOP_OPPORTUNITIES = 20;
 const NAMED_OPPORTUNITIES = 10;
@@ -49,7 +58,7 @@ export function questionTerms(question: string): string[] {
 
 export async function gatherWorkspaceRecords(
   db: TenantClient,
-  input: { orgSlug: string; orgId: string; userId: string; question: string },
+  input: { orgSlug: string; orgId: string; userId: string; question: string; productId?: string | null },
 ): Promise<{
   records: AssistantRecord[];
   hrefs: Map<string, string>;
@@ -63,36 +72,73 @@ export async function gatherWorkspaceRecords(
   const hrefs = new Map<string, string>();
   const terms = questionTerms(question);
 
+  /* The product focus, resolved to the profiles bound to it. */
+  let focus: { name: string; icpIds: string[]; oppIds: Set<string> } | null = null;
+  if (input.productId) {
+    const [{ data: product }, { data: icps }] = await Promise.all([
+      db.from("products").select("name").eq("org_id", orgId).eq("id", input.productId).is("deleted_at", null).maybeSingle(),
+      db.from("icps").select("id").eq("org_id", orgId).eq("product_id", input.productId).is("deleted_at", null),
+    ]);
+    if (product) {
+      const icpIds = ((icps ?? []) as any[]).map((i) => String(i.id));
+      const { data: oppRows } = await db
+        .from("opportunities")
+        .select("id")
+        .eq("org_id", orgId)
+        .in("icp_id", icpIds.length ? icpIds : [NO_ID])
+        .is("deleted_at", null)
+        .limit(5000);
+      focus = { name: String((product as any).name), icpIds, oppIds: new Set(((oppRows ?? []) as any[]).map((o) => String(o.id))) };
+      records.push({
+        ref: "focus:product",
+        type: "pipeline",
+        title: `Focus: ${focus.name}`,
+        facts: [
+          `This conversation is about ${focus.name}. The pipeline, the queue and the opportunities below are only those found through its ${icpIds.length} customer ${icpIds.length === 1 ? "profile" : "profiles"} (${focus.oppIds.size} opportunities).`,
+          "Performance figures, competitors, scoring rules and sources are for the whole workspace, not this product.",
+        ],
+      });
+      hrefs.set("focus:product", `/${orgSlug}/settings/product`);
+    }
+  }
+  /* Narrows an opportunities query to the focus; a no-op without one. */
+  const scoped = (query: any): any =>
+    focus ? query.in("icp_id", focus.icpIds.length ? focus.icpIds : [NO_ID]) : query;
+
   const [needs, perf, competitors, pipeline, top, named, rules, sources, memories] = await Promise.all([
     getDefaultNeedsYou(orgSlug),
     getPerformance(orgSlug, "30d").catch(() => null),
     listCompetitors(orgSlug),
-    db
-      .from("opportunities")
-      .select("status, priority, estimated_value_cents")
-      .eq("org_id", orgId)
-      .is("deleted_at", null)
-      .limit(5000),
-    db
-      .from("opportunities")
-      .select("id")
-      .eq("org_id", orgId)
-      .is("deleted_at", null)
-      .in("priority", ["hot", "warm"])
-      .not("status", "in", "(won,lost,archived)")
+    scoped(
+      db
+        .from("opportunities")
+        .select("status, priority, estimated_value_cents")
+        .eq("org_id", orgId)
+        .is("deleted_at", null),
+    ).limit(5000),
+    scoped(
+      db
+        .from("opportunities")
+        .select("id")
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .in("priority", ["hot", "warm"])
+        .not("status", "in", "(won,lost,archived)"),
+    )
       .order("priority", { ascending: true })
       .order("last_scored_at", { ascending: false, nullsFirst: false })
       .limit(TOP_OPPORTUNITIES),
     terms.length
-      ? db
-          .from("opportunities")
-          .select("id, companies!inner(name)")
-          .eq("org_id", orgId)
-          .is("deleted_at", null)
-          .or(terms.map((t) => `name.ilike.%${t.replace(/[%_,()]/g, "")}%`).join(","), {
-            referencedTable: "companies",
-          })
-          .limit(NAMED_OPPORTUNITIES)
+      ? scoped(
+          db
+            .from("opportunities")
+            .select("id, companies!inner(name)")
+            .eq("org_id", orgId)
+            .is("deleted_at", null)
+            .or(terms.map((t) => `name.ilike.%${t.replace(/[%_,()]/g, "")}%`).join(","), {
+              referencedTable: "companies",
+            }),
+        ).limit(NAMED_OPPORTUNITIES)
       : Promise.resolve({ data: [] as any[] }),
     db
       .from("scoring_rules")
@@ -113,7 +159,10 @@ export async function gatherWorkspaceRecords(
 
   /* ── Needs you ─────────────────────────────────────────────────────────── */
   const needIds: string[] = [];
-  for (const item of needs.data.items.slice(0, NEEDS_ITEMS)) {
+  const queue = focus
+    ? needs.data.items.filter((i) => i.opportunityId && focus!.oppIds.has(i.opportunityId))
+    : needs.data.items;
+  for (const item of queue.slice(0, NEEDS_ITEMS)) {
     const ref = `needs:${item.key}`;
     records.push({ ref, type: "needs", title: `${item.label}: ${item.title}`, facts: [item.why] });
     hrefs.set(ref, item.href);
@@ -133,7 +182,7 @@ export async function gatherWorkspaceRecords(
   records.push({
     ref: "pipeline:stages",
     type: "pipeline",
-    title: "Pipeline by stage",
+    title: focus ? `Pipeline by stage — ${focus.name}` : "Pipeline by stage",
     facts: [
       ...[...byStage].map(
         ([stage, s]) => `${stage}: ${s.count}${s.value ? `, $${Math.round(s.value / 100).toLocaleString()} recorded value` : ""}`,

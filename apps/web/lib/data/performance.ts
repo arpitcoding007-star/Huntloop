@@ -37,9 +37,17 @@ import { loadProfiles } from "./team";
  * approximation, stated here rather than discovered later.
  */
 
+/**
+ * Whose figures. "mine" narrows everything to opportunities the viewer owns —
+ * their funnel, their replies, their pipeline. Spend stays workspace-wide:
+ * model calls are not owned by a person.
+ */
+export type PerformanceScope = "mine" | "everyone";
+
 export interface PerformanceData {
   performance: Performance;
   period: Period;
+  scope: PerformanceScope;
   goals: OrgGoals;
   progress: GoalProgress;
   /** Set when any read hit its ceiling. */
@@ -67,7 +75,11 @@ async function paged(
   return { rows, capped: true };
 }
 
-export async function getPerformance(orgSlug: string, period: Period): Promise<Loaded<PerformanceData>> {
+export async function getPerformance(
+  orgSlug: string,
+  period: Period,
+  scope: PerformanceScope = "everyone",
+): Promise<Loaded<PerformanceData>> {
   return load(
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getPerformance");
@@ -82,7 +94,9 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
             db
               .from("opportunities")
               .select(
-                "id, first_seen_at, priority, status, owner_id, discovered_via, companies(name, company_triggers(trigger_type, event_date, deleted_at))",
+                "id, first_seen_at, priority, status, owner_id, discovered_via, estimated_value_cents, " +
+                  "icps(products(name, deleted_at)), " +
+                  "companies(name, company_triggers(trigger_type, event_date, deleted_at))",
               )
               .eq("org_id", orgId)
               .is("deleted_at", null)
@@ -146,8 +160,10 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
         currentUserId(db),
       ]);
 
-      const opportunities: PerfOpportunity[] = opps.rows.map((r) => {
+      const everyOpportunity: PerfOpportunity[] = opps.rows.map((r) => {
         const companies = Array.isArray(r.companies) ? r.companies[0] : r.companies;
+        const icp = Array.isArray(r.icps) ? r.icps[0] : r.icps;
+        const product = Array.isArray(icp?.products) ? icp.products[0] : icp?.products;
         const trigger = (Array.isArray(companies?.company_triggers) ? companies.company_triggers : [])
           .filter((t: any) => !t.deleted_at)
           .sort((a: any, b: any) => String(b.event_date ?? "").localeCompare(String(a.event_date ?? "")))[0];
@@ -160,9 +176,20 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
           ownerId: r.owner_id ?? null,
           via: r.discovered_via ?? null,
           triggerType: trigger?.trigger_type ?? null,
+          product: product && !product.deleted_at ? String(product.name) : null,
+          valueCents:
+            r.estimated_value_cents === null || r.estimated_value_cents === undefined
+              ? null
+              : Number(r.estimated_value_cents),
         };
       });
-      const touchRows: PerfTouch[] = touches.rows.map((r) => ({
+      /* "Mine": the viewer's own accounts, and only the touches and outcomes on
+         them, so every figure on the page describes the same set. */
+      const opportunities =
+        scope === "mine" ? everyOpportunity.filter((o) => userId !== null && o.ownerId === userId) : everyOpportunity;
+      const scoped = new Set(opportunities.map((o) => o.id));
+      const inScope = (id: string | null) => scope === "everyone" || (id !== null && scoped.has(id));
+      const everyTouch: PerfTouch[] = touches.rows.map((r) => ({
         opportunityId: String(r.opportunity_id),
         kind: String(r.kind),
         channel: String(r.channel),
@@ -170,13 +197,15 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
         occurredAt: String(r.occurred_at),
         actorId: r.actor_id ?? null,
       }));
-      const outcomeRows: PerfOutcome[] = outcomes.rows.map((r) => ({
+      const touchRows = everyTouch.filter((t) => inScope(t.opportunityId));
+      const everyOutcome: PerfOutcome[] = outcomes.rows.map((r) => ({
         opportunityId: r.opportunity_id ?? null,
         kind: String(r.kind),
         occurredAt: String(r.occurred_at),
         reasonCategory: r.reason_category ?? null,
         competitorId: r.competitor_id ?? null,
       }));
+      const outcomeRows = everyOutcome.filter((o) => inScope(o.opportunityId));
 
       const inWindow = (iso: string, w: { from: Date; to: Date }) => {
         const t = Date.parse(iso);
@@ -219,14 +248,20 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
       return {
         performance,
         period,
+        scope,
         goals: parseOrgProfile((org.data as any)?.settings).goals,
-        progress: goalProgress({ touches: touchRows, outcomes: outcomeRows, opportunities }, userId, now),
+        /* Pace is always this person's own, whichever scope the page shows. */
+        progress: goalProgress(
+          { touches: everyTouch, outcomes: everyOutcome, opportunities: everyOpportunity },
+          userId,
+          now,
+        ),
         partial: capped.length
           ? `Figures are based on the most recent ${capped.join(", ")} only — this workspace has more than one screen reads at once.`
           : null,
       };
     },
-    () => demo(period),
+    () => demo(period, scope),
   );
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -236,7 +271,7 @@ export async function getPerformance(orgSlug: string, period: Period): Promise<L
  * mostly empty screen that explains what it will show — computed by the same
  * function, so the "not enough data" state is the real one.
  */
-function demo(period: Period): PerformanceData {
+function demo(period: Period, scope: PerformanceScope): PerformanceData {
   const { window, previous } = windowsFor(period, FIXTURE_NOW);
   const opportunities: PerfOpportunity[] = OPPORTUNITIES.map((o) => ({
     id: o.id,
@@ -261,6 +296,7 @@ function demo(period: Period): PerformanceData {
       now: FIXTURE_NOW,
     }),
     period,
+    scope,
     goals: { touchesPerWeek: null, meetingsPerMonth: null },
     progress: { touchesThisWeek: 0, meetingsThisMonth: 0, weekElapsed: 0.5, monthElapsed: 0.5 },
     partial: null,

@@ -20,7 +20,9 @@ import {
   Trophy,
 } from "lucide-react";
 import { canAdmin, canSpend, currentViewer } from "../../../../lib/data/membership";
-import { getPerformance } from "../../../../lib/data/performance";
+import { getOnboardingState } from "../../../../lib/data/onboarding";
+import { getPerformance, type PerformanceScope } from "../../../../lib/data/performance";
+import { personalize } from "../../../../lib/data/personalization";
 import {
   PERIODS,
   PERIOD_LABEL,
@@ -67,20 +69,30 @@ export default async function PerformancePage({
   searchParams,
 }: {
   params: Promise<{ org: string }>;
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; scope?: string }>;
 }) {
   const { org } = await params;
-  const { period: requested } = await searchParams;
+  const { period: requested, scope: requestedScope } = await searchParams;
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
   const period: Period = (PERIODS as readonly string[]).includes(requested ?? "") ? (requested as Period) : "30d";
-  const { data, source } = await getPerformance(org, period);
+  /* "Me" by default for roles that work their own accounts (SDR, AE) — the
+     same rule Needs you uses for Mine — and the whole workspace otherwise.
+     An explicit `?scope=` always wins. */
+  const onboarding = await getOnboardingState(org);
+  const roleDefault: PerformanceScope =
+    personalize(onboarding?.role ?? null, onboarding?.goals ?? [], org).defaultFilter === "assigned" ? "mine" : "everyone";
+  const scope: PerformanceScope =
+    requestedScope === "mine" || requestedScope === "everyone" ? requestedScope : roleDefault;
+  const { data, source } = await getPerformance(org, period, scope);
   const p = data.performance;
   const f: Funnel = p.funnel;
   const prev: Funnel = p.previousFunnel;
   const admin = canAdmin(viewer);
-  const exportHref = (table: string) => `/${org}/performance/export?period=${period}&table=${table}`;
+  const exportHref = (table: string) =>
+    `/${org}/performance/export?period=${period}&table=${table}${scope === "mine" ? "&scope=mine" : ""}`;
+  const pv = p.pipeline;
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 lg:px-8">
@@ -92,11 +104,27 @@ export default async function PerformancePage({
             Rates are measured on the companies first contacted in the period, on every channel.
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="Whose figures" className="flex rounded-md border border-line bg-surface p-0.5">
+          {(["mine", "everyone"] as const).map((value) => (
+            <Link
+              key={value}
+              href={`/${org}/performance?period=${period}&scope=${value}`}
+              aria-current={value === scope ? "page" : undefined}
+              className={[
+                "hl-focusable rounded-[5px] px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
+                value === scope ? "bg-brand-surface font-medium text-brand-text" : "text-fg-muted hover:text-fg-secondary",
+              ].join(" ")}
+            >
+              {value === "mine" ? "Me" : "Everyone"}
+            </Link>
+          ))}
+        </nav>
         <nav aria-label="Period" className="flex flex-wrap rounded-md border border-line bg-surface p-0.5">
           {PERIODS.map((value) => (
             <Link
               key={value}
-              href={`/${org}/performance?period=${value}`}
+              href={`/${org}/performance?period=${value}&scope=${scope}`}
               aria-current={value === period ? "page" : undefined}
               className={[
                 "hl-focusable rounded-[5px] px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
@@ -107,7 +135,22 @@ export default async function PerformancePage({
             </Link>
           ))}
         </nav>
+        <Link
+          href={`/${org}/performance/report?period=${period}&scope=${scope}`}
+          className="hl-focusable rounded-sm px-1 text-[13px] text-fg-muted hover:text-fg-secondary"
+        >
+          Share report →
+        </Link>
+        </div>
       </header>
+      {scope === "mine" && (
+        <p className="mt-3 text-[12px] text-fg-muted">
+          Showing opportunities you own. Model spend is the workspace's.{" "}
+          <Link href={`/${org}/performance?period=${period}&scope=everyone`} className="hl-focusable rounded-sm underline underline-offset-2">
+            See everyone
+          </Link>
+        </p>
+      )}
 
       {source !== "live" && (
         <div className="mt-6">
@@ -144,7 +187,7 @@ export default async function PerformancePage({
             </li>
           )}
         </ul>
-        <Narrative org={org} period={period} canAsk={canSpend(viewer)} />
+        <Narrative org={org} period={period} scope={scope} canAsk={canSpend(viewer)} />
       </section>
 
       {/* ── The funnel ─────────────────────────────────────────────────── */}
@@ -194,6 +237,38 @@ export default async function PerformancePage({
             </CardBody>
           </Card>
         </div>
+
+        {/* Pipeline value (0040). Sums only values people typed on the
+            opportunity, and says how many had one: a total over 3 of 40
+            deals is a floor, and the screen should not let it read as more. */}
+        <Card flush className="mt-4">
+          <CardHeader
+            title="Pipeline value"
+            description="From deal values entered on opportunities. Deals without a value are counted, not guessed."
+          />
+          <CardBody className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-[12px] text-fg-muted">Open pipeline</p>
+              <p className="hl-tabular text-[24px] leading-tight text-fg">{money(pv.openCents)}</p>
+              <p className="text-[12px] text-fg-muted">
+                {pv.openWithValue} of {pv.openCount} open {pv.openCount === 1 ? "deal has" : "deals have"} a value
+              </p>
+            </div>
+            <div>
+              <p className="text-[12px] text-fg-muted">Won in this period</p>
+              <p className="hl-tabular text-[24px] leading-tight text-fg">{money(pv.wonCents)}</p>
+              <p className="text-[12px] text-fg-muted">
+                {pv.wonCount} won · {pv.wonWithValue} with a value
+              </p>
+            </div>
+            {pv.openWithValue === 0 && (
+              <p className="text-[12px] text-fg-muted sm:col-span-2">
+                No open deal has a value yet. Add one under Deal value on an opportunity, and it is
+                summed here and on the Pipeline board.
+              </p>
+            )}
+          </CardBody>
+        </Card>
       </section>
 
       {/* ── Where replies come from ─────────────────────────────────────── */}
@@ -301,6 +376,11 @@ export default async function PerformancePage({
       </div>
     </div>
   );
+}
+
+/** Whole US dollars — the unit the Deal value field takes. */
+function money(cents: number): string {
+  return `${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

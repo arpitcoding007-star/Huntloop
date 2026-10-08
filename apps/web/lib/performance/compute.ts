@@ -49,6 +49,10 @@ export interface PerfOpportunity {
   ownerId: string | null;
   via: string | null;
   triggerType: string | null;
+  /** The product, through the opportunity's profile (P5). Absent or null: none. */
+  product?: string | null;
+  /** `estimated_value_cents` (0040): typed by a person, never estimated. */
+  valueCents?: number | null;
 }
 
 export interface PerfTouch {
@@ -126,7 +130,7 @@ export interface Segment {
   companies: { id: string; name: string }[];
 }
 
-export type BreakdownKey = "channel" | "source" | "owner" | "trigger" | "priority";
+export type BreakdownKey = "channel" | "source" | "owner" | "trigger" | "priority" | "product";
 
 export interface Tally {
   key: string;
@@ -160,6 +164,49 @@ export interface Performance {
   };
   stalled: { id: string; company: string; stage: string; idleDays: number }[];
   insights: Insight[];
+  pipeline: PipelineValue;
+}
+
+/**
+ * Pipeline value from deal values people typed in (0040). Never estimated: an
+ * opportunity without a value is counted as "without a value", not as zero, so
+ * the total is a floor the screen can say is a floor.
+ */
+export interface PipelineValue {
+  /** Open = not won, lost or archived. */
+  openCents: number;
+  openWithValue: number;
+  openCount: number;
+  /** Won in the window, by the won outcome's date. */
+  wonCents: number;
+  wonWithValue: number;
+  wonCount: number;
+}
+
+const CLOSED_STAGES = new Set(["won", "lost", "archived"]);
+
+export function pipelineValue(
+  opportunities: readonly PerfOpportunity[],
+  outcomes: readonly PerfOutcome[],
+  window: PerfWindow,
+): PipelineValue {
+  const open = opportunities.filter((o) => !CLOSED_STAGES.has(o.status));
+  const valued = (o: PerfOpportunity) => typeof o.valueCents === "number" && o.valueCents > 0;
+  const byId = new Map(opportunities.map((o) => [o.id, o]));
+  const wonIds = new Set(
+    outcomes
+      .filter((o) => o.kind === "won" && o.opportunityId && within(o.occurredAt, window))
+      .map((o) => o.opportunityId as string),
+  );
+  const won = [...wonIds].map((id) => byId.get(id)).filter((o): o is PerfOpportunity => Boolean(o));
+  return {
+    openCents: open.filter(valued).reduce((s, o) => s + (o.valueCents ?? 0), 0),
+    openWithValue: open.filter(valued).length,
+    openCount: open.length,
+    wonCents: won.filter(valued).reduce((s, o) => s + (o.valueCents ?? 0), 0),
+    wonWithValue: won.filter(valued).length,
+    wonCount: won.length,
+  };
 }
 
 export const MIN_SEGMENT = 10;
@@ -377,6 +424,8 @@ function segmentPhrase(breakdown: BreakdownKey, label: string): string {
       return label === "No trigger" ? "Companies with no trigger" : `Companies with a "${label}" trigger`;
     case "priority":
       return `${label.toUpperCase()} companies`;
+    case "product":
+      return label === "No product" ? "Companies found for no particular product" : `Companies found for ${label}`;
   }
 }
 
@@ -443,6 +492,11 @@ export function computePerformance(input: PerfInput): Performance {
       (k) => (k === "none" ? "No trigger" : k.replace(/_/g, " ")),
     ),
     priority: segmentsBy(members, (j) => j.opp.priority, (k) => k),
+    product: segmentsBy(
+      members,
+      (j) => j.opp.product ?? "none",
+      (k) => (k === "none" ? "No product" : k),
+    ),
   };
 
   const windowOutcomes = input.outcomes.filter((o) => within(o.occurredAt, input.window));
@@ -487,6 +541,7 @@ export function computePerformance(input: PerfInput): Performance {
     cost,
     stalled,
     insights: insights({ cohort, previousCohort, breakdowns, reasons, stalled }),
+    pipeline: pipelineValue(input.opportunities, input.outcomes, input.window),
   };
 }
 

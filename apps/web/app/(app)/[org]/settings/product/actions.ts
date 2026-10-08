@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { research } from "../../../../../lib/ai/research";
+import { canSpend, currentViewer } from "../../../../../lib/data/membership";
 import { fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
-import { parseForm, productSchema } from "../../../../../lib/validation";
+import { parseForm, parseInput, productSchema, urlInputSchema } from "../../../../../lib/validation";
 
 /**
  * Product writes — master context §8.
@@ -16,6 +18,59 @@ import { parseForm, productSchema } from "../../../../../lib/validation";
  * cached render of either would show the user a judgement made against the
  * product they just replaced.
  */
+
+export interface ProductDraft {
+  name: string;
+  website: string;
+  description: string;
+  valueProps: string[];
+  /** "unconfigured" when no model key is set: a worked example, labelled. */
+  source: "live" | "unconfigured";
+}
+
+/**
+ * Draft a new product from its website — onboarding's `research_company`
+ * step, reused (§10.2). Returns a draft for the form; it saves nothing, so the
+ * person reads it before anything downstream is judged against it.
+ *
+ * Metered, rate-limited and budget-checked exactly as onboarding is, because
+ * it is the same call. `unknown` findings are left out: a sentence about what
+ * the site did not establish is not a description of the product.
+ */
+export async function draftProductFromWebsiteAction(
+  org: string,
+  url: string,
+): Promise<ActionResult<ProductDraft>> {
+  const target = parseInput(urlInputSchema, url, "address");
+  if (!target.ok) return fail(target.error);
+  if (!canSpend(await currentViewer(org))) return fail("Your role is read-only, so it cannot run research.");
+
+  const outcome = await research(org, target.value);
+  if (!outcome.ok) return fail(outcome.error);
+
+  const u = outcome.result.understanding;
+  const usable = (field: string) => {
+    const f = u.findings.find((x) => x.field === field);
+    return f && f.kind !== "unknown" ? f.value.trim() : "";
+  };
+  const sells = usable("sells");
+  const buyers = usable("buyers");
+  const problem = usable("problem");
+  return ok(
+    {
+      name: u.companyName,
+      website: u.url,
+      description: [sells, buyers ? `For ${buyers.charAt(0).toLowerCase()}${buyers.slice(1)}` : ""]
+        .filter(Boolean)
+        .join("\n\n"),
+      valueProps: problem ? [problem] : [],
+      source: outcome.result.source,
+    },
+    outcome.result.source === "live"
+      ? "Drafted from the website. Check it, then create the product."
+      : "No model is connected, so this is a worked example — replace it before saving.",
+  );
+}
 
 export interface ProductInput {
   id?: string;

@@ -32,7 +32,7 @@ export function GoalsCard({
   const [pending, start] = useTransition();
 
   return (
-    <Card flush>
+    <Card flush id="goals" className="scroll-mt-20">
       <CardHeader
         title="Your pace"
         description="Outbound touches you made this week, and meetings on accounts you own this month."

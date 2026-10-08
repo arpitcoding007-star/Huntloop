@@ -9,6 +9,8 @@ import {
   mapDetail,
   mapEvidence,
   mapListRow,
+  withAlsoFits,
+  isStale,
   recommendedAction,
   statusLabel,
   type DetailQueryRow,
@@ -599,5 +601,61 @@ describe("TRUST-005 — a missing trigger is absent, not old", () => {
   it("never calls a trigger fresh when none is on file", () => {
     expect(recommendedAction("hot", true, false)).not.toMatch(/fresh/i);
     expect(recommendedAction("hot", true, true)).toMatch(/fresh/i);
+  });
+});
+
+describe("list rows and products (P5)", () => {
+  const base: ListQueryRow = {
+    id: "b08fc3ca-83d8-4d99-afc8-c2fd949d81fe",
+    company_id: "c1",
+    priority: "hot",
+    priority_reason: "Because.",
+    status: "qualified",
+    first_seen_at: "2026-08-09T00:00:00Z",
+    companies: { name: "Alphio AI", canonical_domain: "alphio.ai", industry: null, company_triggers: [] },
+    opportunity_scores: [],
+  };
+  const ledger = { name: "Fintech", products: { id: "p1", name: "Ledger", deleted_at: null } };
+
+  it("reads the product through the profile, and ignores a removed one", () => {
+    const live = mapListRow({ ...base, icps: ledger }, []);
+    expect(live.product).toEqual({ id: "p1", name: "Ledger" });
+    expect(live.profile).toBe("Fintech");
+
+    const removed = mapListRow(
+      { ...base, icps: [{ name: "Fintech", products: [{ id: "p1", name: "Ledger", deleted_at: "2026-09-01" }] }] },
+      [],
+    );
+    expect(removed.product).toBeNull();
+    expect(removed.profile).toBe("Fintech");
+    expect(mapListRow(base, []).product).toBeNull();
+  });
+
+  it("offers the same company's other opportunities as also-fits", () => {
+    const a = mapListRow({ ...base, id: "a", icps: ledger }, []);
+    const b = mapListRow({ ...base, id: "b", priority: "warm", icps: { name: "Retail", products: null } }, []);
+    const c = mapListRow({ ...base, id: "c", company_id: "c2" }, []);
+    const [ra, rb, rc] = withAlsoFits([a, b, c]);
+    expect(ra!.alsoFits).toEqual([{ id: "b", label: "Retail", priority: "warm" }]);
+    expect(rb!.alsoFits).toEqual([{ id: "a", label: "Ledger", priority: "hot" }]);
+    expect(rc!.alsoFits).toEqual([]);
+  });
+});
+
+describe("isStale", () => {
+  const now = new Date("2026-10-07T00:00:00Z");
+  const row = { stage: "qualified", firstSeenAt: "2026-07-01T00:00:00Z", triggerDate: null as string | null };
+
+  it("is stale when found long ago, never contacted, with no recent trigger", () => {
+    expect(isStale(row, now)).toBe(true);
+    expect(isStale({ ...row, triggerDate: "2026-05-01" }, now)).toBe(true);
+  });
+
+  it("is not stale when recent, freshly triggered, or already in a conversation", () => {
+    expect(isStale({ ...row, firstSeenAt: "2026-09-01T00:00:00Z" }, now)).toBe(false);
+    expect(isStale({ ...row, triggerDate: "2026-09-20" }, now)).toBe(false);
+    expect(isStale({ ...row, stage: "contacted" }, now)).toBe(false);
+    expect(isStale({ ...row, stage: "archived" }, now)).toBe(false);
+    expect(isStale({ ...row, firstSeenAt: null }, now)).toBe(false);
   });
 });

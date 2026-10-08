@@ -19,6 +19,7 @@ import {
   type ListQueryRow,
   type OpportunityDetail,
   type OpportunityRow,
+  withAlsoFits,
 } from "./opportunity-map";
 
 export type { OpportunityDetail, OpportunityRow } from "./opportunity-map";
@@ -104,7 +105,8 @@ export async function listOpportunities(
       const { data, error } = await db
         .from("opportunities")
         .select(
-          `id, priority, priority_reason, status, first_seen_at,
+          `id, company_id, priority, priority_reason, status, first_seen_at,
+           icps(name, products(id, name, deleted_at)),
            companies!inner(name, canonical_domain, industry,
              company_triggers(trigger_type, event_date, deleted_at)),
            opportunity_scores(score, explanation, confidence, computed_at,
@@ -127,9 +129,9 @@ export async function listOpportunities(
         rows.map((r) => r.id),
       );
 
-      return rows
-        .map((r) => mapListRow(r, kinds.get(r.id) ?? []))
-        .sort(byPriorityThenScore);
+      return withAlsoFits(
+        rows.map((r) => mapListRow(r, kinds.get(r.id) ?? [])).sort(byPriorityThenScore),
+      );
     },
     () => [...OPPORTUNITIES].map(toRow).sort(byPriorityThenScore),
   );
@@ -418,5 +420,13 @@ function toRow(o: (typeof OPPORTUNITIES)[number]): OpportunityRow {
     triggerDate: o.triggerDate,
     evidence: o.evidence.map((e) => ({ kind: e.kind })),
     industry: o.industry,
+    stage: o.status.toLowerCase(),
+    /* Fixtures carry no first-seen date; the day after the trigger is what
+       Performance's demo uses too. */
+    firstSeenAt: o.triggerDate ? new Date(Date.parse(o.triggerDate) + 86_400_000).toISOString() : null,
+    companyId: null,
+    product: null,
+    profile: null,
+    alsoFits: [],
   };
 }

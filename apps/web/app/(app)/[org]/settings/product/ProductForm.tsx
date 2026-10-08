@@ -16,9 +16,9 @@ import {
   splitList,
   Textarea,
 } from "@huntloop/ui";
-import { Save, Trash2 } from "lucide-react";
+import { Globe, Save, Trash2 } from "lucide-react";
 import type { Product } from "../../../../../lib/data/product";
-import { deleteProductAction, saveProductAction } from "./actions";
+import { deleteProductAction, draftProductFromWebsiteAction, saveProductAction } from "./actions";
 
 /**
  * The product editor — master context §8.
@@ -59,6 +59,28 @@ export function ProductForm({
   >(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
+  const [draftUrl, setDraftUrl] = useState("");
+  const [drafting, startDraft] = useTransition();
+  const [draftResult, setDraftResult] = useState<
+    { ok: true; message?: string } | { ok: false; error: string } | null
+  >(null);
+
+  /* Fills the form; saving stays a separate, deliberate step. */
+  function draft() {
+    setDraftResult(null);
+    startDraft(async () => {
+      const res = await draftProductFromWebsiteAction(org, draftUrl);
+      if (!res.ok) {
+        setDraftResult({ ok: false, error: res.error });
+        return;
+      }
+      setName(res.data.name);
+      setWebsite(res.data.website);
+      setDescription(res.data.description);
+      setValueProps(joinList(res.data.valueProps));
+      setDraftResult({ ok: true, message: res.message });
+    });
+  }
 
   function save() {
     setResult(null);
@@ -116,6 +138,38 @@ export function ProductForm({
             Your role is read-only. You can see what your opportunities are scored
             against, but not change it.
           </Note>
+        )}
+
+        {canWrite && !product && (
+          <div className="rounded-md border border-line bg-canvas p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <Field
+                label="Draft from a website"
+                hint="Huntloop reads the site and fills the form. Nothing is saved until you create the product."
+                className="min-w-[220px] flex-1"
+              >
+                {(a) => (
+                  <Input
+                    {...a}
+                    value={draftUrl}
+                    onChange={(e) => setDraftUrl(e.target.value)}
+                    disabled={drafting}
+                    placeholder="https://product.example.com"
+                  />
+                )}
+              </Field>
+              <Button
+                variant="secondary"
+                icon={Globe}
+                onClick={draft}
+                disabled={drafting || pending}
+                pending={draftUrl.trim() ? undefined : "Enter the product's website first."}
+              >
+                {drafting ? "Reading the site…" : "Draft it"}
+              </Button>
+            </div>
+            <FormMessage result={draftResult} className="mt-2" />
+          </div>
         )}
 
         <Field label="Name" required error={fieldErrors.name}>

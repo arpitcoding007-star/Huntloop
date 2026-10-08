@@ -4,6 +4,7 @@ import {
   computePerformance,
   goalProgress,
   median,
+  pipelineValue,
   sourceLabel,
   twoProportionZ,
   weekStart,
@@ -270,5 +271,36 @@ describe("goals and periods", () => {
     expect(sourceLabel("provider:apollo")).toBe("Apollo search");
     expect(sourceLabel("scan")).toBe("Source scans");
     expect(sourceLabel(null)).toBe("Added or analyzed by hand");
+  });
+});
+
+describe("pipelineValue", () => {
+  it("sums only values people entered, and says how many had one", () => {
+    const a = opp({ status: "meeting", valueCents: 500_00 });
+    const b = opp({ status: "contacted", valueCents: null });
+    const c = opp({ status: "lost", valueCents: 900_00 });
+    const d = opp({ status: "won", valueCents: 300_00 });
+    const v = pipelineValue([a, b, c, d], [{ opportunityId: d.id, kind: "won", occurredAt: day(5), reasonCategory: null, competitorId: null }], window);
+    expect(v).toEqual({ openCents: 500_00, openWithValue: 1, openCount: 2, wonCents: 300_00, wonWithValue: 1, wonCount: 1 });
+  });
+
+  it("counts a win only inside the window", () => {
+    const d = opp({ status: "won", valueCents: 300_00 });
+    const v = pipelineValue([d], [{ opportunityId: d.id, kind: "won", occurredAt: day(60), reasonCategory: null, competitorId: null }], window);
+    expect(v.wonCount).toBe(0);
+  });
+});
+
+describe("product breakdown", () => {
+  it("splits the cohort by product, with unbound companies under No product", () => {
+    const a = opp({ product: "Ledger" });
+    const b = opp({ product: null });
+    const p = computePerformance(
+      input({
+        opportunities: [a, b],
+        touches: [touch({ opportunityId: a.id }), touch({ opportunityId: b.id })],
+      }),
+    );
+    expect(p.breakdowns.product.map((s) => s.label).sort()).toEqual(["Ledger", "No product"]);
   });
 });
