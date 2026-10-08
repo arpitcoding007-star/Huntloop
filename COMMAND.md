@@ -1671,18 +1671,18 @@ Screens from the same tool as §16.1 were checked item by item against the code.
 
 | # | Item | Status |
 |---|---|---|
-| L1 | Opportunities: product filter and **Also fits** chips (§7.1.1) | **Shipped** (this branch) |
-| L2 | Needs you: "Reached out today" against the daily share of the weekly goal; inline **Log touch** and **Draft** (§6.5–6.6) | **Shipped** (this branch) |
-| L3 | Needs you items: one-line why-now and who to reach, or "No contact yet — find one" (§6.5) | **Shipped** (this branch) |
-| L4 | Outreach log: every touch across channels, filter by channel / person / outcome, derived outcomes, one-click **Got a reply** (§8.1b). A hand-set "No response" was not built: the outcome is derived from the quiet period so it cannot disagree with the ledger | **Shipped** (this branch) |
-| L5 | Products as readable cards (what it does, who it is for, open opportunities each) and "Draft from a website" for a new product, reusing onboarding's research step (§10.2) | **Shipped** (this branch) |
-| L6 | Ask Huntloop: a "What it can see" panel (records, your preferences, workspace notes — no vanity counts) and a line saying it learns from corrections (§9.5) | **Shipped** (this branch) |
-| L7 | Performance: by-product breakdown and a "Me" default by role (§9.1) | **Shipped** (this branch) |
-| L8 | Pipeline cards: last touch, next step due, sequence progress (§8.3) | **Shipped** (this branch) |
-| L9 | One print-friendly "Share report" view of Performance and competitors (browser save-as-PDF) — not a reports menu (§9.1c) | **Shipped** (this branch) |
-| L10 | Several saved Ask Huntloop conversations; optional product focus (§9.5, migration `0045`) | **Shipped** (this branch) |
-| L11 | Bulk "archive stale" opportunities (§7.1.1); plus the review backlog by profile on Sources (§10.5) | **Shipped** (this branch) |
-| L12 | Pipeline value from entered deal values — Performance card, share report, Pipeline columns (§9.1, §8.3) | **Shipped** (this branch) |
+| L1 | Opportunities: product filter and **Also fits** chips (§7.1.1) | **Shipped** (`37ebb22`) |
+| L2 | Needs you: "Reached out today" against the daily share of the weekly goal; inline **Log touch** and **Draft** (§6.5–6.6) | **Shipped** (`37ebb22`) |
+| L3 | Needs you items: one-line why-now and who to reach, or "No contact yet — find one" (§6.5) | **Shipped** (`37ebb22`) |
+| L4 | Outreach log: every touch across channels, filter by channel / person / outcome, derived outcomes, one-click **Got a reply** (§8.1b). A hand-set "No response" was not built: the outcome is derived from the quiet period so it cannot disagree with the ledger | **Shipped** (`37ebb22`) |
+| L5 | Products as readable cards (what it does, who it is for, open opportunities each) and "Draft from a website" for a new product, reusing onboarding's research step (§10.2) | **Shipped** (`37ebb22`) |
+| L6 | Ask Huntloop: a "What it can see" panel (records, your preferences, workspace notes — no vanity counts) and a line saying it learns from corrections (§9.5) | **Shipped** (`37ebb22`) |
+| L7 | Performance: by-product breakdown and a "Me" default by role (§9.1) | **Shipped** (`37ebb22`) |
+| L8 | Pipeline cards: last touch, next step due, sequence progress (§8.3) | **Shipped** (`37ebb22`) |
+| L9 | One print-friendly "Share report" view of Performance and competitors (browser save-as-PDF) — not a reports menu (§9.1c) | **Shipped** (`37ebb22`) |
+| L10 | Several saved Ask Huntloop conversations; optional product focus (§9.5, migration `0045`) | **Shipped** (`37ebb22`) |
+| L11 | Bulk "archive stale" opportunities (§7.1.1); plus the review backlog by profile on Sources (§10.5) | **Shipped** (`37ebb22`) |
+| L12 | Pipeline value from entered deal values — Performance card, share report, Pipeline columns (§9.1, §8.3) | **Shipped** (`37ebb22`) |
 
 ### 16.4 Phases
 
