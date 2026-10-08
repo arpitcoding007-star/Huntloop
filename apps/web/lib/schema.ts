@@ -26,14 +26,16 @@ export type SchemaState = "none" | "partial" | "complete";
 export const BASE_TABLE = "organizations";
 
 /**
- * The newest table any migration creates — currently `0028`'s. `0029` adds
- * only functions, and calling a function to see whether it exists would run
- * it, so a table is the probe.
+ * The newest table any migration creates — currently `0044`'s `user_questions`
+ * (read by every screen with a just-in-time question). `0045` adds only a
+ * column, an index and a probe function, and calling a function to see
+ * whether it exists would run it, so a table is the probe.
  *
- * Bump this when a migration adds a table the app cannot run without. It is
- * the same probe `packages/db/scripts/doctor.ts` uses for that file.
+ * Bump this when a migration adds a table the app cannot run without. It
+ * was `0028`'s `hubspot_connections` until 0040–0045, which let a database
+ * missing all six read as complete.
  */
-export const LATEST_TABLE = "hubspot_connections";
+export const LATEST_TABLE = "user_questions";
 
 async function tableExists(url: string, key: string, table: string): Promise<boolean> {
   const res = await fetch(`${url}/rest/v1/${table}?select=*&limit=1`, {

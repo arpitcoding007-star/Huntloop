@@ -4,7 +4,7 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-10-07** against branch `feat/personal-learning` (P0–P6 of §16, P3–P6 in PR #2; §16.3-K; §16.3-L L1–L12, migration `0045`).
+> Last full sync: **2026-10-08** against `main` at release **0.1.0** (P0–P6 of §16, §16.3-K, §16.3-L L1–L12; migrations through `0045`, all applied to production). Release notes: [CHANGELOG.md](CHANGELOG.md).
 >
 > **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
@@ -1465,7 +1465,7 @@ flowchart LR
 
 `Planned` · `In progress` · `Shipped (<hash>)` · `Deferred` · `Rejected`.
 
-**Current status (2026-10-06):** P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11), **P2** and **P2B** are **Shipped** too (migration `0038_discovery_backpressure.sql`; §9.1, §9.1b, §10.5, §11.3). **P3** (competitors, brief sections, deal value, notifications, Memory scope picker — `0039`, `0040`; §7.1.2, §9.4, §10.5b), **P4** (Ask Huntloop — `0041`; §9.5), **P5** (product list, company page; §10.2, §7.2.1) and **P6** (prospect demand — `0042`; §9.6 — PDF/DOCX Memory ingest; §9.4 — and learning over competitors and demand — `0043`; §9.3) are **implemented on branch `feat/p3-p6-roadmap` (PR #2, commit `7c16a64`), not yet merged or deployed; migrations `0040`–`0043` are not yet applied to production**. Defects found on the way are recorded in §16.8.
+**Current status (2026-10-08):** everything below, §16.3-K and §16.3-L is on `main` as release **0.1.0**, and migrations `0040`–`0045` are applied to production. *(History as of 2026-10-06:)* P0-1, P0-2, P0-3 and all of P1 are **Shipped** on branch `feat/daily-loop-roadmap` (migration `0037_daily_loop.sql`; behaviour documented in §1.1.3, §6.5–6.6, §7.1.2, §8.2, §8.3, §10.1, §10.7, §14). P0-4 (M-11), **P2** and **P2B** are **Shipped** too (migration `0038_discovery_backpressure.sql`; §9.1, §9.1b, §10.5, §11.3). **P3** (competitors, brief sections, deal value, notifications, Memory scope picker — `0039`, `0040`; §7.1.2, §9.4, §10.5b), **P4** (Ask Huntloop — `0041`; §9.5), **P5** (product list, company page; §10.2, §7.2.1) and **P6** (prospect demand — `0042`; §9.6 — PDF/DOCX Memory ingest; §9.4 — and learning over competitors and demand — `0043`; §9.3) are **implemented on branch `feat/p3-p6-roadmap` (PR #2, commit `7c16a64`), not yet merged or deployed; migrations `0040`–`0043` are not yet applied to production**. Defects found on the way are recorded in §16.8.
 
 ### 16.1 Diagnosis — what the audit actually found
 
@@ -1925,6 +1925,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | **Release 0.1.0** to `main` (P3–P6, K0–K6, L1–L12); migrations `0040`–`0045` applied to production; the schema gate now probes `user_questions` (0044). [CHANGELOG.md](CHANGELOG.md) started. |
 | 2026-10-07 | **L5–L12 shipped on `feat/personal-learning`** with migration **`0045_assistant_conversations.sql`** (drops 0041's one-conversation-per-person index, adds `conversations.product_id`): product cards and draft-from-website, What it can see, saved and product-focused assistant conversations, Performance Me/Everyone + product split + pipeline value, share report with print styles for the shell, pipeline card facts and column values, Stale view with bulk archive, review backlog by profile on Sources. Production needs `0040`–`0045` before this deploys. |
 | 2026-10-07 | **§16.3-L added; L1–L4 shipped on `feat/personal-learning`** (no migration): product filter and Also fits on Opportunities, Needs you why-now/reach lines with inline Log touch and Draft, Reached out today, Outreach log. Found on the way: §10.2 still described the pre-P5 single-product form — corrected. |
 | 2026-10-07 | **K5 (partly) and K6 shipped on `feat/personal-learning`**: usual questions in Ask Huntloop, targeting proposals link to the ICP, "Is it working?" on Settings → You. Research-focus learning and recurring-task digests deferred (need usage tracking). |
