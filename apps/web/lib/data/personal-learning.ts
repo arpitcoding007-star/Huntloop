@@ -162,6 +162,7 @@ export async function getMyLearning(orgSlug: string): Promise<Loaded<MyLearning>
             contradicts: Number(r.contradicts ?? 0),
             lastReinforcedAt: r.last_reinforced_at ?? null,
             createdAt: r.created_at ?? null,
+            reference: false,
           },
           now,
         );

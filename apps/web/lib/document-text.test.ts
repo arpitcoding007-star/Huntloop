@@ -1,6 +1,12 @@
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { documentKind, docxText, extractDocumentText, UnreadableDocument } from "./document-text";
+import {
+  assertPdfWithinLimits,
+  documentKind,
+  docxText,
+  extractDocumentText,
+  UnreadableDocument,
+} from "./document-text";
 
 /** A minimal one-entry zip, deflated, as a .docx carries its body. */
 function zipWith(name: string, content: string): Uint8Array {
@@ -55,13 +61,16 @@ describe("docx", () => {
 });
 
 /** The smallest well-formed PDF with one line of text, xref offsets computed. */
-function minimalPdf(line: string): Uint8Array {
-  const stream = `BT /F1 12 Tf 72 720 Td (${line}) Tj ET`;
+function minimalPdf(line: string, encode?: { filter: string; data: Buffer }): Uint8Array {
+  const plain = `BT /F1 12 Tf 72 720 Td (${line}) Tj ET`;
+  /* Built in latin1 so a compressed stream's bytes survive the round trip. */
+  const stream = encode ? encode.data.toString("latin1") : plain;
+  const dict = encode ? `/Length ${encode.data.length} /Filter ${encode.filter}` : `/Length ${plain.length}`;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    `<< ${dict} >>\nstream\n${stream}\nendstream`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];
   let pdf = "%PDF-1.4\n";
@@ -74,7 +83,7 @@ function minimalPdf(line: string): Uint8Array {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const o of offsets) pdf += `${String(o).padStart(10, "0")} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return new TextEncoder().encode(pdf);
+  return new Uint8Array(Buffer.from(pdf, "latin1"));
 }
 
 describe("pdf", () => {
@@ -82,9 +91,52 @@ describe("pdf", () => {
     const text = await extractDocumentText(minimalPdf("Lead with the observation."), "pdf");
     expect(text).toContain("Lead with the observation.");
   });
+  it("reads a compressed content stream", async () => {
+    const content = Buffer.from("BT /F1 12 Tf 72 720 Td (Compressed and fine.) Tj ET");
+    const text = await extractDocumentText(
+      minimalPdf("", { filter: "/FlateDecode", data: deflateSync(content) }),
+      "pdf",
+    );
+    expect(text).toContain("Compressed and fine.");
+  });
   it("says so when a PDF cannot be read", async () => {
     await expect(extractDocumentText(new TextEncoder().encode("%PDF-1.4 garbage"), "pdf")).rejects.toThrow(
       UnreadableDocument,
     );
+  });
+});
+
+/* Security audit lead 13: the upload limit bounds the file, not what its
+   streams decode to. Budgets are shrunk here so the tests stay fast. */
+describe("pdf decompression limits", () => {
+  const bomb = (bytes: number) => deflateSync(deflateSync(Buffer.alloc(bytes, 0x41)));
+
+  it("refuses a stream compressed twice past the budget, before the reader runs", async () => {
+    const pdf = minimalPdf("", { filter: "[/FlateDecode /FlateDecode]", data: bomb(8 * 1024 * 1024) });
+    expect(pdf.length).toBeLessThan(64 * 1024);
+    await expect(assertPdfWithinLimits(pdf, 1024 * 1024)).rejects.toThrow(/expands to more/);
+  });
+  it("sees through filter names written with escapes", async () => {
+    const pdf = minimalPdf("", { filter: "[/Fl#61teDecode /FlateDecode]", data: bomb(8 * 1024 * 1024) });
+    await expect(assertPdfWithinLimits(pdf, 1024 * 1024)).rejects.toThrow(/expands to more/);
+  });
+  it("decodes a hex-wrapped bomb rather than counting its hex", async () => {
+    const hex = Buffer.from(bomb(8 * 1024 * 1024).toString("hex") + ">", "latin1");
+    const pdf = minimalPdf("", { filter: "[/ASCIIHexDecode /FlateDecode /FlateDecode]", data: hex });
+    await expect(assertPdfWithinLimits(pdf, 1024 * 1024)).rejects.toThrow(/expands to more/);
+  });
+  it("lets an ordinary document through", async () => {
+    const content = deflateSync(Buffer.from("BT /F1 12 Tf 72 720 Td (Fine.) Tj ET"));
+    await expect(assertPdfWithinLimits(minimalPdf("", { filter: "/FlateDecode", data: content }))).resolves.toBeUndefined();
+  });
+  it("refuses what it cannot measure", async () => {
+    const encrypted = Buffer.from(minimalPdf("x")).toString("latin1").replace("/Root 1 0 R", "/Root 1 0 R /Encrypt 9 0 R");
+    await expect(assertPdfWithinLimits(new Uint8Array(Buffer.from(encrypted, "latin1")))).rejects.toThrow(/password-protected/);
+    await expect(
+      assertPdfWithinLimits(minimalPdf("", { filter: "/LZWDecode", data: Buffer.from("x") })),
+    ).rejects.toThrow(/old compression/);
+    await expect(
+      assertPdfWithinLimits(minimalPdf("", { filter: "9 0 R", data: Buffer.from("x") })),
+    ).rejects.toThrow(UnreadableDocument);
   });
 });

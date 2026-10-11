@@ -144,7 +144,7 @@ export function DataTable<T>({
                       : undefined
                   }
                   className={cn(
-                    "px-4 py-2.5 text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
+                    "px-4 py-2.5 text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase",
                     col.align === "right" && "text-right",
                     col.align === "center" && "text-center",
                   )}
@@ -153,8 +153,11 @@ export function DataTable<T>({
                     <button
                       type="button"
                       onClick={() => headerClick(col)}
+                      /* `uppercase` restated: the reset gives a <button>
+                         `text-transform: none`, so a sortable header read in
+                         sentence case beside its capitalised neighbours. */
                       className={cn(
-                        "hl-focusable inline-flex items-center gap-1 rounded-sm transition-colors duration-[120ms] hover:text-fg-secondary",
+                        "hl-focusable inline-flex items-center gap-1 rounded-sm tracking-label uppercase transition-colors duration-[120ms] hover:text-fg-secondary",
                         active && "text-fg-secondary",
                       )}
                     >

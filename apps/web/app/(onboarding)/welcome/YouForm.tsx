@@ -72,7 +72,7 @@ export function YouForm({
       <div className="max-w-md">
         <label
           htmlFor="fullName"
-          className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
+          className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase"
         >
           Your name
         </label>
@@ -104,7 +104,7 @@ export function YouForm({
       </div>
 
       <fieldset>
-        <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+        <legend className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
           What do you do?
         </legend>
         <p className="mt-1 text-[13px] text-fg-muted">

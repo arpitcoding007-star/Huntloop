@@ -58,6 +58,13 @@ export interface PreferenceRow {
   contradicts: number;
   lastReinforcedAt: string | null;
   createdAt: string | null;
+  /**
+   * Text a member brought in from a page or a document (`source_type` url or
+   * file) rather than wrote. It is what that page says, so it informs an
+   * output and never instructs one: `asGuidance` leaves it out, and
+   * `asReference` hands it over as data (security audit lead 9).
+   */
+  reference: boolean;
 }
 
 export interface AppliedPreference {
@@ -74,6 +81,8 @@ export interface AppliedPreference {
   confidence: number;
   /** Observations behind a learned memory. 0 for anything a person wrote. */
   evidenceCount: number;
+  /** Ingested from a page or document: data, never an instruction. */
+  reference: boolean;
 }
 
 export interface SuppressedPreference extends AppliedPreference {
@@ -160,7 +169,7 @@ export function orderPreferences(
     if (t) {
       candidates.push({
         id: null, kind: "task", origin: "task", scope: "task", key: null, text: t,
-        category: null, confidence: 1, evidenceCount: 0,
+        category: null, confidence: 1, evidenceCount: 0, reference: false,
       });
     }
   }
@@ -181,6 +190,7 @@ export function orderPreferences(
       category: row.category,
       confidence,
       evidenceCount: row.origin === "learned" ? row.support : 0,
+      reference: row.reference,
     });
   }
 
@@ -223,7 +233,20 @@ export async function resolvePreferences(
  * writer does): lowest precedence first, so the person's own word is last.
  */
 export function asGuidance(resolved: Resolved): string[] {
-  return [...resolved.applied].reverse().map((p) => p.text);
+  return [...resolved.applied]
+    .reverse()
+    .filter((p) => !p.reference)
+    .map((p) => p.text);
+}
+
+/**
+ * The pages and documents a member added, for a task to read as information
+ * about the sender's own business. Kept apart from `asGuidance` because a
+ * task that ranks guidance as overriding its instructions must not rank a
+ * third party's text that way.
+ */
+export function asReference(resolved: Resolved): string[] {
+  return resolved.applied.filter((p) => p.reference).map((p) => p.text);
 }
 
 async function readRows(db: Client, context: PreferenceContext, now: Date): Promise<PreferenceRow[]> {
@@ -255,11 +278,11 @@ async function readRows(db: Client, context: PreferenceContext, now: Date): Prom
     );
 
   let results = await select(
-    "id, scope, key, content, source, origin, category, applies_to, support, contradicts, last_reinforced_at, created_at",
+    "id, scope, key, content, source, source_type, origin, category, applies_to, support, contradicts, last_reinforced_at, created_at",
     true,
   );
   if (results.some((r) => r.error?.code === "42703")) {
-    results = await select("id, scope, key, content, source, created_at", false);
+    results = await select("id, scope, key, content, source, source_type, created_at", false);
   }
 
   return results.flatMap((r) => r.data ?? []).map(mapRow);
@@ -280,6 +303,7 @@ function mapRow(row: any): PreferenceRow {
     contradicts: Number(row.contradicts ?? 0),
     lastReinforcedAt: row.last_reinforced_at ?? null,
     createdAt: row.created_at ?? null,
+    reference: row.source_type === "url" || row.source_type === "file",
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

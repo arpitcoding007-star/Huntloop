@@ -10,7 +10,9 @@ import {
   CardHeader,
   ClaimBadge,
   Column,
+  ConfirmButton,
   DataTable,
+  EmptyState,
   EvidenceList,
   FilterBar,
   Freshness,
@@ -18,7 +20,10 @@ import {
   Modal,
   Note,
   PriorityBadge,
+  QuotaBar,
+  QuotaBarGroup,
   ScorePill,
+  ScoreRing,
   SectionLabel,
   StatCard,
   StatGrid,
@@ -31,6 +36,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   Copy,
+  Crosshair,
   Download,
   MoreHorizontal,
   Inbox,
@@ -600,7 +606,7 @@ export default function KitchenSink() {
         <Card flush>
           <CardHeader
             title="Badges"
-            description="Green = system state. Violet = an AI produced this."
+            description="Seven tones, each a pill and a word. Blue = act on this, green = confirmed, the AI tint = a model produced this."
           />
           <CardBody className="flex flex-wrap gap-2">
             <Badge>Free</Badge>
@@ -623,7 +629,10 @@ export default function KitchenSink() {
         </Card>
 
         <Card flush>
-          <CardHeader title="Buttons" description="32px default, 6px radius, no shadow." />
+          <CardHeader
+            title="Buttons"
+            description="32px default, 10px radius; only the primary carries a shadow. A control either acts — or says why it can't."
+          />
           <CardBody className="flex flex-wrap items-center gap-2">
             <Button variant="primary">Primary</Button>
             <Button variant="secondary">Secondary</Button>
@@ -638,15 +647,35 @@ export default function KitchenSink() {
             <Button variant="secondary" disabled>
               Disabled
             </Button>
+            <div className="flex w-full flex-col gap-2 border-t border-line-subtle pt-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="secondary" pending="Nothing is running the queue">
+                  Scan now
+                </Button>
+                <ConfirmButton
+                  icon={Trash2}
+                  label="Revoke invite"
+                  confirmLabel="Click again to revoke"
+                  onConfirm={() => {}}
+                />
+              </div>
+              <Note tone="quiet">
+                Nothing is running the queue, so a scan would never start.
+              </Note>
+            </div>
           </CardBody>
         </Card>
 
         <Card flush>
           <CardHeader
-            title="Score pills"
-            description="Eight named dimensions (master context §51), never one opaque number."
+            title="Score pills and rings"
+            description="Eight named dimensions (master context §51), never one opaque number. NULL is never drawn as 0."
           />
           <CardBody className="flex flex-wrap items-center gap-4">
+            <ScorePill score={null} explanation="Not scored yet — there is no evidence on file to score from." />
+            <ScoreRing score={82} label="Score 82" />
+            <ScoreRing score={61} label="Score 61" />
+            <ScoreRing score={null} />
             {[34, 52, 64, 78, 91].map((s) => (
               <ScorePill
                 key={s}
@@ -673,6 +702,17 @@ export default function KitchenSink() {
         <Card flush>
           <CardHeader title="Empty & loading states" />
           <CardBody className="space-y-3">
+            <EmptyState
+              icon={Crosshair}
+              title="No opportunities discovered yet"
+              description="Discovery runs on the engine. Analyze a company now, or check which sources are being watched."
+              action={
+                <>
+                  <Button variant="primary">Analyze a URL</Button>
+                  <Button variant="secondary">Review sources</Button>
+                </>
+              }
+            />
             <DataTable
               rows={[]}
               columns={[
@@ -714,7 +754,7 @@ export default function KitchenSink() {
         <span className="font-mono text-fg-secondary">
           packages/ui/src/tokens.css
         </span>{" "}
-        · color and chrome from Supabase, dashboard IA from Kima BD OS
+        · the values on design reference boards 01–04 (logo, colour, type & layout, components)
         <br />
         <Link href="/demo/dashboard" className="hl-focusable rounded-sm text-brand-text hover:underline">
           View the assembled Command Center →
@@ -757,12 +797,29 @@ function OverlaysAndFeedback() {
             <Note tone="info">
               Discovery runs once a day. The next pass is scheduled for 06:00.
             </Note>
+            <Note tone="neutral">
+              <strong>Rate limited.</strong> You can run this again at 14:32.
+            </Note>
             <Note tone="warning">
-              No model is connected, so drafting and scoring are paused.
+              <strong>Demo data.</strong> No model is connected, so drafting and scoring are paused.
             </Note>
             <Note tone="danger">
               The last sync to HubSpot failed. Nothing has been written since.
             </Note>
+          </CardBody>
+        </Card>
+
+        <Card flush>
+          <CardHeader
+            title="Quota bars"
+            description="The fill is a graphic — vivid blue until the meter is nearly spent, then amber, then red with the word."
+          />
+          <CardBody>
+            <QuotaBarGroup>
+              <QuotaBar label="AI runs this month" used={312} limit={500} />
+              <QuotaBar label="Open opportunities (backlog cap)" used={212} limit={250} />
+              <QuotaBar label="Seats" used={5} limit={5} />
+            </QuotaBarGroup>
           </CardBody>
         </Card>
 

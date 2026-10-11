@@ -250,7 +250,7 @@ function describe(c: AttentionCandidate, now: Date, quietAfter: number) {
     }
     case "hot-untouched":
       return {
-        why: `HOT${c.detail ? `, with a ${c.detail} trigger` : ""}${
+        why: `Hot${c.detail ? `, with a ${c.detail} trigger` : ""}${
           c.at ? ` ${age === 0 ? "today" : `${agoLabel(age)} ago`}` : ""
         }, and nobody has reached out yet.`,
         actionLabel: "Open",

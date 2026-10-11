@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getDb } from "../../../lib/data/source";
+import { BrandLink } from "../../BrandLink";
 import { AcceptInvite } from "./AcceptInvite";
 
 /**
@@ -84,11 +85,9 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-6 py-12">
       <div className="w-full max-w-[420px]">
-        <div className="mb-8 flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-md bg-brand-surface text-[15px] font-bold text-brand-text">
-            H
-          </span>
-          <span className="text-[15px] font-semibold text-fg">Huntloop</span>
+        {/* The real mark — never a letter standing in for it (logo board). */}
+        <div className="mb-8 flex justify-center">
+          <BrandLink href="/" size="lg" />
         </div>
         <h1 className="hl-title text-fg">{title}</h1>
         <div className="mt-4 space-y-4">{children}</div>

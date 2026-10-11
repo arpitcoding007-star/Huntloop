@@ -68,9 +68,13 @@ export default async function DiscoverPage({
   return (
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle">
-        <div className="mx-auto flex max-w-[820px] items-center gap-2 px-6 py-3">
+        {/* The lockup centred (logo board), the controls held right. On a
+            phone the controls are wider than half the bar, so the lockup
+            leads instead of sitting visibly off-centre. */}
+        <div className="mx-auto flex max-w-[820px] items-center gap-2 px-6 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+          <span aria-hidden className="hidden sm:block" />
           <BrandLink href="/" />
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center justify-end gap-3">
             <ThemeToggle />
             <Button variant="secondary" size="sm" href="/login" linkComponent={Link}>
               Sign in
@@ -159,7 +163,7 @@ export default async function DiscoverPage({
                 {state.understanding.findings.map((f) => (
                   <div key={f.field}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+                      <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
                         {f.label}
                       </span>
                       <ClaimBadge kind={f.kind} confidence={f.confidence ?? undefined} />

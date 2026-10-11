@@ -94,7 +94,7 @@ export function SectionLabel({
       className={cn(
         variant === "heading"
           ? "font-display text-[19px] leading-6 font-semibold tracking-heading text-fg"
-          : "text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase",
+          : "text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase",
         className,
       )}
     >

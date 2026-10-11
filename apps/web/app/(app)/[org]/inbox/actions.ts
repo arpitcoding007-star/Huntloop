@@ -558,9 +558,13 @@ export async function redraftAction(
   });
 }
 
-/** `Re: ` once, however many times the conversation has gone back and forth. */
+/**
+ * `Re: ` once, however many times the conversation has gone back and forth.
+ * On one line: the inbound Subject is the sender's text, and a line break in
+ * it would become a header line in the reply (security audit lead 8).
+ */
 function replySubject(subject: string | null): string {
-  const base = (subject ?? "").trim();
+  const base = (subject ?? "").replace(/\s+/g, " ").trim();
   if (!base) return "Re:";
   return /^re:/i.test(base) ? base : `Re: ${base}`;
 }

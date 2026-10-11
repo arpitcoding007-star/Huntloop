@@ -141,7 +141,7 @@ export function PipelineBoard({
             return (
               <section key={stage.key} className="w-[260px] shrink-0">
                 <header className="flex items-center justify-between px-1 pb-2">
-                  <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+                  <h2 className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
                     {stage.label}
                   </h2>
                   <span className="font-mono text-[12px] text-fg-muted">

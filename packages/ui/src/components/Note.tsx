@@ -2,7 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, Lock } from "lucide-react";
 import { cn } from "../utils/cn";
 
-export type NoteTone = "neutral" | "info" | "success" | "warning" | "danger";
+export type NoteTone = "neutral" | "quiet" | "info" | "success" | "warning" | "danger";
 
 export interface NoteProps {
   children: ReactNode;
@@ -49,10 +49,21 @@ const TONES: Record<
   NoteTone,
   { frame: string; icon: string; fallback: ComponentType<{ className?: string; strokeWidth?: number }> }
 > = {
+  /* The reference's quiet strip ("Rate limited. You can run this again
+     at 14:32."): a card-white row with a hairline, secondary ink, and a
+     <strong> lead in full ink. */
   neutral: {
-    frame: "border-line bg-field text-fg-muted",
-    icon: "text-fg-muted",
+    frame: "border-line-subtle bg-surface text-fg-secondary [&_strong]:text-fg",
+    icon: "text-fg-secondary",
     fallback: Lock,
+  },
+  /* The reference's "why this control can't act" line, under a pending
+     button: an inset well with no outline, so it reads as an aside to the
+     control above it rather than as a notice of its own. */
+  quiet: {
+    frame: "border-transparent bg-field text-fg-secondary [&_strong]:text-fg",
+    icon: "text-fg-secondary",
+    fallback: Info,
   },
   info: {
     frame: "border-info-border bg-info-surface text-info-text",
@@ -88,7 +99,9 @@ export function Note({ children, tone = "neutral", icon, className }: NoteProps)
          The component that *does* interrupt is Toast. */
       role="status"
       className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-[13px] leading-[1.55]",
+        "flex items-start gap-2.5 border text-[13px] leading-[18px]",
+        tone === "quiet" ? "rounded-[10px] px-3 py-2.5" : "rounded-[12px] px-3.5 py-3",
+        "[&_strong]:font-semibold",
         spec.frame,
         className,
       )}
@@ -96,7 +109,7 @@ export function Note({ children, tone = "neutral", icon, className }: NoteProps)
       {Icon && (
         <Icon
           aria-hidden
-          className={cn("mt-px size-3.5 shrink-0", spec.icon)}
+          className={cn("mt-px size-4 shrink-0", spec.icon)}
           strokeWidth={1.75}
         />
       )}

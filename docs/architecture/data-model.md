@@ -4,6 +4,12 @@ description: Every entity — who creates it, who reads it, how it lives and die
 
 # Data model
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Out of date (2026-10-08).** Predates migrations `0029`–`0045` (activity ledger, products/ICP versions, competitors, demand, personal learning, assistant). The authoritative entity catalogue is [Backend / Database / Schema](../spec/05-backend-database-schema.md); column detail is generated from the migrations.
+{% endhint %}
+
+
 > **Layer:** Internal · **Audience:** engineering, product
 
 ## The core graph

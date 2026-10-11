@@ -15,10 +15,13 @@ export default function WelcomeLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-line-subtle bg-panel">
-        <div className="mx-auto flex max-w-[860px] items-center gap-2 px-6 py-3">
+        {/* The lockup centred (logo board: auth, onboarding and /discover),
+            with the theme control held to the right edge. */}
+        <div className="mx-auto grid max-w-[860px] grid-cols-[1fr_auto_1fr] items-center gap-2 px-6 py-3">
+          <span aria-hidden />
           {/* To the landing page, which offers "Continue setup" back here. */}
           <BrandLink href="/" />
-          <ThemeToggle className="ml-auto" />
+          <ThemeToggle className="justify-self-end" />
         </div>
       </header>
 

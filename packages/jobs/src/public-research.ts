@@ -112,22 +112,23 @@ export async function lookupPublicResearch(domain: string): Promise<CachedResear
 }
 
 /**
- * Whether this request may spend a model call.
+ * Reserve one paid model call, or say why not.
  *
  * Asked *before* the call, never after, for the same reason `rate-limit.ts`
  * gives: the calls that go wrong are the slow expensive ones, and a limit
  * checked afterwards has already paid for the thing it was meant to prevent.
  *
- * Both counters are read from `public_research` itself rather than from a
- * separate limiter table. That is a deliberate simplification with one real
- * consequence: a request that was *refused* leaves no row, so refusals do not
- * count toward the limits. Since a refusal costs nothing, that is the correct
- * direction for the imprecision to fall.
+ * A reservation, not a count of finished readings. The counts used to come
+ * from `public_research` rows, which exist only after a call succeeds — so
+ * concurrent requests all read the same number and all went ahead, a call that
+ * failed after spending tokens never counted, and refreshing an expired row
+ * kept its old `created_at` (security audit lead 11). `0047`'s
+ * `reserve_public_research` counts attempts and records this one in the same
+ * serialised step. A refusal is not recorded: it costs nothing.
+ *
+ * Fails closed. If the reservation cannot be made, nothing is spent.
  */
-export async function anonymousAllowance(ipHash: string): Promise<AllowanceDecision> {
-  const db = adminClient();
-  const now = Date.now();
-
+export async function reserveAnonymousResearch(ipHash: string): Promise<AllowanceDecision> {
   const ceiling = dailyCeiling();
   if (ceiling === 0) {
     return {
@@ -137,19 +138,25 @@ export async function anonymousAllowance(ipHash: string): Promise<AllowanceDecis
     };
   }
 
-  const [{ count: ipCount }, { count: dayCount }] = await Promise.all([
-    db
-      .from("public_research")
-      .select("id", { count: "exact", head: true })
-      .eq("ip_hash", ipHash)
-      .gte("created_at", new Date(now - 60 * 60 * 1000).toISOString()),
-    db
-      .from("public_research")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", new Date(now - 24 * 60 * 60 * 1000).toISOString()),
-  ]);
+  const { data, error } = await adminClient().rpc("reserve_public_research", {
+    p_ip_hash: ipHash,
+    p_per_ip_hour: PER_IP_PER_HOUR,
+    p_daily: ceiling,
+  });
+  const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean; reason?: string | null } | null;
 
-  if ((ipCount ?? 0) >= PER_IP_PER_HOUR) {
+  if (error || !row) {
+    console.error(`reserveAnonymousResearch: ${error?.message ?? "no answer"}`);
+    return {
+      allowed: false,
+      reason: "over_budget",
+      message: "We can't read sites without an account just now. Create a free account and we'll read yours right away.",
+    };
+  }
+
+  if (row.allowed) return { allowed: true };
+
+  if (row.reason === "rate_limited") {
     return {
       allowed: false,
       reason: "rate_limited",
@@ -159,17 +166,13 @@ export async function anonymousAllowance(ipHash: string): Promise<AllowanceDecis
     };
   }
 
-  if ((dayCount ?? 0) >= ceiling) {
-    return {
-      allowed: false,
-      reason: "over_budget",
-      message:
-        "We've hit today's limit for anonymous lookups. Create a free account " +
-        "and we'll read your site right away.",
-    };
-  }
-
-  return { allowed: true };
+  return {
+    allowed: false,
+    reason: "over_budget",
+    message:
+      "We've hit today's limit for anonymous lookups. Create a free account " +
+      "and we'll read your site right away.",
+  };
 }
 
 /**
@@ -197,6 +200,9 @@ export async function recordPublicResearch(
       understanding,
       is_live: isLive,
       ip_hash: ipHash,
+      /* Set on a refresh too: it is shown as when the site was read, and an
+         expired row refreshed by upsert would otherwise keep its old date. */
+      created_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
     { onConflict: "canonical_domain" },
@@ -217,16 +223,37 @@ export async function recordPublicResearch(
  * became customers.
  *
  * Salted with a deployment secret so the hashes are not comparable across
- * deployments and cannot be brute-forced from the (small) IPv4 space. Falls
- * back to a constant when unset, which weakens the anonymity but never the
- * rate limiting; a deployment that cares sets the variable.
+ * deployments and cannot be brute-forced from the (small) IPv4 space.
+ * `PUBLIC_RESEARCH_SALT` when set; otherwise a salt derived with HKDF from the
+ * Supabase secret key every database-backed deployment already has (its own
+ * `info`, so it is independent of the other keys derived from it). The
+ * constant is reached only with no secret at all — a demo build with no
+ * database, where nothing is stored to protect. Before this, an unset
+ * variable meant the public constant below on production too, so anyone who
+ * read the repository could reverse a stored hash to its address (DEF-14).
  */
 export async function hashIp(ip: string): Promise<string> {
-  const salt = process.env.PUBLIC_RESEARCH_SALT ?? "huntloop-public-research";
+  const salt = process.env.PUBLIC_RESEARCH_SALT?.trim() || (await derivedSalt()) || "huntloop-public-research";
   const bytes = new TextEncoder().encode(`${salt}:${ip}`);
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
     .slice(0, 32);
+}
+
+/** WebCrypto rather than node:crypto, so this stays callable from any runtime. */
+async function derivedSalt(): Promise<string | null> {
+  const material =
+    process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!material) return null;
+  const subtle = globalThis.crypto.subtle;
+  const encode = (s: string) => new TextEncoder().encode(s);
+  const key = await subtle.importKey("raw", encode(material), "HKDF", false, ["deriveBits"]);
+  const bits = await subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: encode("huntloop"), info: encode("public-research-ip-v1") },
+    key,
+    256,
+  );
+  return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

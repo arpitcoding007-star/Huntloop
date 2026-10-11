@@ -116,7 +116,7 @@ function ChipField({
   return (
     <div id={id} className="scroll-mt-6">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+        <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
           {label}
         </span>
         {/* Only when the field was actually drafted. An empty field carries no

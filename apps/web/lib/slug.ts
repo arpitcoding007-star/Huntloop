@@ -65,4 +65,7 @@ export const RESERVED_SLUGS = new Set([
   "acceptable-use",
   "legal",
   "dev",
+  /* The email header's mark (app/email-mark.png). `slugify` can never
+     produce a dot, so this is listed only to keep the route census whole. */
+  "email-mark.png",
 ]);

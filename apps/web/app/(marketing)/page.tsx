@@ -167,7 +167,7 @@ function Logo({ size = "md" }: { size?: "md" | "sm" }) {
         md ? "gap-[9px] text-[18px] tracking-[-0.03em]" : "gap-2 text-[16px] tracking-[-0.02em]"
       }`}
     >
-      <BrandMark className={md ? "size-[26px]" : "size-[22px]"} />
+      <BrandMark className={md ? "size-[26px]" : "size-6"} />
       Huntloop
     </Link>
   );

@@ -133,7 +133,7 @@ export function InboxView({
       {queue.length > 0 && (
         <section aria-labelledby="approval-queue" className="space-y-3">
           <div>
-            <h2 id="approval-queue" className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <h2 id="approval-queue" className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               Waiting for your approval · {queue.length}
             </h2>
             <p className="mt-1 text-[12px] text-fg-muted">
@@ -168,7 +168,7 @@ export function InboxView({
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+      <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value}</p>

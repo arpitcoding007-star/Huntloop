@@ -2,8 +2,9 @@ import "server-only";
 import type { TenantClient } from "@huntloop/db";
 
 /**
- * Plan quota — `usage_counters` and `plans` from `0001`, written through
- * `0007`'s `increment_usage()`.
+ * Plan quota — `usage_counters` and `plans` from `0001`. Read here; written
+ * by the engine, and by a session only as one delivered AI run at a time
+ * (`countAiRun` in lib/ai/budget.ts — `0047` refuses anything more).
  *
  * ── How this differs from the rate limiter ───────────────────────────────
  *
@@ -35,8 +36,8 @@ export interface Quota {
  * What the quota is, without spending any of it.
  *
  * Used to render "412 of 1,000 this month" and to decide whether to offer an
- * action at all. Never used *instead of* `consumeQuota` before doing the work:
- * between a check and a use, a second request can consume the last unit.
+ * action at all. It is a reading, not a reservation: between a check and a
+ * use, a second request can consume the last unit.
  */
 export async function checkQuota(
   db: TenantClient,
@@ -44,37 +45,6 @@ export async function checkQuota(
   metric: UsageMetric,
 ): Promise<Quota> {
   const { data, error } = await db.rpc("check_quota", { p_org: orgId, p_metric: metric });
-  if (error || !data) return UNKNOWN;
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return UNKNOWN;
-
-  return {
-    used: Number(row.used ?? 0),
-    limit: row.quota === null || row.quota === undefined ? null : Number(row.quota),
-    allowed: Boolean(row.allowed),
-  };
-}
-
-/**
- * Spend, and say whether that was within the plan.
- *
- * Always increments, including when the answer is no — same reasoning as
- * `consume_rate_limit`: a counter that stops counting once over limit hides
- * the overage exactly when somebody needs to see it. The caller decides what
- * to do with `allowed`; this function never refuses on the caller's behalf.
- */
-export async function consumeQuota(
-  db: TenantClient,
-  orgId: string,
-  metric: UsageMetric,
-  amount = 1,
-): Promise<Quota> {
-  const { data, error } = await db.rpc("increment_usage", {
-    p_org: orgId,
-    p_metric: metric,
-    p_amount: amount,
-  });
   if (error || !data) return UNKNOWN;
 
   const row = Array.isArray(data) ? data[0] : data;

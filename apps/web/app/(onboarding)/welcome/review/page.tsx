@@ -125,7 +125,7 @@ export default async function ReviewPage({
                     the difference between news and an anniversary. */}
                 {o.trigger && (
                   <div>
-                    <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+                    <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
                       Why now
                     </p>
                     <p className="mt-1 text-[13px] leading-[1.6] text-fg-secondary">
@@ -138,7 +138,7 @@ export default async function ReviewPage({
                     the score — a number repeated in words explains nothing. */}
                 {o.priorityReason && (
                   <div>
-                    <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+                    <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
                       Why a fit
                     </p>
                     <p className="mt-1 text-[13px] leading-[1.6] text-fg-secondary">

@@ -11,7 +11,7 @@ import {
 } from "../../../../lib/csv";
 import { normalizeDomain } from "../../../../lib/domain";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
-import { csvSchema, parseInput } from "../../../../lib/validation";
+import { csvSchema, emailSchema, parseInput } from "../../../../lib/validation";
 
 /**
  * CSV import — master context §59, §60.
@@ -396,7 +396,12 @@ function personFrom(
     lastName = rest.length > 0 ? rest.join(" ") : null;
   }
 
-  const email = value(row, columns, "email")?.toLowerCase() ?? null;
+  /* A cell that is not one valid address is not stored as one. It would be a
+     recipient later, and a quoted cell can carry a line break — which, on a
+     header line, is a second recipient nobody checked (security audit lead 8). */
+  const rawEmail = value(row, columns, "email");
+  const parsedEmail = rawEmail ? emailSchema.safeParse(rawEmail) : null;
+  const email = parsedEmail?.success ? parsedEmail.data : null;
   const title = value(row, columns, "title");
   const linkedin = value(row, columns, "linkedin");
 

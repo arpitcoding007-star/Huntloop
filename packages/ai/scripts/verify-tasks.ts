@@ -2122,6 +2122,27 @@ console.log("\npersonalize_message — a banned phrase fails the run, in every f
   }
 
   {
+    /* Security audit lead 8: the subject lands on a raw MIME header line, so a
+       line break in it would start a new header — a Bcc nobody approved. */
+    const { client } = scriptedClient({ ...clean, subject: "platform hiring\r\nBcc: extra@third.example" });
+    const result = await runTask(personalizeMessage, input, ctx(client, spyRecorder().recorder));
+    expectEqual(
+      "a line break in a drafted subject is collapsed to one line",
+      result.output.subject,
+      "platform hiring Bcc: extra@third.example",
+    );
+  }
+
+  {
+    const { client } = scriptedClient({ ...clean, subject: "platform ".repeat(30).trim() });
+    await expectThrows(
+      "a subject past the length ceiling fails the run",
+      () => runTask(personalizeMessage, input, ctx(client, spyRecorder().recorder)),
+      /subject is \d+ characters/,
+    );
+  }
+
+  {
     const { client } = scriptedClient({
       ...clean,
       body: "I hope this email finds you well. " + clean.body,
@@ -2260,7 +2281,9 @@ console.log("\nworkspace_assistant — citations and actions are closed over the
     out.actions.map((a) => a.kind),
     ["set_next_step", "remember"],
   );
-  const schema = workspaceAssistant.schema as (i: AssistantInput) => Record<string, any>;
+  const schema = workspaceAssistant.schema as (i: AssistantInput) => {
+    properties: { citations: { items: { enum: string[] } } };
+  };
   expectEqual(
     "and the schema enumerates exactly the records sent",
     schema(input).properties.citations.items.enum,

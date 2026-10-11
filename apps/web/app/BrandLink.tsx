@@ -15,7 +15,7 @@ export function BrandLink({ href, size = "md" }: { href?: string; size?: "md" | 
   const lg = size === "lg";
   const inner = (
     <>
-      <BrandMark className={lg ? "size-8 text-fg" : "size-[22px] text-fg"} />
+      <BrandMark className={lg ? "size-8 text-fg" : "size-6 text-fg"} />
       <span
         className={`font-semibold text-fg ${
           lg ? "text-[22px] tracking-[-0.035em]" : "text-[15px] tracking-[-0.02em]"

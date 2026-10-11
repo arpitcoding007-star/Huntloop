@@ -197,7 +197,7 @@ export function CompanyStep({
 
         {isAgency && (
           <fieldset className="mt-5">
-            <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <legend className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               Who is this workspace for?
             </legend>
             <div role="group" className="mt-2 flex flex-wrap gap-1.5">
@@ -358,7 +358,7 @@ export function CompanyStep({
           {findings.map((f, i) => (
             <div key={f.field}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+                <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
                   {f.label}
                 </span>
                 <ClaimBadge kind={f.kind} confidence={f.confidence ?? undefined} />

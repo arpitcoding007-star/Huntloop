@@ -58,7 +58,7 @@ flowchart TD
   C -->|allowance spent| R5[Refused: mailbox daily cap]
   C -->|claimed| D[Provider accepts]
   D --> E[record_contact_send]
-  D --> F[increment_usage emails]
+  D --> F[increment_usage_internal emails]
   D --> G[messages.sent_at]
 ```
 

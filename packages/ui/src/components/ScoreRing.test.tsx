@@ -30,4 +30,13 @@ describe("ScoreRing", () => {
     render(<ScoreRing score={0} />);
     expect(screen.getByRole("img").querySelectorAll("circle")).toHaveLength(1);
   });
+
+  it("never draws an unmeasured score as a 0", () => {
+    render(<ScoreRing score={null} />);
+    const ring = screen.getByRole("img", { name: "Score not measured" });
+    expect(ring.textContent).toBe("?");
+    const circles = ring.querySelectorAll("circle");
+    expect(circles).toHaveLength(1);
+    expect(circles[0]?.getAttribute("stroke-dasharray")).toBeTruthy();
+  });
 });

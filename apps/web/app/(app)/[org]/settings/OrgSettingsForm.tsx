@@ -100,7 +100,7 @@ export function OrgSettingsForm({
         </Field>
 
         <div>
-          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             Address
           </p>
           <p className="mt-1.5 font-mono text-[13px] text-fg">

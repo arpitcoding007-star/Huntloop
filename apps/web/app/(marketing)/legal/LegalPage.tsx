@@ -1,8 +1,8 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { ThemeToggle } from "@huntloop/ui";
 import { legalIsComplete, missingLegalFacts } from "../../../lib/legal";
+import { BrandLink } from "../../BrandLink";
 
 /**
  * The chrome the three legal pages share.
@@ -30,12 +30,7 @@ export function LegalPage({
   return (
     <main id="main" className="mx-auto max-w-[760px] px-6 py-12">
       <div className="flex items-center justify-between gap-4">
-        <Link
-          href="/"
-          className="hl-focusable rounded-sm text-[13px] text-fg-muted hover:text-fg-secondary"
-        >
-          ← Huntloop
-        </Link>
+        <BrandLink href="/" />
         <ThemeToggle />
       </div>
 

@@ -5,6 +5,7 @@ import { listCompetitors } from "../../../../../lib/data/competitor-intel";
 import { currentViewer } from "../../../../../lib/data/membership";
 import { getPerformance, type PerformanceScope } from "../../../../../lib/data/performance";
 import { PERIODS, PERIOD_LABEL, type Period } from "../../../../../lib/performance/compute";
+import { BrandLink } from "../../../../BrandLink";
 import { PrintButton } from "./PrintButton";
 
 /**
@@ -65,6 +66,10 @@ export default async function PerformanceReportPage({
         className="rounded-lg border border-line-subtle bg-surface px-5 py-6 text-fg shadow-card print:border-0 print:p-0 print:shadow-none sm:px-8"
       >
       <header className="border-b border-line pb-4">
+        {/* The logo board's share-report lockup: mark + wordmark, light. */}
+        <div className="mb-5">
+          <BrandLink />
+        </div>
         <p className="text-[12px] text-fg-muted">{chrome.orgName}</p>
         <h1 className="mt-1 text-[24px] font-semibold tracking-[-0.02em]">Performance report</h1>
         <p className="mt-1 text-[13px] text-fg-secondary">

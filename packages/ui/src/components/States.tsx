@@ -38,31 +38,33 @@ function StateFrame({
   className?: string;
 }) {
   return (
+    /* The reference empty state (board 04): a 44px brand-tint tile, a 16px
+       title, one 13px sentence, and the actions that end the state. */
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-md border border-line-subtle",
-        "bg-surface px-6 py-10 text-center",
+        "flex flex-col items-center justify-center rounded-lg border border-line-subtle",
+        "bg-surface px-5 py-7 text-center",
         className,
       )}
     >
       <span
         className={cn(
-          "flex size-10 items-center justify-center rounded-md",
+          "flex size-11 items-center justify-center rounded-[12px]",
           tone === "danger" && "bg-danger-surface text-danger-text",
           tone === "warning" && "bg-warning-surface text-warning-text",
-          tone === "neutral" && "bg-surface-active text-fg-secondary",
+          tone === "neutral" && "bg-brand-surface text-brand-text",
         )}
       >
-        <Icon className="size-[18px]" strokeWidth={1.75} />
+        <Icon className="size-[22px]" strokeWidth={1.6} />
       </span>
 
-      <p className="mt-3 text-[14px] font-medium text-fg">{title}</p>
+      <p className="mt-2.5 text-[16px] leading-6 font-semibold text-fg">{title}</p>
       {description && (
-        <p className="mt-1 max-w-sm text-[13px] leading-[1.5] text-fg-muted">
+        <p className="mt-1.5 max-w-[320px] text-[13px] leading-[18px] text-fg-secondary">
           {description}
         </p>
       )}
-      {action && <div className="mt-4 flex items-center gap-2">{action}</div>}
+      {action && <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>
   );
 }

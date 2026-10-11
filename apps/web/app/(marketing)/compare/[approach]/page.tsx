@@ -145,7 +145,7 @@ export default async function ComparePage({
         </section>
 
         <nav aria-label="More" className="mt-14 border-t border-line-subtle pt-6">
-          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             Also compared to
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
@@ -161,7 +161,7 @@ export default async function ComparePage({
             ))}
           </ul>
 
-          <p className="mt-5 text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <p className="mt-5 text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             Or by what you do
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">

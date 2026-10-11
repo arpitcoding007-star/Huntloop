@@ -22,14 +22,45 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/* The light theme's leaves (packages/ui/src/tokens.css, colour board 02),
+   restated because an email client reads no stylesheet. */
 const C = {
-  text: "#1f2937",
-  muted: "#6b7280",
-  line: "#e5e7eb",
+  text: "#0D1422",
+  secondary: "#525969",
+  muted: "#62656D",
+  line: "#E9EDF0",
   // The product fill, #1F58F0: passes AA under white text (see the design tokens).
   brand: "#1F58F0",
   canvas: "#F7F8FA",
 };
+
+const FONT = "'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+/**
+ * The mark, as a PNG the app serves (`app/email-mark.png`): most mail
+ * clients drop inline SVG, so the approved mark travels as an image. It is
+ * served from the same origin as the email's own button, which every product
+ * email has; without one there is nowhere to load it from and the header is
+ * the wordmark alone.
+ */
+function markUrl(block: Block): string | null {
+  if (!block.cta) return null;
+  try {
+    const origin = new URL(block.cta.href).origin;
+    return origin.startsWith("http") ? `${origin}/email-mark.png` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The logo board's product-email header: mark + wordmark. */
+function header(block: Block): string {
+  const mark = markUrl(block);
+  const img = mark
+    ? `<td style="padding:0 8px 0 0;vertical-align:middle"><img src="${escapeHtml(mark)}" width="24" height="24" alt="" style="display:block;border:0;width:24px;height:24px"></td>`
+    : "";
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>${img}<td style="vertical-align:middle;font-family:${FONT};font-size:15px;font-weight:600;letter-spacing:-0.02em;color:${C.text}">Huntloop</td></tr></table>`;
+}
 
 interface Block {
   heading: string;
@@ -54,7 +85,7 @@ function render(block: Block): { html: string; text: string } {
               : escapeHtml(item.title)
           }</div>${
             item.detail
-              ? `<div style="font-size:13px;color:${C.muted};margin-top:2px">${escapeHtml(item.detail)}</div>`
+              ? `<div style="font-size:13px;color:${C.secondary};margin-top:2px">${escapeHtml(item.detail)}</div>`
               : ""
           }</td></tr>`,
         )
@@ -65,19 +96,19 @@ function render(block: Block): { html: string; text: string } {
 <body style="margin:0;padding:0;background:${C.canvas}">
 ${block.preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(block.preheader)}</div>` : ""}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.canvas}"><tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid ${C.line};border-radius:8px">
-<tr><td style="padding:28px 28px 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-<div style="font-size:13px;font-weight:600;color:${C.brand};letter-spacing:0.02em">Huntloop</div>
-<h1 style="font-size:20px;line-height:1.35;color:${C.text};margin:14px 0 12px">${escapeHtml(block.heading)}</h1>
-${block.paragraphs.map((p) => `<p style="font-size:14px;line-height:1.6;color:${C.text};margin:0 0 12px">${escapeHtml(p)}</p>`).join("")}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid ${C.line};border-radius:16px">
+<tr><td style="padding:28px 28px 8px;font-family:${FONT}">
+${header(block)}
+<h1 style="font-size:20px;line-height:28px;font-weight:600;color:${C.text};margin:20px 0 12px">${escapeHtml(block.heading)}</h1>
+${block.paragraphs.map((p) => `<p style="font-size:14px;line-height:20px;color:${C.text};margin:0 0 12px">${escapeHtml(p)}</p>`).join("")}
 ${list}
 ${
   block.cta
-    ? `<p style="margin:20px 0 24px"><a href="${escapeHtml(block.cta.href)}" style="display:inline-block;background:${C.brand};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 18px;border-radius:6px">${escapeHtml(block.cta.label)}</a></p>`
+    ? `<p style="margin:20px 0 24px"><a href="${escapeHtml(block.cta.href)}" style="display:inline-block;background:${C.brand};color:#ffffff;font-size:14px;font-weight:500;text-decoration:none;padding:10px 18px;border-radius:10px">${escapeHtml(block.cta.label)}</a></p>`
     : ""
 }
 </td></tr>
-<tr><td style="padding:16px 28px 24px;border-top:1px solid ${C.line};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="padding:16px 28px 24px;border-top:1px solid ${C.line};font-family:${FONT}">
 ${block.footer.map((f) => `<p style="font-size:12px;line-height:1.5;color:${C.muted};margin:0 0 6px">${escapeHtml(f)}</p>`).join("")}
 </td></tr></table></td></tr></table></body></html>`;
 

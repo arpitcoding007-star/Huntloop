@@ -4,6 +4,12 @@ description: The plan catalogue, the five metered quotas, which two are actually
 
 # Plans, quotas and billing
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Enforcement table is outdated (2026-10-08).** `check_quota_internal` now guards `opportunities` (at creation, in `score_opportunity`), `ai_runs`, `emails` (before each send, in `send_message`), `enrich` (inside `enrich_person`, which is unreachable) and `seats` (at invitation). There is still no payment path. See [PRD §14 BR-07](../spec/01-product-requirements.md).
+{% endhint %}
+
+
 > **Layer:** Product / Internal · **Audience:** product, leadership, engineering
 
 ## The catalogue
@@ -73,12 +79,20 @@ paid for a plan and cannot use it because a `SELECT` timed out.
 ### Why the check is never a substitute for the consume
 
 `checkQuota` renders "412 of 1,000 this month" and decides whether to *offer*
-an action. `consumeQuota` is what happens before the work. Between a check and
-a use, a second request can take the last unit.
+an action. It is a reading, not a reservation: between a check and a use, a
+second request can take the last unit.
 
-`increment_usage` **always increments, including when the answer is no** — the
-same reasoning as `consume_rate_limit`. A counter that stops counting once over
+Metering **always increments, including when the answer is no** — the same
+reasoning as `consume_rate_limit`. A counter that stops counting once over
 limit hides the overage exactly when somebody needs to see it.
+
+Who may meter is narrow. The engine meters everything, through
+`increment_usage_internal`, which only the service role can call. A signed-in
+session meters exactly one thing — one delivered AI run, via `increment_usage`
+from `countAiRun` — and only as a member or above. Since `0047` that function
+refuses any other metric or amount: a session that could add an arbitrary
+amount could lock its whole workspace out until the month ended, and no
+tenant role can reset a counter.
 
 ## Billing
 

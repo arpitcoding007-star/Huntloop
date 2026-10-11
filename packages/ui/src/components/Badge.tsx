@@ -30,7 +30,7 @@ export interface BadgeProps {
  * together, so this is one token name either way.
  */
 const VARIANTS: Record<BadgeVariant, string> = {
-  neutral: "bg-surface-active border-line text-fg-secondary",
+  neutral: "bg-surface-hover border-line text-fg-secondary",
   brand: "bg-brand-surface border-brand-border text-brand-text",
   // Borderless: the Meridian AI chip is a tint and a word, nothing else.
   ai: "bg-ai-surface border-transparent text-ai-text",
@@ -41,8 +41,8 @@ const VARIANTS: Record<BadgeVariant, string> = {
 };
 
 const DOTS: Record<BadgeVariant, string> = {
-  neutral: "bg-fg-muted",
-  brand: "bg-brand",
+  neutral: "bg-fg-faint",
+  brand: "bg-brand-vivid",
   ai: "bg-ai",
   success: "bg-success",
   warning: "bg-warning",
@@ -60,14 +60,13 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 border font-semibold whitespace-nowrap",
-        "tracking-[0.06em] uppercase",
-        /* Meridian chip: 18px at radius 5, 10px / 600 / .06em. A small
-           rounded rectangle rather than a pill — the design sets every tag,
-           from the sidebar AI chip to the evidence "Unknown", this way. */
-        size === "sm"
-          ? "h-[18px] rounded-[5px] px-1.5 text-[10px]"
-          : "h-[22px] rounded-[6px] px-2 text-[11px]",
+        /* The reference chip (board 04, "Badge"): a pill, 12px / 500, in
+           sentence case, with an optional 6px dot. `sm` is the same chip a
+           step smaller for table rows and the sidebar. The claim chips —
+           FACT / INFERENCE / UNKNOWN — stay in capitals; that is
+           ClaimBadge, not this. */
+        "inline-flex items-center gap-1.5 rounded-full border font-medium whitespace-nowrap",
+        size === "sm" ? "h-5 px-2 text-[11px]" : "h-6 px-2.5 text-[12px]",
         VARIANTS[variant],
         className,
       )}
@@ -78,7 +77,9 @@ export function Badge({
           className={cn("size-1.5 shrink-0 rounded-full", DOTS[variant])}
         />
       )}
-      {children}
+      {/* Sentence case without rewriting every caller: many pass a raw
+          status value ("active", "paused"), which reads as "Active". */}
+      <span className="inline-block first-letter:uppercase">{children}</span>
     </span>
   );
 }

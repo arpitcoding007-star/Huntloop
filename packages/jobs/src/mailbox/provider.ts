@@ -112,21 +112,38 @@ export function configuredProviders(): ProviderId[] {
  */
 export function buildMime(from: string, message: OutgoingMessage): string {
   const boundary = `hl_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  /*
+   * Every value below lands on a header line, and a CR or LF inside one ends
+   * that line and starts another: `hello\r\nBcc: x@y` adds a recipient that
+   * no suppression check ever saw (security audit lead 8). The subject can
+   * come from a model, an inbound email or a member's edit, so its control
+   * characters become spaces. The addresses and the unsubscribe URL have no
+   * legitimate reason to contain one, so they are refused outright.
+   */
+  if (!isSingleAddress(addressOf(from))) throw new Error("buildMime: the sender is not a single email address.");
+  if (!isSingleAddress(message.to)) throw new Error("buildMime: the recipient is not a single email address.");
   const headers: string[] = [
-    `From: ${from}`,
-    `To: ${message.to}`,
-    `Subject: ${encodeHeader(message.subject)}`,
+    `From: ${headerText(from)}`,
+    `To: ${message.to.trim()}`,
+    `Subject: ${encodeHeader(headerText(message.subject))}`,
     `MIME-Version: 1.0`,
   ];
 
-  if (message.inReplyTo) {
-    headers.push(`In-Reply-To: ${message.inReplyTo}`);
+  // A Message-ID is one `<…>` token. Anything else is dropped rather than
+  // sent: the reply loses its threading, which is recoverable.
+  const inReplyTo = message.inReplyTo?.trim();
+  if (inReplyTo && MESSAGE_ID.test(inReplyTo)) {
+    headers.push(`In-Reply-To: ${inReplyTo}`);
     // Both, because clients differ on which one they thread by. Sending only
     // In-Reply-To threads in Gmail and starts a new conversation in Outlook.
-    headers.push(`References: ${message.inReplyTo}`);
+    headers.push(`References: ${inReplyTo}`);
   }
 
   if (message.unsubscribeUrl) {
+    // eslint-disable-next-line no-control-regex -- the point is to refuse controls
+    if (!/^https?:\/\/[^\s<>"\x00-\x1f\x7f]+$/.test(message.unsubscribeUrl)) {
+      throw new Error("buildMime: the unsubscribe URL is not a plain URL.");
+    }
     headers.push(`List-Unsubscribe: <${message.unsubscribeUrl}>`);
     headers.push(`List-Unsubscribe-Post: List-Unsubscribe=One-Click`);
   }
@@ -152,6 +169,25 @@ export function buildMime(from: string, message: OutgoingMessage): string {
     `--${boundary}--`,
     "",
   ].join("\r\n");
+}
+
+// eslint-disable-next-line no-control-regex -- a Message-ID has no controls or spaces
+const MESSAGE_ID = /^<[^<>\s\x00-\x1f\x7f]+>$/;
+
+/**
+ * One address and nothing else: no display name, no list, no whitespace and
+ * no control characters. What `To:` carries, and all `can_contact` judged.
+ */
+export function isSingleAddress(value: string | null | undefined): boolean {
+  const v = (value ?? "").trim();
+  // eslint-disable-next-line no-control-regex -- the point is to refuse controls
+  return v.length <= 254 && /^[^\s@<>,;:"\x00-\x1f\x7f]+@[^\s@<>,;:"\x00-\x1f\x7f]+\.[^\s@<>,;:"\x00-\x1f\x7f]+$/.test(v);
+}
+
+/** Header text on one line: control characters (CR and LF among them) become spaces. */
+export function headerText(value: string): string {
+  // eslint-disable-next-line no-control-regex -- the point is to remove controls
+  return value.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/ {2,}/g, " ").trim();
 }
 
 /**

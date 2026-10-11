@@ -23,23 +23,13 @@ export interface ClaimBadgeProps {
   className?: string;
 }
 
-/* Meridian --fact / --inf / --unk: green = observed at a source, blue = a
-   model produced this, grey = nothing on file. The hue rides on the leading
-   mark, where it only has to clear 3:1; the word is always AA ink.
-
-   Unknown is a dashed outline rather than a grey fill — the design draws
-   every "not established" box that way, and a dashed edge says "a gap"
-   where a filled chip would say "a value". */
+/* The reference’s epistemic chips (boards 02 and 04): green = observed at a
+   source, the AI blue tint = a model produced this, grey = nothing on file.
+   Always the word, in capitals, so the colour is never the only carrier. */
 const STYLES: Record<ClaimKind, string> = {
-  fact: "bg-success-surface border-transparent text-success-text",
+  fact: "bg-success-surface border-success-border text-success-text",
   inference: "bg-ai-surface border-transparent text-ai-text",
-  unknown: "bg-transparent border-dashed border-line-strong text-fg-muted",
-};
-
-const MARKS: Record<ClaimKind, string> = {
-  fact: "bg-success",
-  inference: "bg-brand-vivid",
-  unknown: "border border-dashed border-fg-faint",
+  unknown: "bg-surface-hover border-line text-fg-secondary",
 };
 
 const MEANING: Record<ClaimKind, string> = {
@@ -58,14 +48,13 @@ export function ClaimBadge({
     <span
       title={MEANING[kind]}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-[5px] border font-semibold",
-        "tracking-[0.06em] whitespace-nowrap uppercase",
-        size === "sm" ? "h-[18px] px-1.5 text-[10px]" : "h-[22px] px-2 text-[11px]",
+        "inline-flex items-center gap-1.5 rounded-full border font-semibold",
+        "tracking-[0.08em] whitespace-nowrap uppercase",
+        size === "sm" ? "h-[18px] px-2 text-[10.5px]" : "h-[22px] px-2.5 text-[11px]",
         STYLES[kind],
         className,
       )}
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", MARKS[kind])} />
       <span className="sr-only">{MEANING[kind]}</span>
       <span aria-hidden>{kind}</span>
       {/* Confidence is a word, not a number. §16: "do not create fake

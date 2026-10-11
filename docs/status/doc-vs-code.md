@@ -6,6 +6,12 @@ description: >-
 
 # Documentation vs. code
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Partly superseded (2026-10-08).** This page reconciled documents against code on 2026-09-16. The newer reconciliation — including claims that were true then and are false now (heartbeat, quotas, erasure, counts) — is the Gap Report's contradiction register: [CON-01 … CON-15](../spec/07-specification-gap-report.md#3--what-is-contradictory-con).
+{% endhint %}
+
+
 > **Layer:** Internal · **Audience:** engineering, product, anyone reading the
 > older documents
 

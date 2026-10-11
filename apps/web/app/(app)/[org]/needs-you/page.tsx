@@ -74,7 +74,7 @@ export default async function NeedsYouPage({
               href={`/${org}/needs-you?filter=${f.value}`}
               aria-current={filter === f.value ? "page" : undefined}
               className={[
-                "hl-focusable rounded-[5px] px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
+                "hl-focusable rounded-sm px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
                 filter === f.value
                   ? "bg-brand-surface font-medium text-brand-text"
                   : "text-fg-muted hover:text-fg-secondary",

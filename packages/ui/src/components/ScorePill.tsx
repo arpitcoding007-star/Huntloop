@@ -40,7 +40,12 @@ export interface ScoreFactor {
 }
 
 export interface ScorePillProps {
-  score: number;
+  /**
+   * 0–100, or `null` when nothing has been measured. A null renders the
+   * reference’s dashed UNKNOWN pill — never a 0, which would read as "we
+   * checked and it is bad".
+   */
+  score: number | null;
   /**
    * Why this score. REQUIRED by design — §51 and §77 Principle 4 forbid
    * showing an unexplained model-produced number.
@@ -118,13 +123,6 @@ const BAND_SURFACE: Record<Band, string> = {
   excellent: "var(--hl-success-surface)",
 };
 
-const BAND_BORDER: Record<Band, string> = {
-  poor: "var(--hl-danger-border)",
-  fair: "var(--hl-warning-border)",
-  good: "var(--hl-success-border)",
-  excellent: "var(--hl-success-border)",
-};
-
 /* Was "Poor fit"…"Excellent fit", which mislabelled the composite as ICP fit
    alone. ICP fit is one of eight dimensions (§51) and §78 is explicit that a
    strong trigger must not drag a poor-fit company up — so the two readings
@@ -145,6 +143,33 @@ export function ScorePill({
   size = "md",
   className,
 }: ScorePillProps) {
+  if (score === null) {
+    return (
+      <HoverPanel
+        className={className}
+        label={`Score unknown. ${explanation}`}
+        width={288}
+        triggerClassName={cn(
+          "inline-flex items-center justify-center rounded-full border border-dashed border-line bg-surface-hover",
+          "font-semibold tracking-[0.06em] text-fg-secondary uppercase",
+          size === "sm" ? "h-5 px-2 text-[10.5px]" : "h-6 px-2.5 text-[11px]",
+        )}
+        panel={
+          <>
+            <span className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase">
+              Not scored
+            </span>
+            <span className="mt-2 block text-[12px] leading-[1.5] text-fg-secondary">
+              {explanation}
+            </span>
+          </>
+        }
+      >
+        Unknown
+      </HoverPanel>
+    );
+  }
+
   const b = band(score);
   const color = BAND_VAR[b];
 
@@ -156,21 +181,21 @@ export function ScorePill({
         confidence ? ` ${confidence} confidence.` : ""
       } ${explanation}`}
       width={288}
+      /* The reference pill (board 04): ink on its band’s tint, no outline. */
       triggerClassName={cn(
-        "hl-tabular inline-flex items-center justify-center rounded-full border font-semibold",
+        "hl-tabular inline-flex items-center justify-center rounded-full font-semibold",
         size === "sm"
-          ? "h-5 min-w-[28px] px-1.5 text-[11px]"
-          : "h-6 min-w-[34px] px-2 text-[12px]",
+          ? "h-5 min-w-[28px] px-2 text-[11px]"
+          : "h-6 min-w-[34px] px-2.5 text-[12px]",
       )}
       triggerStyle={{
         color: BAND_INK[b],
-        borderColor: BAND_BORDER[b],
         backgroundColor: BAND_SURFACE[b],
       }}
       panel={
         <>
           <span className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               {BAND_LABEL[b]}
             </span>
             <span className="hl-tabular text-[11px] font-semibold" style={{ color }}>

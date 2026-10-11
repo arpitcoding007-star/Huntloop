@@ -86,7 +86,7 @@ export function Narrative({
           </div>
           {result.narrative.suggestions.length > 0 && (
             <div>
-              <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Suggestions</p>
+              <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Suggestions</p>
               <ul className="mt-1 space-y-1.5">
                 {result.narrative.suggestions.map((line, i) => (
                   <li key={i}>

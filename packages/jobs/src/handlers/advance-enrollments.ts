@@ -36,7 +36,7 @@ import {
   type MessageEvidence,
 } from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
-import { asGuidance, resolvePreferences } from "@huntloop/db/preferences";
+import { asGuidance, asReference, resolvePreferences } from "@huntloop/db/preferences";
 import { isSendableEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
@@ -509,6 +509,7 @@ async function draftMessage(
       template: { subject: input.step.subject, body: input.step.body },
       evidence,
       guidance: guidance.lines,
+      reference: guidance.reference,
       competitors: competitors.list,
     });
 
@@ -639,7 +640,7 @@ export async function loadGuidance(
   opportunity: any,
   /** This draft's own instructions; highest precedence, never stored as memory. */
   temporary: string[] = [],
-): Promise<{ lines: string[]; memoryIds: string[] }> {
+): Promise<{ lines: string[]; reference: string[]; memoryIds: string[] }> {
   const sender = await senderOf(scope, opportunity?.owner_id ?? null);
   const resolved = await resolvePreferences(
     { from: (table: string) => ({ select: (columns: string) => scope.select(table, columns) }) },
@@ -665,7 +666,10 @@ export async function loadGuidance(
   if (memoryIds.length) {
     await scope.update("memories", { last_applied_at: new Date().toISOString() }).in("id", memoryIds);
   }
-  return { lines: [...voice, ...asGuidance(resolved)], memoryIds };
+  /* Pages and documents a member added are passed as reference material, not
+     as house style: the writer treats house style as overriding its rules,
+     and a third party's text must not get that rank (security audit lead 9). */
+  return { lines: [...voice, ...asGuidance(resolved)], reference: asReference(resolved), memoryIds };
 }
 
 /**

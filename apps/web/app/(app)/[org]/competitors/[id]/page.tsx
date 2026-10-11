@@ -206,7 +206,7 @@ function ProfileCard({
           return (
             <div key={claim}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">{label}</span>
+                <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">{label}</span>
                 {c && <ClaimBadge kind={c.kind} confidence={c.confidence ?? undefined} />}
               </div>
               <p className="mt-1 text-[13px] text-fg">{text || c?.note || "Could not be established from their site."}</p>
@@ -217,7 +217,7 @@ function ProfileCard({
 
         {profile.customerExamples.length > 0 && (
           <div>
-            <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Customers they name</span>
+            <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Customers they name</span>
             <p className="mt-1 text-[13px] text-fg">{profile.customerExamples.map((c) => c.value).join(" · ")}</p>
             <Sources claim={profile.claims.customer_examples} />
           </div>

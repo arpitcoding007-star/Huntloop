@@ -12,10 +12,15 @@ reasoning is worth reading in full.
 
 1. **"Why there is no `vercel.json` fixing this"** and **"What drives the tick,
    and why no cron is committed"** — written when the cron file had been removed
-   after a Hobby-plan deploy failure. **`apps/web/vercel.json` now exists** and
-   commits a one-minute cron. The argument about Hobby limits and about why a
-   daily cron would be a lie remains correct; only the statement that no file
-   exists is out of date. See [The heartbeat](operations/heartbeat.md).
+   after a Hobby-plan deploy failure. **Correction (2026-10-08):** a one-minute cron
+   was committed in `apps/web/vercel.json` on 2026-09-15 but was gone again by
+   commit `dd67aff` (2026-09-27); today `vercel.json` contains only `$schema`.
+   The committed driver is the GitHub Actions workflow `.github/workflows/tick.yml`
+   (every 5 minutes), which does nothing until the repository has a `CRON_SECRET`
+   secret and a `HUNTLOOP_URL` variable — and production reports no `CRON_SECRET`.
+   The argument about Hobby limits and about why a daily cron would be a lie
+   remains correct. See [The heartbeat](operations/heartbeat.md) and the
+   [Specification Pack](spec/README.md) (Gap Report DEF-01, CON-02).
 2. The **DB-02 backup** section still carries *"Status: not yet verified."* That
    is still true as of 2026-09-16. A restore has never been rehearsed.
 

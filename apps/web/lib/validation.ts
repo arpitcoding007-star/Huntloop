@@ -338,13 +338,22 @@ export const campaignSchema = z.object({
   status: z.enum(["draft", "active", "paused", "archived"]),
 });
 
+/**
+ * No line breaks or other control characters. A subject ends up on a raw
+ * MIME header line, where a line break starts a new header (security audit
+ * lead 8). The input is a single-line field, so only a crafted request hits
+ * this.
+ */
+// eslint-disable-next-line no-control-regex -- the point is to refuse controls
+const ONE_LINE = /^[^\x00-\x1f\x7f]*$/;
+
 export const sequenceStepSchema = z.object({
   id: uuidSchema.optional(),
   sequenceId: uuidSchema,
   position: z.number().int().min(0).max(50),
   kind: z.enum(["email", "wait", "condition"]),
   delayHours: z.number().int().min(0).max(24 * 365),
-  subject: z.string().trim().max(400).optional(),
+  subject: z.string().trim().max(400).regex(ONE_LINE, "A subject is one line.").optional(),
   body: z.string().trim().max(20_000).optional(),
 });
 
@@ -591,7 +600,12 @@ export const replyBodySchema = z
  * sending anything to anyone.
  */
 export const draftEditSchema = z.object({
-  subject: z.string().trim().min(1, "A message needs a subject.").max(200),
+  subject: z
+    .string()
+    .trim()
+    .min(1, "A message needs a subject.")
+    .max(200)
+    .regex(ONE_LINE, "A subject is one line."),
   body: z
     .string()
     .trim()

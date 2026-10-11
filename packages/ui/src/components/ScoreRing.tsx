@@ -11,8 +11,11 @@ export type ScoreRingSize = "sm" | "md" | "lg" | "xl";
 export type ScoreRingTone = "auto" | "neutral";
 
 export interface ScoreRingProps {
-  /** 0–100. Clamped. */
-  score: number;
+  /**
+   * 0–100, clamped — or `null` when nothing has been measured, which draws
+   * the reference’s dashed "?" ring. Never a 0.
+   */
+  score: number | null;
   /** 34 (card header) / 38 (table row) / 52 (detail) / 200 (hero figure). */
   size?: ScoreRingSize;
   /**
@@ -62,16 +65,47 @@ export function ScoreRing({
   className,
 }: ScoreRingProps) {
   const g = GEOMETRY[size];
-  const value = Math.round(Math.min(100, Math.max(0, score)));
   const c = g.box / 2;
+
+  if (score === null) {
+    return (
+      <svg
+        width={g.px}
+        height={g.px}
+        viewBox={`0 0 ${g.box} ${g.box}`}
+        role="img"
+        aria-label={label ?? "Score not measured"}
+        className={cn("shrink-0", className)}
+      >
+        <circle
+          cx={c}
+          cy={c}
+          r={g.r}
+          fill="none"
+          strokeWidth={g.stroke}
+          strokeDasharray={size === "xl" ? "12 12" : "3 3"}
+          className="stroke-line"
+        />
+        <text
+          x={c}
+          y={g.y}
+          textAnchor="middle"
+          fontSize={g.font}
+          fontWeight={600}
+          className="fill-fg-muted font-sans"
+        >
+          ?
+        </text>
+      </svg>
+    );
+  }
+
+  const value = Math.round(Math.min(100, Math.max(0, score)));
   const high = value >= SCORE_RING_THRESHOLD;
 
-  const track =
-    tone === "neutral"
-      ? "stroke-surface-active"
-      : high
-        ? "stroke-success-surface"
-        : "stroke-warning-surface";
+  /* One quiet track under every arc — the reference’s hairline — so the
+     arc’s length is the only thing that changes between a 61 and an 82. */
+  const track = tone === "neutral" ? "stroke-surface-active" : "stroke-line-subtle";
   const arc = tone === "neutral" ? "stroke-fg" : high ? "stroke-success" : "stroke-warning";
 
   return (

@@ -70,7 +70,7 @@ export function Field({
     <div className={className}>
       <label
         htmlFor={id}
-        className="block text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase"
+        className="block text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase"
       >
         {label}
         {required && (
@@ -95,7 +95,7 @@ export function Field({
       {error && (
         /* `role="alert"` so a failure that appears after submit is announced
            rather than silently rendered below the fold. */
-        <p id={errorId} role="alert" className="mt-1.5 text-[12px] text-danger">
+        <p id={errorId} role="alert" className="mt-1.5 text-[12px] text-danger-text">
           {error}
         </p>
       )}

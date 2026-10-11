@@ -93,15 +93,19 @@
 
   /* Opportunity priority */
   --color-hot: var(--hl-priority-hot);
+  --color-hot-dot: var(--hl-priority-hot-dot);
   --color-hot-surface: var(--hl-priority-hot-surface);
   --color-hot-border: var(--hl-priority-hot-border);
   --color-warm: var(--hl-priority-warm);
+  --color-warm-dot: var(--hl-priority-warm-dot);
   --color-warm-surface: var(--hl-priority-warm-surface);
   --color-warm-border: var(--hl-priority-warm-border);
   --color-watch: var(--hl-priority-watch);
+  --color-watch-dot: var(--hl-priority-watch-dot);
   --color-watch-surface: var(--hl-priority-watch-surface);
   --color-watch-border: var(--hl-priority-watch-border);
   --color-ignore: var(--hl-priority-ignore);
+  --color-ignore-dot: var(--hl-priority-ignore-dot);
   --color-ignore-surface: var(--hl-priority-ignore-surface);
   --color-ignore-border: var(--hl-priority-ignore-border);
 

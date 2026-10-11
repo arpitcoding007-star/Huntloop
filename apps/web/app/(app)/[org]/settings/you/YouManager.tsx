@@ -437,7 +437,7 @@ function PreferenceForm({
         )}
       </Field>
       <fieldset>
-        <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Use it for</legend>
+        <legend className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Use it for</legend>
         <p className="mt-0.5 text-[12px] text-fg-muted">Leave all unticked to use it everywhere.</p>
         <div className="mt-1.5 flex flex-wrap gap-3">
           {PREFERENCE_TASKS.map((t) => (

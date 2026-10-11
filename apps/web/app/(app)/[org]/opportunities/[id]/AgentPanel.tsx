@@ -135,7 +135,7 @@ export function AgentPanel({
             hedge buried in a paragraph the reader may skim past. */}
         {unresolved.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2.5">
-            <p className="text-[11px] font-medium tracking-label text-warning-text uppercase">
+            <p className="text-[11px] font-semibold tracking-label text-warning-text uppercase">
               Not established
             </p>
             <ul className="mt-1.5 space-y-1">

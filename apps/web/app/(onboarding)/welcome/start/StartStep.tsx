@@ -84,7 +84,7 @@ export function StartStep({ prefill, isAgency }: { prefill: string | null; isAge
         <div className="max-w-md">
           <label
             htmlFor="first-job-url"
-            className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
+            className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase"
           >
             Which company?
           </label>

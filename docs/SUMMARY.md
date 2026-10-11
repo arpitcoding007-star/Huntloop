@@ -6,6 +6,18 @@
 * [What Huntloop is](product/what-it-is.md)
 * [Implementation status](status/implementation-status.md)
 
+## Specification Pack (2026-10-08)
+
+* [Pack index and method](spec/README.md)
+* [1 · Product requirements](spec/01-product-requirements.md)
+* [2 · Technical requirements](spec/02-technical-requirements.md)
+* [3 · App flow](spec/03-app-flow.md)
+* [4 · Design brief](spec/04-design-brief.md)
+* [5 · Backend, database, schema](spec/05-backend-database-schema.md)
+* [6 · Implementation plan](spec/06-implementation-plan.md)
+* [7 · Specification gap report](spec/07-specification-gap-report.md)
+* [Generated schema reference](spec/generated/schema-reference.md)
+
 ## Product
 
 * [Vision and principles](product/vision-and-principles.md)

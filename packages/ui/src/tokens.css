@@ -7,8 +7,11 @@
    superseded.
 
    Both themes are Meridian (design/dir-prem.css and the two .dc.html comps
-   beside it): pure white paper, one electric blue, true-black #08090A
-   bands, hairline dividers, thin green score rings.
+   beside it): pure white paper, one electric blue, near-black #111111
+   bands, hairline dividers, thin green score rings. The October 2026
+   design reference (boards 01–04: logo, colour, type & layout,
+   components) restates every value below; where a component's shape
+   differs from those boards, the boards win.
    Dashboard semantics from Kima BD OS (stat grid, quota bars).
 
    ── One accent ──────────────────────────────────────────────────────────
@@ -149,7 +152,10 @@
      already read, and the badge always carries the word too, so the a11y
      floor ("never color alone") holds regardless of the overlap with
      --hl-danger. */
-  --hl-priority-hot: var(--hl-danger);
+  /* Word in the -text leaf, dot in the fill — the reference's chips: Hot
+     reads #AE1B22 beside a #C22F36 dot, Watch #0E57B1 beside #1A63BD. */
+  --hl-priority-hot: var(--hl-danger-text);
+  --hl-priority-hot-dot: var(--hl-danger);
   --hl-priority-hot-surface: var(--hl-danger-surface);
   --hl-priority-hot-border: var(--hl-danger-border);
 
@@ -158,8 +164,10 @@
   --hl-priority-warm: var(--hl-warning-text);
   --hl-priority-warm-surface: var(--hl-warning-surface);
   --hl-priority-warm-border: var(--hl-warning-border);
+  --hl-priority-warm-dot: var(--hl-warning);
 
-  --hl-priority-watch: var(--hl-info);
+  --hl-priority-watch: var(--hl-info-text);
+  --hl-priority-watch-dot: var(--hl-info);
   --hl-priority-watch-surface: var(--hl-info-surface);
   --hl-priority-watch-border: var(--hl-info-border);
 
@@ -168,6 +176,7 @@
      Meridian's --sunk, and 4.72 / 5.34 on this in light / dark. */
   --hl-priority-ignore-surface: var(--hl-surface-hover);
   --hl-priority-ignore-border: var(--hl-border-default);
+  --hl-priority-ignore-dot: var(--hl-text-faint);
 
   /* ── Score ramp — alias ──────────────────────────────────────────────── */
   --hl-score-poor: var(--hl-danger);       /*  0–39 */
@@ -513,10 +522,10 @@
   --hl-warning-text: #8f4801;
   --hl-success-text: #0a6743;
   --hl-info-text: #0e57b1;
-  /* 90+ shares the success surface, so it separates from --hl-success-text
-     by hue rather than by lightness. The pill carries the number and the
-     panel carries the word regardless. */
-  --hl-score-excellent-text: #00706b;
+  /* 90+ shares the success surface and takes the ramp's own 90+ green as
+     its ink (the reference's 93 pill): 5.7:1 on #E5F4ED. The pill carries
+     the number and the panel carries the word regardless. */
+  --hl-score-excellent-text: #0b6b50;
 
   /* ── Chart ramp — same order and intent as Dark's ────────────────────── */
   --hl-chart-1: #447afe;

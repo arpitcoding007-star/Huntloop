@@ -92,7 +92,7 @@ export function GoalsStep({
 
       <div className="mt-6 max-w-2xl">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             Mainly
           </span>
           <span className="hl-tabular text-[12px] text-fg-muted">
@@ -150,7 +150,7 @@ export function GoalsStep({
       </div>
 
       <fieldset className="mt-8 max-w-2xl">
-        <legend className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+        <legend className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
           How do you want to reach people?
         </legend>
         <p className="mt-1 text-[13px] text-fg-muted">

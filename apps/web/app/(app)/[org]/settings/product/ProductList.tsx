@@ -37,7 +37,7 @@ export function ProductList({
       {products.length > 0 && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <h2 className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               {products.length === 1 ? "Your product" : `Your products · ${products.length}`}
             </h2>
             {canWrite && !creating && (

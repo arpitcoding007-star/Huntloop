@@ -57,6 +57,11 @@ disagree.
 
 ***
 
+{% hint style="warning" %}
+<!-- SPEC-PACK-POINTER -->
+**The numbers below are from 2026-09-16 and are stale.** Current verified state (2026-10-08): 45 migrations · 79 tables · 98 functions · 34 job handlers (3 unreachable) · 16 AI tasks · 33 workspace pages · 1,480 passing assertions · 44 audit checks (1 warning). The accurate, cross-referenced description of the product — PRD, TRD, App Flow, Design Brief, Schema, Implementation Plan and a Gap Report — is the **[Product Specification Pack](spec/README.md)**.
+{% endhint %}
+
 ## Status at a glance
 
 {% hint style="info" %}

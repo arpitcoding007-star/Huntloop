@@ -6,6 +6,12 @@ description: >-
 
 # Implementation status
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Superseded (2026-10-08).** The counts and "what is unreachable" tables on this page were verified on 2026-09-16 against 28 migrations. The code now has **45 migrations, 79 tables, 98 functions, 34 job handlers (3 unreachable: `enrich_person`, `resolve_entity`, `purge_contact_data`), 16 AI tasks, ~137 Server Actions, 33 workspace pages and 1,480 passing assertions**. Several claims below are no longer true: all five plan quotas are enforced where reachable, GDPR erasure is reachable from Settings → Data & privacy, and `company_gaps` is read. Current status: [Specification Pack](../spec/07-specification-gap-report.md) (PRD §6, Gap Report §3–§4).
+{% endhint %}
+
+
 > **Layer:** Internal · **Audience:** everyone
 
 ## Method

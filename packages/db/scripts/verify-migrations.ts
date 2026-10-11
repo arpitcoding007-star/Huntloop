@@ -28,8 +28,11 @@ const SUPABASE_STUBS = `
 create schema if not exists auth;
 
 create table if not exists auth.users (
-  id    uuid primary key default gen_random_uuid(),
-  email text unique
+  id                 uuid primary key default gen_random_uuid(),
+  email              text unique,
+  -- Supabase sets this once the address is proven (magic link, OAuth). A
+  -- fixture user is a confirmed one unless a test says otherwise.
+  email_confirmed_at timestamptz default now()
 );
 
 create or replace function auth.uid()
@@ -754,29 +757,62 @@ console.log("\nUsage — metering accumulates, and reports rather than refuses")
   await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
 
   type Usage = { used: number; quota: number | null; allowed: boolean };
-  // Org A is on the default plan, `free`, whose emails limit is 0 — so this
-  // metric is over quota on its first unit, which is the boundary worth
-  // testing. `opportunities` is 50 and gives the accumulating case.
-  const one = await db.query<Usage>(
-    `select * from public.increment_usage($1, 'opportunities', 3)`,
-    [ORG_A_ID],
-  );
-  const two = await db.query<Usage>(
-    `select * from public.increment_usage($1, 'opportunities', 2)`,
-    [ORG_A_ID],
-  );
-  if (one.rows[0]!.used === 3 && two.rows[0]!.used === 5 && two.rows[0]!.quota === 50)
-    ok("usage accumulates within the period and resolves the plan's limit");
-  else fail("usage accumulates within the period", JSON.stringify([one.rows[0], two.rows[0]]));
+  // A session meters exactly one thing: one delivered AI run (countAiRun).
+  // Org A is on the default plan, `free`, whose ai_runs limit is 100.
+  const one = await db.query<Usage>(`select * from public.increment_usage($1, 'ai_runs', 1)`, [ORG_A_ID]);
+  const two = await db.query<Usage>(`select * from public.increment_usage($1, 'ai_runs')`, [ORG_A_ID]);
+  if (one.rows[0]!.used === 1 && two.rows[0]!.used === 2 && two.rows[0]!.quota === 100)
+    ok("a member's AI runs accumulate within the period and resolve the plan's limit");
+  else fail("a member's AI runs accumulate within the period", JSON.stringify([one.rows[0], two.rows[0]]));
 
-  const overshoot = await db.query<Usage>(
+  // 0047 (audit lead 2): one call used to be able to add any amount to any
+  // metric, which locked the whole workspace out until the month ended.
+  await expectRejectTx(
+    db,
+    "a session cannot meter more than one run at a time",
+    `select * from public.increment_usage($1, 'ai_runs', 1000000000000)`,
+    [ORG_A_ID],
+  );
+  await expectRejectTx(
+    db,
+    "a session cannot meter a metric the engine owns",
     `select * from public.increment_usage($1, 'emails', 1)`,
+    [ORG_A_ID],
+  );
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["22222222-2222-2222-2222-222222222222"]);
+  await expectRejectTx(
+    db,
+    "a viewer cannot meter at all",
+    `select * from public.increment_usage($1, 'ai_runs', 1)`,
+    [ORG_A_ID],
+  );
+
+  // Everything else is the engine's, through the internal half.
+  await db.exec("reset role");
+  const three = await db.query<Usage>(
+    `select * from public.increment_usage_internal($1, 'opportunities', 3)`,
+    [ORG_A_ID],
+  );
+  const five = await db.query<Usage>(
+    `select * from public.increment_usage_internal($1, 'opportunities', 2)`,
+    [ORG_A_ID],
+  );
+  if (three.rows[0]!.used === 3 && five.rows[0]!.used === 5 && five.rows[0]!.quota === 50)
+    ok("engine usage accumulates within the period and resolves the plan's limit");
+  else fail("engine usage accumulates within the period", JSON.stringify([three.rows[0], five.rows[0]]));
+
+  // `free`'s emails limit is 0, so this is over quota on its first unit —
+  // the boundary worth testing.
+  const overshoot = await db.query<Usage>(
+    `select * from public.increment_usage_internal($1, 'emails', 1)`,
     [ORG_A_ID],
   );
   if (overshoot.rows[0]!.allowed === false && overshoot.rows[0]!.used === 1)
     ok("a metric past its plan limit still counts, and says it is over");
   else fail("a metric past its plan limit still counts", JSON.stringify(overshoot.rows[0]));
 
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
   const peek = await db.query<Usage>(`select * from public.check_quota($1, 'opportunities')`, [
     ORG_A_ID,
   ]);
@@ -791,7 +827,7 @@ console.log("\nUsage — metering accumulates, and reports rather than refuses")
   await expectRejectTx(
     db,
     "a non-member cannot spend another org's quota",
-    `select * from public.increment_usage($1, 'opportunities', 1)`,
+    `select * from public.increment_usage($1, 'ai_runs', 1)`,
     [ORG_A_ID],
   );
   const blind = await db.query(`select * from public.check_quota($1, 'opportunities')`, [
@@ -851,10 +887,21 @@ console.log("\nUnsubscribe — a link that works without being signed in");
 {
   const ORG_A_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   await db.exec(`
-    insert into messages (id, org_id, direction, to_email, subject, unsubscribe_token)
+    insert into messages (id, org_id, direction, to_email, subject)
     values ('d0000000-0000-0000-0000-000000000001',
             'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'outbound', 'Reader@alphio.ai',
-            'Hello', 'a0000000-0000-0000-0000-0000000000ff');
+            'Hello');
+  `);
+  // 0047: every outbound message gets a token in a table no session can read.
+  const issued = await db.query<{ n: number }>(
+    `select count(*)::int as n from message_unsubscribe_tokens
+      where message_id = 'd0000000-0000-0000-0000-000000000001'`,
+  );
+  if (issued.rows[0]!.n === 1) ok("an outbound message is issued an unsubscribe token");
+  else fail("an outbound message is issued an unsubscribe token", JSON.stringify(issued.rows[0]));
+  await db.exec(`
+    update message_unsubscribe_tokens set token = 'a0000000-0000-0000-0000-0000000000ff'
+     where message_id = 'd0000000-0000-0000-0000-000000000001';
   `);
 
   // No role set, no auth.uid(): exactly the context a click from an email has.
@@ -880,6 +927,14 @@ console.log("\nUnsubscribe — a link that works without being signed in");
       "an unsubscribe suppresses the address and records the event",
       JSON.stringify([r.rows[0], suppressed.rows[0], evented.rows[0]]),
     );
+
+  await db.query(`select * from public.record_unsubscribe('a0000000-0000-0000-0000-0000000000ff')`);
+  const replayed = await db.query<{ count: number }>(
+    `select count(*)::int as count from message_events
+      where message_id = 'd0000000-0000-0000-0000-000000000001' and kind = 'unsubscribed'`,
+  );
+  if (replayed.rows[0]!.count === 1) ok("following the link again records no second event");
+  else fail("following the link again records no second event", JSON.stringify(replayed.rows[0]));
 
   await expectReject(
     db,
@@ -2966,6 +3021,8 @@ console.log("\n0031 — tenant write hardening");
   for (const fn of [
     "public.merge_duplicate_evidence(uuid, text, uuid)",
     "public.prune_rate_limits(interval)",
+    /* 0046: returned any workspace's plan limits to any caller. */
+    "public.usage_limit(uuid, text)",
   ]) {
     const r = await db.query<{ can: boolean }>(
       `select has_function_privilege('authenticated', $1, 'execute') as can`,
@@ -2974,6 +3031,12 @@ console.log("\n0031 — tenant write hardening");
     if (!r.rows[0]!.can) ok(`authenticated cannot execute ${fn}`);
     else fail(`authenticated cannot execute ${fn}`, "execute granted");
   }
+
+  // 0046: the quota a member can read still resolves its limit through
+  // `usage_limit`, now that sessions cannot call that function themselves.
+  const quota = await asUser(OWNER_A, `select * from public.check_quota($1, 'opportunities')`, [ORG_A]);
+  if (!quota.error && quota.rows.length === 1) ok("a member's check_quota still resolves after 0046");
+  else fail("a member's check_quota still resolves after 0046", quota.error ?? "no row");
 
   // SEC-002: an admin cannot take or strip the owner role.
   const selfPromote = await asUser(

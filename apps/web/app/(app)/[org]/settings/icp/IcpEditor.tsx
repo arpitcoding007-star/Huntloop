@@ -487,7 +487,7 @@ function IcpForm({
             appears nowhere in the product is one nobody can account for. */}
         {icp && icp.alsoOnProfile.length > 0 && (
           <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2.5">
-            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               Also on this profile
             </p>
             <p className="mt-1 text-[12px] leading-[1.5] text-fg-muted">
@@ -758,7 +758,7 @@ function PresetField({
 
   return (
     <fieldset>
-      <legend className="block text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase">
+      <legend className="block text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase">
         {label}
       </legend>
       <div className="mt-1.5 flex flex-wrap gap-1.5">

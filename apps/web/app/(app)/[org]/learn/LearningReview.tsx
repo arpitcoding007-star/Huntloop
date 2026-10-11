@@ -327,7 +327,7 @@ function FindingCard({
 
         {finding.citations.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <span className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               Based on
             </span>
             {finding.citations.map((c) =>
@@ -444,7 +444,7 @@ function Proposal({ proposal }: { proposal: NonNullable<LearningFinding["proposa
   if (proposal.type === "memory") {
     return (
       <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2">
-        <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+        <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
           Accepting adds this to Memory
         </p>
         <p className="mt-1 text-[13px] text-fg">{proposal.content}</p>
@@ -454,7 +454,7 @@ function Proposal({ proposal }: { proposal: NonNullable<LearningFinding["proposa
 
   return (
     <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2">
-      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+      <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
         Accepting creates this rule, inactive
       </p>
       <p className="mt-1 text-[13px] font-medium text-fg">{proposal.name}</p>

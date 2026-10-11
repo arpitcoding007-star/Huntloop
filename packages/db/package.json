@@ -25,8 +25,10 @@
     "typecheck": "tsc --noEmit",
     "seed": "node --experimental-strip-types scripts/seed.ts",
     "doctor": "node --experimental-strip-types scripts/doctor.ts",
-    "test": "npm run test:migrations && npm run test:rules && npm run test:pure && npm run check:admin-imports",
+    "test": "npm run test:migrations && npm run test:security-leads && npm run test:rules && npm run test:pure && npm run check:admin-imports && npm run check:schema-reference",
+    "check:schema-reference": "node --experimental-strip-types scripts/schema-reference.ts --check",
     "test:migrations": "node --experimental-strip-types scripts/verify-migrations.ts",
+    "test:security-leads": "node --experimental-strip-types scripts/verify-security-leads.ts",
     "check:admin-imports": "node --experimental-strip-types scripts/check-admin-imports.ts",
     "test:rules": "node --experimental-strip-types scripts/verify-rules.ts",
     "test:pure": "node --experimental-strip-types scripts/verify-pure.ts"

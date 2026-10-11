@@ -162,7 +162,7 @@ export function nextAction(input: NextActionInput): NextAction {
     };
   }
 
-  const inputs = [`Priority: ${input.priority.toUpperCase()}`, input.hasBuyer ? "Decision maker identified" : "No decision maker yet"];
+  const inputs = [`Priority: ${input.priority.charAt(0).toUpperCase()}${input.priority.slice(1)}`, input.hasBuyer ? "Decision maker identified" : "No decision maker yet"];
   if (input.priority === "hot") inputs.push(input.hasTrigger ? "Dated trigger on file" : "No dated trigger");
   return {
     text: legacyRecommendation(input.priority, input.hasBuyer, input.hasTrigger),

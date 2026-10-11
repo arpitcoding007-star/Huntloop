@@ -156,7 +156,7 @@ export default async function UseCasePage({
         </section>
 
         <nav aria-label="Other use cases" className="mt-14 border-t border-line-subtle pt-6">
-          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             Also for
           </p>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2">

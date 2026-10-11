@@ -4,7 +4,7 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
-> Last full sync: **2026-10-08** against `main` at release **0.1.0** (P0–P6 of §16, §16.3-K, §16.3-L L1–L12; migrations through `0045`, all applied to production). Release notes: [CHANGELOG.md](CHANGELOG.md).
+> Last full sync: **2026-10-12** on `feat/personal-learning` — release **0.1.0** (P0–P6 of §16, §16.3-K, §16.3-L L1–L12) plus the unreleased work in [CHANGELOG.md](CHANGELOG.md), including the 2026-10-11 security audit's fixes. Migrations through `0047`; production has through `0045`, and `0046`–`0047` are not applied there yet.
 >
 > **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.
 
@@ -66,7 +66,7 @@ flowchart TD
 ```
 
 - **Public prefixes** (no session needed): `/login`, `/signup`, `/auth`, `/kitchen-sink`, `/api/csp-report`, `/unsubscribe`, `/api/unsubscribe`, `/discover`, `/for`, `/compare`, `/privacy`, `/terms`, `/acceptable-use`, `/opengraph-image`, `/apple-icon`, `/api/jobs/tick`, `/api/inngest`, `/api/health`, `/dev/onboarded`, and `/` itself.
-- **Protected shapes** (`lib/protected-routes.ts`): `/orgs*`, `/welcome*`, `/invite*`, `/api*`, and `/{org}/{section}` where section ∈ analytics, analyze, companies, dashboard, imports, inbox, intelligence, learn, memory, opportunities, ops, outreach, pipeline, settings, sources, team. Anything else anonymous → 404 page (not a login wall).
+- **Protected shapes** (`lib/protected-routes.ts`): `/orgs*`, `/welcome*`, `/invite*`, `/api*`, and `/{org}/{section}` where section ∈ analytics, analyze, assistant, companies, competitors, dashboard, demand, imports, inbox, intelligence, learn, memory, needs-you, opportunities, ops, outreach, performance, pipeline, settings, sources, team (`WORKSPACE_SECTIONS`, 21 entries). Anything else anonymous → 404 page (not a login wall).
 - **`?next=`** is path-only and re-validated by `lib/safe-next.ts` on consumption (no open redirect).
 - Every response carries a per-request CSP nonce and `Reporting-Endpoints: csp-endpoint="/api/csp-report"`.
 
@@ -89,8 +89,6 @@ Used by the auth callback, `/dev/onboarded`, the landing page CTAs (`continueTar
 `continueTarget()` converts this to the single CTA a signed-in visitor sees on public pages: `new-user` → "Continue setup" (`/welcome`); `choose` → "Open workspace" (`/orgs`); `workspace` unfinished → "Continue setup" (`stepPath(org, step)`); finished → "Open workspace" (`/{org}/dashboard`); anonymous/demo → none (Sign in + Start free shown instead).
 
 `stepPath(org, step)`: you → `/welcome?org=`, company → `/welcome/company?org=`, goals → `/welcome/goals?org=`, icp → `/welcome/icp?org=`, sources → `/welcome/sources?org=`, building → `/welcome/building?org=`, review → `/welcome/review?org=`, done → `/{org}/dashboard`.
-
-> ⚠️ **FLOW MISMATCH M-03** — `resolveDestination(preferredSlug)` supports a remembered workspace (`huntloop.org` cookie) but **no caller passes it**, so multi-workspace users land on `/orgs` on every sign-in. See §14.
 
 ### 0.4 Session-dependent behaviour summary
 
@@ -256,7 +254,7 @@ All public pages are reachable without a session. Signed-in visitors see the sam
 
 ### 2.1 Landing page `/` (`app/(marketing)/page.tsx`)
 
-**Reached from:** direct/SEO, every "Huntloop" logo link, account menu "Huntloop home page", error pages "Go to the home page", legal "← Huntloop", 503 page, onboarding header logo.
+**Reached from:** direct/SEO, every "Huntloop" logo link (including the legal pages' and the invitation page's mark + wordmark), account menu "Huntloop home page", error pages "Go to the home page", 503 page, onboarding header logo.
 
 #### Sticky nav
 | Element | Action → Destination | Notes |
@@ -335,6 +333,9 @@ flowchart TD
   E -- "model refused / failed" --> ERR
 ```
 
+- **What is read:** only `https://{domain}/`, built from the domain the reading is cached under — never the visitor's own path, query or fragment, and never a host the key does not name (`www.www.…`). The reading is served to every later visitor and claimed at sign-up by that company, so the key alone decides it.
+- **Limits:** each paid lookup is reserved before the model is called (`reserve_public_research`, `0047`): 5 per source per hour, `PUBLIC_RESEARCH_DAILY_LIMIT` (default 200) across all sources per day. A lookup that fails after starting still counts. If the reservation cannot be made at all, the lookup is refused ("We can't read sites without an account just now…") rather than run unmetered. Expired readings are swept daily (pg_cron `purge-expired-research`).
+
 **Header:** logo → `/` · ThemeToggle · **Sign in** → `/login`.
 
 **Result page elements:**
@@ -349,8 +350,6 @@ flowchart TD
 | **Create a free account** | → `/signup?d={domain}` (or `/signup`) |
 | "Or try another address:" DomainInput (md) | → `/discover?d=` again |
 
-> ⚠️ **FLOW MISMATCH M-10** — on the error page, and on `/for/*` and `/compare/*`, DomainInput always targets `/discover` even when anonymous research is switched off, so "try another address" loops back to the same refusal. See §14.
-
 `robots: noindex`.
 
 ### 2.4 Use-case pages `/for/{useCase}` and comparison pages `/compare/{approach}`
@@ -361,7 +360,7 @@ flowchart TD
 - **Footer nav:** `/for/*`: "Also for" → the other three `/for/*` pages. `/compare/*`: "Also compared to" → other three `/compare/*`; "Or by what you do" → all four `/for/*`.
 
 ### 2.5 Legal pages `/privacy`, `/terms`, `/acceptable-use` (`LegalPage`)
-- **Elements:** "← Huntloop" → `/` · ThemeToggle · `/terms` body links to `/privacy` and `/acceptable-use`.
+- **Elements:** Huntloop mark + wordmark → `/` · ThemeToggle · `/terms` body links to `/privacy` and `/acceptable-use`.
 - **Branch:** until every fact in `lib/legal.ts` is supplied, a "Draft — not in force" warning is shown, the pages are `noindex`, and they are **not linked** from the landing footer, pricing section, or sign-up form.
 
 ### 2.6 503 "temporarily unavailable" page (production, DB not ready)
@@ -371,7 +370,7 @@ Plain HTML from `proxy.ts`; single link **Back to the home page** → `/`. Serve
 
 ## 3. Authentication
 
-Magic-link (email OTP) only. Google OAuth code exists (`signInWithGoogle`) but its button is **not rendered** ("temporarily hidden for testing").
+Magic-link (email OTP) is the default. Google OAuth exists (`signInWithGoogle`); its button is rendered only when `NEXT_PUBLIC_AUTH_GOOGLE=true` (and Supabase's Google provider is enabled).
 
 ### 3.1 `/login` — Sign in
 **Reached from:** landing/nav "Sign in", `/discover` header, footer, proxy guard (`/login?next=/path`), sign-out (303), auth callback errors, account menu (demo "Sign in"), `/welcome` when session missing (`/login?next=/welcome`).
@@ -388,10 +387,8 @@ Magic-link (email OTP) only. Google OAuth code exists (`signInWithGoogle`) but i
 - **Supabase not configured:** form replaced by warning note ("Supabase is not configured" locally / "Sign-in isn't available here yet" in production) + **open the Command Center** → `/demo/dashboard`.
 - **Invalid email** → inline `role=alert` validation message.
 - **Supabase error** → "That didn't work. Check the address and try again."
-- **Success** → form replaced by "Check your email … If an account can be created or found for {email}, a sign-in link is on its way. It expires in an hour." (enumeration-safe; **no resend / change-address control** — reload the page to retry).
+- **Success** → form replaced by "Check your email … If an account can be created or found for {email}, a sign-in link is on its way. It expires in an hour." (enumeration-safe; the state offers **Resend** and **Use a different address**).
 - Signed-in users visiting `/login` still see the form (no redirect).
-
-> ⚠️ **FLOW MISMATCH M-01** — `/auth/callback` redirects failures to `/login?error=missing_code|invalid_link` (and `signInWithGoogle` to `?error=oauth`), but the login page **never reads `error`**, so an expired/used link lands silently on a blank sign-in form. See §14.
 
 ### 3.2 `/signup` — Create account
 Same `AuthForm` with `mode=signup` (`shouldCreateUser: true`), button **Create account**.
@@ -468,8 +465,6 @@ Steps 3–7 **require `?org=`**; without it the page redirects to `/welcome/comp
 
 Branches: field errors under each field; general error `role=alert`; "Saving…".
 
-> ⚠️ **FLOW MISMATCH M-02** — `/welcome?new=1` ("Create another workspace" on `/orgs`, "Set up another client" dashboard action) renders this step, but `saveYou` ignores `new` and forwards to the **existing** workspace, so a second workspace cannot be created through the UI. See §14.
-
 ### 4.1b First job — "What do you want to get done first?" `/welcome/start[?new][&d]`
 **Server branches:** no session → `/login?next=/welcome`; profile has no role → `/welcome`; a membership exists and no `?new` → forwarded as `/welcome` would. No progress bar (it is a fork, not a step).
 
@@ -506,8 +501,6 @@ Phases: **input → researching → review → saving**.
 | Worked-example warning | Shown when no model configured |
 | **Looks right — continue** | SA `saveCompanyAction(slug, understanding, liveSeal)` (live flag verified by HMAC seal) → `router.push(/welcome/goals?org={slug})`. Error → message, stays on review |
 
-> ⚠️ **FLOW MISMATCH M-08** — after the first research creates a workspace, **Start over** + a *different* domain calls `createWorkspace` again (the component passes the `org` prop, not the slug it just created), producing a second, orphaned workspace. See §14.
-
 ### 4.3 Step 3 — "What do you want Huntloop to do?" `/welcome/goals?org=`
 | Element | Action |
 |---|---|
@@ -516,8 +509,6 @@ Phases: **input → researching → review → saving**.
 | **Continue** (disabled until ≥1 goal and a channel) | SA `saveGoals` → `router.push(/welcome/icp?org=)`; error inline |
 
 Goals and channel drive dashboard section order, lead sentence and first-action suggestion (§6), and the Review screen's secondary CTA (§4.7).
-
-> ⚠️ **FLOW MISMATCH M-09** — revisiting Goals (via Back or a progress dot) shows an **empty** form rather than the saved answers; revisiting ICP **re-drafts with the model** instead of loading the saved profile. See §14.
 
 ### 4.4 Step 4 — "Who should we hunt for?" `/welcome/icp?org=`
 On mount runs SA `draftIcpAction(org)` once (from stored research).
@@ -570,8 +561,6 @@ Client runs SA `runStageAction(org, stage)` sequentially for **discover → enri
 | Nothing-found panel: **Adjust my profile** | → `/welcome/icp?org=` |
 | Nothing-found panel: **Import my own list** | → `/{org}/imports` (§7.4) |
 
-> ⚠️ **FLOW MISMATCH M-05** — "Skip — I'll wait in the workspace" goes to the **Review** step, not the workspace; and because stages are driven by the page, leaving it stops the remaining first-run stages (the copy says "This carries on without you"). See §14.
-
 ### 4.7 Review `/welcome/review?org=`
 | Element | Shown when | Action |
 |---|---|---|
@@ -582,9 +571,6 @@ Client runs SA `runStageAction(org, stage)` sequentially for **discover → enri
 | **Connect a mailbox** | goals include reach_out | → `/{org}/settings` |
 | **Import my accounts** | goals include qualify (not reach_out) | → `/{org}/imports` |
 | **Invite a teammate** | neither | → `/{org}/team` |
-
-> ⚠️ **FLOW MISMATCH M-04** — "Connect a mailbox" links to General settings, but mailbox connection lives on **Outreach** (`/{org}/outreach`). See §14.
-> ⚠️ **FLOW MISMATCH M-06** — if `finishOnboarding` fails, the explanatory note is set and then immediately navigated away from, so it is never seen. See §14.
 
 ---
 
@@ -601,8 +587,6 @@ Client runs SA `runStageAction(org, stage)` sequentially for **discover → enri
 | **Finish setup** (unfinished only) | → `stepPath(slug, step)` |
 | **Open** | → `/{slug}/dashboard` |
 | **Create another workspace** | → `/welcome?new=1` (see M-02) |
-
-> ⚠️ **FLOW MISMATCH M-03** — the page says choosing a workspace remembers it, but **Open** is a plain link that writes nothing; only `finishOnboarding` writes `huntloop.org`, and no resolver reads it. See §14.
 
 ---
 
@@ -650,9 +634,9 @@ Section order and the lead sentence follow the person's role and **goals — the
 
 | Section | Elements → Destination |
 |---|---|
-| **counts** (Priority) | StatCards Hot / Warm / Watch / Ignore → `/{org}/opportunities?priority=hot\|warm\|watch\|ignore` (pre-filters the table, §7.1) |
+| **counts** (Priority) | StatCards Hot / Warm / Watch / Ignore, each ending **Open the list →** → `/{org}/opportunities?priority=hot\|warm\|watch\|ignore` (pre-filters the table, §7.1) |
 | **whyNow** | Per untriaged opportunity: **company name** → `/{org}/opportunities/{id}`; PriorityBadge & ScorePill (hover panels); **Evidence (n)** disclosure → EvidenceList (source links) or "Nothing is attributed…". **Empty:** "Nothing is waiting for a verdict" + first-action button (below) |
-| **loop** (Loop this week / Outcomes) | Discovered → `/opportunities` · Researched → `/companies` · Contacted → `/outreach` · Replied → `/inbox` · Meetings → `/pipeline` · Won → `/pipeline` · Companies known → `/companies` |
+| **loop** (Loop this week / Outcomes) | Whole card is the link; its last line names where it goes ("Open opportunities →", "Open inbox →", …): Discovered → `/opportunities` · Researched → `/companies` · Contacted → `/outreach` · Replied → `/inbox` · Meetings → `/pipeline` · Won → `/pipeline` · Companies known → `/companies` |
 | **capacity** | QuotaBars (mailbox sending capacity) — only when mailboxes exist; static |
 | **signals** | "Signals by type", "Source performance" breakdowns — static; empty copy when none |
 
@@ -847,7 +831,7 @@ flowchart LR
 | Preview card | Rows read / usable / skipped, warnings (no domain, column-count mismatch, >1,000 truncated), "Columns recognised" badges, "Not recognised, and not imported", first 8 rows table (scroll region) |
 | **Import {n} companies** | SA `importCsvAction` → "What happened" card (Companies added / Already on your list / People added / Email addresses / Skipped) + message. `usable = 0` → aria-disabled with reason |
 
-Server-side refusals: no rows, no company column, company without domain column. Existing companies are not overwritten. **Endpoint:** companies on `/companies`; the engine researches/scores them on following ticks.
+Server-side refusals: no rows, no company column, company without domain column. Existing companies are not overwritten. An email cell that is not one valid address is not stored as an address (the person is still imported, and counted under People but not Email addresses): it would become a recipient later, and a quoted cell can carry a line break into a mail header. **Endpoint:** companies on `/companies`; the engine researches/scores them on following ticks.
 
 ---
 
@@ -930,7 +914,7 @@ Rows: outbound touches with an opportunity — `email_sent`, `message`, `call`, 
 | Element | Action |
 |---|---|
 | **Approve** | SA `approveMessageAction` (as before); disabled with reason when no recipient |
-| **Edit** → Subject / Body → **Save changes** / **Cancel** | SA `editDraftAction`: keeps recipient/step/evidence; stores the AI original once (`original_subject`/`original_body_text`), `edited_by/at`; stays unapproved — "Saved. It still waits for your approval." An AI draft's edit is also measured (`editFeatures`: words, greeting, sign-off, bullets, exclamation marks, deleted phrases) into a `draft_edited` signal (K3) |
+| **Edit** → Subject / Body → **Save changes** / **Cancel** | SA `editDraftAction` (subject one line — "A subject is one line." — and ≤ 200 characters): keeps recipient/step/evidence; stores the AI original once (`original_subject`/`original_body_text`), `edited_by/at`; stays unapproved — "Saved. It still waits for your approval." An AI draft's edit is also measured (`editFeatures`: words, greeting, sign-off, bullets, exclamation marks, deleted phrases) into a `draft_edited` signal (K3) |
 | **QuestionCard** above the queue (§1.1.10, surface `inbox`) | Only while drafts are waiting |
 | **Redraft with a note** (AI drafts in a campaign) → What should change? → **Redraft** / **Cancel** | SA `redraftAction`: puts the enrollment back on the draft's step with `enrollments.redraft_note`, withdraws the draft, records a `draft_regenerated` signal → "Redrafting with your note. The new draft appears here within a few minutes." The engine's next tick writes the step again with the note as a **task-only instruction** (highest precedence, never a memory) and clears it. Without `0044`: refused with a sentence, nothing withdrawn |
 | **Written with N preferences** (disclosure; shown when the draft recorded `applied_memory_ids`, `0044`) | Lists each preference the writer was given: the viewer's own ("Yours" / "Learned about you") with **Not here** (SA `dismissAppliedAction` — one contradiction + an `applied_dismissed` signal) and **Stop using it** (SA `setPreferenceStatusAction` → paused); workspace ones labelled "Workspace"; the sender's private ones counted only ("N of the sender's personal preferences — private to them"); **Manage your preferences** → `/{org}/settings/you`. Drafts are written with the sender's preferences: the opportunity owner, or a one-person workspace's member (`loadGuidance`) |
@@ -1031,7 +1015,7 @@ The "tighten-icp" nudge's promise is kept on ICP settings (§10.3): **Suggested 
 | Element | Action |
 |---|---|
 | Figures You wrote / Huntloop concluded | Static |
-| **Add a document** (`canWrite`) | IngestForm: toggle **From a link** / **From a file** · Address (URL) *or* File — PDF, Word (.docx), .txt/.md/.csv, ≤ 4 MB. Text files are read in the browser; PDF/DOCX are posted to `POST /api/memory/extract` (writers only; type judged by magic bytes, not the declared type; zip-bomb bounded; stores nothing), which returns their text. A scanned PDF with no text layer is refused with "Paste the text instead". The text appears in an editable **What will be stored** box ("Reading {file}…" while extracting) · Label · Tags (comma) → **Store it** (SA `ingestMemoryAction`, "Reading…"; disabled until URL/text) · **Cancel** |
+| **Add a document** (`canWrite`) | IngestForm: toggle **From a link** / **From a file** · Address (URL) *or* File — PDF, Word (.docx), .txt/.md/.csv, ≤ 4 MB. Text files are read in the browser; PDF/DOCX are posted to `POST /api/memory/extract` (writers only; type judged by magic bytes, not the declared type; zip-bomb bounded; stores nothing), which returns their text. A scanned PDF with no text layer is refused with "Paste the text instead". A PDF is measured before it is read and refused, with a sentence saying what to do, when its compressed streams expand past 64 MB, when it is password-protected or uses LZW compression (neither can be measured), when it has more than 500 pages, or when reading it passes 20 s (the route's `maxDuration` is 30 s). What is stored from a link or a file reaches the message writer as **reference material** — what the sender's pages say — never as house style, which the writer ranks above its own rules. The text appears in an editable **What will be stored** box ("Reading {file}…" while extracting) · Label · Tags (comma) → **Store it** (SA `ingestMemoryAction`, "Reading…"; disabled until URL/text) · **Cancel** |
 | **Add a memory** (`canWrite`) | MemoryForm: **Who this applies to** (organization / team / user / account / opportunity, with help text) · **Subject** (filterable picker of companies / opportunities, required for non-org scopes; for **user** the only choice is yourself — a personal memory is private to its person, admins included (`0044`), and `saveMemoryAction` refuses one written for a colleague with "A personal memory can only be about you."; `team` is offered only on a memory that already has it) · Label · **What to remember**\* → **Add memory** (SA `saveMemoryAction`) · **Cancel** |
 | Memory card **Edit** (user-written only) | Swaps to MemoryForm → **Save memory** |
 | **Remove this memory** ConfirmButton | SA `deleteMemoryAction` → "Memory removed. The agent will stop using it." |
@@ -1125,9 +1109,6 @@ Fields: Name\*, Website, What it does, Value propositions (one per line), Proof 
 
 Note the free-text Company sizes / Regions here vs. fixed option chips in onboarding (§4.4) — values typed here may not match the provider's size bands.
 
-> ⚠️ **FLOW MISMATCH M-13** — after **Create ICP** succeeds, the editor stays in "Define your ICP" create mode (local `creating` state is never cleared), personas stay hidden, and pressing the button again creates a duplicate ICP. See §14.
-> ⚠️ **FLOW MISMATCH M-14** — creating the first (auto-active) ICP here does **not** call `followActiveIcp`, so no discovery search exists until the user edits it, activates another, or presses "Hunt now". See §14.
-
 ### 10.4 Scoring `/{org}/settings/scoring`
 **Reached from:** Settings panel, onboarding review "Read the proposed rules", Learn (approved rule link), dashboard first action (learn goal).
 
@@ -1142,8 +1123,6 @@ Note the free-text Company sizes / Regions here vs. fixed option chips in onboar
 | **Remove {name}** ConfirmButton | SA `deleteRuleAction` → "Rule removed." |
 
 **RuleForm:** Name\* · **When** (Headcount, Industry, Country, Region, Business model, What they say they do, Technology, Company name, Domain, Something Huntloop observed, Kind of signal seen, The qualifier's score/priority) · **Test** (is exactly / mentions / is at least / is at most / is known / is not known) · Value (hidden for known/not known) — or, for multi-condition rules, a read-only condition summary · **Then** (Adjust the score / Treat it as at least… / Never consider it) · Points (−40…40) or At least (Hot/Warm/Watch) · Group under (screen label only) · Why → **Save** (SA `saveRuleAction`) · **Test it** (SA `previewRuleAction` against the 50 most recently scored opportunities; company facts only) · **Cancel**.
-
-> ⚠️ **FLOW MISMATCH M-15** — the RuleForm header says "Saved switched off. Nothing changes until you turn it on.", but editing a **running** rule saves it still active, so the change applies immediately. Only new rules are saved off. See §14.
 
 ### 10.5 Sources `/{org}/sources` (Company section of the nav)
 **Reached from:** Company rail "Sources", dashboard header "Sources", dashboard first action (default), action rail "sources are failing", opportunities empty state "Review sources", Learn citations, jump-to.
@@ -1240,9 +1219,9 @@ Empty states: "Nothing yet" (with examples) for You told us; "Nothing learned ye
 
 | Element | Shown when | Action |
 |---|---|---|
-| **Asking to join** card: email, "Asked {age}", **Decline** / **Approve** | Admin and pending join requests exist (from §4.2 JoinExisting) | SA `declineJoinAction` / `approveJoinAction` (`approve_join_request` RPC → membership as **member**); row disappears; inline error on failure |
+| **Asking to join** card: email, "Asked {age}", **Decline** / **Approve** | Admin and pending join requests exist (from §4.2 JoinExisting) | SA `declineJoinAction` / `approveJoinAction` (`approve_join_request` RPC → membership as **member** — also for a removed owner or admin coming back, `0047`; un-deleting an owner row directly needs an owner); row disappears; inline error on failure |
 | **Invite** (header) | Admin | Toggles InviteForm |
-| InviteForm: Email address\* · Role (admin / member / viewer) → **Create invitation** / **Cancel** | — | SA `inviteMemberAction` → success panel with the invite URL + **Copy** ("Copied"). **No email is sent** — the admin must deliver the link (expires 14 days, bound to that address) |
+| InviteForm: Email address\* · Role (admin / member / viewer) → **Create invitation** / **Cancel** | — | SA `inviteMemberAction` → success panel with the invite URL + **Copy** ("Copied"). The invitation is **emailed through Resend when `RESEND_API_KEY` and `EMAIL_FROM` are set** (`emailInvitation` in `team/actions.ts`); the link is always shown for copying either way (expires 14 days, bound to that address) |
 | Member row role select (owner/admin/member/viewer) | Admin | SA `setMemberRoleAction`. Refusals: "Only an owner can grant, change or remove the owner role." · "This is the last owner. Promote somebody else to owner first…" (row shows a "Last owner" badge) |
 | Member role badge | Non-admin | Static |
 | **Remove {name}** ConfirmButton (armed label "Remove {name}?") | Admin | SA `removeMemberAction` → "Member removed." |
@@ -1283,15 +1262,14 @@ flowchart TD
   SU --> ML["Magic link → /auth/callback → back to /invite/token"]
   P -- yes --> PG["'You have been invited' — signed in as {email}"]
   PG --> A["Accept invitation → SA acceptInvitationAction (accept_invitation RPC)"]
-  A -- error --> E["Inline RPC message: expired / not valid / different address"]
+  A -- error --> E["Inline RPC message: expired / not valid / different address / address not confirmed"]
   A -- "ok, profile has role" --> D["/{slug}/dashboard"]
   A -- "ok, new user" --> W["/welcome (onboarding forwards into the joined workspace)"]
   PG --> SO["'sign out' link"]
 ```
 - No DB → "No database connected" panel.
+- The account's email address must be confirmed (`0047`): otherwise "confirm your email address before accepting this invitation". The app's own sign-in (magic link, Google) always confirms it, so this only refuses an account created some other way.
 - `noindex`, `referrer: no-referrer`.
-
-> ⚠️ **FLOW MISMATCH M-16** — the "sign out" link on this page is a `GET` `<Link href="/auth/signout">`, but `/auth/signout` only implements `POST`; following it returns **405** instead of signing out. See §14.
 
 ### 12.2 Unsubscribe `/unsubscribe/{token}` and `/api/unsubscribe/{token}`
 - **Page:** "Unsubscribe" + **Unsubscribe me** → SA `unsubscribeAction` (`record_unsubscribe` RPC) → "You have been unsubscribed…" (endpoint) / "That unsubscribe link is not valid." / no-DB message ("Reply to the message and ask to be removed."). No account needed. `noindex`.
@@ -1913,7 +1891,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 ### 16.7 Open decisions for the owner
 
-1. **Transactional email.** Huntloop sends no product email today (invites are a copied link). A daily Needs you digest and goal reminders would need it. The provider is a business choice; P1 and P2 are designed to work without it.
+1. **Transactional email.** *Decided (migration `0040`): Resend* — invitations, join-request notices, approvals and the daily digest are sent when `RESEND_API_KEY` and `EMAIL_FROM` are configured (not configured in production as of 2026-10-08). Originally: Huntloop sent no product email (invites were a copied link). A daily Needs you digest and goal reminders would need it. The provider is a business choice; P1 and P2 are designed to work without it.
 2. **LinkedIn capture.** Manual logging only (recommended for P1), or later a browser extension that records touches the user makes (never automates)?
 3. **Deal value.** Should opportunities carry an optional estimated value (needed for pipeline value and demand "value at stake")? Recommended: yes, optional, in P2.
 4. **Multi-product timing.** Build P5 now, or wait for a paying customer with more than one product? Recommended: wait.
@@ -1925,6 +1903,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-10-12 | **Security audit fixes** (run-1 of 2026-10-11, all thirteen leads), migration **`0047_security_leads.sql`**: organisation plan/trial/deletion columns guarded; session metering limited to one AI run; same-workspace check on 90 tenant references; join approval and owner un-delete; provider ceiling clamped to the plan; unsubscribe tokens moved to `message_unsubscribe_tokens`; activity authorship frozen; `/discover` reads only the cached domain's front page and reserves each lookup; invitations need a confirmed address. In code: one-line mail headers, reference material kept out of house style, bounded PDF reading. The schema gate now probes `message_unsubscribe_tokens`. User-visible changes recorded in §2.3, §7.4, the Inbox edit row, Memory's **Add a document**, the join-request row and §12.1. Production needs `0046`–`0047`. |
 | 2026-10-08 | **Release 0.1.0** to `main` (P3–P6, K0–K6, L1–L12); migrations `0040`–`0045` applied to production; the schema gate now probes `user_questions` (0044). [CHANGELOG.md](CHANGELOG.md) started. |
 | 2026-10-07 | **L5–L12 shipped on `feat/personal-learning`** with migration **`0045_assistant_conversations.sql`** (drops 0041's one-conversation-per-person index, adds `conversations.product_id`): product cards and draft-from-website, What it can see, saved and product-focused assistant conversations, Performance Me/Everyone + product split + pipeline value, share report with print styles for the shell, pipeline card facts and column values, Stale view with bulk archive, review backlog by profile on Sources. Production needs `0040`–`0045` before this deploys. |
 | 2026-10-07 | **§16.3-L added; L1–L4 shipped on `feat/personal-learning`** (no migration): product filter and Also fits on Opportunities, Needs you why-now/reach lines with inline Log touch and Draft, Reached out today, Outreach log. Found on the way: §10.2 still described the pre-P5 single-product form — corrected. |

@@ -162,6 +162,7 @@ export default async function DashboardPage({
               icon={Flame}
               tone="hot"
               href={`/${org}/opportunities?priority=hot`}
+              linkLabel="Open the list"
               linkComponent={Link}
               hint="Strong fit · strong pain · fresh trigger"
               aiGenerated
@@ -172,6 +173,7 @@ export default async function DashboardPage({
               icon={Thermometer}
               tone="warm"
               href={`/${org}/opportunities?priority=warm`}
+              linkLabel="Open the list"
               linkComponent={Link}
               hint="Good fit · weaker trigger"
               aiGenerated
@@ -182,6 +184,7 @@ export default async function DashboardPage({
               icon={Eye}
               tone="watch"
               href={`/${org}/opportunities?priority=watch`}
+              linkLabel="Open the list"
               linkComponent={Link}
               hint="Possible fit · evidence too thin"
               aiGenerated
@@ -192,6 +195,7 @@ export default async function DashboardPage({
               icon={Binoculars}
               tone="ignore"
               href={`/${org}/opportunities?priority=ignore`}
+              linkLabel="Open the list"
               linkComponent={Link}
               hint="Poor fit — kept, not deleted"
               aiGenerated
@@ -325,6 +329,7 @@ export default async function DashboardPage({
               icon={Target}
               tone="success"
               href={`/${org}/opportunities`}
+              linkLabel="Open opportunities"
               linkComponent={Link}
             />
             <StatCard
@@ -333,6 +338,7 @@ export default async function DashboardPage({
               icon={Search}
               tone="ai"
               href={`/${org}/companies`}
+              linkLabel="Open companies"
               linkComponent={Link}
               aiGenerated
             />
@@ -344,6 +350,7 @@ export default async function DashboardPage({
               icon={MessageSquareText}
               tone="violet"
               href={`/${org}/outreach`}
+              linkLabel="Open outreach"
               linkComponent={Link}
               hint="Messages that actually left"
             />
@@ -353,6 +360,7 @@ export default async function DashboardPage({
               icon={Reply}
               tone="brand"
               href={`/${org}/inbox`}
+              linkLabel="Open inbox"
               linkComponent={Link}
             />
           </StatGrid>
@@ -365,6 +373,7 @@ export default async function DashboardPage({
               icon={CalendarCheck}
               tone="success"
               href={`/${org}/pipeline`}
+              linkLabel="Open pipeline"
               linkComponent={Link}
             />
             <StatCard
@@ -373,6 +382,7 @@ export default async function DashboardPage({
               icon={Trophy}
               tone="violet"
               href={`/${org}/pipeline`}
+              linkLabel="Open pipeline"
               linkComponent={Link}
             />
             {/* No denominator. It used to read "of 1,000 on the Growth plan",
@@ -384,6 +394,7 @@ export default async function DashboardPage({
               value={outcomes.companies}
               icon={Radar}
               href={`/${org}/companies`}
+              linkLabel="Open companies"
               linkComponent={Link}
             />
           </StatGrid>
@@ -618,13 +629,14 @@ export default async function DashboardPage({
       {attention.length > 0 && (
         <aside
           aria-labelledby="needs-you-rail"
-          className="order-first flex flex-col gap-3 min-[1440px]:order-none"
+          /* `min-w-0`: a grid item's automatic minimum is its min-content
+             width, and the rail's one-line "why now" rows (truncated, so
+             nowrap) made that the full sentence — the whole page scrolled
+             sideways below 1440px. */
+          className="order-first flex min-w-0 flex-col gap-3 min-[1440px]:order-none"
         >
           <div className="flex items-baseline justify-between gap-2">
-            <h2
-              id="needs-you-rail"
-              className="text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase"
-            >
+            <h2 id="needs-you-rail" className="hl-label">
               Needs you · {attention.length}
             </h2>
             <Link

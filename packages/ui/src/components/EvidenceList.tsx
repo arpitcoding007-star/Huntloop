@@ -54,27 +54,37 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
   }
 
   return (
-    <ul className={cn("flex flex-col gap-3", className)}>
+    /* The reference list (board 04): claims separated by hairlines rather
+       than boxed, the kind chip and its age on one line, the claim at body
+       size, and the source as a blue link under it. */
+    <ul className={cn("flex flex-col", className)}>
       {items.map((item, i) => (
         <li
           key={`${item.claim}-${i}`}
-          className="rounded-lg border border-line-subtle bg-surface p-3"
+          className="flex flex-col gap-2 border-b border-line-subtle py-3 first:pt-0 last:border-b-0 last:pb-0"
         >
           <div className="flex flex-wrap items-center gap-2">
             <ClaimBadge kind={item.kind} confidence={item.confidence} />
-            {item.eventDate && <Freshness date={item.eventDate} now={now} />}
+            {item.eventDate && <Freshness date={item.eventDate} now={now} label="Happened" />}
           </div>
 
-          <p className="mt-2 text-[13px] leading-[1.5] text-fg">{item.claim}</p>
+          <p
+            className={cn(
+              "text-[14px] leading-5",
+              item.kind === "unknown" ? "text-fg-secondary" : "text-fg",
+            )}
+          >
+            {item.claim}
+          </p>
 
           {item.excerpt && (
-            <blockquote className="mt-2 border-l-2 border-line pl-3 text-[12px] leading-[1.5] text-fg-secondary italic">
+            <blockquote className="border-l-2 border-line pl-3 text-[12px] leading-[1.5] text-fg-secondary italic">
               {item.excerpt}
             </blockquote>
           )}
 
           {(item.source || item.observedAt) && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
               {item.source &&
                 (item.sourceUrl ? (
                   <a
@@ -83,10 +93,11 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
                     // Source URLs are third-party by definition; never hand
                     // them a window.opener handle back into the app.
                     rel="noopener noreferrer nofollow"
-                    className="hl-focusable inline-flex items-center gap-1 rounded-sm text-fg-secondary underline decoration-line-strong underline-offset-2 transition-colors duration-[120ms] hover:text-fg"
+                    className="hl-focusable inline-flex items-center gap-1 rounded-sm text-brand-text underline-offset-2 transition-colors duration-[120ms] hover:underline"
                   >
                     {item.source}
-                    <ExternalLink className="size-3" strokeWidth={1.75} />
+                    <ExternalLink aria-hidden className="size-3" strokeWidth={1.75} />
+                    <span className="sr-only"> (opens in a new tab)</span>
                   </a>
                 ) : (
                   <span>{item.source}</span>

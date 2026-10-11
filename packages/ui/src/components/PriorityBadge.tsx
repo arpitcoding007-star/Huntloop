@@ -31,10 +31,18 @@ const STYLES: Record<Priority, string> = {
 };
 
 const DOTS: Record<Priority, string> = {
-  hot: "bg-hot",
-  warm: "bg-warm",
-  watch: "bg-watch",
-  ignore: "bg-ignore",
+  hot: "bg-hot-dot",
+  warm: "bg-warm-dot",
+  watch: "bg-watch-dot",
+  ignore: "bg-ignore-dot",
+};
+
+/* The visible word, in the reference's sentence case. */
+const WORD: Record<Priority, string> = {
+  hot: "Hot",
+  warm: "Warm",
+  watch: "Watch",
+  ignore: "Ignore",
 };
 
 /** Spelled out for the accessible name — "WATCH" alone is ambiguous read aloud. */
@@ -56,15 +64,16 @@ export function PriorityBadge({
       className={className}
       label={`${MEANING[priority]}. ${reason}`}
       width={224}
+      /* The reference's priority chip (board 02): a pill, 12px / 600, a
+         filled 6px dot in the scale's fill and the word in its text leaf. */
       triggerClassName={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border",
-        "font-semibold tracking-label whitespace-nowrap uppercase",
-        size === "sm" ? "h-[18px] px-1.5 text-[10px]" : "h-[22px] px-2 text-[11px]",
+        "inline-flex items-center gap-1.5 rounded-full border font-semibold whitespace-nowrap",
+        size === "sm" ? "h-5 px-2 text-[11px]" : "h-6 px-2.5 text-[12px]",
         STYLES[priority],
       )}
       panel={
         <>
-          <span className="block text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <span className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             {priority}
           </span>
           <span className="mt-1.5 block text-[12px] leading-[1.5] text-fg-secondary">
@@ -73,22 +82,9 @@ export function PriorityBadge({
         </>
       }
     >
-      {/* Shape as well as colour: the dot is filled for HOT and hollow as the
-          verdict cools, so the ranking survives a greyscale print or a
-          red-green deficiency without reading the word. */}
-      <span
-        aria-hidden
-        className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          priority === "ignore" ? "border border-current" : DOTS[priority],
-          /* 80, not 70. The dot is meaningful non-text — the comment above
-             is explicit that it carries the ranking without the word — so
-             WCAG 1.4.11's 3:1 applies to it. At 70% it measured 2.92:1 on
-             the light theme's info surface, just under. 80% gives 3.49. */
-          priority === "watch" && "opacity-80",
-        )}
-      />
-      {priority}
+      {/* The word carries the verdict; the dot only reinforces it. */}
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOTS[priority])} />
+      {WORD[priority]}
     </HoverPanel>
   );
 }

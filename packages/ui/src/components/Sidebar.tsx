@@ -541,7 +541,7 @@ export function SidebarQuota({
         aria-valuemin={0}
         aria-valuemax={limit}
         aria-valuetext={text}
-        className="h-1 w-full overflow-hidden rounded-full bg-surface-active"
+        className="h-[5px] w-full overflow-hidden rounded-full bg-surface-active"
       >
         {/* A floor once anything is used: 8 of 1,000 is real usage, and a
             0.8% bar is invisible. Zero stays empty. */}

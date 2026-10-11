@@ -131,6 +131,31 @@ test.describe("scrolling", () => {
       expect(docH).toBeLessThanOrEqual(vh);
     });
   }
+
+  /*
+   * And it scrolls one way. Two screens once grew sideways — the Command
+   * Center below 1440px and Needs you on a phone — because a grid's implicit
+   * `auto` column sized itself to a truncated (so nowrap) "why now" line, and
+   * the controls at the end of each card went off-screen. Both projects run
+   * this, so it covers the phone and the desktop widths.
+   */
+  for (const path of ["dashboard", "needs-you", "opportunities", "opportunities/alphio-ai", "inbox", "pipeline"]) {
+    test(`/${path} never scrolls sideways`, async ({ page }) => {
+      await page.goto(`/${ORG}/${path}`);
+      await expect(page.locator("main#main")).toBeVisible();
+      const { doc, vw, main, mainW } = await page.evaluate(() => {
+        const m = document.querySelector("main#main")!;
+        return {
+          doc: document.documentElement.scrollWidth,
+          vw: document.documentElement.clientWidth,
+          main: m.scrollWidth,
+          mainW: m.clientWidth,
+        };
+      });
+      expect(doc, "the document is wider than the viewport").toBeLessThanOrEqual(vw);
+      expect(main, "<main> is wider than itself").toBeLessThanOrEqual(mainW);
+    });
+  }
 });
 
 test.describe("the AI spend screen", () => {

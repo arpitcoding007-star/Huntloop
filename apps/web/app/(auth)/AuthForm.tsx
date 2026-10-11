@@ -159,7 +159,7 @@ function AuthFormBody({
         <div>
           <label
             htmlFor="email"
-            className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
+            className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase"
           >
             Work email
           </label>

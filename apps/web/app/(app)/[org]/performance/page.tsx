@@ -112,7 +112,7 @@ export default async function PerformancePage({
               href={`/${org}/performance?period=${period}&scope=${value}`}
               aria-current={value === scope ? "page" : undefined}
               className={[
-                "hl-focusable rounded-[5px] px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
+                "hl-focusable rounded-sm px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
                 value === scope ? "bg-brand-surface font-medium text-brand-text" : "text-fg-muted hover:text-fg-secondary",
               ].join(" ")}
             >
@@ -127,7 +127,7 @@ export default async function PerformancePage({
               href={`/${org}/performance?period=${value}&scope=${scope}`}
               aria-current={value === period ? "page" : undefined}
               className={[
-                "hl-focusable rounded-[5px] px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
+                "hl-focusable rounded-sm px-3 py-1.5 text-[13px] transition-colors duration-[120ms]",
                 value === period ? "bg-brand-surface font-medium text-brand-text" : "text-fg-muted hover:text-fg-secondary",
               ].join(" ")}
             >
@@ -165,7 +165,7 @@ export default async function PerformancePage({
 
       {/* ── What the data says ─────────────────────────────────────────── */}
       <section aria-labelledby="insights" className="mt-8">
-        <h2 id="insights" className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+        <h2 id="insights" className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
           What the data says
         </h2>
         <ul className="mt-3 grid gap-3 md:grid-cols-2">
@@ -193,7 +193,7 @@ export default async function PerformancePage({
       {/* ── The funnel ─────────────────────────────────────────────────── */}
       <section aria-labelledby="funnel" className="mt-8">
         <div className="flex items-baseline justify-between">
-          <h2 id="funnel" className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+          <h2 id="funnel" className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
             {PERIOD_LABEL[period]}
           </h2>
           <a href={exportHref("funnel")} className="hl-focusable inline-flex items-center gap-1 rounded-sm text-[12px] text-fg-muted hover:text-fg-secondary">

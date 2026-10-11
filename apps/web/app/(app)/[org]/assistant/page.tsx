@@ -75,7 +75,7 @@ export default async function AssistantPage({
         <aside className="min-w-0 lg:col-start-1 lg:row-start-1">
           <nav aria-label="Your conversations" className="space-y-1">
             <div className="flex items-center justify-between gap-2 px-1">
-              <h2 className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Conversations</h2>
+              <h2 className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Conversations</h2>
               <Link
                 href={`/${org}/assistant?c=new`}
                 className="hl-focusable rounded-sm text-[12px] text-brand-text underline-offset-2 hover:underline"

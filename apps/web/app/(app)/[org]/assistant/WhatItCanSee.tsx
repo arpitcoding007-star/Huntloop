@@ -19,7 +19,7 @@ export function WhatItCanSee({
 }) {
   return (
     <section aria-labelledby="what-it-can-see" className="rounded-lg border border-line-subtle bg-surface p-3">
-      <h2 id="what-it-can-see" className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+      <h2 id="what-it-can-see" className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
         What it can see
       </h2>
       {focus && (

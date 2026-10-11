@@ -32,20 +32,25 @@ export const alt =
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-/* Dark theme's leaves from packages/ui/src/tokens.css. Satori has no access
-   to the stylesheet, so these are copies; they are the only copies in the
-   codebase and they are here because the alternative is no card. */
-const CANVAS = "#08090a";
-const SURFACE = "#101113";
-const BORDER = "#232427";
-const TEXT = "#f5f5f6";
-const MUTED = "#8a8d94";
-/* Meridian: green is a verified fact, blue is the accent and the model. */
-const FACT = "#4bc98a";
-const FACT_SURFACE = "#243027";
-const BRAND = "#6e9bff";
-const BRAND_SURFACE = "#0e1931";
-const BRAND_BORDER = "#1e3a6e";
+/* Dark theme's leaves from packages/ui/src/tokens.css (the colour board's
+   warm-neutral ladder). Satori has no access to the stylesheet, so these are
+   copies; they are the only copies in the codebase and they are here because
+   the alternative is no card. The two AI values are the theme's 16% / 32%
+   washes of #7D97CC, flattened onto the canvas. */
+const CANVAS = "#111111";
+const RAISED = "#262625";
+const BORDER = "#2e2e2c";
+const TEXT = "#ececea";
+const SECONDARY = "#b4b4b0";
+/* Green is a verified fact, blue is the model; grey is nothing on file. */
+const FACT = "#5bbf8e";
+const FACT_SURFACE = "#1f2b24";
+const FACT_BORDER = "#2f5140";
+const AI_TEXT = "#aec2ea";
+const AI_SURFACE = "#22272f";
+const AI_BORDER = "#343c4d";
+/* The target on dark (logo board): brighter than the muted brand blue. */
+const MARK_DOT = "#6e9bff";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -62,10 +67,10 @@ export default function OpengraphImage() {
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {/* The mark itself, from the same geometry BrandMark renders —
-              not a letter in a tile standing in for it. */}
-          <svg width="44" height="44" viewBox="0 0 32 32">
+        <div style={{ display: "flex", alignItems: "center" }}>
+          {/* The mark alone — the logo board's rule for the favicon, the app
+              icon and this card — from the same geometry BrandMark renders. */}
+          <svg width="56" height="56" viewBox="0 0 32 32">
             <path
               d={BRAND_MARK_PATH}
               fill="none"
@@ -74,9 +79,8 @@ export default function OpengraphImage() {
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="16" cy="16" r={BRAND_MARK_DOT_R} fill={BRAND} />
+            <circle cx="16" cy="16" r={BRAND_MARK_DOT_R} fill={MARK_DOT} />
           </svg>
-          <div style={{ color: TEXT, fontSize: 28, fontWeight: 600 }}>Huntloop</div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -86,13 +90,13 @@ export default function OpengraphImage() {
               fontSize: 68,
               fontWeight: 600,
               lineHeight: 1.1,
-              letterSpacing: "-0.02em",
+              letterSpacing: "-0.04em",
               maxWidth: 900,
             }}
           >
             Know who needs you before you reach out.
           </div>
-          <div style={{ color: MUTED, fontSize: 28, lineHeight: 1.4, maxWidth: 820 }}>
+          <div style={{ color: SECONDARY, fontSize: 28, lineHeight: 1.4, maxWidth: 820 }}>
             Every score shows its working. Every claim names its source. When we
             don&rsquo;t know, we say so.
           </div>
@@ -102,9 +106,9 @@ export default function OpengraphImage() {
             it distinguishes them with. Green is a source-verified fact,
             blue is model output, gray is nothing on file. */}
         <div style={{ display: "flex", gap: 12 }}>
-          <Chip label="FACT" color={FACT} background={FACT_SURFACE} border="#2f5a42" />
-          <Chip label="INFERENCE" color={BRAND} background={BRAND_SURFACE} border={BRAND_BORDER} />
-          <Chip label="UNKNOWN" color={MUTED} background={SURFACE} border={BORDER} />
+          <Chip label="FACT" color={FACT} background={FACT_SURFACE} border={FACT_BORDER} />
+          <Chip label="INFERENCE" color={AI_TEXT} background={AI_SURFACE} border={AI_BORDER} />
+          <Chip label="UNKNOWN" color={SECONDARY} background={RAISED} border={BORDER} />
         </div>
       </div>
     ),
@@ -128,14 +132,14 @@ function Chip({
       style={{
         display: "flex",
         alignItems: "center",
-        padding: "10px 18px",
-        borderRadius: 6,
+        padding: "10px 20px",
+        borderRadius: 999,
         background,
         border: `1px solid ${border}`,
         color,
         fontSize: 20,
-        fontWeight: 500,
-        letterSpacing: "0.06em",
+        fontWeight: 600,
+        letterSpacing: "0.08em",
       }}
     >
       {label}

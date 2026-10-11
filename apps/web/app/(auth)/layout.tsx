@@ -11,7 +11,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             theme; the mark now follows the theme through `currentColor`, so
             one element serves both and the sign-in page stops shipping half
             a megabyte of logo. Links home, as a logo does. */}
-        <div className="mb-8">
+        <div className="mb-8 flex justify-center">
           <BrandLink href="/" size="lg" />
         </div>
         {children}

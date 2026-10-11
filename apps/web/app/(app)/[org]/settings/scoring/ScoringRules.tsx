@@ -470,7 +470,7 @@ function RuleForm({
 
         {nested ? (
           <div className="rounded-lg border border-line-subtle bg-surface px-3 py-2">
-            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+            <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
               Condition
             </p>
             <p className="mt-1 text-[13px] text-fg">{rule?.summary}</p>

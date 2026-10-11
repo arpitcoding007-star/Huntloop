@@ -114,7 +114,7 @@ export function ConfirmButton({
       </span>
       <Button
         size={size}
-        variant={armed ? "danger" : "ghost"}
+        variant={armed ? "destructive" : "ghost"}
         icon={Icon}
         aria-label={armed ? undefined : label}
         disabled={disabled || pending}

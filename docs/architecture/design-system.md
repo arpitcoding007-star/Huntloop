@@ -4,6 +4,12 @@ description: Tokens, the semantic colour rule, theming, and the twenty component
 
 # Design system
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Colour description is outdated (2026-10-08).** The implementation uses a **blue** brand (`#1F58F0` light / `#3F63BD` dark), AI output is a blue tint (violet is only an icon-tile colour), light cards carry a faint `shadow-card`, and the dark ladder is `#111111 → #151515 → #20201F`. The accurate, value-level description is the [Design Brief](../spec/04-design-brief.md).
+{% endhint %}
+
+
 > **Layer:** Developer / Product · **Audience:** design, engineering
 
 `packages/ui`. Tokens are canonical in `src/tokens.css`. The live gallery is at

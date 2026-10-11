@@ -36,7 +36,7 @@
  * was lost.
  */
 import { parseOrgProfile } from "@huntloop/db/org-profile";
-import { MailboxUnavailable, authorize, pickMailbox } from "../mailbox/index.ts";
+import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../mailbox/index.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SendPayload {
@@ -54,7 +54,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     .select(
       "messages",
       `id, enrollment_id, mailbox_id, thread_id, direction, subject, body_text, body_html,
-       to_email, sent_at, scheduled_at, unsubscribe_token, provider_message_id,
+       to_email, sent_at, scheduled_at, provider_message_id,
        send_attempted_at`,
     )
     .eq("id", messageId)
@@ -103,6 +103,15 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
   if (!message.to_email) {
     return { ok: false, permanent: true, error: "send_message: that message has no recipient." };
+  }
+
+  /* One address, or nothing is sent. `can_contact` judges the string it is
+     given as a single address, so a value carrying a line break or a list
+     would let recipients through that no check ever saw (audit lead 8). */
+  if (!isSingleAddress(String(message.to_email))) {
+    const why = "Not sent: the recipient is not a single valid email address.";
+    await scope.update("messages", { error: why }).eq("id", messageId);
+    return { ok: true, result: { skipped: "invalid_address", to: message.to_email } };
   }
 
   /* Step 2. One question, asked once.
@@ -171,7 +180,15 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
    * Placed before `claim_mailbox_send` so a misconfiguration cannot burn a
    * day's send allowance on a message that was never going to leave.
    */
-  if (!unsubscribeUrl(message.unsubscribe_token)) {
+  /* The token is read on its own: since 0047 it lives in a table no tenant
+     session can read (security audit lead 6), not on `messages`. */
+  const { data: tokenRow } = await scope
+    .select("message_unsubscribe_tokens", "token")
+    .eq("message_id", messageId)
+    .maybeSingle();
+  const unsubscribeToken = tokenRow?.token ?? null;
+
+  if (!unsubscribeUrl(unsubscribeToken)) {
     const why =
       "Not sent: no unsubscribe link could be built for this message, so it " +
       "would arrive with no way to opt out. Set NEXT_PUBLIC_SITE_URL.";
@@ -302,7 +319,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
       subject: String(message.subject ?? ""),
       text: withFooter(
         String(message.body_text ?? ""),
-        unsubscribeUrl(message.unsubscribe_token),
+        unsubscribeUrl(unsubscribeToken),
         postalAddress,
       ),
       /* The HTML part gets the same footer, not none.
@@ -315,7 +332,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
         ? {
             html: withHtmlFooter(
               String(message.body_html),
-              unsubscribeUrl(message.unsubscribe_token),
+              unsubscribeUrl(unsubscribeToken),
               postalAddress,
             ),
           }
@@ -326,7 +343,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
          with a button. RFC 8058's POST comes from the mail client and is an
          explicit action; the footer link is a GET that mail clients and
          security gateways prefetch, so it must land somewhere that asks. */
-      unsubscribeUrl: oneClickUrl(message.unsubscribe_token),
+      unsubscribeUrl: oneClickUrl(unsubscribeToken),
     });
 
     // Step 6. Both columns in one update: the CHECK constraint refuses a

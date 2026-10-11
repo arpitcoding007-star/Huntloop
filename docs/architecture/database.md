@@ -4,6 +4,12 @@ description: Schema conventions, RLS design, the function catalogue, and how mig
 
 # Database
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Counts are stale (2026-10-08).** Written for 28 migrations / 69 tables / 63 functions. Current: **45 / 79 / 98**, with a machine-generated column-level reference. See [Schema document](../spec/05-backend-database-schema.md) and the generated schema reference under `docs/spec/`.
+{% endhint %}
+
+
 > **Layer:** Internal · **Audience:** engineering, operations
 
 Supabase Postgres. **28 migrations · 69 tables · 63 functions.** Migrations are

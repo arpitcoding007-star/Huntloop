@@ -169,11 +169,11 @@ export {
  * SECURITY DEFINER function granted to `anon` would be strictly worse.
  */
 export {
-  anonymousAllowance,
   hashIp,
   lookupPublicResearch,
   publicResearchEnabled,
   recordPublicResearch,
+  reserveAnonymousResearch,
   type AllowanceDecision,
   type CachedResearch,
 } from "./public-research.ts";

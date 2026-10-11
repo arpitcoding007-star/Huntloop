@@ -137,7 +137,7 @@ export function ActionRail({
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {title && (
-        <div className="text-[11px] leading-4 font-medium tracking-label text-fg-muted uppercase">
+        <div className="text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase">
           {title}
         </div>
       )}

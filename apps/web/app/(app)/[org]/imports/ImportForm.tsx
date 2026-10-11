@@ -116,7 +116,7 @@ export function ImportForm({ org, canWrite }: { org: string; canWrite: boolean }
           <div>
             <label
               htmlFor="csv"
-              className="block text-[11px] font-medium tracking-label text-fg-muted uppercase"
+              className="block text-[11px] font-semibold tracking-label text-fg-muted uppercase"
             >
               CSV
             </label>
@@ -341,7 +341,7 @@ function Result({ summary }: { summary: ImportSummary }) {
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">
+      <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">
         {label}
       </p>
       <p className="mt-0.5 font-mono text-[18px] text-fg">{value.toLocaleString()}</p>

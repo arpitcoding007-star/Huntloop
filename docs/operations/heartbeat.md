@@ -6,6 +6,12 @@ description: >-
 
 # The heartbeat
 
+{% hint style="danger" %}
+<!-- SPEC-PACK-BANNER -->
+**Correction (2026-10-08).** Sections below that say `apps/web/vercel.json` commits a one-minute cron are out of date: that file now contains only `$schema` (the cron was removed by commit `dd67aff`). The committed driver is `.github/workflows/tick.yml` (every 5 minutes), which needs a repository secret `CRON_SECRET` and variable `HUNTLOOP_URL`; production's `/api/health` currently reports `cronSecret:false`, so **nothing is driving the engine**. See the [Specification Pack](../spec/07-specification-gap-report.md) (DEF-01, CON-02, DEC-02).
+{% endhint %}
+
+
 > **Layer:** Internal · **Audience:** operations, engineering, leadership
 
 {% hint style="danger" %}

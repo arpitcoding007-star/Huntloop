@@ -81,11 +81,15 @@ export function NeedsYouList({
           <section key={group} aria-labelledby={`needs-you-${group}`}>
             <h2
               id={`needs-you-${group}`}
-              className="mb-2 text-[11px] font-medium tracking-label text-fg-muted uppercase"
+              className="mb-2 text-[11px] font-semibold tracking-label text-fg-muted uppercase"
             >
               {GROUP_LABEL[group]} · {inGroup.length}
             </h2>
-            <div className="grid gap-2 md:grid-cols-2">
+            {/* `grid-cols-1` (= minmax(0, 1fr)) rather than the implicit auto
+                column: a card's one-line "why now" is truncated, so nowrap, and
+                an auto column grew to fit it — the page scrolled sideways on a
+                phone. */}
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {inGroup.map((item) => (
                 <ItemCard key={item.key} org={org} item={item} canWrite={canWrite} compact={false} onSnoozed={onSnoozed} onLogged={setResult} />
               ))}
@@ -136,9 +140,14 @@ function ItemCard({
             <Badge variant={item.tone} size="sm">
               {item.label}
             </Badge>
-            {item.priority && item.priority !== "watch" && item.group !== "workspace" && (
-              <span className="text-[11px] text-fg-muted uppercase">{item.priority}</span>
-            )}
+            {/* The verdict as a second word — unless the badge already says it
+                (a "Hot" item does not need "Hot" twice). */}
+            {item.priority &&
+              item.priority !== "watch" &&
+              item.group !== "workspace" &&
+              item.label.toLowerCase() !== item.priority && (
+                <span className="text-[11px] text-fg-muted capitalize">{item.priority}</span>
+              )}
           </div>
           <div className="mt-1.5 truncate text-[13px] font-medium text-fg">{item.title}</div>
         </div>

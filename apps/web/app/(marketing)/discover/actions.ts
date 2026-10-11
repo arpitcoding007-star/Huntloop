@@ -2,11 +2,11 @@
 
 import { headers } from "next/headers";
 import {
-  anonymousAllowance,
   hashIp,
   lookupPublicResearch,
   publicResearchEnabled,
   recordPublicResearch,
+  reserveAnonymousResearch,
 } from "@huntloop/jobs";
 import {
   isAiConfigured,
@@ -62,11 +62,8 @@ export async function discoverAction(input: string): Promise<DiscoverState> {
   if (!parsed.ok) return { error: parsed.error };
 
   let domain: string | null;
-  let url: string;
   try {
-    const normalized = normalizeUrl(parsed.value);
-    url = normalized.url;
-    domain = canonicalizeDomain(normalized.canonicalDomain);
+    domain = canonicalizeDomain(normalizeUrl(parsed.value).canonicalDomain);
   } catch (error) {
     if (error instanceof InvalidUrlError) {
       return { error: "That doesn't look like a website address." };
@@ -75,6 +72,14 @@ export async function discoverAction(input: string): Promise<DiscoverState> {
   }
 
   if (!domain) return { error: "That doesn't look like a website address." };
+
+  /* The site's front page, built from the cache key — never the visitor's own
+     URL. The reading is cached under the domain and served to every later
+     visitor (and claimed at sign-up by that company), so what the model reads
+     must be determined by the key alone. A visitor's path, query or fragment,
+     or a host the key does not name (`www.www.`), would let one person shape
+     what everyone else is shown (security audit lead 10). */
+  const url = `https://${domain}/`;
 
   /* Free-mail and disposable domains are refused before anything is spent.
      `gmail.com` is not a company, and reading it would produce a profile of
@@ -125,7 +130,7 @@ export async function discoverAction(input: string): Promise<DiscoverState> {
   }
 
   const ipHash = await hashIp(await callerIp());
-  const allowance = await anonymousAllowance(ipHash);
+  const allowance = await reserveAnonymousResearch(ipHash);
   if (!allowance.allowed) {
     return { refused: allowance.reason, domain, error: allowance.message };
   }

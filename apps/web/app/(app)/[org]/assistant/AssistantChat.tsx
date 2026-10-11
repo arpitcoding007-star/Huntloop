@@ -215,7 +215,7 @@ export function AssistantChat({
 
       {canAsk && usual.length > 0 && (
         <div>
-          <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Your usual questions</p>
+          <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Your usual questions</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {usual.map((q) => (
               <Button key={q.text} size="sm" variant="secondary" disabled={pending} onClick={() => ask(q.text)}
@@ -284,7 +284,7 @@ function AssistantAnswerCard({
 
         {turn.citations.length > 0 && (
           <div>
-            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Based on</p>
+            <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Based on</p>
             <ul className="mt-1 flex flex-wrap gap-1.5">
               {turn.citations.map((c) => (
                 <li key={c.ref}>
@@ -309,7 +309,7 @@ function AssistantAnswerCard({
 
         {turn.unresolved.length > 0 && (
           <div>
-            <p className="text-[11px] font-medium tracking-label text-fg-muted uppercase">Not in your records</p>
+            <p className="text-[11px] font-semibold tracking-label text-fg-muted uppercase">Not in your records</p>
             <ul className="mt-1 space-y-0.5">
               {turn.unresolved.map((u) => (
                 <li key={u} className="text-[12px] text-fg-muted">

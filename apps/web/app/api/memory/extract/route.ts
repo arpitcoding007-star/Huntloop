@@ -22,6 +22,10 @@ import { orgSlugSchema } from "../../../../lib/validation";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* A bound on what one upload may cost. Reading a PDF stops itself well inside
+   this (see `PDF_DEADLINE_MS` in document-text.ts); this is the backstop. */
+export const maxDuration = 30;
+
 function refuse(error: string, status = 400) {
   return NextResponse.json({ error }, { status, headers: { "cache-control": "no-store" } });
 }

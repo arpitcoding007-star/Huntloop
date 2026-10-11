@@ -2,7 +2,12 @@ import type { ButtonHTMLAttributes, ComponentType, ReactNode } from "react";
 import { cn } from "../utils/cn";
 import { Anchor, type LinkComponent } from "../utils/link";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+/**
+ * `destructive` is the solid red of an armed two-step control (board 04,
+ * "Click again to revoke") — the one place a red fill is the resting look.
+ * Everything else that removes uses the `danger` tint.
+ */
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "destructive";
 /** `xl` is the marketing-page CTA size; the app never uses it. */
 export type ButtonSize = "sm" | "md" | "lg" | "xl";
 
@@ -52,15 +57,22 @@ const VARIANTS: Record<ButtonVariant, string> = {
      is 4.49:1 (see tokens.css). */
   primary:
     "bg-brand text-brand-ink border border-transparent shadow-raised hover:bg-brand-hover active:bg-brand-active",
+  /* The reference outline: a hairline and no shadow — the lift is the
+     primary's alone, so the one button that matters reads first. */
   secondary:
-    "bg-surface text-fg border border-line shadow-raised hover:bg-hover hover:border-brand-border active:bg-nav-active",
+    "bg-surface text-fg border border-line hover:bg-hover hover:border-brand-border active:bg-nav-active",
   ghost:
-    "bg-transparent text-fg-secondary border border-transparent hover:bg-nav-hover hover:text-fg active:bg-nav-active",
+    "bg-transparent text-fg border border-transparent hover:bg-nav-hover active:bg-nav-active",
   // Hover fills with --hl-danger, so the label flips to the inverse ink:
   // near-white on that red is 2.5:1, while #0f0f0f on it is 6.6:1. Mirrors
   // how `primary` treats its brand fill.
   danger:
     "bg-danger-surface text-danger-text border border-danger-border hover:bg-danger hover:text-fg-inverse",
+  /* White on #C22F36 is 5.6:1; in dark the fill is the lighter #EC7A7A, so
+     the ink is the inverse (near-black) there — the same reason `danger`
+     flips its label on hover. */
+  destructive:
+    "bg-danger text-fg-inverse border border-transparent font-semibold hover:bg-danger-text active:bg-danger-text",
 };
 
 const SIZES: Record<ButtonSize, string> = {
@@ -69,8 +81,8 @@ const SIZES: Record<ButtonSize, string> = {
   /* A page header's actions — the reference's "Sources" / "Analyze a URL"
      pair at 42 / radius 12 — and the marketing nav CTA. */
   lg: "h-[42px] px-[18px] text-[15px] gap-2.5 rounded-[12px]",
-  /* Marketing only — the hero CTA: 46px at radius 10. */
-  xl: "h-[46px] px-[22px] text-[15px] gap-2",
+  /* Marketing only — the hero CTA: 46px at radius 12 (board 03). */
+  xl: "h-[46px] px-[22px] text-[15px] gap-2 rounded-[12px]",
 };
 
 /* The press — Meridian's half-pixel of travel. Enough to feel like a key
