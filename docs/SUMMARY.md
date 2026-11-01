@@ -63,6 +63,7 @@
 * [Deployment](operations/deployment.md)
 * [The heartbeat](operations/heartbeat.md)
 * [Migrations](operations/migrations.md)
+* [First live run](operations/first-live-run.md)
 * [Observability](operations/observability.md)
 * [Performance](operations/performance.md)
 * [Operations runbook](OPERATIONS.md)
