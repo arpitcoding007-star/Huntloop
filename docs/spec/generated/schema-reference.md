@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 49 migrations
-> (`0001_identity.sql` … `0049_soft_delete_propagation.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 50 migrations
+> (`0001_identity.sql` … `0050_atomic_spend_and_send_lanes.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 81 tables · 9 views · 112 public functions · 10 enum types · 141 RLS policies · 239 indexes · 126 triggers.
+**Totals:** 82 tables · 9 views · 118 public functions · 10 enum types · 142 RLS policies · 240 indexes · 127 triggers.
 
-**RLS enabled on:** 81 of 81 tables.
+**RLS enabled on:** 82 of 82 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -335,6 +335,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `companies_enqueue_followups`
 - `companies_propagate_removal`
 - `companies_same_org`
 - `companies_touch`
@@ -833,6 +834,26 @@ RLS: **enabled**
 
 - `contact_points_same_org`
 - `contact_points_touch`
+
+## contact_send_lanes
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `org_id` | uuid | NOT NULL |  |
+| `address` | text | NOT NULL |  |
+| `message_id` | uuid | NOT NULL |  |
+| `claimed_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- FK `contact_send_lanes_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- PK `contact_send_lanes_pkey` — `PRIMARY KEY (org_id, address)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
 
 ## conversation_messages
 
@@ -3483,6 +3504,7 @@ RLS: **enabled**
 | `cancel_job` | `p_org uuid, p_job uuid` | boolean | yes |
 | `check_quota` | `p_org uuid, p_metric text` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
 | `check_quota_internal` | `p_org uuid, p_metric text` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
+| `claim_contact_lane` | `p_org uuid, p_email text, p_message uuid` | boolean | yes |
 | `claim_due_discovery_queries` | `p_limit integer` | TABLE(id uuid, org_id uuid) | yes |
 | `claim_due_recomputes` | `p_limit integer` | TABLE(id uuid, org_id uuid, icp_id uuid, reason text, cursor text) | yes |
 | `claim_job_executions` | `p_limit integer, p_worker text` | SETOF job_executions |  |
@@ -3498,6 +3520,7 @@ RLS: **enabled**
 | `demand_from_outcome` |  | trigger | yes |
 | `discoverable_workspaces` |  | TABLE(org_id uuid, org_name text, org_slug text, member_count bigint) | yes |
 | `enforce_same_org_refs` |  | trigger | yes |
+| `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
 | `erase_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
 | `export_contact` | `p_org uuid, p_email text` | jsonb | yes |
@@ -3545,6 +3568,7 @@ RLS: **enabled**
 | `migration_0047_applied` |  | boolean |  |
 | `migration_0048_applied` |  | boolean |  |
 | `migration_0049_applied` |  | boolean |  |
+| `migration_0050_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `project_message_activity` |  | trigger | yes |
@@ -3567,13 +3591,16 @@ RLS: **enabled**
 | `record_source_failure` | `p_source uuid, p_error text` | void |  |
 | `record_source_success` | `p_source uuid` | void |  |
 | `record_unsubscribe` | `p_token uuid, p_reason text` | TABLE(suppressed_org_id uuid, suppressed_email text) | yes |
+| `release_contact_lane` | `p_org uuid, p_message uuid` | void | yes |
 | `request_score_recompute` | `p_org uuid, p_icp uuid, p_reason text` | uuid | yes |
 | `request_to_join` | `p_org uuid` | text | yes |
 | `requeue_stalled_jobs` | `p_older_than interval` | integer |  |
+| `reserve_provider_credit` | `p_org uuid, p_provider text` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
 | `reserve_public_research` | `p_ip_hash text, p_per_ip_hour integer, p_daily integer` | TABLE(allowed boolean, reason text) | yes |
 | `resolve_company` | `p_org uuid, p_domain text, p_provider text, p_provider_id text` | TABLE(company_id uuid, matched_on text) | yes |
 | `retry_job` | `p_org uuid, p_job uuid` | boolean | yes |
 | `saturated_org_ids` |  | SETOF uuid | yes |
+| `settle_provider_credit` | `p_org uuid, p_provider text, p_reserved integer` | void | yes |
 | `stop_outreach_for_deleted_opportunity` |  | trigger |  |
 | `touch_updated_at` |  | trigger |  |
 | `usage_limit` | `p_org uuid, p_metric text` | bigint | yes |

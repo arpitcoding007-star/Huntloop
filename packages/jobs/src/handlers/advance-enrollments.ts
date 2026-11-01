@@ -520,6 +520,15 @@ async function draftMessage(
     for (const c of competitors.evidence) {
       if (!known.has(c.id)) evidence.push(c);
     }
+    /* FLOW-103: hiring and site evidence is filed on the company, and the
+       draft read only the opportunity's — so the freshest reason to write
+       never reached the email. Citable the same way. */
+    for (const s of await loadCompanySignals(scope, String(input.opportunity.company_id))) {
+      if (!known.has(s.id)) {
+        known.add(s.id);
+        evidence.push(s);
+      }
+    }
 
     const run = await runForOrg(scope, personalizeMessage, {
       companyName,
@@ -589,6 +598,54 @@ async function loadEvidence(scope: OrgScope, opportunityId: string): Promise<Mes
     sourceUrl: (row.source_url as string | null) ?? null,
     eventDate: (row.event_date as string | null) ?? null,
   }));
+}
+
+/** How far back a hiring signal is still news worth opening an email with. */
+const SIGNAL_RECENT_DAYS = 90;
+const MAX_COMPANY_SIGNALS = 4;
+
+/**
+ * Recent hiring postings and the site's own facts, from the company (FLOW-103).
+ *
+ * Hiring evidence must carry an `event_date` inside the window: a posting
+ * with no date cannot be shown to be news, and an old one is not. Site facts
+ * are undated by nature — what the homepage says today — and come after.
+ */
+export async function loadCompanySignals(scope: OrgScope, companyId: string): Promise<MessageEvidence[]> {
+  if (!companyId || companyId === "undefined" || companyId === "null") return [];
+  const since = new Date(Date.now() - SIGNAL_RECENT_DAYS * 86_400_000).toISOString();
+
+  const { data: hiring } = await scope
+    .select("evidence", "id, claim, kind, source_url, event_date")
+    .eq("subject_type", "company")
+    .eq("subject_id", companyId)
+    .like("field", "hiring_signal%")
+    .gte("event_date", since)
+    .is("deleted_at", null)
+    .is("superseded_by", null)
+    .order("event_date", { ascending: false })
+    .limit(MAX_COMPANY_SIGNALS);
+
+  const { data: site } = await scope
+    .select("evidence", "id, claim, kind, source_url, event_date")
+    .eq("subject_type", "company")
+    .eq("subject_id", companyId)
+    .like("field", "site:%")
+    .is("deleted_at", null)
+    .is("superseded_by", null)
+    .limit(MAX_COMPANY_SIGNALS);
+
+  return [...rowsOf(hiring), ...rowsOf(site)].slice(0, MAX_COMPANY_SIGNALS * 2).map((row) => ({
+    id: String(row.id),
+    claim: String(row.claim),
+    kind: row.kind as MessageEvidence["kind"],
+    sourceUrl: (row.source_url as string | null) ?? null,
+    eventDate: (row.event_date as string | null) ?? null,
+  }));
+}
+
+function rowsOf(data: unknown): Record<string, unknown>[] {
+  return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
 }
 
 /**

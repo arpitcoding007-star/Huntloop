@@ -154,6 +154,7 @@ function spyRecorder() {
   const starts: RunStart[] = [];
   const finishes: RunFinish[] = [];
   const errors: string[] = [];
+  const spends: unknown[] = [];
   const recorder: RunRecorder = {
     async started(run) {
       events.push("started");
@@ -164,12 +165,13 @@ function spyRecorder() {
       events.push("succeeded");
       finishes.push(finish);
     },
-    async failed(_id, error) {
+    async failed(_id, error, _latency, spent) {
+      spends.push(spent);
       events.push("failed");
       errors.push(error);
     },
   };
-  return { recorder, events, starts, finishes, errors };
+  return { recorder, events, starts, finishes, errors, spends };
 }
 
 const GOOD_FINDINGS = [
@@ -508,6 +510,12 @@ console.log("\nA §7 violation is recorded as a failed run, not lost");
   expect(
     "and the reason is the rule that was broken",
     (spy.errors[0] ?? "").includes("ClaimValidationError"),
+  );
+  const spent = spy.spends[0] as { usage?: { inputTokens: number }; costCents?: number } | undefined;
+  expect(
+    "with the tokens and cost of the answer that broke it (AI-010)",
+    (spent?.usage?.inputTokens ?? 0) > 0 && typeof spent?.costCents === "number",
+    JSON.stringify(spent),
   );
 }
 

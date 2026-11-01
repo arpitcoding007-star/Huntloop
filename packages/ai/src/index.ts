@@ -44,7 +44,7 @@ export { definePrompt, inputHash, type Prompt } from "./prompt.ts";
 export { UNTRUSTED_CONTENT_RULE, wrapUntrusted } from "./untrusted.ts";
 export { InvalidUrlError, normalizeUrl, type NormalizedUrl } from "./url.ts";
 
-export { nullRecorder, type RunFinish, type RunRecorder, type RunStart } from "./runs.ts";
+export { nullRecorder, type RunFinish, type RunRecorder, type RunSpend, type RunStart } from "./runs.ts";
 export { runTask, type LLMTask, type RunContext, type TaskResult } from "./task.ts";
 
 export {

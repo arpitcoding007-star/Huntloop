@@ -33,6 +33,7 @@ import {
   runTask,
   type LLMTask,
   type RunFinish,
+  type RunSpend,
   type RunRecorder,
   type RunStart,
   type TaskResult,
@@ -89,8 +90,21 @@ function recorder(scope: OrgScope): RunRecorder {
         .eq("id", runId);
     },
 
-    async failed(runId: string, error: string, latencyMs: number) {
-      await scope.update("ai_runs", { status: "failed", error, latency_ms: latencyMs })
+    async failed(runId: string, error: string, latencyMs: number, spent?: RunSpend) {
+      await scope.update("ai_runs", {
+          status: "failed",
+          error,
+          latency_ms: latencyMs,
+          /* AI-010: a failed run that was billed says so. */
+          ...(spent
+            ? {
+                input_tokens: spent.usage.inputTokens,
+                output_tokens: spent.usage.outputTokens,
+                cache_read_tokens: spent.usage.cacheReadTokens,
+                cost_cents: spent.costCents,
+              }
+            : {}),
+        })
         .eq("id", runId);
     },
   };

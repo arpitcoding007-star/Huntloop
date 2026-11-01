@@ -1,4 +1,4 @@
-import { nullRecorder, type RunFinish, type RunRecorder, type RunStart } from "@huntloop/ai";
+import { nullRecorder, type RunFinish, type RunRecorder, type RunSpend, type RunStart } from "@huntloop/ai";
 import { resolveDataSource } from "../data/source";
 import { canSpend, currentViewer } from "../data/membership";
 import type { TenantClient } from "@huntloop/db";
@@ -141,13 +141,22 @@ export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome>
         .eq("id", runId);
     },
 
-    async failed(runId: string, error: string, latencyMs: number) {
+    async failed(runId: string, error: string, latencyMs: number, spent?: RunSpend) {
       await db
         .from("ai_runs")
         .update({
           status: "failed",
           error,
           latency_ms: latencyMs,
+          /* AI-010: a failed run that was billed says so. */
+          ...(spent
+            ? {
+                input_tokens: spent.usage.inputTokens,
+                output_tokens: spent.usage.outputTokens,
+                cache_read_tokens: spent.usage.cacheReadTokens,
+                cost_cents: spent.costCents,
+              }
+            : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", runId);

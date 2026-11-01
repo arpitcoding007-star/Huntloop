@@ -35,6 +35,7 @@
  * plan is known, `MANUAL ACTIONS` says to reconcile these against one month
  * of `provider_calls` and correct them.
  */
+import { isPlaceholderEmail } from "@huntloop/db/contact";
 import { canonicalizeDomain } from "@huntloop/db/identity";
 import {
   ProviderError,
@@ -298,7 +299,10 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
 
     const contacts: ProviderPerson["contacts"] = [];
 
-    if (person.email) {
+    /* PROV-005: `email_not_unlocked@domain.com` is Apollo saying it has an
+       address it has not sold us. Dropped here, at the edge, so no caller has
+       to remember to. */
+    if (person.email && !isPlaceholderEmail(person.email)) {
       /* THE decision. `verified` is the only status Apollo asserts from
          observation; every other value includes addresses constructed from a
          company's pattern. Calling one of those `medium` would be laundering

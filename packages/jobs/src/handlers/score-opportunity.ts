@@ -465,22 +465,58 @@ async function loadIcp(
  * from alongside its correction.
  */
 async function loadObservations(ctx: JobContext, companyId: string): Promise<ObservedEvidence[]> {
-  const { data } = await ctx.scope.select("evidence", "claim, kind, confidence, source_url, excerpt, event_date")
+  const { data } = await ctx.scope.select("evidence", "field, claim, kind, confidence, source_url, excerpt, event_date")
     .eq("subject_type", "company")
     .eq("subject_id", companyId)
     .is("deleted_at", null)
     .is("superseded_by", null)
     .order("event_date", { ascending: false, nullsFirst: false })
-    .limit(MAX_OBSERVATIONS);
+    .limit(MAX_OBSERVATIONS * 3);
 
-  return (data ?? []).map((row: Record<string, unknown>) => ({
+  return balanceObservations((data ?? []) as Record<string, unknown>[]).map((row) => ({
     claim: String(row.claim),
     kind: row.kind as ObservedEvidence["kind"],
     confidence: (row.confidence ?? null) as ObservedEvidence["confidence"],
-    sourceUrl: row.source_url ?? null,
-    excerpt: row.excerpt ?? null,
-    eventDate: row.event_date ?? null,
+    sourceUrl: (row.source_url as string | null) ?? null,
+    excerpt: (row.excerpt as string | null) ?? null,
+    eventDate: (row.event_date as string | null) ?? null,
   }));
+}
+
+/** No one kind of evidence may take more than this share of the scorer's view. */
+const MAX_PER_FAMILY = 8;
+
+/**
+ * FLOW-103. Newest-first with a hard cut let a company's research claims fill
+ * every slot, so hiring postings and the site's own (undated) facts rarely
+ * reached the scorer. Each family — hiring, site, everything else — gets up to
+ * `MAX_PER_FAMILY` first, in the original order; what is left fills the rest.
+ * Exported for the test suite.
+ */
+export function balanceObservations<T extends { field?: unknown }>(rows: T[], limit = MAX_OBSERVATIONS): T[] {
+  const family = (row: T) => {
+    const field = String(row.field ?? "");
+    if (field.startsWith("hiring_signal")) return "hiring";
+    if (field.startsWith("site:")) return "site";
+    return "other";
+  };
+  const taken = new Map<string, number>();
+  const chosen = new Set<number>();
+
+  rows.forEach((row, i) => {
+    if (chosen.size >= limit) return;
+    const f = family(row);
+    const n = taken.get(f) ?? 0;
+    if (n < MAX_PER_FAMILY) {
+      taken.set(f, n + 1);
+      chosen.add(i);
+    }
+  });
+  rows.forEach((_row, i) => {
+    if (chosen.size < limit) chosen.add(i);
+  });
+
+  return rows.filter((_row, i) => chosen.has(i));
 }
 
 /**

@@ -33,7 +33,7 @@ import { ENRICH_TOP, rankContactsJob } from "../src/handlers/rank-contacts.ts";
 import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
 import { gmail } from "../src/mailbox/gmail.ts";
 import { buildMime, type OutgoingMessage } from "../src/mailbox/provider.ts";
-import { ruleFacts } from "../src/handlers/score-opportunity.ts";
+import { balanceObservations, ruleFacts } from "../src/handlers/score-opportunity.ts";
 import { normalizeCompanyName, pickMatch } from "../src/handlers/prospect-competitor-customers.ts";
 import { DEFAULT_PREFERENCE, digestDue, digestFilter, localTime } from "../src/handlers/send-digests.ts";
 import { digestUnsubscribeToken, verifyDigestUnsubscribeToken } from "../src/email/digest-token.ts";
@@ -48,7 +48,7 @@ import { detectSiteFacts, profileCompany } from "../src/handlers/profile-company
 setBoardFetcherForTests(async () => ({ status: 404, body: "" }));
 import { hashIp } from "../src/public-research.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
-import { advanceOne, APPROVAL_RECHECK_MS, loadGuidance } from "../src/handlers/advance-enrollments.ts";
+import { advanceOne, APPROVAL_RECHECK_MS, loadCompanySignals, loadGuidance } from "../src/handlers/advance-enrollments.ts";
 import { onCompanySite } from "../src/handlers/research-company.ts";
 import { learnPreferencesJob } from "../src/handlers/learn-preferences.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
@@ -962,6 +962,8 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
        must be able to catch. */
     "rpc:can_contact": { data: [{ allowed: true, reason: "ok", detail: {} }], error: null },
     "rpc:claim_mailbox_send": { data: true, error: null },
+    /* OUT-013: this message holds its address's lane. */
+    "rpc:claim_contact_lane": { data: true, error: null },
     /* OUT-001: the at-most-once claim on the message. One row back means this
        run won it; the tests for losing it override this. */
     "update:messages": { data: [{ id: "claimed" }], error: null },
@@ -1246,6 +1248,22 @@ console.log("\nsend_message — OUT-01: the cap that existed and was never asked
     rpcs.indexOf("can_contact") >= 0 &&
       rpcs.indexOf("can_contact") < rpcs.indexOf("claim_mailbox_send"),
     JSON.stringify(rpcs),
+  );
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — one message per address in flight (OUT-013)");
+
+for (const [name, lane] of [
+  ["held by another message", { data: false, error: null }],
+  ["unreadable", { data: null, error: { message: "boom" } }],
+] as const) {
+  const { ctx, calls } = sendContext(sendable(), { "rpc:claim_contact_lane": lane });
+  const outcome = await sendMessage(ctx);
+  expect(`a lane ${name} waits rather than sends`, deferred(outcome, calls, "address_busy"), outcome);
+  expect(
+    "and spends none of the mailbox's allowance",
+    !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
   );
   setAdminClientForTests(null);
 }
@@ -4199,6 +4217,35 @@ console.log("\ncheck_mailbox_domain — what the DNS says about the sending doma
   expect("the handler stores the verdict on the mailbox", outcome.ok && calls.some(
     (c) => c.table === "mailboxes" && c.verb === "update" && (c.payload as { domain_status?: string })?.domain_status === "warn",
   ));
+}
+
+console.log("\nFLOW-103 — hiring and site evidence reach the scorer and the draft");
+{
+  const research = Array.from({ length: 30 }, (_, i) => ({ field: `research:${i}` }));
+  const hiring = Array.from({ length: 3 }, (_, i) => ({ field: `hiring_signal:${i}` }));
+  const site = [{ field: "site:pricing" }, { field: "site:careers" }];
+  const picked = balanceObservations([...research, ...hiring, ...site]);
+  expect("the scorer's view stays at its limit", picked.length === 25, picked.length);
+  expect(
+    "and newer research no longer crowds out hiring and site facts",
+    hiring.every((h) => picked.includes(h)) && site.every((s) => picked.includes(s)),
+  );
+  expect("research still fills what is left", picked.filter((r) => r.field.startsWith("research")).length === 20);
+
+  const { client, calls } = fakeClient({
+    "select:evidence": (r: Recorded) => ({
+      data: JSON.stringify(r.filters).includes("hiring_signal")
+        ? [{ id: "ev-h", claim: "Hiring a payments lead", kind: "fact", source_url: "https://acme.test/jobs/1", event_date: new Date().toISOString() }]
+        : [{ id: "ev-s", claim: "Publishes pricing", kind: "fact", source_url: "https://acme.test/pricing", event_date: null }],
+      error: null,
+    }),
+  });
+  const signals = await loadCompanySignals(new OrgScope(ORG_A, client), "c-1");
+  expect("the draft is given the company's hiring and site evidence", signals.map((s) => s.id).join() === "ev-h,ev-s", signals);
+  expect(
+    "and a hiring posting must be recent to count",
+    calls.some((c) => c.table === "evidence" && JSON.stringify(c.filters).includes("event_date")),
+  );
 }
 
 console.log(

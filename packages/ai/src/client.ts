@@ -60,6 +60,23 @@ export class ModelRefusalError extends Error {
   }
 }
 
+const USAGE = Symbol("usage");
+
+/** Attaches the tokens spent so far to an error thrown after the call. */
+function withUsage(error: unknown, usage: TokenUsage): unknown {
+  const spent = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
+  if (spent > 0 && error instanceof Error) {
+    (error as Error & { [USAGE]?: TokenUsage })[USAGE] = { ...usage };
+  }
+  return error;
+}
+
+/** The tokens a failed call was billed for, when it got far enough to be. */
+export function usageOf(error: unknown): TokenUsage | null {
+  if (!(error instanceof Error)) return null;
+  return (error as Error & { [USAGE]?: TokenUsage })[USAGE] ?? null;
+}
+
 /** A server tool paused the turn more times than we are willing to resume. */
 const MAX_CONTINUATIONS = 5;
 
@@ -106,72 +123,78 @@ export function createAnthropicClient(): ModelClient {
       };
       let message: Anthropic.Beta.BetaMessage | undefined;
 
-      for (let attempt = 0; attempt <= MAX_CONTINUATIONS; attempt++) {
-        const stream = anthropic.beta.messages.stream({
-          model: request.model,
-          max_tokens: request.maxTokens,
-          // Server-side fallback: safety classifiers can decline a request, and
-          // for a tool that researches arbitrary companies that is a live
-          // scenario rather than a theoretical one — a security vendor's own
-          // website is exactly the kind of page a cyber classifier reacts to.
-          // "default" lets Anthropic route by refusal category instead of us
-          // pinning a substitute model that will later be deprecated.
-          ...(caps.serverFallback
-            ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
-            : {}),
-          system: [
-            {
-              type: "text",
-              text: request.system,
-              // §7.2's biggest lever. The system prompt is byte-identical
-              // across every company researched under one ICP, so this block
-              // should be billing at 0.1x from the second call onward. It only
-              // works if nothing per-call ever reaches `system` — see the
-              // contract on ModelRequest.
-              cache_control: { type: "ephemeral" },
+      try {
+        for (let attempt = 0; attempt <= MAX_CONTINUATIONS; attempt++) {
+          const stream = anthropic.beta.messages.stream({
+            model: request.model,
+            max_tokens: request.maxTokens,
+            // Server-side fallback: safety classifiers can decline a request, and
+            // for a tool that researches arbitrary companies that is a live
+            // scenario rather than a theoretical one — a security vendor's own
+            // website is exactly the kind of page a cyber classifier reacts to.
+            // "default" lets Anthropic route by refusal category instead of us
+            // pinning a substitute model that will later be deprecated.
+            ...(caps.serverFallback
+              ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+              : {}),
+            system: [
+              {
+                type: "text",
+                text: request.system,
+                // §7.2's biggest lever. The system prompt is byte-identical
+                // across every company researched under one ICP, so this block
+                // should be billing at 0.1x from the second call onward. It only
+                // works if nothing per-call ever reaches `system` — see the
+                // contract on ModelRequest.
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            ...(caps.adaptiveThinking ? { thinking: { type: "adaptive" as const } } : {}),
+            output_config: {
+              ...(caps.effort ? { effort: request.effort } : {}),
+              format: { type: "json_schema" as const, schema: request.schema },
             },
-          ],
-          ...(caps.adaptiveThinking ? { thinking: { type: "adaptive" as const } } : {}),
-          output_config: {
-            ...(caps.effort ? { effort: request.effort } : {}),
-            format: { type: "json_schema" as const, schema: request.schema },
-          },
-          ...(tools ? { tools } : {}),
-          messages,
-        });
+            ...(tools ? { tools } : {}),
+            messages,
+          });
 
-        message = await stream.finalMessage();
-        accumulate(usage, message.usage);
+          message = await stream.finalMessage();
+          accumulate(usage, message.usage);
 
-        if (message.stop_reason === "refusal") {
-          throw new ModelRefusalError(message.stop_details?.category ?? null);
+          if (message.stop_reason === "refusal") {
+            throw new ModelRefusalError(message.stop_details?.category ?? null);
+          }
+          // A server tool hit its per-turn iteration cap. Re-send with the
+          // assistant turn appended and the server resumes where it stopped; do
+          // not add a "continue" message, which the API does not expect here.
+          if (message.stop_reason === "pause_turn") {
+            messages.push({ role: "assistant", content: message.content });
+            continue;
+          }
+          if (message.stop_reason === "max_tokens") {
+            throw new Error(
+              `Response hit max_tokens (${request.maxTokens}) before finishing. ` +
+                "On this model max_tokens caps thinking and output together, so " +
+                "raise it or lower the effort rather than parsing a truncated answer.",
+            );
+          }
+          break;
         }
-        // A server tool hit its per-turn iteration cap. Re-send with the
-        // assistant turn appended and the server resumes where it stopped; do
-        // not add a "continue" message, which the API does not expect here.
+
+        if (!message) throw new Error("No response from the model.");
         if (message.stop_reason === "pause_turn") {
-          messages.push({ role: "assistant", content: message.content });
-          continue;
-        }
-        if (message.stop_reason === "max_tokens") {
           throw new Error(
-            `Response hit max_tokens (${request.maxTokens}) before finishing. ` +
-              "On this model max_tokens caps thinking and output together, so " +
-              "raise it or lower the effort rather than parsing a truncated answer.",
+            `Still paused after ${MAX_CONTINUATIONS} continuations — the fetch ` +
+              "loop is not converging. Failing rather than billing indefinitely.",
           );
         }
-        break;
-      }
 
-      if (!message) throw new Error("No response from the model.");
-      if (message.stop_reason === "pause_turn") {
-        throw new Error(
-          `Still paused after ${MAX_CONTINUATIONS} continuations — the fetch ` +
-            "loop is not converging. Failing rather than billing indefinitely.",
-        );
+        return { json: parseStructuredOutput(message), usage, model: message.model };
+      } catch (error) {
+        /* AI-010: the tokens of a refused, truncated or unparseable answer
+           were billed. The error carries them so the run records the cost. */
+        throw withUsage(error, usage);
       }
-
-      return { json: parseStructuredOutput(message), usage, model: message.model };
     },
   };
 }

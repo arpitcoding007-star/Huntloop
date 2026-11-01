@@ -27,6 +27,14 @@ Fixed in the same session, uncommitted. Verified with `npm run verify` (all gree
 | preclassify footer | Fixed | Bare "unsubscribe" only in short messages |
 | DB-103 | Fixed | Screens show the warm-up cap |
 | COMP-001 doc | Fixed | Compliance doc corrected |
-| PROD-001 | **Open — outside the repo** | Vercel apex certificate or `NEXT_PUBLIC_SITE_URL`; env vars; apply 0048 and 0049 |
-| AI-010, FLOW-103, FLOW-106, PROV-015, OUT-013, PERF-001, CRM-002/003/005, PROV-005, TRUST-008, MAP-003, TEST-001, DEBT-001/003, RT-001 | Open | Follow-ups; several need a live portal or key |
+| PROV-015 | Fixed (follow-up) | 0050 `reserve_provider_credit` / `settle_provider_credit`; `callProvider` reserves, then settles after the ledger |
+| OUT-013 | Fixed (follow-up) | 0050 `claim_contact_lane`: one in-flight message per address; the other defers 15 min |
+| FLOW-106 | Fixed (follow-up) | 0050 trigger queues `resolve_entity` + `profile_company` on every company insert or restore |
+| AI-010 | Fixed (follow-up) | Client errors carry usage; `runTask` passes tokens and cost to `failed` |
+| FLOW-103 | Fixed (follow-up) | Scorer balances observations per family (hiring / site / other); drafts load recent company hiring and site evidence |
+| PROV-005 (placeholder) | Fixed (follow-up) | Apollo adapter drops `email_not_unlocked@` addresses. Request shapes still unverified live |
+| TRUST-008 | Fixed (follow-up) | Score is `null` until scored; sorts last |
+| RT-001 | Fixed (follow-up) | Demo company page derives its opportunity and people from the same fixture as the list |
+| PROD-001 | **Open — outside the repo** | Vercel apex certificate or `NEXT_PUBLIC_SITE_URL`; env vars; apply 0048, 0049 and 0050 |
+| CRM-002/003/005, MAP-003, TEST-001, PERF-001, DEBT-001/003 | Open | CRM needs a live HubSpot portal; MAP-003 needs a design decision; PERF-001 is covered by `[org]/loading.tsx` for every org page |
 | DEBT-002, env aliases | Withdrawn | Proxy blocks kitchen-sink in production; aliases already documented |

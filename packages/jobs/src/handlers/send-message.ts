@@ -407,6 +407,21 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     }
   }
 
+  /* OUT-013. `can_contact` reads a counter that moves only after a send, so
+     two lanes with two messages to one address both passed it. One message
+     per address is in flight; the other waits. Before the allowance claim,
+     so waiting does not spend it. A lane that cannot be read does not open:
+     the same posture as `can_contact` above. */
+  const { data: lane, error: laneError } = await scope.rpc("claim_contact_lane", {
+    p_org: scope.orgId,
+    p_email: message.to_email,
+    p_message: messageId,
+  });
+  if (laneError || lane !== true) {
+    const soon = new Date(Date.now() + 15 * 60_000);
+    return defer(ctx, messageId, soon, "address_busy", "Another message to this address is being sent.");
+  }
+
   // Step 4. Atomic, and before the send.
   const { data: claimed } = await scope.rpc("claim_mailbox_send", { p_mailbox: mailbox.id });
   if (claimed !== true) {
@@ -556,6 +571,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
         ...(refused ? { send_attempted_at: null } : {}),
       })
       .eq("id", messageId);
+    if (refused) await scope.rpc("release_contact_lane", { p_org: scope.orgId, p_message: messageId });
     await recordEvent(ctx, messageId, "failed", { reason: reason.slice(0, 500), refused });
 
     return refused ? { ok: false, error: reason } : { ok: false, permanent: true, error: reason };

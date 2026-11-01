@@ -315,7 +315,7 @@ describe("mapListRow", () => {
 
   it("does not claim a score for an unscored opportunity", () => {
     const mapped = mapListRow(row({ opportunity_scores: [] }), []);
-    expect(mapped.score).toBe(0);
+    expect(mapped.score).toBeNull(); // TRUST-008: never a 0 it did not earn
     expect(mapped.scoreExplanation).toBe("Not scored yet.");
     expect(mapped.dimensions.every((d) => d.value === "unknown")).toBe(true);
   });

@@ -1205,7 +1205,10 @@ console.log("\nSource health — §58's degrade-and-retry, in the database");
 // longer claimable, and an abandoned one comes back.
 console.log("\nJob queue — claim once, and recover from a dead worker");
 {
+  /* The fixture companies above queued their follow-ups (0050, FLOW-106);
+     these checks count the queue, so they start from an empty one. */
   await db.exec(`
+    delete from job_executions;
     insert into job_executions (id, org_id, job_name, payload) values
       ('99990000-0000-0000-0000-000000000001',
        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'scan_source', '{"n":1}'::jsonb),
@@ -1725,6 +1728,107 @@ console.log("\n0011 — a provider budget is a control, not a number");
   );
   if (Number(afterHit.rows[0]?.used) === 10) ok("a cache hit is recorded and costs no budget");
   else fail("a cache hit is recorded and costs no budget", JSON.stringify(afterHit.rows[0]));
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — the last credit is reserved once (PROV-015)");
+{
+  await db.exec("begin");
+  await db.query(
+    `insert into provider_accounts (org_id, capability, provider, monthly_credit_limit)
+     values ($1, 'company.search', 'apollo', 10)`,
+    [ORG_A],
+  );
+  await db.query(`select public.record_provider_call($1, 'company.search', 'apollo', 'h1', 'ok', 9)`, [ORG_A]);
+
+  const first = await db.query<{ allowed: boolean }>(
+    `select allowed from public.reserve_provider_credit($1, 'apollo')`,
+    [ORG_A],
+  );
+  const second = await db.query<{ allowed: boolean }>(
+    `select allowed from public.reserve_provider_credit($1, 'apollo')`,
+    [ORG_A],
+  );
+  if (first.rows[0]?.allowed === true && second.rows[0]?.allowed === false) {
+    ok("one credit left: the first reservation holds it, the second is refused");
+  } else {
+    fail("one credit left: the first reservation holds it, the second is refused", JSON.stringify([first.rows, second.rows]));
+  }
+
+  // The call spent 2; the ledger counts it, then the hold is handed back.
+  await db.query(`select public.record_provider_call($1, 'company.search', 'apollo', 'h2', 'ok', 2)`, [ORG_A]);
+  await db.query(`select public.settle_provider_credit($1, 'apollo', 1)`, [ORG_A]);
+  const settled = await db.query<{ used: number }>(
+    `select used from public.provider_budget_state($1, 'apollo')`,
+    [ORG_A],
+  );
+  if (Number(settled.rows[0]?.used) === 11) ok("settling leaves the real spend, not the reservation");
+  else fail("settling leaves the real spend, not the reservation", JSON.stringify(settled.rows[0]));
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — one send per address in flight (OUT-013)");
+{
+  await db.exec("begin");
+  const M1 = "d0000000-0000-0000-0000-0000000050a1";
+  const M2 = "d0000000-0000-0000-0000-0000000050a2";
+  const claim = async (email: string, message: string) =>
+    (await db.query<{ ok: boolean }>(`select public.claim_contact_lane($1, $2, $3) as ok`, [ORG_A, email, message]))
+      .rows[0]?.ok;
+
+  if ((await claim("Pat@Example.test", M1)) === true) ok("the first message takes the lane");
+  else fail("the first message takes the lane", "refused");
+  if ((await claim(" pat@example.test", M2)) === false) ok("a second message to the same address waits");
+  else fail("a second message to the same address waits", "allowed");
+  if ((await claim("pat@example.test", M1)) === true) ok("the holder may claim again (a retry)");
+  else fail("the holder may claim again (a retry)", "refused");
+  if ((await claim("sam@example.test", M2)) === true) ok("another address is its own lane");
+  else fail("another address is its own lane", "refused");
+
+  await db.query(`select public.release_contact_lane($1, $2)`, [ORG_A, M1]);
+  if ((await claim("pat@example.test", M2)) === true) ok("a released lane is free at once");
+  else fail("a released lane is free at once", "refused");
+
+  await db.query(`update contact_send_lanes set claimed_at = now() - interval '11 minutes'`);
+  if ((await claim("pat@example.test", M1)) === true) ok("a lane older than ten minutes is stale");
+  else fail("a lane older than ten minutes is stale", "refused");
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — every new company is resolved and profiled (FLOW-106)");
+{
+  await db.exec("begin");
+  const C = "c0000000-0000-0000-0000-0000000050c1";
+  const queued = async () =>
+    (
+      await db.query<{ job_name: string }>(
+        `select job_name from job_executions
+          where payload->>'companyId' = $1 or payload->>'entityId' = $1
+          order by job_name`,
+        [C],
+      )
+    ).rows.map((r) => r.job_name);
+
+  await db.query(
+    `insert into companies (id, org_id, canonical_domain, name) values ($1, $2, 'added-50.test', 'Added Co')`,
+    [C, ORG_A],
+  );
+  const added = await queued();
+  if (added.join() === "profile_company,resolve_entity") ok("a company added by any path queues both");
+  else fail("a company added by any path queues both", JSON.stringify(added));
+
+  await db.query(`update companies set name = 'Renamed' where id = $1`, [C]);
+  if ((await queued()).length === 2) ok("an ordinary update queues nothing more");
+  else fail("an ordinary update queues nothing more", JSON.stringify(await queued()));
+
+  await db.query(`update job_executions set status = 'succeeded' where payload->>'companyId' = $1 or payload->>'entityId' = $1`, [C]);
+  await db.query(`update companies set deleted_at = now() where id = $1`, [C]);
+  await db.query(`update companies set deleted_at = null where id = $1`, [C]);
+  if ((await queued()).length === 4) ok("a restored company is looked at again");
+  else fail("a restored company is looked at again", JSON.stringify(await queued()));
 
   await db.exec("rollback");
 }

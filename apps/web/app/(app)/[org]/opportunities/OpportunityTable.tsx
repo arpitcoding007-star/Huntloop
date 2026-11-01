@@ -212,9 +212,13 @@ export function OpportunityTable({
       const dir = sort.direction === "asc" ? 1 : -1;
       if (sort.key === "priority") {
         const r = RANK[a.priority] - RANK[b.priority];
-        return (r !== 0 ? r : a.score - b.score) * dir;
+        return (r !== 0 ? r : (a.score ?? -1) - (b.score ?? -1)) * dir;
       }
-      if (sort.key === "score") return (a.score - b.score) * dir;
+      if (sort.key === "score") {
+        // Unscored sorts last in either direction, like a missing trigger (TRUST-008).
+        if (a.score === null || b.score === null) return a.score !== null ? -1 : b.score !== null ? 1 : 0;
+        return (a.score - b.score) * dir;
+      }
       if (sort.key === "company") return a.company.localeCompare(b.company) * dir;
       if (sort.key === "trigger") {
         // No trigger sorts last in either direction: it is not old, it is absent.

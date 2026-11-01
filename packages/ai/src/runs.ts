@@ -32,11 +32,14 @@ export interface RunFinish {
   latencyMs: number;
 }
 
+export type RunSpend = Pick<RunFinish, "usage" | "costCents">;
+
 export interface RunRecorder {
   /** Called before the model call. Returns a handle, or null if not recorded. */
   started(run: RunStart): Promise<string | null>;
   succeeded(runId: string, finish: RunFinish): Promise<void>;
-  failed(runId: string, error: string, latencyMs: number): Promise<void>;
+  /** `spent` is present when the call got far enough to be billed (AI-010). */
+  failed(runId: string, error: string, latencyMs: number, spent?: RunSpend): Promise<void>;
 }
 
 /**

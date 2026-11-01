@@ -9,8 +9,8 @@
  * boundary. That split is deliberate: the rules the master context calls
  * non-negotiable live where a task author cannot forget them.
  */
-import { createAnthropicClient, type ModelClient } from "./client.ts";
-import { estimateCostCents, ROUTES, type TaskName } from "./models.ts";
+import { createAnthropicClient, usageOf, type ModelClient } from "./client.ts";
+import { estimateCostCents, ROUTES, type TaskName, type TokenUsage } from "./models.ts";
 import { inputHash, type Prompt } from "./prompt.ts";
 import type { RunRecorder } from "./runs.ts";
 
@@ -80,6 +80,7 @@ export async function runTask<TInput, TOutput>(
   });
 
   const startedAt = Date.now();
+  let usage: TokenUsage | null = null;
   try {
     const result = await client.run({
       model: route.model,
@@ -90,6 +91,7 @@ export async function runTask<TInput, TOutput>(
       schema: typeof task.schema === "function" ? task.schema(input) : task.schema,
       fetchDomains: task.fetchDomains?.(input),
     });
+    usage = result.usage;
 
     // Parse and validate *inside* the try, so a §7 violation is recorded as a
     // failed run rather than escaping as an unattributed exception. The tokens
@@ -111,7 +113,14 @@ export async function runTask<TInput, TOutput>(
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
     if (runId) {
-      await ctx.recorder.failed(runId, describe(error), latencyMs);
+      /* AI-010: a refusal, a truncation or a §7 violation was still billed. */
+      const spent = usage ?? usageOf(error);
+      await ctx.recorder.failed(
+        runId,
+        describe(error),
+        latencyMs,
+        spent ? { usage: spent, costCents: estimateCostCents(route.model, spent) } : undefined,
+      );
     }
     throw error;
   }

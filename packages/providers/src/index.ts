@@ -310,7 +310,15 @@ export {
 export { ProviderRefused, MAX_ATTEMPTS, TIMEOUT_MS } from "./call.ts";
 export { TTL, invalidate, requestHash } from "./cache.ts";
 export { usageThisMonth, type ProviderUsage } from "./ledger.ts";
-export { budgetAllows, breakerOpen, describeBudget, type BudgetState } from "./budget.ts";
+export {
+  budgetAllows,
+  breakerOpen,
+  describeBudget,
+  reserveCredit,
+  settleReservation,
+  type BudgetState,
+  type Reservation,
+} from "./budget.ts";
 export {
   adapterFor,
   configuredProviders,

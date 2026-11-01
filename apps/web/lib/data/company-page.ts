@@ -1,5 +1,6 @@
 import "server-only";
 import { requireOrgId } from "./org";
+import { OPPORTUNITIES } from "../fixtures/opportunities";
 import { load, type Loaded } from "./source";
 
 /**
@@ -82,8 +83,31 @@ export async function getCompanyRelations(
         })),
       };
     },
-    () => ({ opportunities: [], people: [] }),
+    () => demoRelations(companyId),
   );
+}
+
+/**
+ * RT-001. The demo company list derives `demo-company-N` from the N-th
+ * opportunity fixture and says "1 open"; this page's fallback was empty and
+ * said "Not qualified yet". Same derivation, so the two screens agree.
+ */
+export function demoRelations(companyId: string): { opportunities: CompanyOpportunity[]; people: CompanyPerson[] } {
+  const n = /^demo-company-(\d+)$/.exec(companyId)?.[1];
+  const o = n ? OPPORTUNITIES[Number(n) - 1] : undefined;
+  if (!o) return { opportunities: [], people: [] };
+  return {
+    opportunities: [
+      { id: o.id, icpName: null, priority: o.priority, status: o.status, score: o.score, estimatedValueCents: null },
+    ],
+    people: o.buyers.map((b, i) => ({
+      id: `${o.id}-buyer-${i + 1}`,
+      name: b.name,
+      title: b.title,
+      isDecisionMaker: b.isDecisionMaker,
+      linkedin: null,
+    })),
+  };
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

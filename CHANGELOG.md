@@ -40,7 +40,21 @@ production).
 - Waiting sends use `messages.not_before` instead of failing, so they never
   exhaust their retries or block the send sweep.
 
+### Spend and send races — needs migration **0050**
+- A provider call reserves its credit in the same statement that checks the
+  budget, so parallel lanes can no longer each spend the last credit.
+- One message per recipient address is in flight at a time; a second one
+  waits 15 minutes instead of sending alongside it.
+- Every company, however it was added (by hand, import, scan, analyze) or
+  restored, is queued for duplicate resolution and site profiling.
+
 ### Engine
+- Failed model runs (refusals, truncations, rule violations) record the
+  tokens and cost they were billed for.
+- The scorer sees hiring and site evidence alongside research, and drafts
+  can cite the company's recent hiring postings and site facts.
+- Apollo's `email_not_unlocked@domain.com` placeholder is dropped in the
+  adapter.
 - A tick runs up to 4 jobs at once and claims 12 by default (was 1 and 5).
 - Discovery queues `resolve_entity` for each new company; contact ranking
   queues `enrich_person` for the top two contacts without a verified address.
@@ -56,6 +70,9 @@ production).
   and no server-side fallback is requested for it.
 
 ### Fixed
+- An unscored opportunity shows no score, rather than 0, and sorts last.
+- A demo company's page lists its opportunity and people, matching the
+  company list.
 - Adding a company that was removed restores it instead of failing with an
   error about a row nobody can see.
 - Opportunities of a removed company no longer appear in the opportunity list.
