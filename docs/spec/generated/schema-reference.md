@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 47 migrations
-> (`0001_identity.sql` … `0047_security_leads.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 49 migrations
+> (`0001_identity.sql` … `0049_soft_delete_propagation.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 81 tables · 9 views · 105 public functions · 10 enum types · 141 RLS policies · 237 indexes · 123 triggers.
+**Totals:** 81 tables · 9 views · 112 public functions · 10 enum types · 141 RLS policies · 239 indexes · 126 triggers.
 
 **RLS enabled on:** 81 of 81 tables.
 
@@ -335,6 +335,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `companies_propagate_removal`
 - `companies_same_org`
 - `companies_touch`
 
@@ -1683,6 +1684,7 @@ RLS: **enabled**
 - `job_executions_due_idx` — `job_executions USING btree (run_at) WHERE (status = 'queued'::text)`
 - `job_executions_idempotency_idx` — `UNIQUE job_executions USING btree (job_name, idempotency_key, org_id) NULLS NOT DISTINCT WHERE ((idempotency_key IS NOT NULL) AND (status = ANY (ARRAY['queued'::text, 'running'::text])))`
 - `job_executions_idx` — `job_executions USING btree (org_id, job_name, created_at DESC)`
+- `job_executions_name_key_idx` — `job_executions USING btree (job_name, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
 
 **Policies**
 
@@ -1868,11 +1870,15 @@ RLS: **enabled**
 | `last_sync_at` | timestamp with time zone | null |  |
 | `sync_cursor` | text | null |  |
 | `last_error` | text | null |  |
-| `warmup_started_at` | timestamp with time zone | null |  |
+| `warmup_started_at` | timestamp with time zone | null | `now()` |
 | `warmup_target` | integer | null |  |
+| `domain_status` | text | null |  |
+| `domain_report` | jsonb | null |  |
+| `domain_checked_at` | timestamp with time zone | null |  |
 
 **Constraints**
 
+- CHECK `mailboxes_domain_status_check` — `CHECK ((domain_status = ANY (ARRAY['pass'::text, 'warn'::text, 'fail'::text])))`
 - CHECK `mailboxes_health_score_check` — `CHECK (((health_score >= 0) AND (health_score <= 100)))`
 - CHECK `mailboxes_provider_check` — `CHECK ((provider = ANY (ARRAY['gmail'::text, 'outlook'::text, 'smtp'::text])))`
 - FK `mailboxes_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
@@ -1886,6 +1892,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `mailboxes_guard_safety`
 - `mailboxes_touch`
 
 ## memberships
@@ -2166,6 +2173,7 @@ RLS: **enabled**
 | `rejected_at` | timestamp with time zone | null |  |
 | `rejection_reason` | text | null |  |
 | `applied_memory_ids` | uuid[] | NOT NULL | `'{}'::uuid[]` |
+| `not_before` | timestamp with time zone | null |  |
 
 **Constraints**
 
@@ -2191,6 +2199,7 @@ RLS: **enabled**
 - `messages_one_per_enrollment_step` — `UNIQUE messages USING btree (enrollment_id, step_id) WHERE ((direction = 'outbound'::text) AND (enrollment_id IS NOT NULL) AND (step_id IS NOT NULL) AND (deleted_at IS NULL))`
 - `messages_opportunity_idx` — `messages USING btree (org_id, opportunity_id, created_at DESC) WHERE (opportunity_id IS NOT NULL)`
 - `messages_scheduled_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (deleted_at IS NULL))`
+- `messages_sendable_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (error IS NULL) AND (deleted_at IS NULL))`
 - `messages_thread_idx` — `messages USING btree (org_id, thread_id, created_at)`
 
 **Policies**
@@ -2312,6 +2321,7 @@ RLS: **enabled**
 
 - `opportunities_project_activity`
 - `opportunities_same_org`
+- `opportunities_stop_outreach`
 - `opportunities_touch`
 
 ## opportunity_scores
@@ -3499,6 +3509,7 @@ RLS: **enabled**
 | `flag_contradictions` | `p_org uuid, p_subject_type text, p_subject uuid` | integer | yes |
 | `guard_activity_authorship` |  | trigger |  |
 | `guard_invitation_owner` |  | trigger | yes |
+| `guard_mailbox_safety` |  | trigger |  |
 | `guard_membership_owner` |  | trigger | yes |
 | `guard_organization_reserved` |  | trigger |  |
 | `handle_new_user` |  | trigger | yes |
@@ -3508,6 +3519,7 @@ RLS: **enabled**
 | `is_suppressed` | `p_org uuid, p_email text` | boolean |  |
 | `issue_unsubscribe_token` |  | trigger | yes |
 | `jsonb_keys_within` | `p_obj jsonb, p_allowed text[]` | boolean |  |
+| `mailbox_daily_cap` | `p_mailbox uuid` | integer |  |
 | `mailbox_remaining_today` | `p_mailbox uuid` | integer |  |
 | `memories_origin_from_source` |  | trigger |  |
 | `merge_companies` | `p_org uuid, p_winner uuid, p_loser uuid, p_reason text, p_actor uuid, p_method text, p_confidence confidence` | uuid | yes |
@@ -3531,6 +3543,8 @@ RLS: **enabled**
 | `migration_0045_applied` |  | boolean |  |
 | `migration_0046_applied` |  | boolean |  |
 | `migration_0047_applied` |  | boolean |  |
+| `migration_0048_applied` |  | boolean |  |
+| `migration_0049_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `project_message_activity` |  | trigger | yes |
@@ -3538,8 +3552,10 @@ RLS: **enabled**
 | `project_opportunity_activity` |  | trigger | yes |
 | `project_outcome_activity` |  | trigger | yes |
 | `project_override_activity` |  | trigger | yes |
+| `propagate_company_removal` |  | trigger |  |
 | `provider_budget_for_org` | `p_org uuid, p_provider text` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
 | `provider_budget_state` | `p_org uuid, p_provider text` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
+| `prune_job_executions` | `p_older_than interval` | integer |  |
 | `prune_provider_cache` |  | integer | yes |
 | `prune_rate_limits` | `p_older_than interval` | integer | yes |
 | `prune_stale_contacts` | `p_org uuid` | integer | yes |
@@ -3558,6 +3574,7 @@ RLS: **enabled**
 | `resolve_company` | `p_org uuid, p_domain text, p_provider text, p_provider_id text` | TABLE(company_id uuid, matched_on text) | yes |
 | `retry_job` | `p_org uuid, p_job uuid` | boolean | yes |
 | `saturated_org_ids` |  | SETOF uuid | yes |
+| `stop_outreach_for_deleted_opportunity` |  | trigger |  |
 | `touch_updated_at` |  | trigger |  |
 | `usage_limit` | `p_org uuid, p_metric text` | bigint | yes |
 | `user_org_ids` |  | SETOF uuid | yes |

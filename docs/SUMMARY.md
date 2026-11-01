@@ -75,6 +75,16 @@
 * [Roadmap](status/roadmap.md)
 * [Changelog](status/changelog.md)
 
+## Competitive analysis
+
+* [Huntloop vs. Harvey: technical audit](competitive/harvey/README.md)
+  * [Feature and capability inventory](competitive/harvey/01-feature-inventory.md)
+  * [Architecture and data flow](competitive/harvey/02-architecture.md)
+  * [Categories 1–7](competitive/harvey/03-categories-1-7.md)
+  * [Categories 8–13](competitive/harvey/04-categories-8-13.md)
+  * [Comparison matrix](competitive/harvey/05-matrix.md)
+  * [Gap analysis and roadmap](competitive/harvey/06-gaps-and-roadmap.md)
+
 ## Reference
 
 * [Glossary](reference/glossary.md)
