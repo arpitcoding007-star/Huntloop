@@ -80,16 +80,6 @@ export {
   type Extraction,
 } from "./extract.ts";
 
-export {
-  enrichmentProvider,
-  findContacts,
-  verificationProvider,
-  verifyEmail,
-  type ContactCandidate,
-  type ContactKind,
-  type Verification,
-  type VerificationStatus,
-} from "./providers.ts";
 
 export { AiUnavailable, runForOrg } from "./ai.ts";
 

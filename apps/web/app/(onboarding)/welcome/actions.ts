@@ -243,30 +243,6 @@ export async function createWorkspace(
 }
 
 /**
- * A workspace for a company described by hand — no website required.
- *
- * The "describe it yourself" path: pre-launch, stealth, or a site that says
- * too little to read. The address comes from the website when one was given
- * (it is what the user would have typed) and from the name otherwise.
- */
-export async function createNamedWorkspace(
-  name: string,
-  website?: string,
-  preferredSlug?: string,
-): Promise<ActionResult<WorkspaceResult>> {
-  const trimmed = name.trim().slice(0, 200);
-  if (!trimmed) return fail("What's the company called?");
-
-  let domain: string | null = null;
-  if (website?.trim()) {
-    domain = canonicalizeDomain(website.trim());
-    if (!domain) return fail("That doesn't look like a website address.");
-  }
-
-  return provision({ name: trimmed, domain, preferredSlug });
-}
-
-/**
  * The shared half: pick a slug, create the org and its owner membership.
  *
  * A slug the user typed is honoured exactly or refused — silently suffixing a

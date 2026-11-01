@@ -4,7 +4,7 @@ import { LATEST_TABLE, isProductionDeployment, probeSchema, supabaseEnv } from "
 /**
  * What this deployment is connected to, as booleans.
  *
- * Exists so "is seefluence.com the real production?" is one request rather
+ * Exists so "is huntloop.pro the real production?" is one request rather
  * than a dashboard tour: which commit is serving, whether the database is
  * configured and fully migrated, and which integrations have a key. The
  * go/no-go checklist in SETUP.md reads it.

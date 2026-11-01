@@ -12,9 +12,9 @@
  */
 
 export const MODELS = {
-  opus: "claude-opus-5",
-  sonnet: "claude-sonnet-5",
-  haiku: "claude-haiku-4-5",
+  opus: "claude-opus-5-5",
+  sonnet: "claude-sonnet-5-5",
+  haiku: "claude-haiku-5-5",
 } as const;
 
 export type ModelId = (typeof MODELS)[keyof typeof MODELS];
@@ -109,23 +109,28 @@ export const ROUTES: Record<TaskName, Route> = {
 /**
  * What each model's request surface accepts.
  *
- * This exists because the differences are 400 errors, not degradations. Haiku
- * 4.5 predates both adaptive thinking and the effort parameter, and predates
- * the dynamic-filtering web tools; sending any of the three to it fails the
- * request outright. Encoding that here means a future routing change — moving
- * `extract_signals` to Haiku to save money, say — cannot silently produce a
- * request shape that model has never accepted.
+ * This exists because the differences are 400 errors, not degradations.
+ * Encoding them here means a routing change — moving `extract_signals` to a
+ * cheaper model, say — cannot silently produce a request shape that model has
+ * never accepted.
+ *
+ * The 5.5 family all run adaptive thinking and take `effort`; none accepts
+ * disabled thinking or a forced `tool_choice`, and nothing here sends either.
+ * Haiku 5.5 has no dynamic-filtering web tools and no server-side refusal
+ * fallback, so neither is sent to it.
  */
 export interface ModelCapabilities {
   adaptiveThinking: boolean;
   effort: boolean;
   webFetch: boolean;
+  /** Accepts `fallbacks: "default"` (server-side refusal fallback). */
+  serverFallback: boolean;
 }
 
 const CAPABILITIES: Record<ModelId, ModelCapabilities> = {
-  [MODELS.opus]: { adaptiveThinking: true, effort: true, webFetch: true },
-  [MODELS.sonnet]: { adaptiveThinking: true, effort: true, webFetch: true },
-  [MODELS.haiku]: { adaptiveThinking: false, effort: false, webFetch: false },
+  [MODELS.opus]: { adaptiveThinking: true, effort: true, webFetch: true, serverFallback: true },
+  [MODELS.sonnet]: { adaptiveThinking: true, effort: true, webFetch: true, serverFallback: true },
+  [MODELS.haiku]: { adaptiveThinking: true, effort: true, webFetch: false, serverFallback: false },
 };
 
 export function capabilities(model: ModelId): ModelCapabilities {
@@ -133,17 +138,30 @@ export function capabilities(model: ModelId): ModelCapabilities {
 }
 
 /**
- * List price in USD per million tokens.
+ * List price in USD per million tokens (Anthropic first-party, 2026-10).
  *
- * Sonnet 5 carries an introductory rate ($2.00/$10.00) that expires
- * 2026-08-31. The standard rate is used here on purpose: a cost dashboard that
- * quietly assumes a promotional price will understate the bill from the day it
- * ends, and it will do so without anyone changing a line of code.
+ * Cache reads are listed per model rather than derived, because they are not
+ * one ratio: Opus 5.5 reads at $0.20 against $4.00 input (0.05×), Sonnet 5.5
+ * at $0.20 against $2.00 (0.1×). Haiku 5.5 is priced by prompt length — the
+ * `long` rate applies to a call whose prompt exceeds `long.above` tokens. Its
+ * cache-read rate is not published in our reference and is assumed at 0.1×.
  */
-const PRICES: Record<ModelId, { input: number; output: number }> = {
-  [MODELS.opus]: { input: 5.0, output: 25.0 },
-  [MODELS.sonnet]: { input: 3.0, output: 15.0 },
-  [MODELS.haiku]: { input: 1.0, output: 5.0 },
+interface Price {
+  input: number;
+  output: number;
+  cacheRead: number;
+  long?: { above: number; input: number; output: number };
+}
+
+const PRICES: Record<ModelId, Price> = {
+  [MODELS.opus]: { input: 4.0, output: 20.0, cacheRead: 0.2 },
+  [MODELS.sonnet]: { input: 2.0, output: 10.0, cacheRead: 0.2 },
+  [MODELS.haiku]: {
+    input: 0.1,
+    output: 0.5,
+    cacheRead: 0.01,
+    long: { above: 100_000, input: 0.5, output: 2.5 },
+  },
 };
 
 export interface TokenUsage {
@@ -156,18 +174,20 @@ export interface TokenUsage {
 /**
  * Cost of one call, in cents, to four decimal places.
  *
- * Cache reads bill at ~0.1× input and cache writes at ~1.25×, which is the
+ * Cache reads bill at a small fraction of input and cache writes at ~1.25×, which is the
  * whole reason §7.2 calls caching the biggest lever: the ICP and product
  * context are byte-identical across every opportunity in a campaign, so almost
  * all of a mature campaign's input tokens should be arriving at the 0.1× rate.
  * If they are not, the cache is broken and this number is how you find out.
  */
 export function estimateCostCents(model: ModelId, usage: TokenUsage): number {
-  const price = PRICES[model];
+  const base = PRICES[model];
+  const prompt = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
+  const price = base.long && prompt > base.long.above ? { ...base, ...base.long } : base;
   const perToken = (n: number, rate: number) => (n / 1_000_000) * rate;
   const usd =
     perToken(usage.inputTokens, price.input) +
-    perToken(usage.cacheReadTokens, price.input * 0.1) +
+    perToken(usage.cacheReadTokens, price.cacheRead) +
     perToken(usage.cacheWriteTokens, price.input * 1.25) +
     perToken(usage.outputTokens, price.output);
   return Math.round(usd * 100 * 10_000) / 10_000;

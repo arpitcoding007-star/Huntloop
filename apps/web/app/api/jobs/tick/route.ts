@@ -73,7 +73,9 @@ async function run(request: NextRequest) {
   await sweep();
 
   const report = await tick({
-    limit: Number(request.nextUrl.searchParams.get("limit") ?? 5),
+    limit: tickLimit(request.nextUrl.searchParams.get("limit")),
+    // P1-1: jobs mostly wait on providers, so several share the invocation.
+    concurrency: 4,
     // A margin under `maxDuration`, so the runner declines to start a job it
     // cannot finish rather than being killed holding the lock on it.
     deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
@@ -84,6 +86,12 @@ async function run(request: NextRequest) {
     // Never cached, at any layer. A cached tick is a tick that did not happen.
     headers: { "cache-control": "no-store" },
   });
+}
+
+/** `?limit=` is caller-supplied: anything but a whole number from 1 to 25 falls back to the default. */
+function tickLimit(raw: string | null): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 25 ? n : 12;
 }
 
 export const GET = run;

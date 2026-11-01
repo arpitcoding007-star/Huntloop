@@ -77,9 +77,32 @@ export async function scheduleSyncs(ctx: JobContext): Promise<JobOutcome> {
     else alreadyQueued++;
   }
 
+  /* P1-4: each connected mailbox's domain is re-checked daily, because DNS
+     changes under a mailbox without anyone telling us. An error here (0048
+     not yet applied) skips the checks rather than the syncs. */
+  const checkBefore = new Date(ctx.now.getTime() - 24 * 3600_000).toISOString();
+  const { data: unchecked } = await db
+    .from("mailboxes")
+    .select("id, org_id")
+    .eq("status", "connected")
+    .is("deleted_at", null)
+    .or(`domain_checked_at.is.null,domain_checked_at.lte.${checkBefore}`)
+    .limit(MAX_PER_TICK);
+  let domainChecks = 0;
+  for (const mailbox of unchecked ?? []) {
+    const result = await enqueue({
+      orgId: String(mailbox.org_id),
+      name: "check_mailbox_domain",
+      payload: { mailboxId: String(mailbox.id) },
+      idempotencyKey: `domain:${mailbox.id}`,
+    });
+    if (result.created) domainChecks++;
+  }
+
   return {
     ok: true,
     result: {
+      domain_checks: domainChecks,
       due: due.length,
       enqueued,
       already_queued: alreadyQueued,

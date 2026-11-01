@@ -57,4 +57,11 @@ jobs:
           head -c 2000 body.json; echo
           # 200 even when a job fails — failures are in the body and in
           # job_executions.error. Anything else means the tick itself did not run.
-          [ "$status" = "200" ]
+          [ "$status" = "200" ] || exit 1
+          # P0-6: a due job that has waited 15 minutes means ticks are not
+          # keeping up. Red, so GitHub's failure email is the alert.
+          lag=$(jq -r '.oldestDueSeconds // 0' body.json)
+          if [ "$lag" -gt 900 ]; then
+            echo "::error::The oldest due job has waited ${lag}s. The engine is not keeping up; see /ops."
+            exit 1
+          fi

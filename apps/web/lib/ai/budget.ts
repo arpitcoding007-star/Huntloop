@@ -26,12 +26,13 @@ import type { TenantClient } from "@huntloop/db";
  * inside it, so a member can ask about their own org and nobody can ask about
  * anyone else's. That is the seam this path is supposed to use.
  *
- * ── Why it fails open ────────────────────────────────────────────────────
+ * ── Why it fails closed (B-06) ───────────────────────────────────────────
  *
- * The same decision the engine and `lib/data/usage.ts` already make: a quota
- * that cannot be read does not stop the product. The cost of failing open is a
- * reconciliation and it is ours; the cost of failing closed is a customer who
- * paid for a plan and cannot use it because a counter query failed.
+ * It used to fail open, like the engine. The request path is different: it is
+ * a public POST endpoint, and an error a caller can provoke — a malformed org,
+ * a quota RPC under load — turned into unmetered model calls billed to us. A
+ * refused click is a retry for the user; an unbounded spend is not reversible.
+ * The engine's own quota checks are unchanged.
  */
 
 export interface BudgetDecision {
@@ -39,6 +40,8 @@ export interface BudgetDecision {
   used: number;
   /** Null means the plan has no ceiling for this metric. */
   quota: number | null;
+  /** The allowance could not be read, so the call was refused rather than metered blind. */
+  unreadable?: boolean;
 }
 
 export async function withinAiBudget(
@@ -50,12 +53,12 @@ export async function withinAiBudget(
     p_metric: "ai_runs",
   });
 
-  if (error) return { allowed: true, used: 0, quota: null };
+  if (error) return { allowed: false, used: 0, quota: null, unreadable: true };
 
   const row = (Array.isArray(data) ? data[0] : data) as
     | { used?: number; quota?: number | null; allowed?: boolean }
     | undefined;
-  if (!row) return { allowed: true, used: 0, quota: null };
+  if (!row) return { allowed: false, used: 0, quota: null, unreadable: true };
 
   return {
     allowed: Boolean(row.allowed),
@@ -72,6 +75,12 @@ export async function withinAiBudget(
  * only way to find out either is to ask.
  */
 export function budgetRefusal(decision: BudgetDecision): { ok: false; error: string } {
+  if (decision.unreadable) {
+    return {
+      ok: false,
+      error: "This organisation's model-run allowance could not be checked just now, so nothing was run. Try again in a moment.",
+    };
+  }
   return {
     ok: false,
     error:

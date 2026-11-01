@@ -17,15 +17,15 @@
     "@huntloop/db": "*",
     "@huntloop/jobs": "*",
     "@huntloop/ui": "*",
-    "@sentry/nextjs": "10.70.0",
+    "@sentry/nextjs": "10.78.0",
     "lucide-react": "^0.469.0",
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "posthog-node": "^5.49.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
     "unpdf": "1.8.1",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

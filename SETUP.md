@@ -46,7 +46,7 @@ counters step 3 just created.
 ## Production — one chain, and how to check it
 
 The intended chain is **GitHub `main` → one Vercel project → Supabase
-`hnoycsbdddpmsivtmrws` → integrations → `https://seefluence.com`**.
+`hnoycsbdddpmsivtmrws` → integrations → `https://huntloop.pro`** (migrating from `seefluence.com`; see `docs/domain-migration-huntloop-pro.md`).
 
 As of the 2026-09-28 audit it was split: two Vercel projects deployed every
 push (`huntloop` in the *huntloop* team, which owns the domain but had never
@@ -79,7 +79,7 @@ gh secret set CRON_SECRET -R arpitcoding007-star/Huntloop
 ```
 
 ```bash
-gh variable set HUNTLOOP_URL -R arpitcoding007-star/Huntloop --body "https://seefluence.com"
+gh variable set HUNTLOOP_URL -R arpitcoding007-star/Huntloop --body "https://huntloop.pro"
 ```
 
 `CRON_SECRET` must be the same value as on the production Vercel project.

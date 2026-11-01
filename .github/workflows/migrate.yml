@@ -1,0 +1,48 @@
+name: Migrate database
+
+# P1-6: migrations are applied by the pipeline, not pasted into the SQL editor.
+#
+# Runs on every push to main that touches a migration, and by hand. Applies
+# only what `public.schema_migrations` does not already list (see
+# packages/db/scripts/migrate.ts), each file in its own transaction.
+#
+# Needs, under Settings → Secrets and variables → Actions:
+#   Secret    DATABASE_URL         the production connection string (Supabase → Connect → session pooler)
+#   Variable  MIGRATIONS_BASELINE  first run only, on a database migrated by hand: the last
+#                                  migration it already has, e.g. 0045. Remove it afterwards.
+#
+# Deliberately not part of CI: a pull request must never touch production.
+
+on:
+  push:
+    branches: [main]
+    paths: ["packages/db/migrations/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Apply pending migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MIGRATIONS_BASELINE: ${{ vars.MIGRATIONS_BASELINE }}
+        run: |
+          # OPS-101: red, not a green warning. A migration job that applies
+          # nothing and passes is how production fell behind the code before.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is not set on this repository, so no migration was applied and production is behind the code. Set it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          node --experimental-strip-types packages/db/scripts/migrate.ts

@@ -47,21 +47,31 @@ export async function scheduleSends(ctx: JobContext): Promise<JobOutcome> {
      one legitimate use of `OrgScope.global()` as the other two sweepers. */
   const db = OrgScope.global();
 
-  const { data, error } = await db
-    .from("messages")
-    .select("id, org_id, scheduled_at")
-    .eq("direction", "outbound")
-    .is("sent_at", null)
-    .is("error", null)
-    .is("deleted_at", null)
-    .not("scheduled_at", "is", null)
-    .lte("scheduled_at", ctx.now.toISOString())
+  const due_ = (respectDeferral: boolean) => {
+    let query = db
+      .from("messages")
+      .select("id, org_id, scheduled_at")
+      .eq("direction", "outbound")
+      .is("sent_at", null)
+      .is("error", null)
+      .is("deleted_at", null)
+      .not("scheduled_at", "is", null)
+      .lte("scheduled_at", ctx.now.toISOString());
+    /* 0048: a send deferred by `send_message` waits here, so a backlog of
+       deferred messages cannot hold the oldest-first window shut. */
+    if (respectDeferral) {
+      query = query.or(`not_before.is.null,not_before.lte.${ctx.now.toISOString()}`);
+    }
     /* Oldest approval first. A person who approved a draft an hour ago is
        waiting on it more than one who approved a draft a minute ago, and a
        backlog served newest-first is a backlog where the oldest item never
        goes. */
-    .order("scheduled_at", { ascending: true })
-    .limit(MAX_PER_TICK);
+    return query.order("scheduled_at", { ascending: true }).limit(MAX_PER_TICK);
+  };
+
+  let { data, error } = await due_(true);
+  /* Before 0048 there is no `not_before`; sending matters more than deferring. */
+  if (error?.code === "42703") ({ data, error } = await due_(false));
 
   if (error) return { ok: false, error: `schedule_sends: ${error.message}` };
 

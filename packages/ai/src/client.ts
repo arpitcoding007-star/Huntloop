@@ -86,7 +86,13 @@ export function createAnthropicClient(): ModelClient {
               {
                 type: "web_fetch_20260209" as const,
                 name: "web_fetch" as const,
-                max_uses: 8,
+                /* AI-011: bounded. Every fetched page is input tokens on this
+                   request and again on each pause_turn continuation; an
+                   uncapped page at Opus rates made one research run cost
+                   dollars. Five pages of ~20k tokens is what a company's own
+                   site needs to answer the research questions. */
+                max_uses: 5,
+                max_content_tokens: 20_000,
                 allowed_domains: request.fetchDomains,
               },
             ]
@@ -110,8 +116,9 @@ export function createAnthropicClient(): ModelClient {
           // website is exactly the kind of page a cyber classifier reacts to.
           // "default" lets Anthropic route by refusal category instead of us
           // pinning a substitute model that will later be deprecated.
-          betas: ["server-side-fallback-2026-07-01"],
-          fallbacks: "default",
+          ...(caps.serverFallback
+            ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+            : {}),
           system: [
             {
               type: "text",

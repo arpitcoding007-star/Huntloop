@@ -44,6 +44,10 @@ import {
   type PersonaSpec,
 } from "@huntloop/db/contact";
 import { OrgScope } from "../scope.ts";
+import { enqueue } from "../queue.ts";
+
+/** How many of the best-fitting contacts are sent for enrichment per run. */
+export const ENRICH_TOP = 2;
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface RankContactsPayload {
@@ -193,12 +197,33 @@ export async function rankContactsJob(ctx: JobContext): Promise<JobOutcome> {
       .eq("id", opportunityId);
   }
 
+  /* Phase 0.3: the best-fitting contacts without a verified address are
+     handed to `enrich_person`, which finds and verifies one inside the org's
+     `enrich` quota. Only the top ENRICH_TOP — enrichment costs credits, and
+     the rest of the list is unlikely to be written to. */
+  const enrich = ranked
+    .filter((entry) => !entry.fit.vetoed && !entry.subject.emailVerified)
+    .slice(0, ENRICH_TOP)
+    .map((entry) => people.find((p) => p.subject === entry.subject)?.id)
+    .filter((id): id is string => Boolean(id));
+  let enrichQueued = 0;
+  for (const personId of enrich) {
+    const { created } = await enqueue({
+      orgId: scope.orgId,
+      name: "enrich_person",
+      payload: { personId },
+      idempotencyKey: `enrich:${personId}`,
+    });
+    if (created) enrichQueued++;
+  }
+
   return {
     ok: true,
     result: {
       people: people.length,
       discovered,
       scored: rows.length,
+      enrich_queued: enrichQueued,
       chosen: humanChose ? "left as the user set it" : (bestPerson?.id ?? null),
       vetoed: ranked.filter((r) => r.fit.vetoed).length,
       ...(refusal ? { refusal } : {}),

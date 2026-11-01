@@ -11,6 +11,58 @@ ship from.
 Needs database migrations **0046** and **0047** (0040–0045 are already in
 production).
 
+### Outreach safety
+- An opt-out ("remove me", "stop emailing me", a bare "STOP") or a bounce from
+  `mailer-daemon`/`postmaster` is recognised by rule before any model call, so
+  it suppresses the address even with no API key or an exhausted quota.
+- A sequence step is not sent when the recipient has written back since the
+  last email and that reply has not been answered — classified or not. An
+  out-of-office does not count; a reply sent from the inbox is never held.
+- Campaigns at autonomy 2+ only email verified addresses.
+- A mailbox stops sending when more than 5% of its last 14 days' sends bounced
+  (from 10 sends), with the reason on the mailbox.
+- At autonomy 2+ a draft is checked before it leaves — unfilled placeholders,
+  empty subject or body, oversized body, active HTML, and links outside the
+  sender's, recipient's and organisation's own domains — and goes back for
+  approval with the reasons if it fails.
+- The tick report includes `oldestDueSeconds`, and the GitHub heartbeat goes
+  red when a due job has waited more than 15 minutes.
+- A held sequence step (reply pending, or failed the pre-send check) goes
+  back to the approval queue; approving it clears the hold.
+
+### Outreach readiness — needs migration **0048**
+- New mailboxes warm up: 10 sends on day one, +5 a day, up to the mailbox's
+  limit, enforced in `claim_mailbox_send`. Existing mailboxes are unaffected.
+- `check_mailbox_domain` reads MX, SPF, DMARC and DKIM daily for each
+  connected mailbox. A domain with no MX or SPF sends no cold email.
+- Sequence steps wait for an inbox read less than 30 minutes old, and for
+  08:00–18:00 Monday–Friday in the recipient's country.
+- Waiting sends use `messages.not_before` instead of failing, so they never
+  exhaust their retries or block the send sweep.
+
+### Engine
+- A tick runs up to 4 jobs at once and claims 12 by default (was 1 and 5).
+- Discovery queues `resolve_entity` for each new company; contact ranking
+  queues `enrich_person` for the top two contacts without a verified address.
+- Hourly and daily sweepers run once per period instead of every tick.
+- `npm run migrate --workspace @huntloop/db` applies pending migrations with
+  a ledger (`schema_migrations`); `.github/workflows/migrate.yml` runs it on
+  merge when `DATABASE_URL` is set.
+
+### Models
+- Routes move to `claude-opus-5-5`, `claude-sonnet-5-5` and
+  `claude-haiku-5-5`, with prices updated ($4/$20, $2/$10, $0.10/$0.50).
+  Haiku now runs adaptive thinking; its two tasks get larger token budgets,
+  and no server-side fallback is requested for it.
+
+### Fixed
+- Adding a company that was removed restores it instead of failing with an
+  error about a row nobody can see.
+- Opportunities of a removed company no longer appear in the opportunity list.
+- `/api/jobs/tick?limit=` accepts only 1–25.
+- Removed the unused `createNamedWorkspace` action.
+- The web test timeout is 90 s, for cold runs on Windows.
+
 ### Security
 - Dependencies patched: `npm audit` reports 0 vulnerabilities (was 3 critical,
   4 high, 2 moderate). `next` 16.4.0 — the previous version was inside the

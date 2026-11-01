@@ -37,6 +37,8 @@
  */
 import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../mailbox/index.ts";
+import { bareDomain, checkContent } from "../gate.ts";
+import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../business-hours.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SendPayload {
@@ -55,7 +57,7 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
       "messages",
       `id, enrollment_id, mailbox_id, thread_id, direction, subject, body_text, body_html,
        to_email, sent_at, scheduled_at, provider_message_id,
-       send_attempted_at`,
+       send_attempted_at, approved_by, opportunity_id`,
     )
     .eq("id", messageId)
     .is("deleted_at", null)
@@ -264,6 +266,37 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, error: why };
   }
 
+  /*
+   * Step 3e. They wrote back since our last email (P0-2).
+   *
+   * A reply stops the sequence only once `classify_reply` has run and the
+   * thread has resolved to an opportunity. A reply the model never saw — no
+   * key, quota exhausted, an outage — or one that arrived from a phone as a
+   * new message with no thread, left the enrollment running, and the next
+   * step went out on top of somebody's answer. So a sequence step asks the
+   * mailbox directly: has this person written to us since we last wrote to
+   * them? If so, a person looks before anything else is sent. Out-of-office
+   * replies do not count; everything else, classified or not, does.
+   *
+   * Sequence steps only. A message without an enrollment is somebody
+   * answering from the inbox, and the reply it answers is the reason it exists.
+   *
+   * The message goes back to the approval queue rather than failing. A person
+   * who reads the reply and approves the step anyway has answered the
+   * question, so replies older than their approval no longer hold it.
+   */
+  if (message.enrollment_id) {
+    const approvedAt = message.approved_by && message.scheduled_at ? String(message.scheduled_at) : null;
+    if (await repliedSinceLastSend(ctx, String(message.to_email), approvedAt)) {
+      const why =
+        "Held for approval: they have written back since the last email. Read the reply in " +
+        "the inbox, then approve this step if it should still go, or stop the sequence.";
+      await scope.update("messages", { scheduled_at: null, error: why }).eq("id", messageId);
+      await recordEvent(ctx, messageId, "failed", { reason: "reply_pending" });
+      return { ok: true, result: { skipped: "held_for_approval", reason: "reply_pending" } };
+    }
+  }
+
   const mailboxId = message.mailbox_id ?? (await pickMailbox(scope));
   if (!mailboxId) {
     return {
@@ -288,13 +321,101 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     throw e;
   }
 
+  /*
+   * Step 3f. A mailbox that is bouncing stops (P0-5).
+   *
+   * A bad list burns a domain in an afternoon: every bounce tells the
+   * receiving providers this sender does not know who it is writing to. Past
+   * BOUNCE_LIMIT over the window, nothing more leaves this mailbox until the
+   * rate falls — the message stays queued, and the mailbox carries the reason
+   * where the outreach screen shows it.
+   */
+  const bounce = await bounceHealth(ctx, mailbox.id);
+  if (bounce.paused) {
+    const why =
+      `Paused: ${mailbox.email} bounced ${bounce.bounces} of its last ${bounce.sends} emails ` +
+      `in ${BOUNCE_WINDOW_DAYS} days, over the ${Math.round(BOUNCE_LIMIT * 100)}% limit. ` +
+      `Nothing more leaves it until older bounces fall out of that window; clean the list ` +
+      `before resuming.`;
+    await scope.update("mailboxes", { last_error: why }).eq("id", mailbox.id);
+    await recordEvent(ctx, messageId, "failed", { reason: "bounce_rate", ...bounce });
+    return defer(ctx, messageId, new Date(Date.now() + 6 * 3600_000), "bounce_rate", why);
+  }
+
+  /*
+   * Step 3f-ii. Cold sends need a sendable domain, a fresh inbox read and the
+   * recipient's working day (P1-4, P1-2, P1-5). Replies from the inbox skip
+   * all three: somebody wrote to us and a person is answering.
+   *
+   *   - A domain the check found unable to send (no MX or no SPF) sends no
+   *     cold email at all.
+   *   - The mailbox must have been read in the last SYNC_FRESH_MINUTES, so a
+   *     reply that arrived since the last read stops the sequence before
+   *     the next step rather than after it.
+   *   - Outside 08:00–18:00 Monday to Friday in the recipient's zone, the
+   *     send waits for the next window.
+   *
+   * Each waits on `not_before` instead of failing — see `defer`.
+   */
+  if (message.enrollment_id) {
+    const { data: domainRow } = await scope
+      .select("mailboxes", "domain_status, domain_report")
+      .eq("id", mailbox.id)
+      .maybeSingle();
+    const domain = domainRow as { domain_status?: string | null; domain_report?: { problems?: string[] } | null } | null;
+    if (domain?.domain_status === "fail") {
+      const why =
+        `Paused: ${mailbox.email}'s domain is not set up to send email. ` +
+        (domain.domain_report?.problems ?? []).join(" ");
+      await scope.update("mailboxes", { last_error: why.slice(0, 1000) }).eq("id", mailbox.id);
+      await recordEvent(ctx, messageId, "failed", { reason: "domain_not_ready" });
+      return defer(ctx, messageId, new Date(Date.now() + 6 * 3600_000), "domain_not_ready", why);
+    }
+
+    const freshAfter = Date.now() - SYNC_FRESH_MINUTES * 60_000;
+    if (!mailbox.lastSyncAt || new Date(mailbox.lastSyncAt).getTime() < freshAfter) {
+      return defer(ctx, messageId, new Date(Date.now() + 15 * 60_000), "inbox_not_fresh");
+    }
+
+    const zone = zoneForCountry(await recipientCountry(ctx, message.opportunity_id ?? null));
+    if (zone && !inBusinessHours(new Date(), zone)) {
+      return defer(ctx, messageId, nextBusinessWindow(new Date(), zone), "outside_business_hours");
+    }
+  }
+
+  /*
+   * Step 3g. Nobody read this one (P0-4).
+   *
+   * At autonomy 2+ the draft goes out unreviewed, so it gets the content
+   * check a reviewer would have given it. A failure is not a send failure: the
+   * message goes back to the approval queue with the reasons on it, which is
+   * what autonomy 0–1 would have done with it in the first place.
+   */
+  /* OUT-011: only a message nobody approved. A person who read a held draft
+     and approved it has answered every question this check asks. */
+  if (message.enrollment_id && !message.approved_by && (await autonomyFor(ctx, String(message.enrollment_id))) >= 2) {
+    const issues = checkContent({
+      subject: String(message.subject ?? ""),
+      body: String(message.body_text ?? ""),
+      allowedDomains: [mailbox.email, String(message.to_email), ...(await orgDomains(ctx))],
+    });
+    if (issues.length) {
+      const why = `Held for approval: ${issues.join(" ")}`.slice(0, 2000);
+      await scope.update("messages", { scheduled_at: null, error: why }).eq("id", messageId);
+      await recordEvent(ctx, messageId, "failed", { reason: "pre_send_check", issues });
+      return { ok: true, result: { skipped: "held_for_approval", issues } };
+    }
+  }
+
   // Step 4. Atomic, and before the send.
   const { data: claimed } = await scope.rpc("claim_mailbox_send", { p_mailbox: mailbox.id });
   if (claimed !== true) {
-    return {
-      ok: false,
-      error: `${mailbox.email} has used its daily allowance. This message is sent tomorrow.`,
-    };
+    /* DB-101: the allowance is a wait, not a failure. Retrying burned three
+       attempts in minutes and the sweep re-enqueued it every tick until
+       midnight; it now waits for the UTC day the counter resets on. */
+    const tomorrow = new Date();
+    tomorrow.setUTCHours(24, 0, 0, 0);
+    return defer(ctx, messageId, tomorrow, "daily_allowance", `${mailbox.email} has used today's allowance.`);
   }
 
   const thread = message.thread_id ? await loadThread(ctx, String(message.thread_id)) : null;
@@ -442,6 +563,151 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 }
 
 /* ── Pieces ──────────────────────────────────────────────────────────────── */
+
+/** How recent the mailbox's last inbox read must be for a sequence step to send. Twice the sync cadence. */
+export const SYNC_FRESH_MINUTES = 30;
+export const BOUNCE_WINDOW_DAYS = 14;
+export const BOUNCE_LIMIT = 0.05;
+export const BOUNCE_MIN_SENDS = 10;
+
+function rows<T>(data: unknown): T[] {
+  return Array.isArray(data) ? (data as T[]) : [];
+}
+
+/**
+ * A send that is right but early waits on `messages.not_before` (0048) and
+ * succeeds, rather than failing. A failure spends one of three attempts and a
+ * spent message is stranded; `schedule_sends` re-enqueues a deferred one once
+ * `not_before` passes. Before 0048 the column is missing, and the wait falls
+ * back to a retryable failure.
+ */
+async function defer(
+  ctx: JobContext,
+  messageId: string,
+  until: Date,
+  reason: string,
+  why?: string,
+): Promise<JobOutcome> {
+  const { error } = await ctx.scope.update("messages", { not_before: until.toISOString() }).eq("id", messageId);
+  if (error) return { ok: false, error: why ?? `send_message: waiting (${reason})` };
+  return { ok: true, result: { deferred: reason, until: until.toISOString(), ...(why ? { why } : {}) } };
+}
+
+async function recipientCountry(ctx: JobContext, opportunityId: string | null): Promise<string | null> {
+  if (!opportunityId) return null;
+  const { data } = await ctx.scope
+    .select("opportunities", "companies(country)")
+    .eq("id", opportunityId)
+    .maybeSingle();
+  const company = (data as { companies?: { country?: string | null } | { country?: string | null }[] } | null)?.companies;
+  const country = Array.isArray(company) ? company[0]?.country : company?.country;
+  return country ?? null;
+}
+
+/**
+ * Has this address written to us since our last email to it — and since a
+ * person approved this step, when one did — with anything other than an
+ * out-of-office? Exported for the test suite.
+ */
+export async function repliedSinceLastSend(
+  ctx: JobContext,
+  address: string,
+  approvedAt: string | null = null,
+): Promise<boolean> {
+  const { scope } = ctx;
+  const email = address.toLowerCase();
+
+  const { data: lastOut } = await scope
+    .select("messages", "sent_at")
+    .eq("direction", "outbound")
+    .eq("to_email", email)
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  const lastSent = rows<{ sent_at: string | null }>(lastOut)[0]?.sent_at ?? null;
+  const times = [lastSent, approvedAt].filter((t): t is string => Boolean(t)).map((t) => new Date(t).getTime());
+  const since = times.length ? new Date(Math.max(...times)).toISOString() : null;
+
+  let inbound = scope
+    .select("messages", "id")
+    .eq("direction", "inbound")
+    .eq("from_email", email)
+    .is("deleted_at", null);
+  if (since) inbound = inbound.gt("sent_at", since);
+  const { data: replies } = await inbound.order("sent_at", { ascending: false }).limit(20);
+  const ids = rows<{ id: string }>(replies).map((r) => String(r.id));
+  if (!ids.length) return false;
+
+  /* An out-of-office is the one answer that is not an answer. Any other
+     reply — and any reply nobody has classified — holds the sequence. */
+  const { data: events } = await scope
+    .select("message_events", "message_id, payload")
+    .in("message_id", ids)
+    .eq("kind", "replied");
+  const autoReplies = new Set(
+    rows<{ message_id: string; payload: { label?: string } | null }>(events)
+      .filter((e) => e.payload?.label === "out_of_office")
+      .map((e) => String(e.message_id)),
+  );
+  return ids.some((id) => !autoReplies.has(id));
+}
+
+/** Bounces over sends for one mailbox, over the window. Exported for the test suite. */
+export async function bounceHealth(
+  ctx: JobContext,
+  mailboxId: string,
+): Promise<{ paused: boolean; sends: number; bounces: number }> {
+  const { scope } = ctx;
+  const since = new Date(Date.now() - BOUNCE_WINDOW_DAYS * 86_400_000).toISOString();
+
+  const { data: sent } = await scope
+    .select("messages", "id")
+    .eq("mailbox_id", mailboxId)
+    .eq("direction", "outbound")
+    .gte("sent_at", since)
+    .limit(1000);
+  const sends = rows(sent).length;
+  if (sends < BOUNCE_MIN_SENDS) return { paused: false, sends, bounces: 0 };
+
+  /* Bounce notices arrive as inbound messages on the same mailbox, and
+     `applyClassification` marks each with a `bounced` event. */
+  const { data: inbound } = await scope
+    .select("messages", "id")
+    .eq("mailbox_id", mailboxId)
+    .eq("direction", "inbound")
+    .gte("sent_at", since)
+    .limit(1000);
+  const inboundIds = rows<{ id: string }>(inbound).map((r) => String(r.id));
+  if (!inboundIds.length) return { paused: false, sends, bounces: 0 };
+
+  const { data: bounced } = await scope
+    .select("message_events", "message_id")
+    .in("message_id", inboundIds)
+    .eq("kind", "bounced");
+  const bounces = new Set(rows<{ message_id: string }>(bounced).map((e) => String(e.message_id))).size;
+
+  return { paused: bounces / sends > BOUNCE_LIMIT, sends, bounces };
+}
+
+/** The campaign's autonomy level for this enrollment; 0 when it cannot be read, since 0 means a person approved. */
+async function autonomyFor(ctx: JobContext, enrollmentId: string): Promise<number> {
+  const { data } = await ctx.scope
+    .select("enrollments", "campaigns(autonomy_level)")
+    .eq("id", enrollmentId)
+    .maybeSingle();
+  const campaign = (data as { campaigns?: { autonomy_level?: number } | { autonomy_level?: number }[] } | null)
+    ?.campaigns;
+  const level = Array.isArray(campaign) ? campaign[0]?.autonomy_level : campaign?.autonomy_level;
+  return Number(level ?? 0);
+}
+
+/** The org's own websites, from its products — the domains its messages may link to. */
+async function orgDomains(ctx: JobContext): Promise<string[]> {
+  const { data } = await ctx.scope.select("products", "website").is("deleted_at", null);
+  return rows<{ website: string | null }>(data)
+    .map((p) => bareDomain(p.website))
+    .filter((d): d is string => Boolean(d));
+}
 
 /**
  * Did the provider answer "no" — so nothing was sent?

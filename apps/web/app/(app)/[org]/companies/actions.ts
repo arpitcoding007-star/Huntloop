@@ -78,6 +78,44 @@ export async function saveCompanyAction(
       return ok({ id: value.id }, "Company saved.");
     }
 
+    /* A removed company still holds its (org_id, canonical_domain) key, so a
+       plain insert would hit 23505 on a row the user cannot see. Adding the
+       domain again restores that row instead. */
+    /* DB-102: a row merged into another is not restored — its domain,
+       people and opportunities already live on the survivor, so restoring it
+       would bring back an empty duplicate the resolver never re-proposes. */
+    const { data: merged } = await db
+      .from("companies")
+      .select("merged_into_id, survivor:companies!companies_merged_into_id_fkey(name, deleted_at)")
+      .eq("org_id", orgId)
+      .eq("canonical_domain", domain)
+      .not("merged_into_id", "is", null)
+      .maybeSingle();
+    if (merged?.merged_into_id) {
+      const survivor = (Array.isArray(merged.survivor) ? merged.survivor[0] : merged.survivor) as
+        | { name?: string | null; deleted_at?: string | null }
+        | null;
+      return fail(
+        survivor && !survivor.deleted_at
+          ? `${domain} was merged into ${survivor.name ?? "another company"}. Open that company instead.`
+          : `${domain} was merged into a company that has since been removed. Restore that one instead.`,
+      );
+    }
+
+    const { data: restored, error: restoreError } = await db
+      .from("companies")
+      .update({ ...row, deleted_at: null })
+      .eq("org_id", orgId)
+      .eq("canonical_domain", domain)
+      .not("deleted_at", "is", null)
+      .select("id")
+      .maybeSingle();
+    if (restoreError) return fail(duplicateOr(restoreError, domain, "created"));
+    if (restored) {
+      revalidatePath(`/${org}/companies`);
+      return ok({ id: String(restored.id) }, "Company added.");
+    }
+
     const { data, error } = await db
       .from("companies")
       .insert(row)
@@ -108,6 +146,74 @@ function duplicateOr(
     return `${domain} is already on your list. Companies are one row per domain, so the existing one is the one to edit.`;
   }
   return `That company could not be ${verb}: ${error.message}`;
+}
+
+/**
+ * Merge a proposed duplicate (Phase 3.3).
+ *
+ * The person chooses which row survives; `merge_companies_for_org` checks
+ * membership, moves opportunities, evidence and contacts onto the survivor,
+ * soft-deletes the other with a pointer to it, and settles the proposal. The
+ * pair must be one the resolver proposed — this is not a general merge tool.
+ */
+export async function mergeCompaniesAction(
+  org: string,
+  candidateId: string,
+  keepId: string,
+): Promise<ActionResult<undefined>> {
+  return mutate(org, "mergeCompanies", async ({ db, orgId }) => {
+    const candidate = uuidSchema.safeParse(candidateId);
+    const keep = uuidSchema.safeParse(keepId);
+    if (!candidate.success || !keep.success) return fail("That merge reference isn't valid.");
+
+    const { data: pair, error: readError } = await db
+      .from("merge_candidates")
+      .select("company_a_id, company_b_id, status, matched_on")
+      .eq("id", candidate.data)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (readError) return fail(`That proposal could not be read: ${readError.message}`);
+    if (!pair || pair.status !== "pending") return fail("That proposal has already been decided.");
+
+    const ids = [String(pair.company_a_id), String(pair.company_b_id)];
+    if (!ids.includes(keep.data)) return fail("Choose one of the two companies to keep.");
+    const loser = ids.find((id) => id !== keep.data)!;
+
+    const { error } = await db.rpc("merge_companies_for_org", {
+      p_org: orgId,
+      p_winner: keep.data,
+      p_loser: loser,
+      p_reason: `Reviewed duplicate (${pair.matched_on})`,
+    });
+    if (error) return fail(`Those companies could not be merged: ${error.message}`);
+
+    revalidatePath(`/${org}/companies`);
+    return ok(undefined, "Merged. The other record now points to this one.");
+  });
+}
+
+/** Not the same company. Stored, so the resolver never proposes this pair again. */
+export async function rejectMergeAction(
+  org: string,
+  candidateId: string,
+): Promise<ActionResult<undefined>> {
+  return mutate(org, "rejectMerge", async ({ db, orgId }) => {
+    const candidate = uuidSchema.safeParse(candidateId);
+    if (!candidate.success) return fail("That merge reference isn't valid.");
+
+    const { data, error } = await db
+      .from("merge_candidates")
+      .update({ status: "rejected", decided_at: new Date().toISOString() })
+      .eq("id", candidate.data)
+      .eq("org_id", orgId)
+      .eq("status", "pending")
+      .select("id");
+    if (error) return fail(`That proposal could not be updated: ${error.message}`);
+    if (!data?.length) return fail("That proposal has already been decided.");
+
+    revalidatePath(`/${org}/companies`);
+    return ok(undefined, "Kept apart. This pair won't be suggested again.");
+  });
 }
 
 /**

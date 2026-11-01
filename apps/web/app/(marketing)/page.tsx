@@ -88,7 +88,7 @@ import type { UseCase } from "./for/use-cases";
  *
  * `/` used to redirect anybody with a session straight to their workspace.
  * That made the domain itself resolve to `/<org>/dashboard`: a stale session
- * or a failing dashboard turned "open seefluence.com" into an error screen
+ * or a failing dashboard turned "open huntloop.pro" into an error screen
  * with no way back to the front door, and the home page was reachable only
  * through a `?home=1` escape hatch. The home page is now always the home
  * page. A signed-in visitor gets a "Continue" button that goes where the

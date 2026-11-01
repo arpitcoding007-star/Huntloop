@@ -25,6 +25,11 @@ import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extrac
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
 import { sendMessage } from "../src/handlers/send-message.ts";
+import { preclassify } from "../src/mailbox/preclassify.ts";
+import { bareDomain, checkContent } from "../src/gate.ts";
+import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../src/business-hours.ts";
+import { assessDomain, checkMailboxDomain } from "../src/handlers/check-mailbox-domain.ts";
+import { ENRICH_TOP, rankContactsJob } from "../src/handlers/rank-contacts.ts";
 import { applyClassification, syncMailbox } from "../src/handlers/sync-mailbox.ts";
 import { gmail } from "../src/mailbox/gmail.ts";
 import { buildMime, type OutgoingMessage } from "../src/mailbox/provider.ts";
@@ -35,7 +40,12 @@ import { digestUnsubscribeToken, verifyDigestUnsubscribeToken } from "../src/ema
 import { digestEmail, escapeHtml, invitationEmail } from "../src/email/templates.ts";
 import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
-import { fetchCompanySignals } from "../src/handlers/fetch-company-signals.ts";
+import { boardBelongsTo, boardSignals, fetchCompanySignals, setBoardFetcherForTests } from "../src/handlers/fetch-company-signals.ts";
+import { atsApiUrl, findAtsBoards, parseAtsPostings } from "../src/ats.ts";
+import { detectSiteFacts, profileCompany } from "../src/handlers/profile-company.ts";
+
+/* No test reaches a real company website: job-board reads answer 404 unless a test says otherwise. */
+setBoardFetcherForTests(async () => ({ status: 404, body: "" }));
 import { hashIp } from "../src/public-research.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
 import { advanceOne, APPROVAL_RECHECK_MS, loadGuidance } from "../src/handlers/advance-enrollments.ts";
@@ -108,6 +118,8 @@ function fakeClient(responses: Record<string, unknown> = {}) {
       /* `contains` is how `matchThread` asks whether a thread's participants
          array holds the sender. Added when that path first got a test. */
       "contains",
+      /* `like` retires job-board postings no longer listed (TRUST-103). */
+      "like",
     ];
     for (const method of passthrough) {
       chain[method] = (column: string, value: unknown) => {
@@ -436,6 +448,38 @@ console.log("\n§60 — the same page reached two ways is one page");
 
 /* ── The runner ──────────────────────────────────────────────────────────── */
 
+console.log("\ntick — P1-1: jobs that wait on a provider share the invocation");
+{
+  const original = { ...HANDLERS };
+  const queue = Array.from({ length: 4 }, (_, i) => ({
+    id: `p${i}`, org_id: ORG_A, job_name: "scan_source", status: "running", attempts: 1, max_attempts: 3,
+    payload: { sourceId: `s${i}` }, run_at: new Date().toISOString(), error: null,
+  }));
+  const { client } = fakeClient({ "rpc:claim_job_executions": { data: queue, error: null } });
+  setAdminClientForTests(client);
+
+  let running = 0;
+  let peak = 0;
+  (HANDLERS as Record<string, JobHandler>).scan_source = async () => {
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 30));
+    running--;
+    return { ok: true, result: {} };
+  };
+
+  const report = await tick({ limit: 4, concurrency: 4 });
+  expectEqual("all four ran", report.succeeded, 4);
+  expectEqual("four at once, not one after another", peak, 4);
+
+  peak = 0;
+  await tick({ limit: 4 });
+  expectEqual("without a concurrency, one at a time as before", peak, 1);
+
+  Object.assign(HANDLERS, original);
+  setAdminClientForTests(null);
+}
+
 console.log("\ntick — claim, dispatch, record, and stop before being killed");
 {
   const original = { ...HANDLERS };
@@ -462,6 +506,7 @@ console.log("\ntick — claim, dispatch, record, and stop before being killed");
   const report = await tick({ limit: 2, worker: "test" });
 
   expectEqual("both jobs ran", ran, ["s1", "s2"]);
+  expect("the report carries the queue's lag", "oldestDueSeconds" in report);
   expectEqual("the report counts each outcome", [report.succeeded, report.failed], [1, 1]);
   expectEqual("abandoned work is recovered before new work is claimed", report.requeued, 2);
   expect(
@@ -519,6 +564,13 @@ console.log("\ntick — claim, dispatch, record, and stop before being killed");
         (c.payload as { status?: string })?.status === "queued",
     ),
     JSON.stringify(calls.filter((c) => c.verb === "update").map((c) => c.payload)),
+  );
+  const handedBack = calls.find((c) => c.verb === "update" && (c.payload as { status?: string })?.status === "queued")
+    ?.payload as { attempts?: number; run_at?: string; error?: string } | undefined;
+  expect(
+    "JOB-010: without costing it an attempt, a delay or an error",
+    handedBack !== undefined && handedBack.run_at === undefined && handedBack.error === undefined && typeof handedBack.attempts === "number",
+    handedBack,
   );
 
   Object.assign(HANDLERS, original);
@@ -606,7 +658,10 @@ console.log("\ntick — claim, dispatch, record, and stop before being killed");
 console.log("\nreachability — every job has a producer");
 
 {
-  const KNOWN_UNREACHABLE = ["enrich_person", "purge_contact_data", "resolve_entity"];
+  /* enrich_person (rank_contacts) and resolve_entity (discover_companies) are
+     wired. purge_contact_data stays: Settings → Data & privacy erases through
+     `erase_contact_for_org` directly, so the job has no caller by design. */
+  const KNOWN_UNREACHABLE = ["purge_contact_data"];
   const root = fileURLToPath(new URL("../../../", import.meta.url));
 
   const runner = readFileSync(new URL("../src/runner.ts", import.meta.url), "utf8");
@@ -639,13 +694,31 @@ console.log("\nreachability — every job has a producer");
     .filter((name) => !sweepers.has(name) && !produced.has(name))
     .sort();
   expectEqual(
-    "the only jobs nothing enqueues are the three the spec pack records (DEF-04/05/06)",
+    "the only job nothing enqueues is purge_contact_data (DEF-06)",
     unreachable,
     KNOWN_UNREACHABLE,
   );
 }
 
 /* ── The sweep ───────────────────────────────────────────────────────────── */
+
+console.log("\nsweep — B-09: an hourly sweep that already ran this hour is not enqueued again");
+
+{
+  const periodic = ["schedule_learning", "send_digests", "schedule_demand", "schedule_preferences", "enforce_retention"];
+  const { client, calls } = fakeClient({
+    /* This period's run exists — finished, so the idempotency index no longer covers it. */
+    "select:job_executions": { data: [{ id: "done" }], error: null },
+  });
+  setAdminClientForTests(client);
+  await sweep();
+  const enqueued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert")
+    .map((c) => String((c.payload as Record<string, unknown>).job_name));
+  expect("no hourly or daily sweeper is enqueued twice in its period", periodic.every((n) => !enqueued.includes(n)), enqueued);
+  expect("the per-tick sweepers still are", enqueued.includes("schedule_sends") && enqueued.includes("schedule_syncs"), enqueued);
+  setAdminClientForTests(null);
+}
 
 console.log("\nsweep — the heartbeat that puts periodic work into the queue");
 
@@ -868,6 +941,8 @@ function connectedMailbox() {
     token_expires_at: new Date(Date.now() + 3600_000).toISOString(),
     sync_cursor: null,
     daily_limit: 50,
+    /* Read a minute ago: a sequence step waits for a fresh read (P1-2). */
+    last_sync_at: new Date(Date.now() - 60_000).toISOString(),
   };
 }
 
@@ -1183,11 +1258,45 @@ console.log("\nsend_message — the allowance is claimed before the send, not af
   });
   const outcome = await sendMessage(ctx);
 
-  expect("a mailbox out of allowance does not send", !outcome.ok && !markedSent(calls));
+  expect("a mailbox out of allowance does not send", !markedSent(calls));
+  /* DB-101: a wait, not a failure — it costs no retry and waits for the reset. */
+  const waited = calls.find((c) => c.table === "messages" && c.verb === "update" && (c.payload as { not_before?: string })?.not_before);
+  const until = new Date(String((waited?.payload as { not_before?: string })?.not_before));
   expect(
-    "and the failure is retryable — tomorrow the allowance resets",
-    (outcome as { permanent?: boolean }).permanent !== true,
+    "and it waits until the allowance resets at the next UTC midnight",
+    outcome.ok && until.getUTCHours() === 0 && until.getTime() > Date.now(),
+    waited?.payload,
   );
+  setAdminClientForTests(null);
+}
+
+{
+  const { dailyCap, isRevokedGrant } = await import("../src/mailbox/index.ts");
+  const now = new Date("2026-11-10T12:00:00Z");
+  expectEqual("a warm mailbox's cap is its limit", dailyCap({ daily_limit: 50 }, now), 50);
+  expectEqual("on its first day, a warming mailbox's cap is 10", dailyCap({ daily_limit: 50, warmup_started_at: "2026-11-10T08:00:00Z" }, now), 10);
+  expectEqual("three days in, 25", dailyCap({ daily_limit: 50, warmup_started_at: "2026-11-07T08:00:00Z" }, now), 25);
+  expect("a 400 from the token endpoint is a revoked grant", isRevokedGrant("Google refused the token request (400): invalid_grant"));
+  expect("a 503 is not", !isRevokedGrant("Google refused the token request (503): backend error"));
+  expect("nor is a timeout", !isRevokedGrant("The operation was aborted due to timeout"));
+}
+
+{
+  /* OUT-011: a person approved the held draft; the gate does not hold it again. */
+  const message = sendable({
+    enrollment_id: "99999999-9999-9999-9999-999999999999",
+    approved_by: "12121212-1212-1212-1212-121212121212",
+    body_text: "Hi {{first_name}}",
+  });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": (r: Recorded) => (r.filters.some(([f]) => f === "eq:id") ? { data: message, error: null } : { data: [], error: null }),
+    "select:enrollments": { data: { campaigns: { autonomy_level: 3 } }, error: null },
+  });
+  const original = gmail.send;
+  gmail.send = async () => ({ providerMessageId: "g-approved", providerThreadId: "t", messageIdHeader: "<a@b>" });
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+  expect("a draft a person approved is sent as approved, even at autonomy 3", outcome.ok && markedSent(calls));
   setAdminClientForTests(null);
 }
 
@@ -1627,6 +1736,25 @@ function syncContext(messages: Record<string, unknown>[], responses: Record<stri
       now: new Date(),
     },
   };
+}
+
+console.log("\nsync_mailbox — AI-009: a reply nobody could classify still stops the sequence");
+
+{
+  const saved = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  const { ctx, calls, restore } = syncContext([incoming({ text: "Thanks — let me check with my team next week." })], {
+    "select:threads": { data: { id: THREAD_ID, opportunity_id: OPPORTUNITY_ID }, error: null },
+  });
+  const outcome = await syncMailbox(ctx);
+  restore();
+  if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+  const stoppedCall = calls.find(
+    (c) => c.table === "enrollments" && c.verb === "update" && (c.payload as { status?: string })?.status === "stopped",
+  );
+  expect("with no model available, the reply is stored", outcome.ok);
+  expect("and the sequence on that opportunity is stopped", Boolean(stoppedCall), calls.map((c) => `${c.verb}:${c.table}`));
+  expect("scoped to that opportunity", JSON.stringify(stoppedCall?.filters).includes(OPPORTUNITY_ID));
 }
 
 console.log("\nsync_mailbox — what gets stored, and what does not");
@@ -3500,6 +3628,577 @@ console.log("\nhashIp — a stored request hash is not reversible from the repos
   restore("PUBLIC_RESEARCH_SALT", saved.salt);
   restore("SUPABASE_SECRET_KEY", saved.secret);
   restore("SUPABASE_SERVICE_ROLE_KEY", saved.service);
+}
+
+/* ── P0: email safety without a model ────────────────────────────────────── */
+
+console.log("\npreclassify — an opt-out or a bounce is honoured with no model");
+
+{
+  const at = (text: string, extra: Partial<{ from: string; subject: string }> = {}) =>
+    preclassify({ from: extra.from ?? "dana@acme.co", subject: extra.subject ?? "Re: hello", text });
+
+  expectEqual("\"please remove me\" is an unsubscribe", at("Please remove me from your list.")?.label, "unsubscribe");
+  expectEqual("a bare \"STOP\" is an unsubscribe", at("STOP")?.label, "unsubscribe");
+  expectEqual("\"stop emailing me\" is an unsubscribe", at("Stop emailing me, thanks")?.label, "unsubscribe");
+  expectEqual("mailer-daemon is a bounce", at("Delivery failed", { from: "mailer-daemon@googlemail.com" })?.label, "bounce");
+  expectEqual("an \"Undeliverable:\" subject is a bounce", at("…", { subject: "Undeliverable: hello" })?.label, "bounce");
+  expectEqual("an ordinary reply is left to the model", at("Sounds interesting, can we talk Tuesday?"), null);
+  expectEqual(
+    "our own footer quoted back does not count as theirs",
+    at("Sure, send the deck.\n\nOn Mon, Dana wrote:\n> If you'd rather not hear from us: unsubscribe"),
+    null,
+  );
+  expectEqual("\"don't stop\" in passing is not an opt-out", at("Don't stop at the pilot, we want the full rollout."), null);
+  expectEqual("\"Please unsubscribe me\" is an opt-out", at("Please unsubscribe me")?.label, "unsubscribe");
+  expectEqual(
+    "an auto-reply whose footer says \"unsubscribe\" is not",
+    at(
+      "Thanks for your email. I am travelling until Monday with limited access and will reply when I am back. " +
+        "For anything urgent please contact our support desk at the usual address. " +
+        "You received this because you are subscribed to our updates; unsubscribe at any time from the preferences page.",
+    ),
+    null,
+  );
+}
+
+console.log("\npre-send gate — what an unreviewed message may not carry");
+
+{
+  const base = { subject: "Quick question", body: "Saw the hiring post. Worth a chat?", allowedDomains: ["huntloop.test", "acme.co"] };
+  expectEqual("a clean message passes", checkContent(base).length, 0);
+  expect("an unfilled {{first_name}} is caught", checkContent({ ...base, body: "Hi {{first_name}}," }).length > 0);
+  expect("an unfilled [First Name] is caught", checkContent({ ...base, body: "Hi [First Name]," }).length > 0);
+  expect(
+    "a link to a domain nobody chose is caught",
+    checkContent({ ...base, body: "See https://evil.example/x" }).some((i) => i.includes("evil.example")),
+  );
+  expectEqual("a link to the recipient's own site passes", checkContent({ ...base, body: "Your page https://www.acme.co/careers" }).length, 0);
+  expectEqual("a subdomain of an allowed domain passes", checkContent({ ...base, body: "https://cal.huntloop.test/dana" }).length, 0);
+  expect("an empty subject is caught", checkContent({ ...base, subject: " " }).length > 0);
+  expect("a reply-to address on a domain nobody chose is caught", checkContent({ ...base, body: "Write to billing@evil.example" }).length > 0);
+  expectEqual("the recipient's own address is fine", checkContent({ ...base, body: "Or reply to dana@acme.co" }).length, 0);
+  expectEqual("bareDomain strips scheme, www, port and path", bareDomain("https://WWW.Acme.co:443/x"), "acme.co");
+  expectEqual("bareDomain reads an address", bareDomain("dana@acme.co"), "acme.co");
+}
+
+/** `select:messages` answered by which query it is, so the send-time checks can be fed. */
+function messagesBy(
+  message: Record<string, unknown>,
+  feeds: { lastOut?: unknown[]; replies?: unknown[]; sent?: unknown[]; inbound?: unknown[] } = {},
+) {
+  return (r: Recorded) => {
+    const has = (k: string, v?: unknown) => r.filters.some(([f, x]) => f === k && (v === undefined || x === v));
+    if (has("eq:id")) return { data: message, error: null };
+    if (has("eq:to_email") && has("eq:direction", "outbound")) return { data: feeds.lastOut ?? [], error: null };
+    if (has("eq:from_email") && has("eq:direction", "inbound")) return { data: feeds.replies ?? [], error: null };
+    if (has("eq:mailbox_id") && has("eq:direction", "outbound")) return { data: feeds.sent ?? [], error: null };
+    if (has("eq:mailbox_id") && has("eq:direction", "inbound")) return { data: feeds.inbound ?? [], error: null };
+    return { data: [], error: null };
+  };
+}
+
+/* The sends below that should go, go through a stubbed provider. */
+const originalSend = gmail.send;
+gmail.send = async () => ({
+  providerMessageId: "gmail-p0",
+  providerThreadId: "thread-p0",
+  messageIdHeader: "<p0@mail.gmail.com>",
+});
+
+console.log("\nsend_message — P0-2: a reply nobody has read holds the sequence");
+
+{
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999" });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message, {
+      lastOut: [{ sent_at: "2026-10-01T10:00:00Z" }],
+      replies: [{ id: INBOUND_ID }],
+    }),
+    "select:message_events": { data: [], error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an unclassified reply since the last send stops the next step", !markedSent(calls));
+  expect(
+    "it goes back to the approval queue with the reason",
+    calls.some(
+      (c) =>
+        c.table === "messages" &&
+        c.verb === "update" &&
+        (c.payload as { scheduled_at?: unknown })?.scheduled_at === null &&
+        String((c.payload as { error?: string })?.error).includes("written back"),
+    ),
+  );
+  expect("and the job succeeds rather than burning retries", outcome.ok);
+  setAdminClientForTests(null);
+}
+
+{
+  /* A person read the reply and approved the step after it arrived. */
+  const message = sendable({
+    enrollment_id: "99999999-9999-9999-9999-999999999999",
+    approved_by: "12121212-1212-1212-1212-121212121212",
+    scheduled_at: new Date().toISOString(),
+  });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": (r: Recorded) => {
+      if (r.filters.some(([f, v]) => f === "gt:sent_at" && new Date(String(v)).getTime() > Date.now() - 60_000)) {
+        return { data: [], error: null };
+      }
+      return messagesBy(message, { replies: [{ id: INBOUND_ID }] })(r);
+    },
+    "select:message_events": { data: [], error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("a step approved after the reply arrived goes", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999" });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message, { replies: [{ id: INBOUND_ID }] }),
+    "select:message_events": { data: [{ message_id: INBOUND_ID, payload: { label: "out_of_office" } }], error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an out-of-office does not hold it", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable({ enrollment_id: null });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message, { replies: [{ id: INBOUND_ID }] }),
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an answer written from the inbox is not held by the reply it answers", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — P0-5: a bouncing mailbox stops");
+
+{
+  const message = sendable();
+  const sent = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}` }));
+  const inbound = [{ id: "b1" }, { id: "b2" }, { id: "b3" }];
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message, { sent, inbound }),
+    "select:message_events": { data: inbound.map((m) => ({ message_id: m.id })), error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("3 bounces in 20 sends pauses the mailbox", !markedSent(calls));
+  expect(
+    "the message waits on not_before rather than failing",
+    outcome.ok && calls.some((c) => c.table === "messages" && c.verb === "update" && Boolean((c.payload as { not_before?: string })?.not_before)),
+  );
+  expect(
+    "and the mailbox carries the reason",
+    calls.some((c) => c.table === "mailboxes" && c.verb === "update" && String((c.payload as { last_error?: string })?.last_error).includes("bounced")),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable();
+  const sent = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}` }));
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message, { sent, inbound: [{ id: "b1" }] }),
+    "select:message_events": { data: [{ message_id: "b1" }], error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("one bounce in five sends is too few to judge", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — P0-4: an unreviewed message gets the reviewer's look");
+
+{
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: "Hi {{first_name}}, see https://evil.example" });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:enrollments": { data: { campaigns: { autonomy_level: 2 } }, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("at autonomy 2 a bad draft is not sent", outcome.ok && !markedSent(calls));
+  expect(
+    "it goes back to the approval queue",
+    calls.some((c) => c.table === "messages" && c.verb === "update" && (c.payload as { scheduled_at?: unknown })?.scheduled_at === null),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: "Hi {{first_name}}" });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:enrollments": { data: { campaigns: { autonomy_level: 1 } }, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("at autonomy 1 a person approved it, and it goes as approved", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — P1: domain, a fresh inbox read, and the recipient's working day");
+
+/** Whether this run deferred the message instead of sending or failing it. */
+function deferred(outcome: unknown, calls: Recorded[], reason: string): boolean {
+  return (
+    (outcome as { ok?: boolean }).ok === true &&
+    (outcome as { result?: { deferred?: string } }).result?.deferred === reason &&
+    !markedSent(calls) &&
+    calls.some((c) => c.table === "messages" && c.verb === "update" && Boolean((c.payload as { not_before?: string })?.not_before))
+  );
+}
+
+const ENROLLED = "99999999-9999-9999-9999-999999999999";
+
+{
+  const message = sendable({ enrollment_id: ENROLLED });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:mailboxes": { data: { ...connectedMailbox(), last_sync_at: new Date(Date.now() - 3 * 3600_000).toISOString() }, error: null },
+  });
+  expect("a sequence step waits for an inbox read less than 30 minutes old", deferred(await sendMessage(ctx), calls, "inbox_not_fresh"));
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable({ enrollment_id: null });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:mailboxes": { data: { ...connectedMailbox(), last_sync_at: null }, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("a reply from the inbox does not wait for a sync", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const message = sendable({ enrollment_id: ENROLLED });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:mailboxes": {
+      data: { ...connectedMailbox(), domain_status: "fail", domain_report: { problems: ["acme.test has no SPF record."] } },
+      error: null,
+    },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("a domain that failed its check sends no cold email", deferred(outcome, calls, "domain_not_ready"));
+  expect(
+    "and the mailbox says why",
+    calls.some((c) => c.table === "mailboxes" && c.verb === "update" && String((c.payload as { last_error?: string })?.last_error).includes("SPF")),
+  );
+  setAdminClientForTests(null);
+}
+
+{
+  /* Pick a country whose working day is not now, so the test holds at any hour. */
+  const now = new Date();
+  const candidates = ["JP", "US", "GB", "IN", "AU", "BR"];
+  const closed = candidates.find((c) => !inBusinessHours(now, zoneForCountry(c)!));
+  const open = candidates.find((c) => inBusinessHours(now, zoneForCountry(c)!));
+  const OPP = "77777777-7777-7777-7777-777777777777";
+
+  if (closed) {
+    const message = sendable({ enrollment_id: ENROLLED, opportunity_id: OPP });
+    const { ctx, calls } = sendContext(message, {
+      "select:messages": messagesBy(message),
+      "select:opportunities": { data: { companies: { country: closed } }, error: null },
+    });
+    expect(`outside ${closed}'s working day, a sequence step waits`, deferred(await sendMessage(ctx), calls, "outside_business_hours"));
+    setAdminClientForTests(null);
+  }
+  if (open) {
+    const message = sendable({ enrollment_id: ENROLLED, opportunity_id: OPP });
+    const { ctx, calls } = sendContext(message, {
+      "select:messages": messagesBy(message),
+      "select:opportunities": { data: { companies: { country: open } }, error: null },
+    });
+    const outcome = await sendMessage(ctx);
+    expect(`inside ${open}'s working day, it goes`, outcome.ok && markedSent(calls));
+    setAdminClientForTests(null);
+  }
+
+  const message = sendable({ enrollment_id: ENROLLED, opportunity_id: OPP });
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": messagesBy(message),
+    "select:opportunities": { data: { companies: { country: "Atlantis" } }, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an unknown country holds nothing", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+gmail.send = originalSend;
+
+console.log("\nrank_contacts — Phase 0.3: the best unverified contacts go to enrich_person");
+
+{
+  const { client, calls } = fakeClient({
+    "select:opportunities": {
+      data: {
+        id: OPPORTUNITY_ID, company_id: "c1", icp_id: null, primary_person_id: null, contact_selected_by: null,
+        companies: { id: "c1", name: "Acme", canonical_domain: "acme.co" },
+      },
+      error: null,
+    },
+    "select:people": {
+      data: [
+        { id: "p-ceo", first_name: "Dana", last_name: "Lee", title: "CEO", employment_status: "current", last_verified_at: null,
+          contact_points: [{ kind: "email", value: "dana@acme.co", confidence: "medium", verification_status: "unverified" }] },
+        { id: "p-cto", first_name: "Sam", last_name: "Roe", title: "CTO", employment_status: "current", last_verified_at: null,
+          contact_points: [{ kind: "email", value: "sam@acme.co", confidence: "high", verification_status: "deliverable" }] },
+        { id: "p-vp", first_name: "Kai", last_name: "Moe", title: "VP Sales", employment_status: "current", last_verified_at: null,
+          contact_points: [] },
+        { id: "p-intern", first_name: "Ari", last_name: "Poe", title: "Intern", employment_status: "current", last_verified_at: null,
+          contact_points: [] },
+      ],
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+  const outcome = await rankContactsJob({
+    scope: new OrgScope(ORG_A, client),
+    payload: { opportunityId: OPPORTUNITY_ID },
+    job: { id: "job-r", org_id: ORG_A, job_name: "rank_contacts" } as never,
+    now: new Date(),
+  });
+  const queued = calls
+    .filter((c) => c.table === "job_executions" && c.verb === "insert" && (c.payload as { job_name?: string })?.job_name === "enrich_person")
+    .map((c) => (c.payload as { payload: { personId: string } }).payload.personId);
+  expect("ranking succeeds", outcome.ok);
+  expectEqual(`at most ${ENRICH_TOP} are sent for enrichment`, queued.length, ENRICH_TOP);
+  expect("a contact already verified is not sent", !queued.includes("p-cto"));
+  setAdminClientForTests(null);
+}
+
+console.log("\njob boards — P2-5: hiring signals from the company's own ATS");
+
+{
+  const html = `
+    <a href="https://boards.greenhouse.io/acme">Careers</a>
+    <a href="https://jobs.lever.co/Acme-Inc/123">One role</a>
+    <a href="https://jobs.ashbyhq.com/acme">Ashby</a>
+    <a href="https://apply.workable.com/acme/">Workable</a>
+    <a href="https://boards.greenhouse.io/acme">Again</a>
+    <a href="https://boards.greenhouse.io/embed/job_board?for=acmeembed">Embed</a>`;
+  const boards = findAtsBoards(html).map((b) => `${b.kind}:${b.slug}`).sort();
+  expectEqual(
+    "each board linked from the page is found once, embeds included",
+    boards,
+    ["ashby:acme", "greenhouse:acme", "greenhouse:acmeembed", "lever:acme-inc", "workable:acme"],
+  );
+  expectEqual("an unrelated page has no boards", findAtsBoards("<a href='https://acme.co/about'>"), []);
+  expectEqual("greenhouse's public API", atsApiUrl({ kind: "greenhouse", slug: "acme" }), "https://boards-api.greenhouse.io/v1/boards/acme/jobs");
+
+  const gh = parseAtsPostings("greenhouse", {
+    jobs: [{ id: 7, title: "Account Executive", absolute_url: "https://boards.greenhouse.io/acme/jobs/7", location: { name: "Austin" }, updated_at: "2026-10-01T00:00:00Z" }],
+  });
+  expectEqual("a greenhouse posting is read with its own URL", gh[0]?.url, "https://boards.greenhouse.io/acme/jobs/7");
+  const lever = parseAtsPostings("lever", [
+    { id: "a1", text: "SDR", hostedUrl: "https://jobs.lever.co/acme/a1", categories: { location: "Remote", team: "Sales" }, createdAt: 1_790_000_000_000 },
+  ]);
+  expectEqual("a lever posting keeps its team", lever[0]?.department, "Sales");
+  expectEqual(
+    "an unlisted ashby posting is skipped",
+    parseAtsPostings("ashby", { jobs: [{ id: "x", title: "Hidden", jobUrl: "https://jobs.ashbyhq.com/acme/x", isListed: false }] }).length,
+    0,
+  );
+  expectEqual("a posting with no URL is not a citable fact, so it is dropped", parseAtsPostings("workable", { jobs: [{ shortcode: "Q1", title: "AE" }] }).length, 0);
+  expectEqual("an unexpected shape is no postings, not an error", parseAtsPostings("greenhouse", "nonsense"), []);
+
+  const pages: Record<string, { status: number; body: string }> = {
+    "https://acme.co/careers": { status: 200, body: html },
+    "https://boards-api.greenhouse.io/v1/boards/acme/jobs": {
+      status: 200,
+      body: JSON.stringify({ jobs: [{ id: 7, title: "Account Executive", absolute_url: "https://boards.greenhouse.io/acme/jobs/7", location: { name: "Austin" } }] }),
+    },
+  };
+  const { client, calls } = fakeClient();
+  const result = await boardSignals(
+    { scope: new OrgScope(ORG_A, client), payload: {}, job: { id: "j", org_id: ORG_A, job_name: "fetch_company_signals" } as never, now: new Date() },
+    "c1",
+    "acme.co",
+    async (url) => pages[url] ?? { status: 404, body: "" },
+  );
+  expectEqual("a posting from the board is written as evidence", result.found, 1);
+  const row = (calls.find((c) => c.table === "evidence" && c.verb === "upsert")?.payload as Record<string, unknown>[] | undefined)?.[0];
+  expect("as a first-party fact citing the posting", row?.kind === "fact" && row?.reliability === "first_party" && row?.source_url === "https://boards.greenhouse.io/acme/jobs/7", row);
+  expect("observed_at is when we looked, the posting date is event_date", row?.observed_at !== row?.event_date);
+
+  /* TRUST-102: a board whose slug is not the company is a link, not its own. */
+  expect("a board named for the company is its own", boardBelongsTo("acme", "acme.co") && boardBelongsTo("acmeinc", "acme.co", "Acme Inc"));
+  expect("a partner's board is not", !boardBelongsTo("globex", "acme.co", "Acme"));
+  const partner = fakeClient();
+  await boardSignals(
+    { scope: new OrgScope(ORG_A, partner.client), payload: {}, job: { id: "j", org_id: ORG_A, job_name: "fetch_company_signals" } as never, now: new Date() },
+    "c1",
+    "acme.co",
+    async (url) =>
+      url === "https://acme.co/careers"
+        ? { status: 200, body: "<a href='https://jobs.lever.co/globex'>Partner jobs</a>" }
+        : url.startsWith("https://api.lever.co/v0/postings/globex")
+          ? { status: 200, body: JSON.stringify([{ id: "g1", text: "SDR", hostedUrl: "https://jobs.lever.co/globex/g1" }, { id: "g2", text: "Spoof", hostedUrl: "https://evil.example/x" }]) }
+          : { status: 404, body: "" },
+    "Acme",
+  );
+  const prow = (partner.calls.find((c) => c.table === "evidence" && c.verb === "upsert")?.payload as Record<string, unknown>[] | undefined) ?? [];
+  expect("a partner board's posting is stored as an inference about a link", prow.length === 1 && prow[0]?.kind === "inference" && String(prow[0]?.claim).includes("links to"), prow);
+  expect("and a posting citing a host off the board is dropped", !prow.some((r) => String(r.source_url).includes("evil.example")));
+
+  /* TRUST-103: postings no longer listed are retired. */
+  const retire = fakeClient({
+    "select:evidence": { data: [{ id: "old-1", field: "hiring_signal:greenhouse:99" }, { id: "kept", field: "hiring_signal:greenhouse:7" }], error: null },
+  });
+  await boardSignals(
+    { scope: new OrgScope(ORG_A, retire.client), payload: {}, job: { id: "j", org_id: ORG_A, job_name: "fetch_company_signals" } as never, now: new Date() },
+    "c1",
+    "acme.co",
+    async (url) => pages[url] ?? { status: 404, body: "" },
+  );
+  const retired = retire.calls.find((c) => c.table === "evidence" && c.verb === "update");
+  expect(
+    "a posting the board no longer lists is soft-deleted, and a listed one is kept",
+    Boolean(retired) && JSON.stringify(retired?.filters).includes("old-1") && !JSON.stringify(retired?.filters).includes("kept"),
+    retired?.filters,
+  );
+
+  const none = await boardSignals(
+    { scope: new OrgScope(ORG_A, client), payload: {}, job: { id: "j", org_id: ORG_A, job_name: "fetch_company_signals" } as never, now: new Date() },
+    "c1",
+    "acme.co",
+    async () => {
+      throw new Error("ECONNREFUSED");
+    },
+  );
+  expectEqual("an unreachable site is no signals, not a failure", none.found, 0);
+}
+
+console.log("\nprofile_company — P2-4: what a homepage says about itself, without a model");
+
+{
+  const html = `
+    <script src="//js.hs-scripts.com/123.js"></script>
+    <script>gtag('config', 'AW-123456');</script>
+    <link href="https://assets.calendly.com/assets/external/widget.css">
+    <p>We integrate with Stripe and Shopify.</p>`;
+  expectEqual(
+    "vendor scripts are detected, words on the page are not",
+    detectSiteFacts(html).map((f) => f.key).sort(),
+    ["calendly", "google_ads", "hubspot"],
+  );
+  /* TRUST-101 */
+  expectEqual("a plain link to someone's Calendly page is not a booking widget", detectSiteFacts('<a href="https://calendly.com/dana/30min">Book</a>').length, 0);
+  const stripe = detectSiteFacts('<script src="https://js.stripe.com/v3/"></script>')[0];
+  expect("Stripe.js is recorded as an inference, not \"takes payments\"", stripe?.kind === "inference" && !/takes payments/i.test(stripe.claim), stripe);
+  const moved = await profileCompany(
+    { scope: new OrgScope(ORG_A, fakeClient({ "select:companies": { data: { id: "c1", canonical_domain: "acme.co" }, error: null } }).client), payload: { companyId: "c1" }, job: { id: "j", org_id: ORG_A, job_name: "profile_company" } as never, now: new Date() },
+    async () => ({ url: "https://parked-domains.example/", status: 200, body: html }),
+  );
+  expect("a homepage that redirected to another domain is not profiled", moved.ok && "skipped" in ((moved as { result: object }).result));
+
+  const { client, calls } = fakeClient({
+    "select:companies": { data: { id: "c1", canonical_domain: "acme.co" }, error: null },
+  });
+  const ctx = { scope: new OrgScope(ORG_A, client), payload: { companyId: "c1" }, job: { id: "j", org_id: ORG_A, job_name: "profile_company" } as never, now: new Date() };
+  const outcome = await profileCompany(ctx, async (url) => ({ url, status: 200, body: html }));
+  const rows = calls.find((c) => c.table === "evidence" && c.verb === "upsert")?.payload as Record<string, unknown>[] | undefined;
+  expect("each detection is a first-party fact citing the homepage", outcome.ok && rows?.length === 3 && rows.every((r) => r.kind === "fact" && r.source_url === "https://acme.co/"), rows);
+
+  const down = await profileCompany(ctx, async () => {
+    throw new Error("ENOTFOUND");
+  });
+  expect("an unreachable site is a skip, not a failure", down.ok);
+}
+
+console.log("\nschedule_signal_fetches — Phase 4.3: only companies someone is working");
+
+{
+  const { client, calls } = fakeClient({ "select:companies": { data: [{ id: "c1", org_id: ORG_A }], error: null } });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.schedule_signal_fetches({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "schedule_signal_fetches" } as never,
+    now: new Date(),
+  });
+  const read = calls.find((c) => c.table === "companies" && c.verb === "select");
+  const has = (k: string, v?: unknown) => Boolean(read?.filters.some(([f, x]) => f === k && (v === undefined || x === v)));
+  expect("it reads companies joined to their opportunities", String(read?.payload).includes("opportunities!inner"));
+  expect("closed opportunities are excluded", has("not:opportunities.status", "in"));
+  expect("an Apollo id is no longer required", !has("eq:external_ids.provider"));
+  expect("and the due company is queued", outcome.ok && calls.some((c) => c.table === "job_executions" && c.verb === "insert"));
+  setAdminClientForTests(null);
+}
+
+console.log("\nbusiness hours — the window, in the recipient's zone");
+
+{
+  const ny = "America/New_York";
+  /* 2026-11-02 is a Monday. 14:00 UTC is 09:00 in New York (EST). */
+  expect("Monday 09:00 in New York is open", inBusinessHours(new Date("2026-11-02T14:00:00Z"), ny));
+  expect("Monday 07:00 in New York is closed", !inBusinessHours(new Date("2026-11-02T12:00:00Z"), ny));
+  expect("Saturday noon is closed", !inBusinessHours(new Date("2026-11-07T17:00:00Z"), ny));
+  expectEqual(
+    "Saturday's next window is Monday 08:00 New York",
+    nextBusinessWindow(new Date("2026-11-07T17:00:00Z"), ny).toISOString(),
+    "2026-11-09T13:00:00.000Z",
+  );
+  expectEqual("a country name resolves", zoneForCountry("United Kingdom"), "Europe/London");
+  expectEqual("an ISO code resolves, any case", zoneForCountry("de"), "Europe/Berlin");
+  expectEqual("an unknown country is no zone", zoneForCountry("Atlantis"), null);
+}
+
+console.log("\ncheck_mailbox_domain — what the DNS says about the sending domain");
+
+{
+  const fakeDns = (records: Record<string, string[]>, mx: boolean) => ({
+    resolveMx: async () => (mx ? [{ exchange: "mx.example" }] : []),
+    resolveTxt: async (name: string) => {
+      if (!records[name]) throw Object.assign(new Error("ENODATA"), { code: "ENODATA" });
+      return records[name]!.map((r) => [r]);
+    },
+  });
+
+  const full = await assessDomain(
+    "acme.test",
+    fakeDns(
+      {
+        "acme.test": ["v=spf1 include:_spf.google.com ~all"],
+        "_dmarc.acme.test": ["v=DMARC1; p=none"],
+        "google._domainkey.acme.test": ["v=DKIM1; k=rsa; p=MIIB"],
+      },
+      true,
+    ),
+  );
+  expectEqual("MX, SPF, DMARC and DKIM is a pass", full.status, "pass");
+  expectEqual("and names the selector it found", full.dkim, "google");
+
+  const noDmarc = await assessDomain("acme.test", fakeDns({ "acme.test": ["v=spf1 -all"] }, true));
+  expectEqual("no DMARC or DKIM is a warning", noDmarc.status, "warn");
+
+  const noSpf = await assessDomain("acme.test", fakeDns({ "_dmarc.acme.test": ["v=DMARC1; p=reject"] }, true));
+  expectEqual("no SPF is a failure", noSpf.status, "fail");
+
+  const noMx = await assessDomain("acme.test", fakeDns({ "acme.test": ["v=spf1 -all"] }, false));
+  expectEqual("no MX is a failure", noMx.status, "fail");
+  expect("and the problem is said in words", noMx.problems.some((p) => p.includes("MX")));
+
+  const { client, calls } = fakeClient({
+    "select:mailboxes": { data: { id: MAILBOX_ID, email: "founder@acme.test" }, error: null },
+  });
+  const outcome = await checkMailboxDomain(
+    {
+      scope: new OrgScope(ORG_A, client),
+      payload: { mailboxId: MAILBOX_ID },
+      job: { id: "job-d", org_id: ORG_A, job_name: "check_mailbox_domain" } as never,
+      now: new Date(),
+    },
+    fakeDns({ "acme.test": ["v=spf1 -all"] }, true),
+  );
+  expect("the handler stores the verdict on the mailbox", outcome.ok && calls.some(
+    (c) => c.table === "mailboxes" && c.verb === "update" && (c.payload as { domain_status?: string })?.domain_status === "warn",
+  ));
 }
 
 console.log(

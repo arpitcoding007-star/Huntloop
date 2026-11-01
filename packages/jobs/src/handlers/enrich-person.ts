@@ -26,8 +26,8 @@
  * "everybody does it".
  */
 import { isPlaceholderEmail } from "@huntloop/db/contact";
-import { embedded } from "../scope.ts";
-import { verifyEmail, findContacts, enrichmentProvider } from "../providers.ts";
+import { ProviderRefused, matchPerson, verifyEmail } from "@huntloop/providers";
+import { OrgScope, embedded } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface EnrichPayload {
@@ -73,31 +73,38 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
     };
   }
 
-  const provider = enrichmentProvider();
-  if (!provider) {
-    return {
-      ok: true,
-      result: {
-        skipped:
-          "No enrichment provider is configured (ENRICHMENT_API_KEY). Contact " +
-          "details can still be added by hand or imported from CSV.",
-      },
-    };
+  /* PROV-003: every paid lookup goes through the provider seam — cache,
+     budget, circuit breaker, retries and the ledger the spend screens read.
+     This handler used to call Apollo, Hunter and ZeroBounce with raw fetch,
+     which was invisible to all of them. */
+  const call = { db: OrgScope.global(), orgId: scope.orgId, entity: { type: "person", id: personId } };
+
+  let match;
+  try {
+    match = await matchPerson(call, {
+      firstName: person.first_name ?? null,
+      lastName: person.last_name ?? null,
+      title: person.title ?? null,
+      companyDomain: domain,
+      companyName: String(company?.name ?? domain),
+    });
+  } catch (e) {
+    if (e instanceof ProviderRefused) {
+      return { ok: true, result: { skipped: e.meta.refusal, detail: e.meta.error } };
+    }
+    throw e;
   }
 
-  const candidates = await findContacts({
-    firstName: person.first_name ?? null,
-    lastName: person.last_name ?? null,
-    title: person.title ?? null,
-    companyDomain: domain,
-    companyName: String(company?.name ?? domain),
-  });
+  const provider = match.meta.provider;
+  const candidates = (match.data?.contacts ?? []).filter(
+    // PROV-004: a locked placeholder is not an address.
+    (c) => !(c.kind === "email" && isPlaceholderEmail(c.value)),
+  );
 
   if (candidates.length === 0) {
-    /* Recorded as an answer, not as nothing. Without this row the next run
-       asks the same provider the same question and pays for the same silence
-       — and the screen cannot distinguish "we looked and found nothing" from
-       "we never looked", which §7 says are different states. */
+    /* Recorded as an answer, not as nothing — "we looked and found nothing"
+       and "we never looked" are different states (§7). The provider cache
+       keeps the repeat question from being paid for twice. */
     await scope.insert("enrichment_records", {
       entity_type: "person",
       entity_id: personId,
@@ -112,48 +119,57 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
       p_metric: "enrich",
       p_amount: 1,
     });
-    return { ok: true, result: { found: 0, provider } };
+    return { ok: true, result: { found: 0, provider, credits: match.meta.credits } };
   }
 
   let stored = 0;
   let verified = 0;
 
   for (const candidate of candidates) {
-    // PROV-004: a locked placeholder is not an address.
-    if (candidate.kind === "email" && isPlaceholderEmail(candidate.value)) continue;
-
-    /* Every answer, from every provider, as its own row (§58). The read side
-       resolves them; the write side never clobbers, because a later provider
-       being wrong would silently erase an earlier one that was right. */
+    /* Every answer as its own row (§58); the read side resolves them. */
     await scope.insert("enrichment_records", {
       entity_type: "person",
       entity_id: personId,
-      provider: candidate.provider,
+      provider,
       field: candidate.kind,
       value: candidate.value,
       confidence: candidate.confidence,
-      cost_cents: candidate.costCents,
-      raw: candidate.raw ?? null,
+      cost_cents: 0,
+      raw: null,
     });
 
     let status = "unverified";
     let verifiedAt: string | null = null;
 
     if (candidate.kind === "email") {
-      const verdict = await verifyEmail(candidate.value);
-      status = verdict.status;
-      // Only a *positive* verification gets a timestamp. "We checked and it
-      // bounced" and "we checked and could not tell" are both checks, and
-      // neither is a verified address — the column says when it was proven.
-      if (verdict.status === "deliverable") {
+      try {
+        const verdict = await verifyEmail(call, candidate.value);
+        status = verdict.data;
+      } catch (e) {
+        /* No verifier, or its budget is spent: the address stays unverified,
+           which is what it is. Anything else is a real failure. */
+        if (!(e instanceof ProviderRefused)) throw e;
+      }
+      // Only a positive verification gets a timestamp (§7).
+      if (status === "deliverable") {
         verifiedAt = new Date().toISOString();
         verified++;
       }
     }
 
-    /* Unique on (org_id, kind, value): the same address found twice by two
-       providers is one contact point. Upserting rather than inserting keeps
-       that true without the handler having to know which provider ran first. */
+    /* FLOW-108: never downgrade an address something already verified. */
+    const { data: existing } = await scope
+      .select("contact_points", "verification_status")
+      .eq("kind", candidate.kind)
+      .eq("value", candidate.value)
+      .maybeSingle();
+    const prior = (existing as { verification_status?: string } | null)?.verification_status;
+    if (prior === "deliverable" || prior === "provider_verified") {
+      status = prior;
+      verifiedAt = null;
+    }
+
+    /* Unique on (org_id, kind, value): the same address found twice is one contact point. */
     const { error: upsertError } = await scope.upsert(
       "contact_points",
       {
@@ -162,8 +178,8 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
         value: candidate.value,
         verification_status: status,
         confidence: candidate.confidence,
-        provider: candidate.provider,
-        verified_at: verifiedAt,
+        provider,
+        ...(verifiedAt ? { verified_at: verifiedAt } : {}),
       },
       { onConflict: "org_id,kind,value" },
     );
@@ -176,5 +192,5 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
     p_amount: 1,
   });
 
-  return { ok: true, result: { found: candidates.length, stored, verified, provider } };
+  return { ok: true, result: { found: candidates.length, stored, verified, provider, credits: match.meta.credits } };
 }

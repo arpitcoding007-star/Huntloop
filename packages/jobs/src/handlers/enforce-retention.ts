@@ -49,6 +49,10 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
      The same legitimate use `schedule_scans` documents. */
   const db = OrgScope.global();
 
+  /* JOB-011: the queue's own history, daily, before the per-org work. A
+     failure here is reported in the result and does not stop retention. */
+  const { data: prunedJobs, error: pruneJobsError } = await db.rpc("prune_job_executions", {});
+
   const { data: orgs, error } = await db
     .from("organizations")
     .select("id, contact_retention_days")
@@ -62,7 +66,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
   if (!configured.length) {
     /* The common case on most deployments, and not worth an audit row or a
        failure. Nobody has asked for anything to be deleted. */
-    return { ok: true, result: { orgs: 0, removed: 0 } };
+    return { ok: true, result: { orgs: 0, removed: 0, jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0) } };
   }
 
   let removed = 0;
@@ -107,6 +111,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
     result: {
       orgs: configured.length,
       removed,
+      jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0),
       ...(failures.length ? { failures } : {}),
     },
   };

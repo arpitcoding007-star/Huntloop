@@ -183,7 +183,10 @@ export const GOAL_OPTIONS: readonly {
   {
     value: "reach_out",
     label: "Write and send the outreach",
-    description: "Draft messages grounded in why each company is a fit.",
+    /* B-08: the Free plan drafts but sends nothing (`emails: 0` in 0007), so
+       the option says so here rather than after a mailbox is connected. */
+    description:
+      "Draft messages grounded in why each company is a fit. Drafting is on every plan; sending needs a paid plan.",
     stage: "Reach out",
   },
   {

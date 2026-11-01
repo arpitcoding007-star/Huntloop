@@ -996,6 +996,162 @@ console.log("\nMailbox limits — the allowance is claimed before the send, not 
   else fail("a disconnected mailbox cannot be claimed", JSON.stringify(refused.rows[0]));
 }
 
+// ── Warm-up (0048) ─────────────────────────────────────────────────────────
+// A mailbox connected today may not send its full limit today.
+console.log("\nWarm-up — a new mailbox ramps up instead of sending its full limit on day one");
+{
+  await db.exec(`
+    insert into mailboxes (id, org_id, provider, email, daily_limit) values
+      ('11110000-0000-0000-0000-000000000002',
+       'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'gmail', 'new@a.test', 50);
+  `);
+  const MB = "11110000-0000-0000-0000-000000000002";
+  const cap = async () =>
+    (await db.query<{ n: number }>(`select public.mailbox_daily_cap($1) as n`, [MB])).rows[0]!.n;
+
+  if ((await cap()) === 10) ok("a mailbox connected today may send 10, not its limit of 50");
+  else fail("a mailbox connected today may send 10", await cap());
+
+  await db.query(`update mailboxes set warmup_started_at = now() - interval '3 days' where id = $1`, [MB]);
+  if ((await cap()) === 25) ok("three days in, the cap is 25");
+  else fail("three days in, the cap is 25", await cap());
+
+  await db.query(`update mailboxes set warmup_started_at = now() - interval '30 days' where id = $1`, [MB]);
+  if ((await cap()) === 50) ok("once ramped, the configured limit applies");
+  else fail("once ramped, the configured limit applies", await cap());
+
+  await db.query(`update mailboxes set warmup_target = 30 where id = $1`, [MB]);
+  if ((await cap()) === 30) ok("a warm-up target lower than the limit holds");
+  else fail("a warm-up target lower than the limit holds", await cap());
+
+  await db.query(
+    `update mailboxes set warmup_target = null, warmup_started_at = now(), sent_today = 0, sent_today_on = null where id = $1`,
+    [MB],
+  );
+  const claims: boolean[] = [];
+  for (let i = 0; i < 11; i++) {
+    const r = await db.query<{ ok: boolean }>(`select public.claim_mailbox_send($1) as ok`, [MB]);
+    claims.push(r.rows[0]!.ok);
+  }
+  if (claims.slice(0, 10).every(Boolean) && claims[10] === false)
+    ok("the 11th claim on day one is refused");
+  else fail("the 11th claim on day one is refused", JSON.stringify(claims));
+
+  const remaining = await db.query<{ n: number }>(`select public.mailbox_remaining_today($1) as n`, [MB]);
+  if (remaining.rows[0]!.n === 0) ok("and remaining agrees with the ramp");
+  else fail("and remaining agrees with the ramp", JSON.stringify(remaining.rows[0]));
+
+  await db.query(`update mailboxes set warmup_started_at = null where id = $1`, [MB]);
+  if ((await cap()) === 50) ok("a mailbox with no warm-up date is treated as warm");
+  else fail("a mailbox with no warm-up date is treated as warm", await cap());
+
+  await expectReject(
+    db,
+    "domain_status accepts only pass, warn or fail",
+    `update mailboxes set domain_status = 'maybe' where id = '${MB}'`,
+  );
+}
+
+// ── 0049: soft deletes reach outreach; merges keep evidence ────────────────
+console.log("\nRemoval and merge — SEC-101 / FLOW-102 (0049)");
+{
+  const ORG = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  await db.exec(`
+    insert into companies (id, org_id, canonical_domain, name) values
+      ('c0000000-0000-0000-0000-0000000049a1', '${ORG}', 'removed-49.test', 'Removed Co'),
+      ('c0000000-0000-0000-0000-0000000049a2', '${ORG}', 'winner-49.test', 'Winner Co'),
+      ('c0000000-0000-0000-0000-0000000049a3', '${ORG}', 'loser-49.test', 'Loser Co');
+    insert into opportunities (id, org_id, company_id, priority, priority_reason) values
+      ('0bbbbbbb-0000-0000-0000-0000000049a1', '${ORG}', 'c0000000-0000-0000-0000-0000000049a1', 'hot', 'r');
+    insert into campaigns (id, org_id, name, status) values
+      ('ca000000-0000-0000-0000-0000000049a1', '${ORG}', 'Seq 49', 'active');
+    insert into enrollments (id, org_id, campaign_id, opportunity_id, status) values
+      ('e0000000-0000-0000-0000-0000000049a1', '${ORG}', 'ca000000-0000-0000-0000-0000000049a1',
+       '0bbbbbbb-0000-0000-0000-0000000049a1', 'active');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id, opportunity_id, scheduled_at) values
+      ('d0000000-0000-0000-0000-0000000049a1', '${ORG}', 'outbound', 'dana@removed-49.test', 'Hi',
+       'e0000000-0000-0000-0000-0000000049a1', '0bbbbbbb-0000-0000-0000-0000000049a1', now());
+  `);
+
+  await db.query(`update companies set deleted_at = now() where id = 'c0000000-0000-0000-0000-0000000049a1'`);
+  const opp = await db.query<{ gone: boolean }>(
+    `select deleted_at is not null as gone from opportunities where id = '0bbbbbbb-0000-0000-0000-0000000049a1'`,
+  );
+  if (opp.rows[0]?.gone) ok("removing a company removes its opportunities");
+  else fail("removing a company removes its opportunities", opp.rows[0]);
+  const enr = await db.query<{ status: string }>(
+    `select status from enrollments where id = 'e0000000-0000-0000-0000-0000000049a1'`,
+  );
+  if (enr.rows[0]?.status === "stopped") ok("and stops their sequences");
+  else fail("and stops their sequences", enr.rows[0]);
+  const msg = await db.query<{ scheduled: boolean }>(
+    `select scheduled_at is not null as scheduled from messages where id = 'd0000000-0000-0000-0000-0000000049a1'`,
+  );
+  if (msg.rows[0] && !msg.rows[0].scheduled) ok("and unschedules their approved, unsent emails");
+  else fail("and unschedules their approved, unsent emails", msg.rows[0]);
+
+  const W = "c0000000-0000-0000-0000-0000000049a2";
+  const L = "c0000000-0000-0000-0000-0000000049a3";
+  await db.exec(`
+    insert into evidence (org_id, subject_type, subject_id, claim, kind, source_url, field) values
+      ('${ORG}', 'company', '${W}', '120 employees', 'fact', 'https://p.test/a', 'employee_count'),
+      ('${ORG}', 'company', '${L}', '120 employees', 'fact', 'https://p.test/a', 'employee_count'),
+      ('${ORG}', 'company', '${L}', 'Hiring an AE', 'fact', 'https://jobs.test/1', 'hiring_signal:x:1'),
+      ('${ORG}', 'company', '${L}', 'Opening a London office', 'fact', 'https://news.test/1', null);
+  `);
+  await db.query(`update companies set merged_into_id = $1, deleted_at = now() where id = $2`, [W, L]);
+  const moved = await db.query<{ n: number }>(
+    `select count(*)::int as n from evidence where subject_id = $1 and deleted_at is null`,
+    [W],
+  );
+  if (moved.rows[0]?.n === 3) ok("a merge moves the loser's evidence to the survivor, without duplicating a shared source");
+  else fail("a merge moves the loser's evidence to the survivor", moved.rows[0]);
+  const left = await db.query<{ n: number }>(
+    `select count(*)::int as n from evidence where subject_id = $1 and deleted_at is null`,
+    [L],
+  );
+  if (left.rows[0]?.n === 0) ok("and nothing live is left on the merged-away row");
+  else fail("and nothing live is left on the merged-away row", left.rows[0]);
+}
+
+console.log("\nQueue history — JOB-011 (0049)");
+{
+  await db.exec(`
+    insert into job_executions (job_name, status, finished_at, updated_at) values
+      ('prune_probe', 'succeeded', now() - interval '40 days', now() - interval '40 days'),
+      ('prune_probe', 'succeeded', now() - interval '2 days', now() - interval '2 days'),
+      ('prune_probe', 'queued', null, now() - interval '40 days');
+  `);
+  const pruned = await db.query<{ n: number }>(`select public.prune_job_executions() as n`);
+  if (pruned.rows[0]?.n === 1) ok("finished jobs older than 30 days are pruned, and nothing else");
+  else fail("finished jobs older than 30 days are pruned", pruned.rows[0]);
+  const queued = await db.query<{ n: number }>(
+    `select count(*)::int as n from job_executions where status = 'queued' and job_name = 'prune_probe'`,
+  );
+  if ((queued.rows[0]?.n ?? 0) >= 1) ok("a queued job is never pruned, however old");
+  else fail("a queued job is never pruned", queued.rows[0]);
+  // Leave the queue as the claim tests further down expect to find it.
+  await db.exec(`delete from job_executions where job_name = 'prune_probe'`);
+}
+
+console.log("\nMailbox safety columns — SEC-103 (0049)");
+{
+  const MB = "11110000-0000-0000-0000-000000000002";
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["11111111-1111-1111-1111-111111111111"]);
+  await expectReject(db, "a signed-in owner cannot reset the warm-up ramp", `update mailboxes set warmup_started_at = now() - interval '60 days' where id = '${MB}'`);
+  await db.exec("rollback");
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["11111111-1111-1111-1111-111111111111"]);
+  await expectReject(db, "or mark a failing domain as passing", `update mailboxes set domain_status = 'pass' where id = '${MB}'`);
+  await db.exec("rollback");
+  const engine = await db.query(`update mailboxes set domain_status = 'warn' where id = '${MB}' returning id`);
+  if (engine.rows.length === 1) ok("the engine still can");
+  else fail("the engine still can", engine.rows);
+}
+
 // ── Source health (0008) ───────────────────────────────────────────────────
 console.log("\nSource health — §58's degrade-and-retry, in the database");
 {

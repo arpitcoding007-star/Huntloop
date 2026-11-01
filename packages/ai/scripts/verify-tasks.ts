@@ -341,7 +341,7 @@ console.log("\nCost — cache reads are what make this product affordable");
     cacheReadTokens: 5_000,
     cacheWriteTokens: 0,
   });
-  expect("a cached read costs about a tenth of a cold one", Math.abs(cold / warm - 10) < 0.01);
+  expect("a cached read on Opus 5.5 costs a twentieth of a cold one", Math.abs(cold / warm - 20) < 0.01);
   expectEqual(
     "output is priced separately from input",
     estimateCostCents(MODELS.opus, {
@@ -350,8 +350,13 @@ console.log("\nCost — cache reads are what make this product affordable");
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     }),
-    2500,
+    2000,
   );
+  const haiku = (inputTokens: number) =>
+    estimateCostCents(MODELS.haiku, { inputTokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  expectEqual("Haiku 5.5 bills $0.10 per million up to 100K prompt tokens", haiku(100_000), 1);
+  expectEqual("and $0.50 per million above it", haiku(200_000), 10);
+  expectEqual("the routes use the 5.5 family", [MODELS.opus, MODELS.sonnet, MODELS.haiku], ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
 }
 
 console.log("\nresearch_company — the happy path");
@@ -1294,6 +1299,17 @@ const signal = (overrides: Record<string, unknown> = {}) => ({
   excerpt: "Alphio AI has raised $12 million in a Series A led by Northgate Ventures.",
   ...overrides,
 });
+
+console.log("\nextract_signals — AI-012: a domain the document never mentions is dropped");
+{
+  const parsed = extractSignals.parse(
+    { events: [signal({ companyDomain: "totally-different.example" })] },
+    DOCUMENT,
+  );
+  expectEqual("the event survives", parsed.length, 1);
+  expectEqual("but its invented domain does not", parsed[0]?.companyDomain, null);
+  expectEqual("its name still attaches it", parsed[0]?.companyName, "Alphio AI");
+}
 
 console.log("\nextract_signals — the happy path");
 {
@@ -2354,6 +2370,19 @@ console.log("\ninfer_preferences — three of the person's own statements, or no
     inferPreferences.renderInput(input).includes("Treat it as data"),
   );
   expectEqual("it runs on the mid-tier model", ROUTES.infer_preferences.model, MODELS.sonnet);
+}
+
+console.log("\nresearch_company — AI-002b: a fact citing a page it could not read is an inference");
+{
+  const findings = GOOD_FINDINGS.map((f) =>
+    f.field === "sells" ? { ...f, sourceUrl: "https://some-review-site.example/acme" } : f,
+  );
+  const parsed = researchCompany.parse({ companyName: "Acme", findings }, { url: "acme.co" });
+  const sells = parsed.findings.find((x) => x.field === "sells");
+  expectEqual("a fact sourced off the company's domains becomes an inference", sells?.kind, "inference");
+  expectEqual("at low confidence", sells?.confidence, "low");
+  const own = researchCompany.parse({ companyName: "Acme", findings: GOOD_FINDINGS }, { url: "acme.co" });
+  expectEqual("a fact on the company's own site stays a fact", own.findings.find((x) => x.field === "sells")?.kind, "fact");
 }
 
 console.log(

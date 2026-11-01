@@ -28,6 +28,7 @@
 import { classifyReply, type ReplyClassification } from "@huntloop/ai";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { MailboxUnavailable, authorize, type IncomingMessage } from "../mailbox/index.ts";
+import { preclassify } from "../mailbox/preclassify.ts";
 import type { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -101,8 +102,10 @@ export async function syncMailbox(ctx: JobContext): Promise<JobOutcome> {
     if (!row) continue;
     stored++;
 
-    let classification: ReplyClassification | null = null;
-    if (!skippedClassification) {
+    /* Opt-outs and bounces first, by rule (P0-1): a request to stop is
+       honoured with no API key, no quota and no model outage in the way. */
+    let classification: ReplyClassification | null = preclassify(incoming);
+    if (!classification && !skippedClassification) {
       try {
         const ourMessage = threadId ? await lastOutbound(ctx, threadId) : null;
         const run = await runForOrg(scope, classifyReply, {
@@ -119,6 +122,24 @@ export async function syncMailbox(ctx: JobContext): Promise<JobOutcome> {
              rather than showing a label nobody produced. */
           skippedClassification = e.message;
         }
+      }
+    }
+
+    /* AI-009: an inbound message nobody could classify is still somebody
+       answering. Any classification failure — a timeout, a refusal, no key —
+       stops the sequence on that thread, so the next step never lands on top
+       of a reply nobody read. A person can resume it from the inbox. */
+    if (!classification && threadId) {
+      const opportunityId = await opportunityFor(ctx, threadId);
+      if (opportunityId) {
+        await scope
+          .update("enrollments", {
+            status: "stopped",
+            parked_reason: "They replied, and the reply could not be classified automatically. Read it in the inbox.",
+            next_action_at: null,
+          })
+          .eq("opportunity_id", opportunityId)
+          .eq("status", "active");
       }
     }
 

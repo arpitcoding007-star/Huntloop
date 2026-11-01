@@ -20,12 +20,15 @@
  * recorded against its own row and the loop continues, because the alternative
  * is one poisoned payload stopping every other org's work.
  */
+import type { AdminClient } from "@huntloop/db/admin";
 import { OrgScope, adminClient } from "./scope.ts";
 import { HANDLERS } from "./registry.ts";
 import {
   claim,
   enqueue,
   markFailed,
+  oldestDueSeconds,
+  release,
   requeueStalled,
   succeed,
   type JobName,
@@ -41,6 +44,8 @@ export interface TickOptions {
   reserveMs?: number;
   /** Identifies this worker in `job_executions.locked_by`. */
   worker?: string;
+  /** Jobs run at once within this tick. Defaults to 1. */
+  concurrency?: number;
 }
 
 export interface TickReport {
@@ -51,6 +56,8 @@ export interface TickReport {
   /** True when the deadline stopped the tick with work still queued. */
   stoppedEarly: boolean;
   jobs: { id: string; name: string; ok: boolean; detail: string }[];
+  /** Seconds the oldest due job has waited after this tick; null if unreadable. See `oldestDueSeconds`. */
+  oldestDueSeconds: number | null;
 }
 
 export async function tick(options: TickOptions = {}): Promise<TickReport> {
@@ -66,6 +73,7 @@ export async function tick(options: TickOptions = {}): Promise<TickReport> {
     requeued: 0,
     stoppedEarly: false,
     jobs: [],
+    oldestDueSeconds: null,
   };
 
   /* Before claiming, not after. A tick that claims first would take fresh work
@@ -77,26 +85,37 @@ export async function tick(options: TickOptions = {}): Promise<TickReport> {
   const jobs = await claim(limit, worker);
   report.claimed = jobs.length;
 
-  for (const job of jobs) {
-    if (Date.now() > deadline.getTime() - reserveMs) {
-      /* Out of time with jobs in hand. They are given back rather than run
-         half-way: `markFailed` with a retryable message puts them at the front
-         of the next tick, which is where they belong. */
-      await markFailed(job, "The worker ran out of time before starting this job.");
-      report.stoppedEarly = true;
-      continue;
-    }
+  /* P1-1: `concurrency` lanes take jobs from the claimed batch in order. Most
+     jobs spend their time waiting on a provider or a model, so one at a time
+     left a 60-second invocation mostly idle. Parallel is safe for the same
+     reason two tick invocations are: every claim is `for update skip locked`
+     and every allowance is claimed atomically in the database. */
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 1, jobs.length || 1));
+  let next = 0;
+  const lane = async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++]!;
+      if (Date.now() > deadline.getTime() - reserveMs) {
+        /* Out of time with jobs in hand. They are given back rather than run
+           half-way, without a penalty — they never started (JOB-010). */
+        await release(job);
+        report.stoppedEarly = true;
+        continue;
+      }
 
-    const outcome = await runOne(job);
-    if (outcome.ok) {
-      report.succeeded++;
-      report.jobs.push({ id: job.id, name: job.job_name, ok: true, detail: outcome.detail });
-    } else {
-      report.failed++;
-      report.jobs.push({ id: job.id, name: job.job_name, ok: false, detail: outcome.detail });
+      const outcome = await runOne(job);
+      if (outcome.ok) {
+        report.succeeded++;
+        report.jobs.push({ id: job.id, name: job.job_name, ok: true, detail: outcome.detail });
+      } else {
+        report.failed++;
+        report.jobs.push({ id: job.id, name: job.job_name, ok: false, detail: outcome.detail });
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: concurrency }, lane));
 
+  report.oldestDueSeconds = await oldestDueSeconds().catch(() => null);
   return report;
 }
 
@@ -282,16 +301,32 @@ const DAILY: ReadonlySet<JobName> = new Set<JobName>(["enforce_retention"]);
  * is not worth retrying — the next tick is thirty seconds away and will ask
  * the same question against fresher rows.
  */
-export async function sweep(): Promise<void> {
+export async function sweep(db: AdminClient = adminClient()): Promise<void> {
   const stamp = new Date().toISOString();
   const hour = stamp.slice(0, 13);
   const day = stamp.slice(0, 10);
   for (const name of SWEEPERS) {
+    const periodic = HOURLY.has(name) || DAILY.has(name);
     const key = HOURLY.has(name)
       ? `${name}:${hour}`
       : DAILY.has(name)
         ? `${name}:${day}`
         : name;
-    await enqueue({ orgId: null, name, idempotencyKey: key, maxAttempts: 1 });
+
+    /* B-09. The idempotency index only covers queued and running rows, so
+       once this hour's sweep *finished*, the next tick enqueued it again —
+       twelve "hourly" runs an hour. A row with this period's key in any
+       status means the period's run has happened. */
+    if (periodic) {
+      const { data } = await db
+        .from("job_executions")
+        .select("id")
+        .eq("job_name", name)
+        .eq("idempotency_key", key)
+        .limit(1);
+      if (Array.isArray(data) && data.length > 0) continue;
+    }
+
+    await enqueue({ orgId: null, name, idempotencyKey: key, maxAttempts: 1 }, db);
   }
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { mailboxDailyCap } from "../mailbox-cap";
 import type { EvidenceItem, Priority, ScoreDimension } from "@huntloop/ui";
 import type { OpportunityStatus, TenantClient } from "@huntloop/db";
 import { OPPORTUNITIES } from "../fixtures/opportunities";
@@ -210,6 +211,8 @@ async function whyNowCards(db: TenantClient, orgId: string): Promise<WhyNow[]> {
     )
     .eq("org_id", orgId)
     .is("deleted_at", null)
+    // A removed company's opportunities are not "why now" for anybody.
+    .is("companies.deleted_at", null)
     /* Not `.limit(3)`. The ordering that decides which three matter is
        priority then score, and score lives in an embedded row PostgREST
        cannot order by — so the shortlist is taken after sorting here. The
@@ -312,7 +315,7 @@ async function outcomeCounts(db: TenantClient, orgId: string, since: string) {
 async function sendingCapacity(db: TenantClient, orgId: string) {
   const { data } = await db
     .from("mailboxes")
-    .select("email, daily_limit, sent_today, sent_today_on")
+    .select("email, daily_limit, sent_today, sent_today_on, warmup_started_at, warmup_target")
     .eq("org_id", orgId)
     .eq("status", "connected")
     .is("deleted_at", null)
@@ -326,7 +329,7 @@ async function sendingCapacity(db: TenantClient, orgId: string) {
        Tuesday still carries Tuesday's number until it does. */
     used:
       String(row.sent_today_on ?? "").slice(0, 10) === today ? Number(row.sent_today ?? 0) : 0,
-    limit: Number(row.daily_limit ?? 0),
+    limit: mailboxDailyCap(row),
   }));
 }
 

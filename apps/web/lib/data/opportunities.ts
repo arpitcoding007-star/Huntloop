@@ -116,6 +116,7 @@ export async function listOpportunities(
         )
         .eq("org_id", orgId)
         .is("deleted_at", null)
+        .is("companies.deleted_at", null)
         .order("priority", { ascending: true })
         .order("first_seen_at", { ascending: false })
         .limit(LIST_LIMIT);

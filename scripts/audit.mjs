@@ -414,6 +414,27 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 4 — Paid calls go through the provider seam (pass 15, PROV-003) ── */
+
+{
+  // A raw fetch to a vendor outside packages/providers skips the cache, the
+  // budget, the circuit breaker and the ledger the spend screens read.
+  const VENDOR_HOSTS = /api\.apollo\.io|api\.hunter\.io|api\.zerobounce\.(?:net|in)/;
+  const offenders = [...walk("apps"), ...walk("packages")]
+    .filter((f) => /\.(ts|tsx|mjs)$/.test(f))
+    .filter((f) => !f.startsWith("packages/providers/"))
+    .filter((f) => !/\/scripts\/|\.test\.tsx?$/.test(f))
+    .filter((f) => VENDOR_HOSTS.test(read(f) ?? ""));
+  check(
+    4,
+    "PROV-003",
+    "No vendor API is called outside packages/providers",
+    offenders.length === 0,
+    "fail",
+    offenders.join(", "),
+  );
+}
+
 /* ── Phase 5 — Security ─────────────────────────────────────────────────── */
 
 {

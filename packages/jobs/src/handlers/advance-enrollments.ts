@@ -37,7 +37,7 @@ import {
 } from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
 import { asGuidance, asReference, resolvePreferences } from "@huntloop/db/preferences";
-import { isSendableEmail } from "@huntloop/db/contact";
+import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
 import { enqueue } from "../queue.ts";
@@ -119,7 +119,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       "enrollments",
       `id, campaign_id, opportunity_id, current_step, mailbox_id,
        campaigns!inner(id, name, status, autonomy_level, product_id),
-       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id)`,
+       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at)`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -147,6 +147,12 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   /* Closed by a person — "Not a fit" archives the opportunity (0037). A
      sequence that kept writing to a company somebody had just ruled out would
      be the product overruling the one judgement it most needs to respect. */
+  /* SEC-101: removed — directly, with its company, or in a merge. 0049 stops
+     these in the database; this is the backstop for a database without it. */
+  if ((opportunity as { deleted_at?: string | null } | null)?.deleted_at) {
+    await stop(scope, enrollmentId, "The opportunity was removed.");
+    return "stopped";
+  }
   if (opportunity?.status === "archived") {
     await stop(scope, enrollmentId, "The opportunity was closed as not a fit.");
     return "stopped";
@@ -197,12 +203,25 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
     return "waited";
   }
 
-  const recipient = await resolveRecipient(scope, String(opportunity?.company_id), opportunity?.primary_person_id);
+  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
+
+  /* P0-3. Unattended sends go only to verified addresses. At autonomy 0–1 a
+     person approves the draft and the screen tells them the address is
+     unverified; at 2+ nobody does, and an unverified address is how a list
+     bounces a mailbox into the spam folder. */
+  const recipient = await resolveRecipient(
+    scope,
+    String(opportunity?.company_id),
+    opportunity?.primary_person_id,
+    autonomous,
+  );
   if (!recipient) {
     await park(
       scope,
       enrollmentId,
-      "No verified email address for anyone at this company. Enrich or add a contact.",
+      autonomous
+        ? "No verified email address for anyone at this company, and this campaign sends without review. Verify a contact or lower the campaign's autonomy."
+        : "No verified email address for anyone at this company. Enrich or add a contact.",
     );
     return "stopped";
   }
@@ -220,7 +239,6 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   }
 
   const mailboxId = enrollment.mailbox_id ?? (await pickMailbox(scope));
-  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
 
   /* OUT-002. A run that drafted this step and died before advancing left it
      due again. Its message is reused rather than drafted twice — and found
@@ -401,6 +419,7 @@ async function resolveRecipient(
   scope: OrgScope,
   companyId: string,
   personId: string | null | undefined,
+  requireVerified = false,
 ): Promise<Recipient | null> {
   const { data: people } = await scope
     .select(
@@ -424,7 +443,10 @@ async function resolveRecipient(
          the address (TRUST-004), and it refuses provider placeholders such as
          email_not_unlocked@domain.com (PROV-004). */
       const email = points.find(
-        (p) => p.kind === "email" && isSendableEmail(p.value, p.verification_status),
+        (p) =>
+          p.kind === "email" &&
+          isSendableEmail(p.value, p.verification_status) &&
+          (!requireVerified || isVerifiedEmail(p.verification_status)),
       );
       if (!email) return null;
       return {

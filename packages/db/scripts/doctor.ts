@@ -114,6 +114,8 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0045_assistant_conversations.sql", probe: "migration_0045_applied", kind: "rpc" },
   { file: "0046_usage_limit_privileges.sql", probe: "migration_0046_applied", kind: "rpc" },
   { file: "0047_security_leads.sql", probe: "migration_0047_applied", kind: "rpc" },
+  { file: "0048_mailbox_readiness.sql", probe: "migration_0048_applied", kind: "rpc" },
+  { file: "0049_soft_delete_propagation.sql", probe: "migration_0049_applied", kind: "rpc" },
 ];
 
 /**
