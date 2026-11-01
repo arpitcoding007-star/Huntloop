@@ -523,6 +523,9 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
       provider_message_id: sent.providerMessageId,
     });
 
+    /* OUT-014: no longer waiting. Best-effort, like the write that set it. */
+    await scope.update("messages", { wait_reason: null }).eq("id", messageId);
+
     await scope.rpc("increment_usage_internal", {
       p_org: scope.orgId,
       p_metric: "emails",
@@ -597,6 +600,12 @@ function rows<T>(data: unknown): T[] {
  * `not_before` passes. Before 0048 the column is missing, and the wait falls
  * back to a retryable failure.
  */
+/** What the inbox says about a message that is waiting, by reason. */
+const WAIT_COPY: Record<string, string> = {
+  inbox_not_fresh: "Waiting for the mailbox's inbox to be read, so a reply is not missed.",
+  outside_business_hours: "Waiting for business hours in the recipient's country.",
+};
+
 async function defer(
   ctx: JobContext,
   messageId: string,
@@ -606,6 +615,9 @@ async function defer(
 ): Promise<JobOutcome> {
   const { error } = await ctx.scope.update("messages", { not_before: until.toISOString() }).eq("id", messageId);
   if (error) return { ok: false, error: why ?? `send_message: waiting (${reason})` };
+  /* OUT-014: the wait says why, for the inbox (0050). Separate and
+     best-effort, so a database without the column still defers. */
+  await ctx.scope.update("messages", { wait_reason: (why ?? WAIT_COPY[reason] ?? reason).slice(0, 500) }).eq("id", messageId);
   return { ok: true, result: { deferred: reason, until: until.toISOString(), ...(why ? { why } : {}) } };
 }
 

@@ -2195,6 +2195,7 @@ RLS: **enabled**
 | `rejection_reason` | text | null |  |
 | `applied_memory_ids` | uuid[] | NOT NULL | `'{}'::uuid[]` |
 | `not_before` | timestamp with time zone | null |  |
+| `wait_reason` | text | null |  |
 
 **Constraints**
 

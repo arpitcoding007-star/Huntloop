@@ -435,6 +435,29 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 4 — `as any` only goes down (pass 15, DEBT-003) ──────────────── */
+
+{
+  // Triaged in pass 15: nearly every cast is an untyped PostgREST row, the
+  // rest a client surface shared by the tenant and admin clients — each with
+  // its reason beside it. Removing them needs generated database types; until
+  // then the count is a ceiling. Lower it when a cast goes; never raise it.
+  const AS_ANY_CEILING = 104;
+  const source = [...walk("apps/web/app"), ...walk("apps/web/lib"), ...walk("packages")]
+    .filter((f) => /\.(ts|tsx)$/.test(f))
+    .filter((f) => /^(apps\/web\/(app|lib)|packages\/[^/]+\/src)\//.test(f))
+    .filter((f) => !/\.test\.tsx?$/.test(f));
+  const count = source.reduce((n, f) => n + ((read(f) ?? "").match(/\bas any\b/g)?.length ?? 0), 0);
+  check(
+    4,
+    "DEBT-003",
+    `\`as any\` casts stay at or under ${AS_ANY_CEILING}`,
+    count <= AS_ANY_CEILING,
+    "fail",
+    `${count} found`,
+  );
+}
+
 /* ── Phase 5 — Security ─────────────────────────────────────────────────── */
 
 {

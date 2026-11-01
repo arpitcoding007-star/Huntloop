@@ -10,7 +10,7 @@
  * non-negotiable live where a task author cannot forget them.
  */
 import { createAnthropicClient, usageOf, type ModelClient } from "./client.ts";
-import { estimateCostCents, ROUTES, type TaskName, type TokenUsage } from "./models.ts";
+import { estimateCostCents, pricedModel, ROUTES, type TaskName, type TokenUsage } from "./models.ts";
 import { inputHash, type Prompt } from "./prompt.ts";
 import type { RunRecorder } from "./runs.ts";
 
@@ -99,7 +99,7 @@ export async function runTask<TInput, TOutput>(
     const output = task.parse(result.json, input);
 
     const latencyMs = Date.now() - startedAt;
-    const costCents = estimateCostCents(route.model, result.usage);
+    const costCents = estimateCostCents(pricedModel(result.model, route.model), result.usage);
     if (runId) {
       await ctx.recorder.succeeded(runId, { usage: result.usage, costCents, latencyMs });
     }

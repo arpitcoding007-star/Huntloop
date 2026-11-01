@@ -12,7 +12,7 @@ import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `explain_why_now`, wrapped for the screens that ask it.
@@ -131,7 +131,7 @@ export async function whyNow(
     }
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Timing analysis failed.",
+      error: publicAiError(error, "Timing analysis failed."),
     };
   }
 }

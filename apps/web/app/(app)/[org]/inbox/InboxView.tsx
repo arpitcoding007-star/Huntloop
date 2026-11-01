@@ -381,8 +381,17 @@ function MessageRow({
              refuses a send time without the provider id that proves it left,
              so an outbound message with no `sent_at` genuinely has not gone. */
           <Badge variant={message.scheduledAt ? "neutral" : "warning"}>
-            {message.scheduledAt ? "Queued to send" : "Awaiting approval"}
+            {message.scheduledAt ? (message.waiting ? "Waiting to send" : "Queued to send") : "Awaiting approval"}
           </Badge>
+        )}
+
+        {/* OUT-014: a deferral used to leave no trace, so a held message read
+            as stuck. It says what it is waiting for, and until when. */}
+        {message.direction === "outbound" && !message.sentAt && message.scheduledAt && message.waiting && (
+          <span className="text-[12px] text-fg-muted">
+            {message.waiting.reason ?? "Held by the engine."} Next try{" "}
+            {new Date(message.waiting.until).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+          </span>
         )}
 
         {/* §46's ladder, at the point it acts on. At autonomy 0–1 the engine

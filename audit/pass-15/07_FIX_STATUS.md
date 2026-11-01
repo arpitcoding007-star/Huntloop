@@ -35,6 +35,14 @@ Fixed in the same session, uncommitted. Verified with `npm run verify` (all gree
 | PROV-005 (placeholder) | Fixed (follow-up) | Apollo adapter drops `email_not_unlocked@` addresses. Request shapes still unverified live |
 | TRUST-008 | Fixed (follow-up) | Score is `null` until scored; sorts last |
 | RT-001 | Fixed (follow-up) | Demo company page derives its opportunity and people from the same fixture as the list |
+| FLOW-108 (cost) | Fixed (follow-up) | The prior verdict is read first; a verified address is not re-verified |
+| AI-004 | Fixed (follow-up) | `pricedModel` prices the served model; snapshots as their family |
+| Raw SDK errors | Fixed (follow-up) | `publicAiError` in every web AI wrapper; original logged server-side |
+| OUT-014 | Fixed (follow-up) | 0050 `messages.wait_reason`; inbox shows "Waiting to send" with reason and next try. Address-only reply match kept: it can only hold a send, never release one |
+| JOB-012 | Fixed (follow-up) | `tick` claims up to `batches` full batches; `TICK_DEFAULTS` shared by cron and Inngest routes |
+| TEST-001 | Fixed (follow-up) | `lib/data/merge-actions.test.ts` (8 cases) |
+| DEBT-003 | Triaged | Every cast is an untyped row or shared client surface, with its reason beside it; `audit.mjs` DEBT-003 caps the count at 104 |
+| DEBT-001 | Kept by design | Toast is mounted at the root on purpose (layout comment); ActionRail is a design-brief component, tree-shaken |
 | PROD-001 | **Open — outside the repo** | Vercel apex certificate or `NEXT_PUBLIC_SITE_URL`; env vars; apply 0048, 0049 and 0050 |
-| CRM-002/003/005, MAP-003, TEST-001, PERF-001, DEBT-001/003 | Open | CRM needs a live HubSpot portal; MAP-003 needs a design decision; PERF-001 is covered by `[org]/loading.tsx` for every org page |
+| CRM-002/003/005, MAP-003, PERF-001 | Open | CRM needs a live HubSpot portal; MAP-003 needs a design decision; PERF-001 is covered by `[org]/loading.tsx` for every org page |
 | DEBT-002, env aliases | Withdrawn | Proxy blocks kitchen-sink in production; aliases already documented |

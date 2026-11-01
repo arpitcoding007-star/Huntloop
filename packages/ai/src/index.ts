@@ -14,6 +14,7 @@ export {
   ROUTES,
   capabilities,
   estimateCostCents,
+  pricedModel,
   type Effort,
   type ModelId,
   type Route,

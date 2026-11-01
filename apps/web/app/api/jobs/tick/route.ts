@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { cronSecret, sweep, tick } from "@huntloop/jobs";
+import { cronSecret, sweep, tick, TICK_DEFAULTS } from "@huntloop/jobs";
 
 /**
  * The heartbeat.
@@ -73,9 +73,8 @@ async function run(request: NextRequest) {
   await sweep();
 
   const report = await tick({
+    ...TICK_DEFAULTS,
     limit: tickLimit(request.nextUrl.searchParams.get("limit")),
-    // P1-1: jobs mostly wait on providers, so several share the invocation.
-    concurrency: 4,
     // A margin under `maxDuration`, so the runner declines to start a job it
     // cannot finish rather than being killed holding the lock on it.
     deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
@@ -91,7 +90,7 @@ async function run(request: NextRequest) {
 /** `?limit=` is caller-supplied: anything but a whole number from 1 to 25 falls back to the default. */
 function tickLimit(raw: string | null): number {
   const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 && n <= 25 ? n : 12;
+  return Number.isInteger(n) && n >= 1 && n <= 25 ? n : TICK_DEFAULTS.limit;
 }
 
 export const GET = run;

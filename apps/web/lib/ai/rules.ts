@@ -11,7 +11,7 @@ import { describeRule } from "@huntloop/db/rules";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `draft_scoring_rules`, wrapped for the screen that calls it.
@@ -97,7 +97,7 @@ export async function draft(
     }
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Drafting scoring rules failed.",
+      error: publicAiError(error, "Drafting scoring rules failed."),
     };
   }
 }

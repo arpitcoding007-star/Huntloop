@@ -180,6 +180,20 @@ export interface TokenUsage {
  * all of a mature campaign's input tokens should be arriving at the 0.1× rate.
  * If they are not, the cache is broken and this number is how you find out.
  */
+/**
+ * The model whose prices apply to a response (AI-004).
+ *
+ * A server-side fallback can answer with a different model than the one
+ * routed, and the bill is at the served model's rate. A dated snapshot id
+ * prices as its family; an id this table does not know prices as the route,
+ * which is the best estimate available rather than a guess at zero.
+ */
+export function pricedModel(served: string | null | undefined, routed: ModelId): ModelId {
+  if (!served) return routed;
+  const known = Object.keys(PRICES) as ModelId[];
+  return known.find((m) => served === m) ?? known.find((m) => served.startsWith(`${m}-`)) ?? routed;
+}
+
 export function estimateCostCents(model: ModelId, usage: TokenUsage): number {
   const base = PRICES[model];
   const prompt = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;

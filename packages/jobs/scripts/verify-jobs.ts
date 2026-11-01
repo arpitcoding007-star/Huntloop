@@ -16,6 +16,8 @@
  *   npm test --workspace @huntloop/jobs
  */
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
+import { enrichPerson } from "../src/handlers/enrich-person.ts";
+import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
 import { fetch as undiciFetch } from "undici";
 import { createServer } from "node:http";
@@ -475,6 +477,20 @@ console.log("\ntick — P1-1: jobs that wait on a provider share the invocation"
   peak = 0;
   await tick({ limit: 4 });
   expectEqual("without a concurrency, one at a time as before", peak, 1);
+
+  /* JOB-012: a full batch with time left is followed by another; a short one
+     ends the tick. Two full batches, then two jobs, then never asked again. */
+  let claims = 0;
+  const { client: draining } = fakeClient({
+    get "rpc:claim_job_executions"() {
+      claims++;
+      return { data: claims <= 2 ? queue : claims === 3 ? queue.slice(0, 2) : queue, error: null };
+    },
+  });
+  setAdminClientForTests(draining);
+  const drained = await tick({ limit: 4, concurrency: 4, batches: 5 });
+  expectEqual("one tick claims again while batches come back full", drained.claimed, 10);
+  expectEqual("and stops at the first short batch", claims, 3);
 
   Object.assign(HANDLERS, original);
   setAdminClientForTests(null);
@@ -1261,6 +1277,11 @@ for (const [name, lane] of [
   const { ctx, calls } = sendContext(sendable(), { "rpc:claim_contact_lane": lane });
   const outcome = await sendMessage(ctx);
   expect(`a lane ${name} waits rather than sends`, deferred(outcome, calls, "address_busy"), outcome);
+  expect(
+    "and says why, for the inbox (OUT-014)",
+    calls.some((c) => c.table === "messages" && c.verb === "update" &&
+      String((c.payload as { wait_reason?: string })?.wait_reason ?? "").includes("this address")),
+  );
   expect(
     "and spends none of the mailbox's allowance",
     !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
@@ -4246,6 +4267,53 @@ console.log("\nFLOW-103 — hiring and site evidence reach the scorer and the dr
     "and a hiring posting must be recent to count",
     calls.some((c) => c.table === "evidence" && JSON.stringify(c.filters).includes("event_date")),
   );
+}
+
+console.log("\nenrich_person — FLOW-108: a verified address is kept, and not re-verified");
+{
+  const saved = { a: process.env.APOLLO_API_KEY, v: process.env.EMAIL_VERIFICATION_API_KEY, f: globalThis.fetch };
+  process.env.APOLLO_API_KEY = "test-apollo";
+  process.env.EMAIL_VERIFICATION_API_KEY = "test-zb";
+  resetRegistryForTests();
+  const hosts: string[] = [];
+  globalThis.fetch = (async (url: string | URL) => {
+    hosts.push(new URL(String(url)).host);
+    return new Response(
+      JSON.stringify({ person: { id: "p1", first_name: "Pat", last_name: "Lee", email: "pat@acme.test", email_status: "guessed" } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+
+  const { client, calls } = fakeClient({
+    "select:people": {
+      data: { id: "pp-1", first_name: "Pat", last_name: "Lee", title: "CTO", company_id: "c-1", companies: { canonical_domain: "acme.test", name: "Acme" } },
+      error: null,
+    },
+    "select:contact_points": { data: { verification_status: "deliverable" }, error: null },
+    "rpc:check_quota_internal": { data: [{ allowed: true, used: 0, quota: 100 }], error: null },
+  });
+  setAdminClientForTests(client);
+  try {
+    const outcome = await enrichPerson({
+      scope: new OrgScope(ORG_A, client),
+      payload: { personId: "pp-1" },
+      job: { id: "job-e", org_id: ORG_A, job_name: "enrich_person" } as never,
+      now: new Date(),
+    });
+    const upserted = calls.find((c) => c.table === "contact_points" && c.verb === "upsert")?.payload;
+    const point = (Array.isArray(upserted) ? upserted[0] : upserted) as
+      | { verification_status?: string }
+      | undefined;
+    expect("the run succeeds", outcome.ok, outcome);
+    expect("a deliverable address stays deliverable after a guessed match", point?.verification_status === "deliverable", point);
+    expect("and the verifier is not paid to ask again", !hosts.some((h) => h.includes("zerobounce")), hosts);
+  } finally {
+    globalThis.fetch = saved.f;
+    if (saved.a === undefined) delete process.env.APOLLO_API_KEY; else process.env.APOLLO_API_KEY = saved.a;
+    if (saved.v === undefined) delete process.env.EMAIL_VERIFICATION_API_KEY; else process.env.EMAIL_VERIFICATION_API_KEY = saved.v;
+    resetRegistryForTests();
+    setAdminClientForTests(null);
+  }
 }
 
 console.log(

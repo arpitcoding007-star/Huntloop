@@ -141,7 +141,19 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
     let status = "unverified";
     let verifiedAt: string | null = null;
 
-    if (candidate.kind === "email") {
+    /* FLOW-108: never downgrade an address something already verified — and
+       do not pay a verifier to re-ask a question already answered yes. */
+    const { data: existing } = await scope
+      .select("contact_points", "verification_status")
+      .eq("kind", candidate.kind)
+      .eq("value", candidate.value)
+      .maybeSingle();
+    const prior = (existing as { verification_status?: string } | null)?.verification_status;
+    const alreadyVerified = prior === "deliverable" || prior === "provider_verified";
+
+    if (alreadyVerified) {
+      status = prior;
+    } else if (candidate.kind === "email") {
       try {
         const verdict = await verifyEmail(call, candidate.value);
         status = verdict.data;
@@ -155,18 +167,6 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
         verifiedAt = new Date().toISOString();
         verified++;
       }
-    }
-
-    /* FLOW-108: never downgrade an address something already verified. */
-    const { data: existing } = await scope
-      .select("contact_points", "verification_status")
-      .eq("kind", candidate.kind)
-      .eq("value", candidate.value)
-      .maybeSingle();
-    const prior = (existing as { verification_status?: string } | null)?.verification_status;
-    if (prior === "deliverable" || prior === "provider_verified") {
-      status = prior;
-      verifiedAt = null;
     }
 
     /* Unique on (org_id, kind, value): the same address found twice is one contact point. */

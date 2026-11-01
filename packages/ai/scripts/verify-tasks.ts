@@ -18,7 +18,7 @@
  *
  *   npm test --workspace @huntloop/ai
  */
-import { estimateCostCents, MODELS, ROUTES } from "../src/models.ts";
+import { estimateCostCents, MODELS, pricedModel, ROUTES } from "../src/models.ts";
 import { assertValidClaim, ClaimValidationError } from "../src/claims.ts";
 import { definePrompt, inputHash } from "../src/prompt.ts";
 import { normalizeUrl } from "../src/url.ts";
@@ -327,6 +327,14 @@ console.log("\nRouting — Haiku only where the task is closed-set");
     expectEqual(`${task} runs on Opus`, ROUTES[task].model, MODELS.opus);
   }
   expectEqual("classify_reply runs on Haiku", ROUTES.classify_reply.model, MODELS.haiku);
+}
+
+console.log("\nCost — AI-004: priced at the model that answered");
+{
+  expect("a fallback to another model is priced as that model", pricedModel(MODELS.haiku, MODELS.opus) === MODELS.haiku);
+  expect("a dated snapshot prices as its family", pricedModel(`${MODELS.sonnet}-20261001`, MODELS.opus) === MODELS.sonnet);
+  expect("an unknown id prices as the route", pricedModel("some-other-model", MODELS.opus) === MODELS.opus);
+  expect("no served id prices as the route", pricedModel(null, MODELS.sonnet) === MODELS.sonnet);
 }
 
 console.log("\nCost — cache reads are what make this product affordable");

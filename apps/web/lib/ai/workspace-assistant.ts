@@ -14,7 +14,7 @@ import {
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `workspace_assistant`, wrapped like the per-opportunity agent: the recorder
@@ -64,7 +64,7 @@ export async function askWorkspace(
     return { ok: true, source: "live", answer: output };
   } catch (error) {
     if (error instanceof ModelRefusalError) return { ok: false, error: "The model declined to answer that." };
-    return { ok: false, error: error instanceof Error ? error.message : "The assistant could not answer." };
+    return { ok: false, error: publicAiError(error, "The assistant could not answer.") };
   }
 }
 

@@ -10,11 +10,12 @@
  * that only `requeue_stalled_jobs` can recover — ten minutes later. Finishing
  * early and being invoked again is strictly better than being killed.
  *
- * **It does not run jobs in parallel.** Every job here either fetches a page
- * or calls a model; five at once against one Postgres connection pool and one
- * Anthropic rate limit buys latency and spends reliability. Concurrency is
- * across *invocations* — two runners claim disjoint sets, because
- * `claim_job_executions` uses `for update skip locked`.
+ * **It runs a few jobs at once, not many.** Jobs mostly wait on a page, a
+ * provider or a model, so `concurrency` lanes share an invocation (P1-1) and
+ * `batches` claims again while the queue keeps it busy (JOB-012). Both stay
+ * small: one Postgres pool and one Anthropic rate limit are shared by all of
+ * it. Two runners still claim disjoint sets, because `claim_job_executions`
+ * uses `for update skip locked`.
  *
  * **It does not let one job's failure end the tick.** A handler that throws is
  * recorded against its own row and the loop continues, because the alternative
@@ -46,7 +47,20 @@ export interface TickOptions {
   worker?: string;
   /** Jobs run at once within this tick. Defaults to 1. */
   concurrency?: number;
+  /**
+   * JOB-012: batches of `limit` claimed while time remains and the last
+   * batch came back full. Defaults to 1.
+   */
+  batches?: number;
 }
+
+/**
+ * What an HTTP driver runs per invocation (JOB-012). Shared by the cron and
+ * Inngest routes, which drifted apart when each kept its own numbers. Up to
+ * sixty jobs a minute-long tick, four at a time, claimed twelve at once so a
+ * dead invocation strands at most twelve.
+ */
+export const TICK_DEFAULTS = { limit: 12, concurrency: 4, batches: 5 } as const;
 
 export interface TickReport {
   claimed: number;
@@ -82,9 +96,27 @@ export async function tick(options: TickOptions = {}): Promise<TickReport> {
      the work most worth getting back to. */
   report.requeued = await requeueStalled();
 
-  const jobs = await claim(limit, worker);
-  report.claimed = jobs.length;
+  const maxBatches = Math.max(1, options.batches ?? 1);
+  for (let batch = 0; batch < maxBatches; batch++) {
+    if (batch > 0 && Date.now() > deadline.getTime() - reserveMs) break;
+    const jobs = await claim(limit, worker);
+    report.claimed += jobs.length;
+    await runBatch(jobs, options, deadline, reserveMs, report);
+    /* A short batch means the queue is drained; an early stop means time is. */
+    if (jobs.length < limit || report.stoppedEarly) break;
+  }
 
+  report.oldestDueSeconds = await oldestDueSeconds().catch(() => null);
+  return report;
+}
+
+async function runBatch(
+  jobs: JobRow[],
+  options: TickOptions,
+  deadline: Date,
+  reserveMs: number,
+  report: TickReport,
+): Promise<void> {
   /* P1-1: `concurrency` lanes take jobs from the claimed batch in order. Most
      jobs spend their time waiting on a provider or a model, so one at a time
      left a 60-second invocation mostly idle. Parallel is safe for the same
@@ -114,9 +146,6 @@ export async function tick(options: TickOptions = {}): Promise<TickReport> {
     }
   };
   await Promise.all(Array.from({ length: concurrency }, lane));
-
-  report.oldestDueSeconds = await oldestDueSeconds().catch(() => null);
-  return report;
 }
 
 async function runOne(job: JobRow): Promise<{ ok: boolean; detail: string }> {

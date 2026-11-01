@@ -47,6 +47,8 @@ production).
   waits 15 minutes instead of sending alongside it.
 - Every company, however it was added (by hand, import, scan, analyze) or
   restored, is queued for duplicate resolution and site profiling.
+- A send that waits says why in the inbox ("Waiting to send", the reason,
+  and the next try).
 
 ### Engine
 - Failed model runs (refusals, truncations, rule violations) record the
@@ -55,6 +57,12 @@ production).
   can cite the company's recent hiring postings and site facts.
 - Apollo's `email_not_unlocked@domain.com` placeholder is dropped in the
   adapter.
+- A tick claims further batches while the queue keeps it busy (up to five
+  of twelve); the Inngest route uses the same settings as the cron route.
+- Model cost is priced at the model that answered, not the one routed.
+- An address already verified is not sent to the verifier again.
+- AI errors from the Anthropic SDK reach the screen as a sentence, not raw
+  API text.
 - A tick runs up to 4 jobs at once and claims 12 by default (was 1 and 5).
 - Discovery queues `resolve_entity` for each new company; contact ranking
   queues `enrich_person` for the top two contacts without a verified address.

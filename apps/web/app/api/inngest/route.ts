@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isInngestConfigured, sweep, tick } from "@huntloop/jobs";
+import { isInngestConfigured, sweep, tick, TICK_DEFAULTS } from "@huntloop/jobs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
@@ -57,8 +57,10 @@ export async function POST(request: NextRequest) {
      without sweeping runs an engine that never notices anything is due. */
   await sweep();
 
+  /* JOB-012: the same numbers as the cron route, which this had fallen
+     behind — five jobs, one at a time. */
   const report = await tick({
-    limit: 5,
+    ...TICK_DEFAULTS,
     deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
     worker: "inngest",
   });

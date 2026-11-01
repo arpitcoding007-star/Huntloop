@@ -173,6 +173,15 @@ revoke execute on function
   public.release_contact_lane(uuid, uuid)
 from public;
 
+-- ── OUT-014: a waiting send says why ───────────────────────────────────────
+-- `send_message` defers by setting `not_before` (0048), and nothing on any
+-- screen said so: a held message read as stuck. The reason goes beside it.
+alter table public.messages
+  add column if not exists wait_reason text;
+
+comment on column public.messages.wait_reason is
+  'Why send_message deferred this message until not_before. Cleared when it sends.';
+
 -- ── FLOW-106: every new company is resolved and profiled ────────────────────
 -- `discover_companies` queued `resolve_entity` and `profile_company` for the
 -- companies it created; a company added by hand, by import, by a scanned
