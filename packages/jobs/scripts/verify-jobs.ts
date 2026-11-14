@@ -962,6 +962,23 @@ function connectedMailbox() {
   };
 }
 
+/**
+ * A live enrollment row, as `send_message`'s parent check (OUT-201) and its
+ * autonomy read see it. Each OUT-201 test spoils exactly one field.
+ */
+function liveEnrollment(over: { status?: string; parked_reason?: string | null; deleted_at?: string | null; campaign?: Record<string, unknown>; opportunity?: Record<string, unknown> } = {}) {
+  return {
+    data: {
+      status: over.status ?? "active",
+      parked_reason: over.parked_reason ?? null,
+      deleted_at: over.deleted_at ?? null,
+      campaigns: { status: "active", deleted_at: null, autonomy_level: 0, ...over.campaign },
+      opportunities: { status: "qualified", deleted_at: null, ...over.opportunity },
+    },
+    error: null,
+  };
+}
+
 function sendContext(message: Record<string, unknown>, responses: Record<string, unknown> = {}) {
   const { client, calls } = fakeClient({
     "select:messages": { data: message, error: null },
@@ -972,6 +989,7 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
       error: null,
     },
     "select:mailboxes": { data: connectedMailbox(), error: null },
+    "select:enrollments": liveEnrollment(),
     /* `0017`'s single gate. Returned as a one-row array because it is a
        `returns table`, which is what PostgREST hands back — and the handler
        reading only the first element of an object would be a bug this stub
@@ -1329,13 +1347,88 @@ console.log("\nsend_message — the allowance is claimed before the send, not af
   });
   const { ctx, calls } = sendContext(message, {
     "select:messages": (r: Recorded) => (r.filters.some(([f]) => f === "eq:id") ? { data: message, error: null } : { data: [], error: null }),
-    "select:enrollments": { data: { campaigns: { autonomy_level: 3 } }, error: null },
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 3 } }),
   });
   const original = gmail.send;
   gmail.send = async () => ({ providerMessageId: "g-approved", providerThreadId: "t", messageIdHeader: "<a@b>" });
   const outcome = await sendMessage(ctx);
   gmail.send = original;
   expect("a draft a person approved is sent as approved, even at autonomy 3", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — OUT-201: a withdrawn sequence's approved mail does not go");
+
+{
+  const ENROLLMENT = "99999999-9999-9999-9999-999999999999";
+  const wrote = (calls: Recorded[], key: string) =>
+    calls.find((c) => c.table === "messages" && c.verb === "update" && key in ((c.payload as object) ?? {}));
+
+  const withdrawn: [string, ReturnType<typeof liveEnrollment>, string][] = [
+    ["a stopped sequence", liveEnrollment({ status: "stopped", parked_reason: "Stopped by a person." }), "stopped"],
+    ["a removed enrollment", liveEnrollment({ deleted_at: "2026-11-14T09:00:00Z" }), "removed"],
+    ["an archived campaign", liveEnrollment({ campaign: { status: "archived" } }), "archived"],
+    ["a deleted campaign", liveEnrollment({ campaign: { deleted_at: "2026-11-14T09:00:00Z" } }), "archived"],
+    ["a won deal", liveEnrollment({ opportunity: { status: "won" } }), "won"],
+    ["a lost deal", liveEnrollment({ opportunity: { status: "lost" } }), "lost"],
+    ["an opportunity closed as not a fit", liveEnrollment({ opportunity: { status: "archived" } }), "archived"],
+    ["a removed opportunity", liveEnrollment({ opportunity: { deleted_at: "2026-11-14T09:00:00Z" } }), "removed"],
+    ["a sequence that no longer exists", { data: null, error: null } as never, "no longer exists"],
+  ];
+  for (const [label, enrollment, says] of withdrawn) {
+    const message = sendable({ enrollment_id: ENROLLMENT, approved_by: "12121212-1212-1212-1212-121212121212" });
+    const { ctx, calls } = sendContext(message, { "select:enrollments": enrollment });
+    const outcome = await sendMessage(ctx);
+    const error = String((wrote(calls, "error")?.payload as { error?: string } | undefined)?.error ?? "");
+    expect(`${label}: an approved message is not sent`, !markedSent(calls) && !calls.some((c) => c.table === "claim_mailbox_send"));
+    expect(`${label}: it is closed out, not retried`, outcome.ok && (outcome as { result: { skipped?: string } }).result.skipped === "withdrawn");
+    expect(`${label}: the inbox says why ("${says}")`, error.startsWith("Not sent:") && error.includes(says));
+    setAdminClientForTests(null);
+  }
+
+  {
+    const message = sendable({ enrollment_id: ENROLLMENT });
+    const { ctx, calls } = sendContext(message, { "select:organizations": { data: null, error: null } });
+    const outcome = await sendMessage(ctx);
+    expect("a deleted workspace's message is not sent", outcome.ok && !markedSent(calls));
+    expect("and says the workspace was deleted", String((wrote(calls, "error")?.payload as { error?: string })?.error).includes("workspace was deleted"));
+    setAdminClientForTests(null);
+  }
+
+  const held: [string, ReturnType<typeof liveEnrollment>][] = [
+    ["a paused sequence", liveEnrollment({ status: "paused" })],
+    ["a parked sequence", liveEnrollment({ status: "parked", parked_reason: "The campaign is not running." })],
+    ["a paused campaign", liveEnrollment({ campaign: { status: "paused" } })],
+    ["an unreadable sequence", { data: null, error: { message: "connection reset" } } as never],
+  ];
+  for (const [label, enrollment] of held) {
+    const { ctx, calls } = sendContext(sendable({ enrollment_id: ENROLLMENT }), { "select:enrollments": enrollment });
+    const outcome = await sendMessage(ctx);
+    expect(`${label}: nothing is sent`, !markedSent(calls));
+    expect(`${label}: it waits, so resuming sends it`, outcome.ok && Boolean(wrote(calls, "not_before")) && !wrote(calls, "error"));
+    setAdminClientForTests(null);
+  }
+}
+
+console.log("\nsend_message — PROD-201: a database without 0050 fails loudly");
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:claim_contact_lane": { data: null, error: { code: "PGRST202", message: "Could not find the function public.claim_contact_lane" } },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("the send fails rather than deferring as 'address busy'", !outcome.ok && /migration 0050/.test(String((outcome as { error?: string }).error)));
+  expect("nothing is sent and no wait is recorded", !markedSent(calls) && !calls.some((c) => c.verb === "update" && "not_before" in ((c.payload as object) ?? {})));
+  expect("and the message is not stranded with an error", !calls.some((c) => c.table === "messages" && c.verb === "update" && "error" in ((c.payload as object) ?? {})));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:claim_contact_lane": { data: false, error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("a busy lane still waits (it is not a missing migration)", outcome.ok && !markedSent(calls));
   setAdminClientForTests(null);
 }
 
@@ -3371,6 +3464,36 @@ console.log("\nadvance_enrollments — a draft waiting for a person holds the se
   );
 }
 
+console.log("\nadvance_enrollments — OUT-201: the sequence is not finished while its last email waits");
+for (const [label, pending, finished] of [
+  ["an approved last step still waiting to send", { id: "msg-last" }, false],
+  ["nothing left to send", null, true],
+] as const) {
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-3",
+        campaign_id: "camp-1",
+        opportunity_id: "opp-3",
+        current_step: 2,
+        mailbox_id: null,
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: 0, product_id: null },
+        opportunities: { id: "opp-3", company_id: "co-3", primary_person_id: null, outreach_angle: null, status: "contacted" },
+      },
+      error: null,
+    },
+    // No step after the last one.
+    "select:sequence_steps": { data: null, error: null },
+    "select:messages": { data: pending, error: null },
+  });
+  const outcome = await advanceOne(new OrgScope(ORG_A, client), "enr-3");
+  const stopped = calls.some(
+    (c) => c.table === "enrollments" && c.verb === "update" && (c.payload as { status?: string })?.status === "stopped",
+  );
+  expectEqual(`${label}: ${finished ? "the sequence finishes" : "the enrollment waits"}`, outcome, finished ? "stopped" : "waited");
+  expect(`${label}: ${finished ? "and is stopped" : "and is not stopped, so send_message still sends it"}`, stopped === finished);
+}
+
 console.log("\nadvance_enrollments — an opportunity closed as not a fit stops its sequence");
 {
   const { client, calls } = fakeClient({
@@ -3855,7 +3978,7 @@ console.log("\nsend_message — P0-4: an unreviewed message gets the reviewer's 
   const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: "Hi {{first_name}}, see https://evil.example" });
   const { ctx, calls } = sendContext(message, {
     "select:messages": messagesBy(message),
-    "select:enrollments": { data: { campaigns: { autonomy_level: 2 } }, error: null },
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 2 } }),
   });
   const outcome = await sendMessage(ctx);
   expect("at autonomy 2 a bad draft is not sent", outcome.ok && !markedSent(calls));
@@ -3870,7 +3993,7 @@ console.log("\nsend_message — P0-4: an unreviewed message gets the reviewer's 
   const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: "Hi {{first_name}}" });
   const { ctx, calls } = sendContext(message, {
     "select:messages": messagesBy(message),
-    "select:enrollments": { data: { campaigns: { autonomy_level: 1 } }, error: null },
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 1 } }),
   });
   const outcome = await sendMessage(ctx);
   expect("at autonomy 1 a person approved it, and it goes as approved", outcome.ok && markedSent(calls));

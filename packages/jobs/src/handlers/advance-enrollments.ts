@@ -160,6 +160,26 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
 
   const step = await nextStep(scope, String(enrollment.campaign_id), Number(enrollment.current_step));
   if (!step) {
+    /* OUT-201: `send_message` refuses mail whose enrollment is no longer
+       active, so the last step must have left before the sequence counts as
+       finished. An approved message still waiting (business hours, the daily
+       cap) holds the enrollment open. */
+    const { data: pending } = await scope
+      .select("messages", "id")
+      .eq("enrollment_id", enrollmentId)
+      .eq("direction", "outbound")
+      .not("scheduled_at", "is", null)
+      .is("sent_at", null)
+      .is("error", null)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (pending) {
+      await scope
+        .update("enrollments", { next_action_at: new Date(Date.now() + APPROVAL_RECHECK_MS).toISOString() })
+        .eq("id", enrollmentId);
+      return "waited";
+    }
     await stop(scope, enrollmentId, "The sequence finished.");
     return "stopped";
   }

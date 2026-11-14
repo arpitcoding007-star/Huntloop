@@ -116,6 +116,24 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     return { ok: true, result: { skipped: "invalid_address", to: message.to_email } };
   }
 
+  /* OUT-201. Is anyone still asking for this message?
+     `scheduled_at` was set when it was approved, and it is the only thing on
+     the row that says "go". A person who then stopped the sequence, paused or
+     archived the campaign, closed the deal or deleted the workspace changed a
+     parent row, never this one, so a message deferred past that moment (for
+     business hours, the daily cap, a bounce pause) still went out. Asked here,
+     before anything is spent, from the parents themselves. */
+  const hold = await withdrawnOrHeld(ctx, message.enrollment_id ? String(message.enrollment_id) : null);
+  if (hold?.kind === "withdrawn") {
+    const why = `Not sent: ${hold.why}`.slice(0, 2000);
+    await scope.update("messages", { error: why }).eq("id", messageId);
+    await recordEvent(ctx, messageId, "failed", { reason: "withdrawn", detail: hold.why.slice(0, 500) });
+    return { ok: true, result: { skipped: "withdrawn", why } };
+  }
+  if (hold?.kind === "held") {
+    return defer(ctx, messageId, new Date(Date.now() + hold.retryMs), hold.reason, hold.why);
+  }
+
   /* Step 2. One question, asked once.
      `0017` built `can_contact` to be *the* gate — suppression, the erasure
      residue hash, the per-contact cadence, the 30-day cap and the org's daily
@@ -417,6 +435,16 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     p_email: message.to_email,
     p_message: messageId,
   });
+  /* PROD-201: a database without 0050 has no lane function at all. Deferring
+     on that would hold every message forever while the deployment looked
+     healthy, so it fails, loudly, with the fix in the message. */
+  if (laneError && isMissingFunction(laneError)) {
+    const why =
+      "Not sent: the database is missing migration 0050 (claim_contact_lane). " +
+      "Apply the pending migrations, then this message sends on the next run.";
+    /* `error` stays null on purpose: once migrated, the sweep picks it up. */
+    return { ok: false, error: why };
+  }
   if (laneError || lane !== true) {
     const soon = new Date(Date.now() + 15 * 60_000);
     return defer(ctx, messageId, soon, "address_busy", "Another message to this address is being sent.");
@@ -715,6 +743,98 @@ export async function bounceHealth(
   const bounces = new Set(rows<{ message_id: string }>(bounced).map((e) => String(e.message_id))).size;
 
   return { paused: bounces / sends > BOUNCE_LIMIT, sends, bounces };
+}
+
+/** Postgres 42883 / PostgREST PGRST202: the function does not exist (a migration is missing). */
+export function isMissingFunction(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === "42883" || error.code === "PGRST202";
+}
+
+/** Opportunity stages at which a sequence has no business writing (mirrors `advanceOne`). */
+const CLOSED_STAGES = new Set(["replied", "meeting", "proposal", "won", "lost", "archived"]);
+
+export type ParentHold =
+  /** Nobody wants it any more. The message is closed out and never retried. */
+  | { kind: "withdrawn"; why: string }
+  /** Paused or parked, which a person can undo: wait and ask again. */
+  | { kind: "held"; reason: string; why: string; retryMs: number };
+
+/**
+ * OUT-201: the parents' answer to "should this still go?". Null means yes.
+ *
+ * Unreadable is "held", never "go": the same posture as `can_contact`. A
+ * missing row is "withdrawn", because the only way an enrollment or a
+ * workspace disappears is somebody removing it. Exported for the test suite.
+ */
+export async function withdrawnOrHeld(ctx: JobContext, enrollmentId: string | null): Promise<ParentHold | null> {
+  const unreadable: ParentHold = {
+    kind: "held",
+    reason: "parent_unreadable",
+    why: "Waiting: the sequence this message belongs to could not be read.",
+    retryMs: 15 * 60_000,
+  };
+
+  const { data: org, error: orgError } = await ctx.scope.organization("id").maybeSingle();
+  if (orgError) return unreadable;
+  if (!org) return { kind: "withdrawn", why: "the workspace was deleted." };
+
+  /* A reply a person wrote from the inbox has no sequence above it. Only the
+     workspace can withdraw it. */
+  if (!enrollmentId) return null;
+
+  const { data, error } = await ctx.scope
+    .select(
+      "enrollments",
+      `status, parked_reason, deleted_at,
+       campaigns(status, deleted_at),
+       opportunities(status, deleted_at)`,
+    )
+    .eq("id", enrollmentId)
+    .maybeSingle();
+  if (error) return unreadable;
+  if (!data) return { kind: "withdrawn", why: "the sequence it belonged to no longer exists." };
+
+  /* eslint-disable @typescript-eslint/no-explicit-any -- embedded rows, no generated types */
+  const row = data as any;
+  const campaign = Array.isArray(row.campaigns) ? row.campaigns[0] : row.campaigns;
+  const opportunity = Array.isArray(row.opportunities) ? row.opportunities[0] : row.opportunities;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  if (row.deleted_at) return { kind: "withdrawn", why: "the sequence was removed." };
+  if (!campaign || campaign.deleted_at || campaign.status === "archived") {
+    return { kind: "withdrawn", why: "the campaign was archived." };
+  }
+  if (!opportunity || opportunity.deleted_at) {
+    return { kind: "withdrawn", why: "the opportunity was removed." };
+  }
+  if (CLOSED_STAGES.has(String(opportunity.status))) {
+    return { kind: "withdrawn", why: `the opportunity is ${opportunity.status}.` };
+  }
+
+  const status = String(row.status ?? "");
+  if (status === "paused" || status === "parked") {
+    return {
+      kind: "held",
+      reason: "sequence_paused",
+      why: row.parked_reason
+        ? `Waiting: the sequence is ${status} (${String(row.parked_reason).slice(0, 300)}).`
+        : `Waiting: the sequence is ${status}.`,
+      retryMs: 6 * 3600_000,
+    };
+  }
+  if (status !== "active") {
+    const because = row.parked_reason ? ` (${String(row.parked_reason).slice(0, 300)})` : "";
+    return { kind: "withdrawn", why: `the sequence was stopped${because}.` };
+  }
+  if (campaign.status !== "active") {
+    return {
+      kind: "held",
+      reason: "campaign_paused",
+      why: `Waiting: the campaign is ${campaign.status}.`,
+      retryMs: 6 * 3600_000,
+    };
+  }
+  return null;
 }
 
 /** The campaign's autonomy level for this enrollment; 0 when it cannot be read, since 0 means a person approved. */

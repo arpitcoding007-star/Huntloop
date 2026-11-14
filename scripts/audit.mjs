@@ -435,6 +435,37 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 4 — Readiness tracks the newest migration (pass 16, PROD-201) ─── */
+
+{
+  // Production refuses to serve on a partial schema, judged by one marker.
+  // When that marker names an older migration than the repo has, a database
+  // missing the newest one reads "complete" and the code that needs it fails
+  // quietly. Pass 16 found it three migrations behind.
+  const files = walk("packages/db/migrations")
+    .map((f) => f.split("/").pop())
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort();
+  const newest = files.at(-1) ?? "";
+  const number = newest.slice(0, 4);
+  const marker = `migration_${number}_applied`;
+  const schema = read("apps/web/lib/schema.ts") ?? "";
+  const doctor = read("packages/db/scripts/doctor.ts") ?? "";
+  const declared = schema.match(/LATEST_MIGRATION\s*=\s*"(\d{4})"/)?.[1] ?? null;
+  const problems = [];
+  if (declared !== number) problems.push(`lib/schema.ts LATEST_MIGRATION=${declared ?? "unset"}, newest is ${number}`);
+  if (!(read(`packages/db/migrations/${newest}`) ?? "").includes(marker)) problems.push(`${newest} defines no ${marker}()`);
+  if (!doctor.includes(newest)) problems.push(`db:doctor has no row for ${newest}`);
+  check(
+    4,
+    "SCHEMA-01",
+    "The readiness probe and db:doctor name the newest migration",
+    problems.length === 0,
+    "fail",
+    problems.join("; ") || null,
+  );
+}
+
 /* ── Phase 4 — `as any` only goes down (pass 15, DEBT-003) ──────────────── */
 
 {

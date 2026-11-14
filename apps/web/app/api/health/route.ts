@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { LATEST_TABLE, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
+import { LATEST_MIGRATION, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
 
 /**
  * What this deployment is connected to, as booleans.
@@ -45,7 +45,7 @@ export async function GET() {
     database: {
       host: env ? new URL(env.url).host : null,
       schema: database,
-      latestTableProbed: LATEST_TABLE,
+      requiredMigration: LATEST_MIGRATION,
       serviceKey: has("SUPABASE_SECRET_KEY") || has("SUPABASE_SERVICE_ROLE_KEY"),
     },
     jobs: {

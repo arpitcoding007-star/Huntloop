@@ -1152,6 +1152,70 @@ console.log("\nMailbox safety columns — SEC-103 (0049)");
   else fail("the engine still can", engine.rows);
 }
 
+console.log("\nMailbox connect after 0049 — DB-203");
+{
+  /* The harness grants `authenticated` SELECT on every table after the
+     migrations run, which silently undoes 0049's column-level revoke on the
+     token columns. That is how the upsert the connect callback used to send
+     passed here and would have failed on Supabase. So 0049's grant is put
+     back for this block, exactly as the migration writes it. */
+  const OWNER = "11111111-1111-1111-1111-111111111111";
+  const cols = await db.query<{ list: string }>(`
+    select string_agg(quote_ident(column_name), ', ' order by ordinal_position) as list
+      from information_schema.columns
+     where table_schema = 'public' and table_name = 'mailboxes'
+       and column_name not in ('oauth_token_enc', 'refresh_token_enc')`);
+  await db.exec("begin");
+  await db.exec(`revoke select on public.mailboxes from authenticated`);
+  await db.exec(`grant select (${cols.rows[0]!.list}) on public.mailboxes to authenticated`);
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER]);
+
+  await expectRejectTx(
+    db,
+    "a session cannot read a mailbox's token ciphertext (SEC-102)",
+    `select oauth_token_enc from mailboxes limit 1`,
+  );
+  await expectRejectTx(
+    db,
+    "an upsert is refused: ON CONFLICT reads excluded token columns (why the callback no longer sends one)",
+    `insert into mailboxes (org_id, provider, email, oauth_token_enc, status)
+     values ($1, 'gmail', 'upsert-203@huntloop.test', 'enc', 'connected')
+     on conflict (org_id, email) do update set oauth_token_enc = excluded.oauth_token_enc`,
+    [ORG_A],
+  );
+
+  /* The callback's three statements, as `saveMailbox` sends them: look up by
+     granted columns, then a plain insert or update with nothing returned. */
+  const email = "connect-203@huntloop.test";
+  try {
+    const before = await db.query(`select id from mailboxes where org_id = $1 and email = $2 limit 1`, [ORG_A, email]);
+    await db.query(
+      `insert into mailboxes (org_id, provider, email, oauth_token_enc, refresh_token_enc, token_expires_at, status, last_error, deleted_at)
+       values ($1, 'gmail', $2, 'enc-access', 'enc-refresh', now() + interval '1 hour', 'connected', null, null)`,
+      [ORG_A, email],
+    );
+    const found = await db.query<{ id: string }>(`select id from mailboxes where org_id = $1 and email = $2 limit 1`, [ORG_A, email]);
+    if (before.rows.length === 0 && found.rows.length === 1) ok("a first connect stores the mailbox as authenticated");
+    else fail("a first connect stores the mailbox as authenticated", { before: before.rows, found: found.rows });
+
+    await db.query(
+      `update mailboxes set oauth_token_enc = 'enc-access-2', token_expires_at = now() + interval '1 hour',
+              status = 'connected', last_error = null, deleted_at = null
+        where id = $1 and org_id = $2`,
+      [found.rows[0]!.id, ORG_A],
+    );
+    ok("a reconnect refreshes the tokens as authenticated");
+  } catch (e) {
+    fail("the callback's write shape succeeds as authenticated after 0049", e instanceof Error ? e.message : e);
+  }
+  await db.exec("rollback");
+
+  const leaked = await db.query(`select count(*)::int as n from mailboxes where email like '%-203@huntloop.test'`);
+  if ((leaked.rows[0] as { n: number }).n === 0) ok("and the block leaves nothing behind");
+  else fail("and the block leaves nothing behind", leaked.rows);
+}
+
 // ── Source health (0008) ───────────────────────────────────────────────────
 console.log("\nSource health — §58's degrade-and-retry, in the database");
 {
