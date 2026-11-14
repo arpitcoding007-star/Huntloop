@@ -1216,6 +1216,111 @@ console.log("\nMailbox connect after 0049 — DB-203");
   else fail("and the block leaves nothing behind", leaked.rows);
 }
 
+console.log("\nSafety records a member cannot undo — DB-201 (0051)");
+{
+  const OWNER = "11111111-1111-1111-1111-111111111111"; // owner of org A: every member right
+  const OTHER = "33333333-3333-3333-3333-333333333333"; // a user in org B
+  const UNSENT = "d0000000-0000-0000-0000-0000000051a1";
+  const SENT = "d0000000-0000-0000-0000-0000000051a2";
+  const APPROVED = "d0000000-0000-0000-0000-0000000051a3"; // approved by someone else, not sent yet
+  await db.exec(`
+    insert into suppressions (org_id, kind, value, reason) values
+      ('${ORG_A}', 'email', 'optout-51@alphio.ai', 'asked');
+    insert into people (id, org_id, company_id, first_name) values
+      ('9e000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'c0000000-0000-0000-0000-00000000000a', 'Pat 51');
+    insert into campaigns (id, org_id, name, status) values
+      ('ca000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'Seq 51', 'active');
+    insert into enrollments (id, org_id, campaign_id, opportunity_id, status) values
+      ('e0000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'ca000000-0000-0000-0000-0000000051a1',
+       '0bbbbbbb-0000-0000-0000-00000000000a', 'active');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id) values
+      ('${UNSENT}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Hi', 'e0000000-0000-0000-0000-0000000051a1');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id, scheduled_at, approved_by) values
+      ('${APPROVED}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Approved words', 'e0000000-0000-0000-0000-0000000051a1', now(), '${OTHER}');
+    insert into messages (id, org_id, direction, to_email, subject, sent_at, provider_message_id, approved_by) values
+      ('${SENT}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Sent', now(), 'gmail-51', '${OWNER}');
+  `);
+
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER]);
+
+  const count = async (sql: string) => ((await db.query<{ n: number }>(sql)).rows[0]!.n);
+
+  await db.query(`delete from suppressions where value = 'optout-51@alphio.ai'`);
+  await db.query(`update suppressions set value = 'someone-else@alphio.ai' where value = 'optout-51@alphio.ai'`);
+  if ((await count(`select count(*)::int as n from suppressions where value = 'optout-51@alphio.ai'`)) === 1)
+    ok("a member cannot delete or rewrite a suppression, so an unsubscribe stays honoured");
+  else fail("a member cannot delete or rewrite a suppression", "the row changed");
+  try {
+    await db.query(`insert into suppressions (org_id, kind, value, reason) values ($1, 'email', 'added-51@alphio.ai', 'manual')`, [ORG_A]);
+    ok("a member can still add one");
+  } catch (e) {
+    fail("a member can still add one", e instanceof Error ? e.message : e);
+  }
+
+  for (const [table, where] of [
+    ["opportunities", `id = '0bbbbbbb-0000-0000-0000-00000000000a'`],
+    ["enrollments", `id = 'e0000000-0000-0000-0000-0000000051a1'`],
+    ["messages", `id = '${UNSENT}'`],
+    ["people", `id = '9e000000-0000-0000-0000-0000000051a1'`],
+  ] as const) {
+    await db.query(`delete from ${table} where ${where}`);
+    if ((await count(`select count(*)::int as n from ${table} where ${where}`)) === 1)
+      ok(`a member cannot hard-delete ${table} (soft delete only)`);
+    else fail(`a member cannot hard-delete ${table}`, "the row is gone");
+  }
+
+  await expectRejectTx(db, "approved_by cannot name somebody else", `update messages set approved_by = '${OTHER}' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a session cannot mark a message sent", `update messages set sent_at = now(), provider_message_id = 'forged' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "or clear/set the at-most-once send claim", `update messages set send_attempted_at = now() where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a sent message is a record a session cannot change", `update messages set subject = 'Edited after the fact' where id = '${SENT}'`);
+  await expectRejectTx(db, "including its approver", `update messages set approved_by = null where id = '${SENT}'`);
+  await expectRejectTx(db, "a session cannot insert an inbound 'reply'", `insert into messages (org_id, direction, to_email, subject) values ('${ORG_A}', 'inbound', 'dana@alphio.ai', 'Re: Hi')`);
+  await expectRejectTx(db, "or a message already marked sent", `insert into messages (org_id, direction, to_email, subject, sent_at, provider_message_id) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', now(), 'forged')`);
+  await expectRejectTx(db, "or one approved in somebody else's name", `insert into messages (org_id, direction, to_email, subject, approved_by) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', '${OTHER}')`);
+  await expectRejectTx(db, "an enrollment status must be one the engine knows", `update enrollments set status = 'bogus' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+
+  /* SEC-301 (pass 17): the approval itself, not only the approver column. */
+  await expectRejectTx(db, "a draft cannot be scheduled with nobody named as approver", `update messages set scheduled_at = now() where id = '${UNSENT}'`);
+  await expectRejectTx(db, "nor scheduled in somebody else's name", `update messages set scheduled_at = now(), approved_by = '${OTHER}' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a message cannot be inserted ready to send without approving it as yourself", `insert into messages (org_id, direction, to_email, subject, scheduled_at) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', now())`);
+  await expectRejectTx(db, "an approved message's words cannot be rewritten under that approval", `update messages set body_text = 'Different words' where id = '${APPROVED}'`);
+  await expectRejectTx(db, "nor its recipient", `update messages set to_email = 'someone-else@elsewhere.test' where id = '${APPROVED}'`);
+  await expectRejectTx(db, "nor rewritten while re-approving it as yourself in one step", `update messages set subject = 'New', approved_by = '${OWNER}' where id = '${APPROVED}'`);
+  try {
+    await db.query(`update messages set subject = 'Rewritten', scheduled_at = null, approved_by = null, edited_by = $1 where id = '${APPROVED}'`, [OWNER]);
+    await db.query(`update messages set scheduled_at = now(), approved_by = $1 where id = '${APPROVED}'`, [OWNER]);
+    ok("rewriting it works by withdrawing the approval, then approving again as yourself");
+  } catch (e) {
+    fail("rewriting it works by withdrawing the approval, then approving again", e instanceof Error ? e.message : e);
+  }
+
+  try {
+    /* In the order the app does them: edit the unapproved draft, then approve it. */
+    await db.query(`update messages set edited_by = $1, subject = 'Edited' where id = '${UNSENT}'`, [OWNER]);
+    await db.query(`update messages set approved_by = $1, scheduled_at = now(), error = null where id = '${UNSENT}'`, [OWNER]);
+    await db.query(`update messages set error = 'Not sent: the sequence was stopped.' where id = '${UNSENT}'`);
+    await db.query(`update messages set deleted_at = now() where id = '${UNSENT}'`);
+    await db.query(
+      `insert into messages (org_id, direction, to_email, subject, scheduled_at, approved_by) values ($1, 'outbound', 'reply-51@alphio.ai', 'Re: Hi', now(), $2)`,
+      [ORG_A, OWNER],
+    );
+    await db.query(`update enrollments set status = 'stopped' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+    ok("the app's own writes still pass: approve, edit, withdraw, soft delete, reply, stop");
+  } catch (e) {
+    fail("the app's own writes still pass", e instanceof Error ? e.message : e);
+  }
+  await db.exec("rollback");
+
+  const engine = await db.query(
+    `update messages set send_attempted_at = now() where id = '${UNSENT}' returning id`,
+  );
+  if (engine.rows.length === 1) ok("the engine can still claim and record a send");
+  else fail("the engine can still claim and record a send", engine.rows);
+  await expectReject(db, "and even the engine cannot invent an enrollment status", `update enrollments set status = 'bogus' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+}
+
 // ── Source health (0008) ───────────────────────────────────────────────────
 console.log("\nSource health — §58's degrade-and-retry, in the database");
 {

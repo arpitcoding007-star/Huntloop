@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 50 migrations
-> (`0001_identity.sql` … `0050_atomic_spend_and_send_lanes.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 51 migrations
+> (`0001_identity.sql` … `0051_safety_record_integrity.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 82 tables · 9 views · 118 public functions · 10 enum types · 142 RLS policies · 240 indexes · 127 triggers.
+**Totals:** 82 tables · 9 views · 120 public functions · 10 enum types · 146 RLS policies · 240 indexes · 128 triggers.
 
 **RLS enabled on:** 82 of 82 tables.
 
@@ -1281,6 +1281,7 @@ RLS: **enabled**
 **Constraints**
 
 - CHECK `enrollments_redraft_note_check` — `CHECK (((redraft_note IS NULL) OR (length(redraft_note) <= 500)))`
+- CHECK `enrollments_status_check` — `CHECK ((status = ANY (ARRAY['active'::text, 'paused'::text, 'parked'::text, 'stopped'::text])))`
 - FK `enrollments_campaign_id_fkey` — `FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE`
 - FK `enrollments_mailbox_id_fkey` — `FOREIGN KEY (mailbox_id) REFERENCES mailboxes(id) ON DELETE SET NULL`
 - FK `enrollments_opportunity_id_fkey` — `FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE`
@@ -1294,8 +1295,9 @@ RLS: **enabled**
 
 **Policies**
 
+- `tenant_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `tenant_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
@@ -2226,12 +2228,14 @@ RLS: **enabled**
 
 **Policies**
 
+- `tenant_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `tenant_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
 - `messages_demand_erasure`
+- `messages_guard_integrity`
 - `messages_issue_unsubscribe_token`
 - `messages_project_activity`
 - `messages_same_org`
@@ -2336,8 +2340,9 @@ RLS: **enabled**
 
 **Policies**
 
+- `tenant_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `tenant_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
@@ -2564,8 +2569,9 @@ RLS: **enabled**
 
 **Policies**
 
+- `tenant_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `tenant_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
@@ -3345,8 +3351,8 @@ RLS: **enabled**
 
 **Policies**
 
+- `tenant_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
@@ -3535,6 +3541,7 @@ RLS: **enabled**
 | `guard_invitation_owner` |  | trigger | yes |
 | `guard_mailbox_safety` |  | trigger |  |
 | `guard_membership_owner` |  | trigger | yes |
+| `guard_message_integrity` |  | trigger |  |
 | `guard_organization_reserved` |  | trigger |  |
 | `handle_new_user` |  | trigger | yes |
 | `has_org_role` | `target_org uuid, min_role org_role` | boolean | yes |
@@ -3570,6 +3577,7 @@ RLS: **enabled**
 | `migration_0048_applied` |  | boolean |  |
 | `migration_0049_applied` |  | boolean |  |
 | `migration_0050_applied` |  | boolean |  |
+| `migration_0051_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `project_message_activity` |  | trigger | yes |
