@@ -16,6 +16,7 @@ once before a launch and never again.
 | [PASS-13.md](PASS-13.md) | The thirteenth pass: the look-alike preview, the settings editor that was deleting criteria it never showed, and the paste that broke the migration verifier |
 | [pass-14/](pass-14/00_SUMMARY.md) | The fourteenth pass: the first full-system run of `/audit` (commit `509a24e`) — production configured with no keys, verdicts savable as fact, live-DB defects hidden by demo mode, two cross-tenant write paths |
 | [pass-15/](pass-15/00_SUMMARY.md) | The fifteenth pass (2026-11-01, `8021d3f` + working tree): production origin fails TLS, removed and merged companies kept emailing, merge dropped evidence, and the two free evidence sources overclaimed — fixed in the same session, see `07_FIX_STATUS.md` |
+| [pass-16/](pass-16/00_SUMMARY.md) | The sixteenth pass (2026-11-14, `7e09759`), the first `/audit-system` run: the pass-15 fixes are in the repo but not live (0048–0050 unapplied, prod on `8021d3f`); applying 0049 breaks mailbox connect and HEAD on a 0047 DB stalls every send; stop/archive does not stop queued mail (Critical) |
 | [`scripts/audit.mjs`](../scripts/audit.mjs) | The mechanizable checks, gating CI |
 
 ```bash
