@@ -384,7 +384,7 @@ function HeroMock() {
     { label: "Learn", icon: GraduationCap },
   ];
   return (
-    <div className="overflow-hidden rounded-xl border border-line-subtle bg-surface shadow-modal">
+    <div className="overflow-hidden rounded-xl border border-line-subtle bg-surface">
       <div className="flex h-[52px] items-center gap-3.5 border-b border-line-subtle px-[18px]">
         <span className="flex items-center gap-[7px] text-[13px] font-semibold">
           <BrandMark className="size-[18px]" />
@@ -490,7 +490,7 @@ function ListIsNotTheAnswer() {
           </p>
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-[24px_24px_0_24px] border border-line bg-surface shadow-[0_60px_120px_-40px_rgba(0,0,0,0.7)]">
+        <div className="min-w-0 overflow-hidden rounded-[24px_24px_0_24px] border border-line bg-surface">
           <div className="flex h-12 items-center gap-[7px] border-b border-line px-[18px] text-[13px] text-fg-secondary">
             <BrandMark className="size-4 text-fg" />
             Huntloop
@@ -605,7 +605,7 @@ function Discover() {
           </p>
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-lg border border-line-subtle bg-surface shadow-popover">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-line-subtle bg-surface">
           <div className="border-b border-line-subtle px-[22px] py-[18px]">
             <span className="text-[14px] font-semibold">Discover</span>
             <span className="mt-2.5 flex h-[34px] items-center rounded-[8px] bg-canvas px-3 text-[12.5px] text-fg-muted">
@@ -670,7 +670,7 @@ function Qualify() {
           </p>
         </div>
 
-        <div className="w-full max-w-[540px] overflow-hidden rounded-lg border border-line-subtle bg-surface shadow-popover xl:order-1">
+        <div className="w-full max-w-[540px] overflow-hidden rounded-lg border border-line-subtle bg-surface xl:order-1">
           <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5 text-[13px] text-fg-muted">
             <Scale aria-hidden className="size-3.5" strokeWidth={1.8} />
             Qualify
@@ -945,7 +945,7 @@ function DataAndPricing({ plans }: { plans: Awaited<ReturnType<typeof listPublic
                   key={plan.id}
                   className={`flex flex-col gap-4 rounded-lg bg-surface px-6 py-7 ${
                     featured
-                      ? "border-[1.5px] border-brand-vivid shadow-popover"
+                      ? "border-[1.5px] border-brand-vivid"
                       : "border border-line-subtle"
                   }`}
                 >
