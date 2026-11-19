@@ -1938,6 +1938,85 @@ console.log("\n0050 — the last credit is reserved once (PROV-015)");
   await db.exec("rollback");
 }
 
+console.log("\n0052 — the reservation is the call's cost (HL-1605); the inbox has its indexes (PERF-301)");
+{
+  await db.exec("begin");
+  await db.query(
+    `insert into provider_accounts (org_id, capability, provider, monthly_credit_limit)
+     values ($1, 'person.match', 'apollo', 10)`,
+    [ORG_A],
+  );
+  await db.query(`select public.record_provider_call($1, 'person.match', 'apollo', 'h52', 'ok', 9)`, [ORG_A]);
+  const two = await db.query<{ allowed: boolean }>(`select allowed from public.reserve_provider_credit($1, 'apollo', 2)`, [ORG_A]);
+  const one = await db.query<{ allowed: boolean }>(`select allowed from public.reserve_provider_credit($1, 'apollo', 1)`, [ORG_A]);
+  if (two.rows[0]?.allowed === false && one.rows[0]?.allowed === true) {
+    ok("one credit left: a two-credit call is refused, a one-credit call is not");
+  } else {
+    fail("a two-credit call is refused on the last credit", JSON.stringify([two.rows, one.rows]));
+  }
+  const used = await db.query<{ used: number }>(`select used from public.provider_budget_state($1, 'apollo')`, [ORG_A]);
+  if (Number(used.rows[0]?.used) === 10) ok("and the refused call held nothing");
+  else fail("the refused call held nothing", JSON.stringify(used.rows[0]));
+  await db.exec("rollback");
+
+  const idx = await db.query<{ indexname: string }>(
+    `select indexname from pg_indexes where schemaname = 'public'
+       and indexname in ('message_events_message_idx', 'messages_thread_created_idx', 'threads_org_last_message_idx')`,
+  );
+  if (idx.rows.length === 3) ok("the inbox's three indexes exist (PERF-301)");
+  else fail("the inbox's three indexes exist", JSON.stringify(idx.rows));
+}
+
+console.log("\n0053 — the kill switch (PROD-207)");
+{
+  const ORG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  await db.exec("begin");
+  const none = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_A]);
+  if (none.rows[0]?.r === null) ok("nothing is paused by default");
+  else fail("nothing is paused by default", JSON.stringify(none.rows));
+
+  await db.query(`insert into platform_pauses (scope, org_id, reason) values ('ai', $1, 'Org A spend')`, [ORG_A]);
+  const a = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_A]);
+  const b = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_B]);
+  const sendsA = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_A]);
+  if (a.rows[0]?.r === "Org A spend" && b.rows[0]?.r === null && sendsA.rows[0]?.r === null) {
+    ok("a per-org pause stops that org's scope only");
+  } else {
+    fail("a per-org pause stops that org's scope only", JSON.stringify([a.rows, b.rows, sendsA.rows]));
+  }
+
+  await db.query(`insert into platform_pauses (scope, reason) values ('sends', 'Bounce spike')`);
+  const global = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_B]);
+  if (global.rows[0]?.r === "Bounce spike") ok("a global pause stops every org");
+  else fail("a global pause stops every org", JSON.stringify(global.rows));
+
+  await db.query(`update platform_pauses set lifted_at = now() where scope = 'sends'`);
+  const lifted = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_B]);
+  if (lifted.rows[0]?.r === null) ok("lifting it resumes");
+  else fail("lifting it resumes", JSON.stringify(lifted.rows));
+
+  await expectRejectTx(db, "a pause needs a reason", `insert into platform_pauses (scope, reason) values ('ai', '  ')`);
+
+  /* As a session: no direct access, and no peeking at another org's pause.
+     The harness creates `authenticated` after the migrations and grants it
+     every table, so 0053's revoke and its function grant are re-applied here
+     as Supabase would have them. RLS (no policies) is what holds either way. */
+  await db.query(`insert into platform_pauses (scope, reason) values ('providers', 'Still paused')`);
+  await db.exec(`revoke all on public.platform_pauses from authenticated`);
+  await db.exec(`grant execute on function public.platform_paused(text, uuid) to authenticated`);
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["33333333-3333-3333-3333-333333333333"]);
+  await expectRejectTx(db, "a session cannot read the table", `select * from platform_pauses`);
+  await expectRejectTx(db, "or write it (lift a pause)", `update platform_pauses set lifted_at = now()`);
+  const own = await db.query<{ r: string | null }>(`select public.platform_paused('providers', $1) as r`, [ORG_B]);
+  if (own.rows[0]?.r === "Still paused") ok("a session can ask whether its own work is paused");
+  else fail("a session can ask whether its own work is paused", JSON.stringify(own.rows));
+  const peek = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_A]);
+  if (peek.rows[0]?.r === null) ok("and cannot learn another workspace's pause");
+  else fail("cannot learn another workspace's pause", JSON.stringify(peek.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");
@@ -3072,6 +3151,17 @@ console.log("\n0027 — colleagues can find their own company, and nobody else's
   } else {
     fail("cross-domain leak", JSON.stringify(found.rows));
   }
+
+  /* SEC-302 (0052): Org B's owner is owner@b.test. Claiming a.test does not
+     make Org B "your company's workspace" to everybody at a.test. */
+  await db.query(`update organizations set primary_domain = 'a.test' where id = $1`, ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]);
+  const claimed = await db.query<{ org_slug: string }>(`select org_slug from public.discoverable_workspaces()`);
+  if (claimed.rows.length === 1 && claimed.rows[0]?.org_slug === "org-a") {
+    ok("a workspace claiming a domain none of its owners or admins has an address at is not offered there (SEC-302)");
+  } else {
+    fail("a claimed domain is not discoverable without an owner there (SEC-302)", JSON.stringify(claimed.rows));
+  }
+  await db.query(`update organizations set primary_domain = 'b.test' where id = $1`, ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]);
 
   /* Opting out has to actually work, or the column is decoration. */
   await db.query(`update organizations set is_discoverable = false where id = $1`, [ORG_A]);

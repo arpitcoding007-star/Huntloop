@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 51 migrations
-> (`0001_identity.sql` … `0051_safety_record_integrity.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 53 migrations
+> (`0001_identity.sql` … `0053_platform_pauses.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 82 tables · 9 views · 120 public functions · 10 enum types · 146 RLS policies · 240 indexes · 128 triggers.
+**Totals:** 83 tables · 9 views · 123 public functions · 10 enum types · 147 RLS policies · 245 indexes · 128 triggers.
 
-**RLS enabled on:** 82 of 82 tables.
+**RLS enabled on:** 83 of 83 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -2122,6 +2122,7 @@ RLS: **enabled**
 **Indexes**
 
 - `message_events_lookup_idx` — `message_events USING btree (org_id, message_id, kind)`
+- `message_events_message_idx` — `message_events USING btree (message_id)`
 
 **Policies**
 
@@ -2224,6 +2225,7 @@ RLS: **enabled**
 - `messages_opportunity_idx` — `messages USING btree (org_id, opportunity_id, created_at DESC) WHERE (opportunity_id IS NOT NULL)`
 - `messages_scheduled_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (deleted_at IS NULL))`
 - `messages_sendable_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (error IS NULL) AND (deleted_at IS NULL))`
+- `messages_thread_created_idx` — `messages USING btree (thread_id, created_at)`
 - `messages_thread_idx` — `messages USING btree (org_id, thread_id, created_at)`
 
 **Policies**
@@ -2639,6 +2641,34 @@ RLS: **enabled**
 **Policies**
 
 - `plans_read` — SELECT USING `true`
+
+## platform_pauses
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `scope` | text | NOT NULL |  |
+| `org_id` | uuid | null |  |
+| `reason` | text | NOT NULL |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `lifted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `platform_pauses_reason_check` — `CHECK ((length(TRIM(BOTH FROM reason)) > 0))`
+- CHECK `platform_pauses_scope_check` — `CHECK ((scope = ANY (ARRAY['sends'::text, 'ai'::text, 'providers'::text])))`
+- FK `platform_pauses_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- PK `platform_pauses_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `platform_pauses_live_idx` — `platform_pauses USING btree (scope, org_id) WHERE (lifted_at IS NULL)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
 
 ## preference_signals
 
@@ -3389,6 +3419,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `threads_org_last_message_idx` — `threads USING btree (org_id, last_message_at DESC NULLS LAST) WHERE (deleted_at IS NULL)`
 - `threads_provider_idx` — `UNIQUE threads USING btree (org_id, mailbox_id, provider_thread_id) WHERE (provider_thread_id IS NOT NULL)`
 
 **Policies**
@@ -3578,8 +3609,11 @@ RLS: **enabled**
 | `migration_0049_applied` |  | boolean |  |
 | `migration_0050_applied` |  | boolean |  |
 | `migration_0051_applied` |  | boolean |  |
+| `migration_0052_applied` |  | boolean |  |
+| `migration_0053_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
+| `platform_paused` | `p_scope text, p_org uuid` | text | yes |
 | `project_message_activity` |  | trigger | yes |
 | `project_message_event_activity` |  | trigger | yes |
 | `project_opportunity_activity` |  | trigger | yes |
@@ -3604,7 +3638,7 @@ RLS: **enabled**
 | `request_score_recompute` | `p_org uuid, p_icp uuid, p_reason text` | uuid | yes |
 | `request_to_join` | `p_org uuid` | text | yes |
 | `requeue_stalled_jobs` | `p_older_than interval` | integer |  |
-| `reserve_provider_credit` | `p_org uuid, p_provider text` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
+| `reserve_provider_credit` | `p_org uuid, p_provider text, p_credits integer` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
 | `reserve_public_research` | `p_ip_hash text, p_per_ip_hour integer, p_daily integer` | TABLE(allowed boolean, reason text) | yes |
 | `resolve_company` | `p_org uuid, p_domain text, p_provider text, p_provider_id text` | TABLE(company_id uuid, matched_on text) | yes |
 | `retry_job` | `p_org uuid, p_job uuid` | boolean | yes |
