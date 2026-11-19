@@ -37,6 +37,7 @@
  * against rows whose problem is not time.
  */
 import { enqueue } from "../queue.ts";
+import { isMissingFunction } from "./send-message.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -69,9 +70,19 @@ export async function scheduleSends(ctx: JobContext): Promise<JobOutcome> {
     return query.order("scheduled_at", { ascending: true }).limit(MAX_PER_TICK);
   };
 
-  let { data, error } = await due_(true);
-  /* Before 0048 there is no `not_before`; sending matters more than deferring. */
-  if (error?.code === "42703") ({ data, error } = await due_(false));
+  /* JOB-202 (0056): workspaces take turns, oldest approval first inside each.
+     Fifty oldest across everyone meant one workspace's backlog of approved
+     mail held every other workspace's sends. The query below is the fallback
+     for a database without 0056. */
+  let { data, error } = await db.rpc("due_sends_fair", {
+    p_now: ctx.now.toISOString(),
+    p_limit: MAX_PER_TICK,
+  });
+  if (error && isMissingFunction(error)) {
+    ({ data, error } = await due_(true));
+    /* Before 0048 there is no `not_before`; sending matters more than deferring. */
+    if (error?.code === "42703") ({ data, error } = await due_(false));
+  }
 
   if (error) return { ok: false, error: `schedule_sends: ${error.message}` };
 

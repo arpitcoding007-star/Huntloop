@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 55 migrations
-> (`0001_identity.sql` … `0055_status_checks.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 56 migrations
+> (`0001_identity.sql` … `0056_fair_claiming.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 10 views · 125 public functions · 10 enum types · 147 RLS policies · 262 indexes · 128 triggers.
+**Totals:** 83 tables · 10 views · 128 public functions · 10 enum types · 147 RLS policies · 263 indexes · 128 triggers.
 
 **RLS enabled on:** 83 of 83 tables.
 
@@ -1715,6 +1715,7 @@ RLS: **enabled**
 **Indexes**
 
 - `job_executions_due_idx` — `job_executions USING btree (run_at) WHERE (status = 'queued'::text)`
+- `job_executions_due_org_idx` — `job_executions USING btree (org_id, run_at) WHERE (status = 'queued'::text)`
 - `job_executions_idempotency_idx` — `UNIQUE job_executions USING btree (job_name, idempotency_key, org_id) NULLS NOT DISTINCT WHERE ((idempotency_key IS NOT NULL) AND (status = ANY (ARRAY['queued'::text, 'running'::text])))`
 - `job_executions_idx` — `job_executions USING btree (org_id, job_name, created_at DESC)`
 - `job_executions_name_key_idx` — `job_executions USING btree (job_name, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
@@ -3585,6 +3586,8 @@ RLS: **enabled**
 | `demand_from_activity` |  | trigger | yes |
 | `demand_from_outcome` |  | trigger | yes |
 | `discoverable_workspaces` |  | TABLE(org_id uuid, org_name text, org_slug text, member_count bigint) | yes |
+| `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
+| `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
 | `enforce_same_org_refs` |  | trigger | yes |
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
@@ -3641,6 +3644,7 @@ RLS: **enabled**
 | `migration_0053_applied` |  | boolean |  |
 | `migration_0054_applied` |  | boolean |  |
 | `migration_0055_applied` |  | boolean |  |
+| `migration_0056_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

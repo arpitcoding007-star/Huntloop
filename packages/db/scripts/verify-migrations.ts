@@ -2136,6 +2136,113 @@ console.log("\n0055 — status columns only hold states the code knows (DB-202)"
   await db.exec("rollback");
 }
 
+console.log("\n0056 — workspaces take turns in the queue (JOB-202)");
+{
+  const ORG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  await db.exec("begin");
+  /* Only this block's jobs are due: anything earlier blocks left queued is
+     moved out of the way inside the transaction. */
+  await db.exec(`update job_executions set status = 'cancelled' where status = 'queued'`);
+
+  // The audit's acceptance case: A holds 1,000 due jobs, all older than B's one.
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     select $1, 'profile_company', jsonb_build_object('n', g), now() - interval '2 hours' + (g || ' milliseconds')::interval
+       from generate_series(1, 1000) g`,
+    [ORG_A],
+  );
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     values ($1, 'send_message', '{"b":1}'::jsonb, now() - interval '1 minute')`,
+    [ORG_B],
+  );
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     values (null, 'schedule_sends', '{}'::jsonb, now() - interval '30 seconds')`,
+  );
+
+  const batch = await db.query<{ org_id: string | null; payload: Record<string, unknown> }>(
+    `select org_id, payload from public.claim_job_executions(5, 'fair-1')`,
+  );
+  const orgs = batch.rows.map((r) => r.org_id);
+  if (batch.rows.length === 5 && orgs.includes(ORG_B) && orgs.includes(null)) {
+    ok("B's one job and the global sweeper are in the first batch, ahead of A's backlog of 1,000");
+  } else {
+    fail("B is not starved by A's backlog", JSON.stringify(orgs));
+  }
+  const aTaken = batch.rows.filter((r) => r.org_id === ORG_A).map((r) => Number(r.payload.n)).sort((x, y) => x - y);
+  if (JSON.stringify(aTaken) === JSON.stringify([1, 2, 3])) ok("inside one workspace, oldest still goes first");
+  else fail("inside one workspace, oldest still goes first", JSON.stringify(aTaken));
+
+  const again = await db.query<{ org_id: string | null }>(
+    `select org_id from public.claim_job_executions(5, 'fair-2')`,
+  );
+  if (again.rows.length === 5 && again.rows.every((r) => r.org_id === ORG_A)) {
+    ok("once the others are served, A's backlog drains at full speed");
+  } else {
+    fail("A's backlog drains once the others are served", JSON.stringify(again.rows));
+  }
+  const running = await db.query<{ n: number }>(`select count(*)::int as n from job_executions where status = 'running'`);
+  if (Number(running.rows[0]?.n) === 10) ok("no job was claimed twice across the two batches");
+  else fail("no job was claimed twice", JSON.stringify(running.rows));
+
+  // The two sweepers, by the same rule.
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at)
+     select $1, 'outbound', now() - interval '2 hours' + (g || ' seconds')::interval from generate_series(1, 200) g`,
+    [ORG_A],
+  );
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at) values ($1, 'outbound', now() - interval '1 minute')`,
+    [ORG_B],
+  );
+  const sends = await db.query<{ org_id: string }>(`select org_id from public.due_sends_fair(now(), 2)`);
+  if (sends.rows.length === 2 && sends.rows.some((r) => r.org_id === ORG_B)) {
+    ok("due_sends_fair: B's approved message is picked beside A's 200 older ones");
+  } else {
+    fail("due_sends_fair takes turns", JSON.stringify(sends.rows));
+  }
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at, not_before)
+     values ($1, 'outbound', now() - interval '3 hours', now() + interval '1 hour')`,
+    [ORG_B],
+  );
+  const deferred = await db.query<{ n: number }>(
+    `select count(*)::int as n from public.due_sends_fair(now(), 500) where org_id = $1`,
+    [ORG_B],
+  );
+  if (Number(deferred.rows[0]?.n) === 1) ok("due_sends_fair: a deferred message (not_before) waits");
+  else fail("due_sends_fair respects not_before", JSON.stringify(deferred.rows));
+
+  const camp = await db.query<{ id: string }>(
+    `insert into campaigns (org_id, name) values ($1, 'Fairness A') returning id`, [ORG_A]);
+  const campB = await db.query<{ id: string }>(
+    `insert into campaigns (org_id, name) values ($1, 'Fairness B') returning id`, [ORG_B]);
+  await db.query(
+    `insert into enrollments (org_id, campaign_id, opportunity_id, status, next_action_at)
+     select $1, $2, '0bbbbbbb-0000-0000-0000-00000000000a', 'active', now() - interval '1 day'`,
+    [ORG_A, camp.rows[0]!.id],
+  );
+  await db.query(
+    `insert into enrollments (org_id, campaign_id, opportunity_id, status, next_action_at)
+     values ($1, $2, '0bbbbbbb-0000-0000-0000-00000000000b', 'active', now() - interval '1 minute')`,
+    [ORG_B, campB.rows[0]!.id],
+  );
+  const enr = await db.query<{ org_id: string }>(`select org_id from public.due_enrollments_fair(now(), 2)`);
+  if (enr.rows.length === 2 && new Set(enr.rows.map((r) => r.org_id)).size === 2) {
+    ok("due_enrollments_fair: one enrollment from each workspace with due work");
+  } else {
+    fail("due_enrollments_fair takes turns", JSON.stringify(enr.rows));
+  }
+
+  /* Sessions cannot call them. The harness grants `authenticated` everything
+     after the migrations, so 0056's revoke is re-applied as Supabase has it. */
+  await db.exec(`revoke execute on function public.due_sends_fair(timestamptz, integer) from authenticated`);
+  await db.exec("set local role authenticated");
+  await expectRejectTx(db, "a session cannot call the cross-tenant sweep", `select * from public.due_sends_fair(now(), 5)`);
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");
