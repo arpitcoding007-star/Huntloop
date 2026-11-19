@@ -7,7 +7,8 @@
  * expensive, retried, and killed halfway — and a row written on success records
  * none of them. Anthropic bills for the tokens either way.
  *
- * `packages/ai` deliberately does not import `@huntloop/db`. Job handlers take
+ * `packages/ai` deliberately never imports a database client (only the pure
+ * `@huntloop/db/rules` grammar, which has no client and no I/O). Job handlers take
  * a tenant-scoped client from their context (plan §6, invariant 3); a package
  * that constructed its own would be a second path to the database and, sooner
  * or later, a second path around RLS. So this file defines the shape and the

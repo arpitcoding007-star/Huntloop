@@ -480,24 +480,28 @@ naming the directive.
 ## What still won't work after all this
 
 Being straight with you, because a half-working thing that looks finished is
-worse than a thing that says what it is:
+worse than a thing that says what it is. Re-checked against the code on
+19 Nov 2026; the earlier version of this table described September.
+
+**Built and tested:** every sidebar destination; onboarding (your company, ICP,
+sources), which saves as it goes; discovery (the **Hunt now** button and the
+scheduled sweep); scoring, why-now and evidence; the AI agent on each
+opportunity; sending through Gmail or Outlook with an approval gate,
+suppression and one-click unsubscribe; inbox sync; HubSpot sync; the Command
+Center, Performance and Ops, all reading your database.
+
+What that does **not** yet mean:
 
 | Thing | State |
 |---|---|
-| Creating an organisation | **Real.** Writes to the database. |
-| Signing in | **Real.** Magic link and Google both work. |
-| **The opportunity list and detail pages** | **Real.** They read your database — the join, the evidence, the triggers, the buyers. Verified against real rows in a browser, signed in. |
-| The Command Center, analytics, sources | Still **demo figures**, and each says so. Those queries are not written. |
-| **Anything that calls a model** | **Metered and ready.** `0005` is applied, so the spend cap exists. With no `ANTHROPIC_API_KEY` each screen shows a worked example **labelled as one** — it is not refused, and nothing is charged. Add the key and they call Opus for real. |
-| Onboarding step 2 — your company | **Real, if you add an AI key.** A model reads your site and reports what it found, marking each answer as observed, concluded, or not established. Nothing is saved yet. |
-| Onboarding steps 3–4 — ICP, sources | Real screens, fake brain. Nothing is generated, nothing is saved. |
-| Finding companies | Not built. No code reads news, jobs, or GitHub — the three opportunities you can see were seeded, not found. |
-| Scoring, why-now, evidence | **Displayed, not generated.** The pages render them from the database faithfully; nothing yet computes them. |
-| The AI chat on each opportunity | A shell. It says "not connected" and means it. |
-| Sending email | Not built. |
-| Everything else on the sidebar | Marked `SOON` rather than linked, so nothing leads to a dead end. |
+| **Live vendors** | Anthropic, Apollo, Hunter, ZeroBounce, HubSpot, Gmail, Outlook, Resend and Inngest are tested against scripted clients only. None has been run against a real account. Add one key at a time and watch the first calls. |
+| **Without an AI key** | Every model screen shows a worked example **labelled as one**. Nothing is charged and nothing is saved as if it were real. |
+| **Without a heartbeat** | Nothing runs on a schedule, and queued work (sends, syncs, follow-ups, research) waits until something drives the tick. Configure one: [The heartbeat](docs/operations/heartbeat.md). |
+| **Billing** | Not built, by decision. Plans and limits exist and are enforced; nothing takes payment. |
+| **Buyer side (the Exchange)** | Not built, by decision, until the demand test has run. |
+| **Legal pages** | Exist but stay unpublished until the facts in `apps/web/lib/legal.ts` are filled in. |
 
-The full list is in [DELIVERY_PLAN.md](DELIVERY_PLAN.md).
+Current status: [docs/status](docs/status/). The original plan is in [DELIVERY_PLAN.md](DELIVERY_PLAN.md).
 
 ---
 
