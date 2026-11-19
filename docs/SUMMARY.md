@@ -72,6 +72,7 @@
 ## Decisions and history
 
 * [Decision log](decisions/README.md)
+  * [Exchange: decisions before P0](decisions/exchange.md)
 * [Documentation vs. code](status/doc-vs-code.md)
 * [Technical debt](status/technical-debt.md)
 * [Roadmap](status/roadmap.md)

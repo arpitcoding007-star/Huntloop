@@ -272,6 +272,11 @@ These need a person, not an engineer.
 | 5 | **Default retention periods** per org | The SQL exists; the numbers are a policy choice |
 | 6 | **Hobby vs. Pro Vercel** | Determines whether the engine can beat once a minute or once a day |
 | 7 | **The five orphaned tables** — wire them or drop them | A schema carrying tables nobody reads teaches that tables are decorative |
+| 8 | **[EX-1](exchange.md#ex-1--buyer-side-brand-and-domain) Exchange buyer brand:** same brand, separate brand on one app, or a separate app | Decides routing and auth before any buyer page exists |
+| 9 | **[EX-2](exchange.md#ex-2--launch-region-and-currency) Exchange launch region:** India-first or global | Decides the privacy notice, currency columns and hosting |
+| 10 | **[EX-3](exchange.md#ex-3--can-non-customers-claim-a-provider-profile) Non-customer provider profiles:** free claims or customers only | Decides whether supply exists at launch |
+| 11 | **[EX-4](exchange.md#ex-4--is-a-verified-company-domain-required-for-level-3) Buyer domain verification** for level 3 | Decides how expensive a fake buyer is |
+| 12 | **[EX-5](exchange.md#ex-5--the-first-category-list) The first category list** | Matching filters on category first; the list decides match quality |
 
 ***
 

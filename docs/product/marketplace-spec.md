@@ -314,6 +314,10 @@ Search volume and page views are not success metrics for Exchange.
 
 ## 15. Open questions
 
+Questions 1 to 4 and the category list are written up with options and a
+recommendation in [Exchange: decisions before P0](../decisions/exchange.md)
+(EX-1 to EX-5). Question 2 (the value of k) is settled by data, not a decision.
+
 1. **Brand:** does Exchange live on the same domain as the seller product? A
    buyer who once got a cold email from a Huntloop customer may not trust
    "Huntloop" with their needs. Consider a separate brand for the buyer side.
