@@ -26,6 +26,7 @@ import {
   Gauge,
   Globe,
   GraduationCap,
+  History,
   House,
   Inbox as InboxIcon,
   KanbanSquare,
@@ -296,6 +297,8 @@ export function OrgShell({
         { label: "ICP", href: `/${org}/settings/icp`, icon: Target },
         { label: "Scoring", href: `/${org}/settings/scoring`, icon: Gauge },
         { label: "Integrations", href: `/${org}/settings/integrations`, icon: Plug },
+        /* Admins only; the page says so to anyone else. */
+        { label: "Activity log", href: `/${org}/settings/activity`, icon: History },
         { label: "Data & privacy", href: `/${org}/settings/privacy`, icon: ShieldCheck },
       ],
     },

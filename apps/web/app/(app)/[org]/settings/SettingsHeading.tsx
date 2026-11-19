@@ -35,6 +35,10 @@ const PAGES: Record<string, { title: string; description: string }> = {
     title: "Integrations",
     description: "The CRM Huntloop keeps in sync with your pipeline.",
   },
+  "/activity": {
+    title: "Activity log",
+    description: "Who changed what in this workspace, newest first. Owners and admins only.",
+  },
   "/privacy": {
     title: "Data & privacy",
     description: "What is kept, for how long, and how to take it back.",

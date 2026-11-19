@@ -48,7 +48,7 @@ const ORG_ROUTES = [
   "competitors", "competitors/demo-competitor-1", "analytics", "analyze", "assistant", "demand",
   "imports", "inbox", "intelligence", "learn", "memory", "needs-you", "ops", "outreach", "outreach/log",
   "performance", "performance/report", "pipeline", "settings", "settings/icp", "settings/integrations",
-  "settings/privacy", "settings/product", "settings/scoring", "settings/you", "sources", "team",
+  "settings/activity", "settings/privacy", "settings/product", "settings/scoring", "settings/you", "sources", "team",
   "team/assignments",
 ];
 
