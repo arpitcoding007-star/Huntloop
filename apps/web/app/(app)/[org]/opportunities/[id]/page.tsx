@@ -29,6 +29,7 @@ import { OpportunityActions } from "./OpportunityActions";
 import { getCompanyIntel } from "../../../../../lib/data/company-intel";
 import { FitCard, ProblemsCard, RaiseConfidenceCard, WhatTheyUseCard } from "./BriefSections";
 import { DealValue } from "./DealValue";
+import { WhyNowButton } from "./WhyNowButton";
 
 /**
  * The §47 company/opportunity page — the screen the product is judged on.
@@ -280,7 +281,11 @@ export default async function OpportunityPage({
             </CardBody>
           </Card>
 
-          <Prose title="Why now" body={o.whyNow} emphasis inferred />
+          <Prose title="Why now" body={o.whyNow} emphasis inferred writtenAt={o.whyNowWrittenAt}>
+            {canSpend(viewer) && (
+              <WhyNowButton org={org} opportunityId={o.id} hasText={Boolean(o.whyNow?.trim())} />
+            )}
+          </Prose>
           <Prose title="Potential use case" body={o.potentialUseCase} inferred />
 
           <Card flush>
@@ -455,6 +460,8 @@ function Prose({
   fallback,
   emphasis,
   inferred,
+  writtenAt,
+  children,
 }: {
   title: string;
   body: string | null;
@@ -462,6 +469,9 @@ function Prose({
   emphasis?: boolean;
   /** Written by a model, so labelled an inference once it says anything. */
   inferred?: boolean;
+  /** TRUST-301: when the text was written. A timing argument without a date reads as current forever. */
+  writtenAt?: string | null;
+  children?: React.ReactNode;
 }) {
   const established = body !== null && body.trim() !== "";
   return (
@@ -470,6 +480,17 @@ function Prose({
         <SectionLabel>{title}</SectionLabel>
         {!established && <ClaimBadge kind="unknown" />}
         {established && inferred && <ClaimBadge kind="inference" />}
+        {established && writtenAt && (
+          <span className="text-[12px] text-fg-muted">
+            Written{" "}
+            {new Date(writtenAt).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              timeZone: "UTC",
+            })}
+          </span>
+        )}
       </div>
       <p
         className={
@@ -482,6 +503,7 @@ function Prose({
       >
         {established ? body : (fallback ?? "Not established by the evidence on file.")}
       </p>
+      {children}
     </section>
   );
 }

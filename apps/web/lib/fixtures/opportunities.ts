@@ -104,7 +104,7 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
       "No public evidence of a permissioning or policy layer between the agent and the wallet.",
     currentApproach: null,
     whyNow:
-      "The Series A closed three days ago and the launch post is public. Institutional onboarding is the stated use of funds, so the permissioning problem moves from theoretical to blocking within this quarter.",
+      "The Series A has closed and the launch post is public. Institutional onboarding is the stated use of funds, so the permissioning problem moves from theoretical to blocking within this quarter.",
     potentialUseCase:
       "Policy-constrained signing: per-strategy spend caps, allow-listed venues, and a human approval path for anything outside them.",
     outreachAngle:

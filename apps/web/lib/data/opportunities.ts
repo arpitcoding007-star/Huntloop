@@ -197,7 +197,7 @@ export async function getOpportunity(
         .select(
           `id, company_id, priority, priority_reason, status, confidence, first_seen_at,
            owner_id, why_this_company, identified_problem, potential_gap,
-           why_now, current_approach, potential_use_case, outreach_angle,
+           why_now, why_now_written_at, current_approach, potential_use_case, outreach_angle,
            next_step, next_step_due_at, estimated_value_cents,
            companies!inner(name, canonical_domain, industry, region,
              employee_count, description,
@@ -257,6 +257,8 @@ export async function getOpportunity(
       return {
         ...fixture,
         companyId: null,
+        /* Fixture prose has no write date; the page shows none rather than an invented one. */
+        whyNowWrittenAt: null,
         estimatedValueCents: null,
         ownerId: null,
         stage,
