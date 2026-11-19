@@ -13,7 +13,7 @@ client, a browser reporting a violation, an OAuth provider.
 | Route | Methods | Auth | Public? |
 |---|---|---|---|
 | `/api/jobs/tick` | GET, POST | `Authorization: Bearer $CRON_SECRET` | No |
-| `/api/inngest` | POST | HMAC signature (`x-inngest-signature`) | No |
+| `/api/inngest` | PUT, POST, GET | POST: HMAC signature (`x-inngest-signature`). PUT (sync) and GET: none, by the Inngest protocol | No |
 | `/api/csp-report` | POST | None — by necessity | Yes |
 | `/api/unsubscribe/[token]` | GET, POST | The token itself | Yes |
 | `/api/mailboxes/[provider]/start` | GET | Session + `canWrite` | No |
@@ -75,8 +75,24 @@ Same `sweep()` + `tick()`, different driver. Returns **404** when
 feature disabled", which is how a scheduler ends up reporting green for a week
 of ticks that never ran.
 
-There is no Inngest SDK dependency; the integration is an eleven-line HMAC
-check. See [The engine](../architecture/engine.md#drivers).
+There is no Inngest SDK dependency. The route implements the three parts of
+Inngest's SDK protocol it needs (`apps/web/lib/inngest.ts`, tested in
+`inngest.test.ts`):
+
+* **PUT** — sync. Registers one cron function (`*/5 * * * *`) with
+  `POST https://api.inngest.com/fn/register`, authenticated by the hashed
+  signing key. The callback URL comes from `NEXT_PUBLIC_SITE_URL`, never from
+  the request. `INNGEST_API_BASE_URL` overrides the API origin.
+* **POST** — the call. `t=<unix>&s=<hex>`, where `s` is HMAC-SHA256 over the
+  body then the timestamp, keyed by the signing key without its
+  `signkey-<env>-` prefix. Five-minute window. A bad signature is a 500 with
+  `X-Inngest-No-Retry: true`; a failed tick is a 500 that Inngest retries.
+* **GET** — a short description, no data.
+
+Before 19 Nov 2026 the route had no PUT and computed the signature in the
+wrong order with the wrong key bytes, so Inngest could neither sync nor call
+it. **Not yet run against a live Inngest account.** See
+[The engine](../architecture/engine.md#drivers).
 
 ***
 

@@ -46,6 +46,8 @@ const ROUTES = [
   /* Both added by the compliance work: the screens that let somebody set a
      retention window, export a workspace and honour an erasure request. */
   `/${ORG}/settings/privacy`,
+  /* The audit trail's reader. */
+  `/${ORG}/settings/activity`,
   /* K2: one person's preferences and what Huntloop learned about them. */
   `/${ORG}/settings/you`,
   "/welcome",

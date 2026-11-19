@@ -138,6 +138,14 @@ zero lines of code, and `subscriptions` has been unused since `0001`.
 
 ## Launch blockers
 
+> **Re-checked against the code on 19 Nov 2026:** 1 — the committed driver is
+> `.github/workflows/tick.yml` (needs `CRON_SECRET` and `HUNTLOOP_URL` on the
+> repository); 2 — **Hunt now** on the Command Center; 3 — `discover_companies`
+> enqueues `resolve_entity`; 4 — erasure works from Settings → Data & privacy,
+> and only the *job* is unreachable, by design; 5 — all five limits are checked
+> where they apply. 6, 7 and 8 still stand. See
+> [Technical debt](technical-debt.md) and [Pass 18](pass-18-status.md).
+
 | # | Blocker | Evidence |
 |---|---|---|
 | 1 | Nothing runs on a schedule | No `vercel.json` before 2026-09-15; the plan must support minute-level cron |

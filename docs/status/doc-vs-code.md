@@ -80,7 +80,9 @@ and [The heartbeat](../operations/heartbeat.md) carries the current state.
 | "Sending email — Not built" | Built |
 | "Everything else on the sidebar — Marked SOON" | Nothing is marked Soon |
 
-**Action:** replace that table. Steps 1–8 of SETUP.md are current and are the
+**Action:** done 19 Nov 2026 — the table now lists what is built and what
+still is not (live vendors, heartbeat, billing, the buyer side, legal facts).
+Steps 1–8 of SETUP.md are current and are the
 authoritative walkthrough for the human-only parts of setup.
 
 ***
@@ -96,7 +98,7 @@ vendors, and the failure it avoided is now addressed directly by
 `verifyCredentials()` at configuration time. `ENRICHMENT_API_KEY` routes to
 Hunter unconditionally.
 
-**Action:** update the comment in `.env.example` to point at the registry.
+**Action:** done 19 Nov 2026 — the comment now says the key is always Hunter's and points at the registry.
 
 ***
 
@@ -126,7 +128,7 @@ grammar.
 The property that matters (**the AI package never reaches a database client, so
 it cannot become a second path around RLS**) still holds exactly.
 
-**Action:** reword the comments to say "never imports a database client".
+**Action:** `packages/ai/src/runs.ts` reworded 19 Nov 2026.
 
 ***
 

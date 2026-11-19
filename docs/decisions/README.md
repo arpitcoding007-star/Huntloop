@@ -43,8 +43,9 @@ otherwise is how duplicate emails get sent.*
 
 The durable steps in this system **are** rows in `job_executions`. Re-expressing
 them would create a second definition of "what work is outstanding", and the two
-would disagree the first time one of them was down. The integration is an
-eleven-line HMAC check.
+would disagree the first time one of them was down. The integration is the
+slice of Inngest's SDK protocol the route needs (sync and a signed call, in
+`apps/web/lib/inngest.ts`).
 
 `apps/web/app/api/inngest/route.ts`
 

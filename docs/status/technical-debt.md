@@ -9,6 +9,21 @@ description: Every known gap, ranked by what it costs to leave, with the fix for
 Ranked by consequence, not by effort. Each item names its evidence so it can be
 re-verified rather than believed.
 
+> **Re-checked against the code on 19 Nov 2026 (after `d36e1ab`).** Several
+> items below were fixed in later passes and are kept for their history:
+>
+> | # | Now | Evidence |
+> |---|---|---|
+> | 1 | ✅ Three of four wired. `sync_hubspot` from `schedule-followups.ts`, `enrich_person` from `rank-contacts.ts`, `resolve_entity` from `discover-companies.ts`. `purge_contact_data` stays unreachable **by design**: Settings → Data & privacy calls `erase_contact_for_org` directly (`KNOWN_UNREACHABLE` in `verify-jobs.ts`). | `grep -rn '"enrich_person"' packages/jobs/src` |
+> | 2 | ✅ `HuntNowButton.tsx` on the Command Center | `dashboard/actions.ts` |
+> | 4 | ✅ `emails` checked in `send-message.ts`; `opportunities` counted and checked in `score-opportunity.ts`; `enrich` reachable via #1 | `grep -rn p_metric packages/jobs/src` |
+> | 9 | ✅ Settings → **Activity log** (admins only) reads `audit_logs` through `listAudit` | `settings/activity/page.tsx` |
+> | 10 | ✅ Merge review on Companies | `companies/actions.ts`, `merge-actions.test.ts` |
+> | 5 | ⏸ Held by decision (billing, open decision #1) | `pass-18-status.md` |
+>
+> Still open: 3, 6, 7, 8 (`evidence_citations` and `contact_frequency` still
+> have no application reader), 11–23.
+
 ***
 
 ## P0 — Blocks the product from working at all

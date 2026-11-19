@@ -6,25 +6,24 @@ description: >-
 
 # The heartbeat
 
-{% hint style="danger" %}
-<!-- SPEC-PACK-BANNER -->
-**Correction (2026-10-08).** Sections below that say `apps/web/vercel.json` commits a one-minute cron are out of date: that file now contains only `$schema` (the cron was removed by commit `dd67aff`). The committed driver is `.github/workflows/tick.yml` (every 5 minutes), which needs a repository secret `CRON_SECRET` and variable `HUNTLOOP_URL`; production's `/api/health` currently reports `cronSecret:false`, so **nothing is driving the engine**. See the [Specification Pack](../spec/07-specification-gap-report.md) (DEF-01, CON-02, DEC-02).
+{% hint style="info" %}
+**Current state (re-checked 19 Nov 2026).** The committed driver is
+`.github/workflows/tick.yml`: GitHub Actions calls `/api/jobs/tick` every five
+minutes. It does nothing until the repository has the secret `CRON_SECRET` and
+the variable `HUNTLOOP_URL`. `apps/web/vercel.json` has no `crons` block
+(Vercel Cron was removed in `59f7942` because Hobby refuses it). Whether
+production is actually being ticked can only be read from production: see
+[Verifying it actually runs](#verifying-it-actually-runs).
 {% endhint %}
 
 
 > **Layer:** Internal · **Audience:** operations, engineering, leadership
 
-{% hint style="danger" %}
-**The most important finding in the current audit:** the engine has almost
-certainly never run on a schedule in any deployment.
-
-`apps/web/app/api/jobs/tick/route.ts` is the only thing that enqueues the
-sweepers, and its own header says "Vercel Cron calls this on a schedule (see
-`vercel.json`)". **No `vercel.json` existed in this repository until
-2026-09-15.** Every scheduled behaviour — discovery re-runs, source scans, reply
-sync, sequence advancement, retention enforcement, signal fetches — depends on
-that endpoint being called by a clock that was never configured.
-{% endhint %}
+Every scheduled behaviour (discovery re-runs, source scans, reply sync,
+sequence advancement, retention enforcement, signal fetches) depends on
+`/api/jobs/tick` being called by a clock. Until September 2026 none was
+configured in any deployment, so the engine has never been observed running on
+a schedule.
 
 ## What depends on it
 
@@ -57,62 +56,79 @@ Without it:
 | recomputes a score | New rules never apply to existing opportunities |
 | enforces retention | Retention policies do nothing |
 
-{% hint style="warning" %}
-Compounding this: **there is no in-app control that starts discovery.** Its only
-callers are `first-run.ts` and the `schedule_discovery` sweeper. That is the
-difference between a product that hunts and a product that hunted once.
-{% endhint %}
+Discovery also has an in-app trigger: **Hunt now** on the Command Center, for
+members who may spend. Everything else in the table waits for the clock.
 
-## Three ways to drive it
+## Ways to drive it
 
 Pick one.
 
-### A — Vercel Cron (committed)
+### A — GitHub Actions (committed, the default)
 
-`apps/web/vercel.json`:
+`.github/workflows/tick.yml` runs every five minutes and calls the tick the way
+Vercel Cron did: `GET /api/jobs/tick` with `Authorization: Bearer $CRON_SECRET`.
 
-```json
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [{ "path": "/api/jobs/tick", "schedule": "* * * * *" }]
-}
-```
+Needs, under the repository's **Settings → Secrets and variables → Actions**:
 
-Needs:
+* Secret **`CRON_SECRET`**: the same value as on the Vercel project.
+* Variable **`HUNTLOOP_URL`**: the production origin.
 
-* **`CRON_SECRET`** set on the project. Vercel then sends
-  `Authorization: Bearer $CRON_SECRET` automatically.
-* **A plan with minute-level cron.** Hobby is limited to **one invocation per
-  day**, which is not a heartbeat.
+GitHub may delay scheduled runs under load, and pauses schedules on a
+repository with no activity for 60 days. Each tick catches up, so that is
+acceptable for a heartbeat; a paused schedule is not, so check the workflow's
+run history if the engine goes quiet. It can also be run by hand
+(`workflow_dispatch`).
 
-{% hint style="danger" %}
-**A Hobby account will refuse to deploy this file:**
+### B — Inngest (free; keeps a run history)
 
-> Hobby accounts are limited to daily cron jobs. This cron expression
-> (`* * * * *`) would run more than once per day.
+Set **both** `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`, and
+`NEXT_PUBLIC_SITE_URL`. Then sync the app in the Inngest dashboard at
+`https://<your domain>/api/inngest` (or send that URL a `PUT`). It registers one
+function, **Run one engine tick**, every five minutes. `/api/inngest` serves the
+identical tick, and the queue is in Postgres either way.
 
-A deployment that does not deploy is worse than any scheduling problem. On
-Hobby, use Inngest instead.
+{% hint style="warning" %}
+The sync and signature code was rewritten to Inngest's SDK spec on 19 Nov 2026
+(the earlier version could not have worked) and has not yet been run against a
+live Inngest account. After the first sync, confirm the function is listed in
+Inngest, and that within five minutes a run appears in its history whose
+output is the tick report (jobs claimed, completed, failed).
 {% endhint %}
 
-### B — Inngest (free, already built, recommended on Hobby)
-
-Set **both** `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. `/api/inngest`
-serves the identical tick, and the queue is in Postgres either way.
-
 Inngest keeps a run history, retries the invocation itself, and can be paused —
-worth having once the engine is spending money on a customer's behalf. Vercel
-Cron is one timer with no memory: a dropped invocation simply did not happen,
-and nothing anywhere records that it did not.
+worth having once the engine is spending money on a customer's behalf. A plain
+cron is one timer with no memory: a dropped invocation simply did not happen,
+and nothing anywhere records that it did not. If you switch to Inngest, disable
+`tick.yml` so the engine is not driven twice (harmless, since claiming is
+`skip locked`, but it doubles the invocations).
 
 One without the other is a half-wired integration that fails at the first
 invocation, so the app treats either-alone as **not configured** and the route
 returns 404.
 
-### C — Any external scheduler
+### C — Vercel Cron (paid plans only)
 
-`/api/jobs/tick` is an ordinary HTTP endpoint with a bearer token. A GitHub
-Actions schedule, a cron box, or an uptime pinger all work.
+Put a `crons` block back in `apps/web/vercel.json` and retire `tick.yml`:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [{ "path": "/api/jobs/tick", "schedule": "*/5 * * * *" }]
+}
+```
+
+Vercel then sends `Authorization: Bearer $CRON_SECRET` itself.
+
+{% hint style="danger" %}
+**A Hobby account will refuse to deploy this file:** Hobby is limited to daily
+cron jobs. A deployment that does not deploy is worse than any scheduling
+problem, which is why it was removed.
+{% endhint %}
+
+### D — Any external scheduler
+
+`/api/jobs/tick` is an ordinary HTTP endpoint with a bearer token. A cron box
+or an uptime pinger works as well as GitHub Actions.
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" https://your-app/api/jobs/tick
@@ -182,13 +198,14 @@ queue depth, not that anything is broken.
 
 ## Historical note
 
-`docs/OPERATIONS.md` still contains a section titled *"What drives the tick, and
-why no cron is committed"*, written when the file had been removed after a
-Hobby-plan deploy failure. **`apps/web/vercel.json` now exists and commits a
-one-minute cron.** That section is superseded on the question of whether a file
-exists; its reasoning about Hobby limits and about why a daily cron is a lie
-remains correct and is reproduced above. Recorded in
-[Documentation vs. code](../status/doc-vs-code.md).
+From git: `3bff281` (19 Aug 2026) added a Vercel cron in `apps/web/vercel.json`;
+`59f7942` (20 Aug) removed it after Hobby refused the deploy; `dd67aff`
+(27 Sep) re-created the file with only `$schema`. `tick.yml` is the driver
+since. Older pages that say a one-minute cron was committed on 2026-09-15
+describe nothing that is in the history.
+`docs/OPERATIONS.md`'s section *"What drives the tick, and why no cron is
+committed"* is accurate again on that question. Its reasoning about Hobby limits
+and about why a daily cron is a lie is reproduced above.
 
 ## Related
 

@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isInngestConfigured, sweep, tick, TICK_DEFAULTS } from "@huntloop/jobs";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  hashSigningKey,
+  INNGEST_REQ_VERSION,
+  INNGEST_SDK,
+  inngestApiOrigin,
+  registrationPayload,
+  verifyInngestSignature,
+} from "../../../lib/inngest";
+import { siteUrl } from "../../../lib/site-url";
 
 /**
  * The Inngest entry point.
@@ -26,9 +34,17 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * that would create a second definition of "what work is outstanding", and the
  * two would disagree the first time one of them was down.
  *
- * So this route is what Inngest actually needs from us: a signed HTTP endpoint
- * it can call on a schedule. The dependency is a signature check, and it is
- * eleven lines rather than a package.
+ * So this route is what Inngest actually needs from us, per its SDK spec
+ * (`lib/inngest.ts` holds the protocol and its tests):
+ *
+ *   PUT   Inngest asks the app to sync. We register one cron function with
+ *         `POST <api>/fn/register`, authenticated by the hashed signing key.
+ *   POST  Inngest calls that function: signature checked, then sweep + tick.
+ *   GET   A short description of what is served, for a person checking.
+ *
+ * Until 19 Nov 2026 there was no PUT, and the signature was computed in the
+ * wrong order with the wrong key bytes, so this path could never have run.
+ * Vercel Cron was unaffected.
  *
  * ── When it is not configured ────────────────────────────────────────────
  *
@@ -41,96 +57,118 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** The headers the spec requires on every response to Inngest. */
+const PROTOCOL_HEADERS = {
+  "x-inngest-sdk": INNGEST_SDK,
+  "x-inngest-req-version": INNGEST_REQ_VERSION,
+  "cache-control": "no-store",
+} as const;
+
+function notFound() {
+  return new NextResponse("Not found", { status: 404 });
+}
+
 export async function POST(request: NextRequest) {
-  if (!isInngestConfigured()) {
-    return new NextResponse("Not found", { status: 404 });
-  }
+  if (!isInngestConfigured()) return notFound();
 
   const body = await request.text();
-  const verdict = verifySignature(request.headers.get("x-inngest-signature"), body);
+  const verdict = verifyInngestSignature(
+    request.headers.get("x-inngest-signature"),
+    body,
+    process.env.INNGEST_SIGNING_KEY,
+  );
   if (!verdict.ok) {
-    return NextResponse.json({ error: verdict.reason }, { status: 401 });
+    /* 500 with no-retry is what the spec asks for. The reason names which
+       check failed, never the expected value. */
+    return NextResponse.json(
+      { name: "Error", message: verdict.reason },
+      { status: 500, headers: { ...PROTOCOL_HEADERS, "x-inngest-no-retry": "true" } },
+    );
   }
 
-  /* The same sweep the cron route does, for the same reason: these are the
-     only jobs that put periodic work into the queue, and a driver that ticks
-     without sweeping runs an engine that never notices anything is due. */
-  await sweep();
+  try {
+    /* The same sweep the cron route does, for the same reason: these are the
+       only jobs that put periodic work into the queue, and a driver that ticks
+       without sweeping runs an engine that never notices anything is due. */
+    await sweep();
 
-  /* JOB-012: the same numbers as the cron route, which this had fallen
-     behind — five jobs, one at a time. */
-  const report = await tick({
-    ...TICK_DEFAULTS,
-    deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
-    worker: "inngest",
-  });
+    /* JOB-012: the same numbers as the cron route. */
+    const report = await tick({
+      ...TICK_DEFAULTS,
+      deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
+      worker: "inngest",
+    });
 
-  return NextResponse.json(report, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(report, { headers: PROTOCOL_HEADERS });
+  } catch (error) {
+    /* Retriable: a tick that failed (a database blip, a deploy in progress)
+       is safe to run again, because every job is at-least-once. */
+    return NextResponse.json(
+      { name: "Error", message: error instanceof Error ? error.message : "The tick failed." },
+      { status: 500, headers: { ...PROTOCOL_HEADERS, "x-inngest-no-retry": "false" } },
+    );
+  }
 }
 
 /**
- * GET is the introspection call Inngest makes to discover what an app serves.
+ * Sync: Inngest (or a person pressing "Sync" in its dashboard) sends a PUT
+ * with no body, and the app registers what it serves.
  *
- * It answers with the one function this app exposes, and does not require a
- * signature — the response contains no data, only the shape of the endpoint
- * that is already public knowledge to anyone who read this file.
+ * Unauthenticated by design, as in the SDKs: all it can do is re-register
+ * the same function at the same configured URL (`registrationPayload` says
+ * why the URL never comes from the request).
+ */
+export async function PUT() {
+  if (!isInngestConfigured()) return notFound();
+
+  const endpoint = new URL("/api/inngest", siteUrl());
+  const env = process.env.INNGEST_ENV?.trim();
+  const response = await fetch(`${inngestApiOrigin()}/fn/register`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${hashSigningKey(process.env.INNGEST_SIGNING_KEY!.trim())}`,
+      "content-type": "application/json",
+      "x-inngest-sdk": INNGEST_SDK,
+      ...(env ? { "x-inngest-env": env } : {}),
+    },
+    body: JSON.stringify(registrationPayload(endpoint)),
+    signal: AbortSignal.timeout(15_000),
+  }).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+
+  if (response instanceof Error) {
+    return NextResponse.json(
+      { message: `Could not reach Inngest to register: ${response.message}` },
+      { status: 500, headers: PROTOCOL_HEADERS },
+    );
+  }
+
+  const answer = (await response.json().catch(() => ({}))) as { modified?: boolean; error?: string };
+  if (!response.ok) {
+    return NextResponse.json(
+      { message: `Inngest refused the registration (${response.status}): ${answer.error ?? "no reason given"}` },
+      { status: 500, headers: PROTOCOL_HEADERS },
+    );
+  }
+
+  return NextResponse.json(
+    { message: "Successfully registered", modified: Boolean(answer.modified) },
+    { status: 200, headers: PROTOCOL_HEADERS },
+  );
+}
+
+/**
+ * What this endpoint serves, for a person checking the deployment. No data
+ * and no secret.
  */
 export async function GET() {
-  if (!isInngestConfigured()) {
-    return new NextResponse("Not found", { status: 404 });
-  }
-  return NextResponse.json({
-    framework: "nextjs",
-    appName: "huntloop",
-    functions: [
-      {
-        id: "huntloop-tick",
-        name: "Run one engine tick",
-        triggers: [{ cron: "*/5 * * * *" }],
-      },
-    ],
-  });
-}
-
-/**
- * Inngest's request signature: `t=<unix>&s=<hmac-sha256 of t+body>`.
- *
- * The timestamp window is the part that is easy to leave out and that makes
- * the check worth having. Without it a valid signed request can be replayed
- * forever, and a replayed tick is a replayed spend.
- */
-function verifySignature(
-  header: string | null,
-  body: string,
-): { ok: true } | { ok: false; reason: string } {
-  const key = process.env.INNGEST_SIGNING_KEY?.trim();
-  if (!key) return { ok: false, reason: "No signing key is configured." };
-  if (!header) return { ok: false, reason: "No signature was presented." };
-
-  const params = new URLSearchParams(header);
-  const timestamp = params.get("t");
-  const signature = params.get("s");
-  if (!timestamp || !signature) {
-    return { ok: false, reason: "The signature header is malformed." };
-  }
-
-  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
-  if (!Number.isFinite(age) || age > 300) {
-    return { ok: false, reason: "That signature is outside the five-minute window." };
-  }
-
-  // The key is prefixed `signkey-prod-<hex>`; the hex half is the actual key.
-  const material = key.includes("-") ? key.slice(key.lastIndexOf("-") + 1) : key;
-  const expected = createHmac("sha256", Buffer.from(material, "hex"))
-    .update(timestamp)
-    .update(body)
-    .digest("hex");
-
-  const a = Buffer.from(signature, "utf8");
-  const b = Buffer.from(expected, "utf8");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    return { ok: false, reason: "That signature does not match." };
-  }
-
-  return { ok: true };
+  if (!isInngestConfigured()) return notFound();
+  return NextResponse.json(
+    {
+      framework: "nextjs",
+      appName: "huntloop",
+      functionsFound: 1,
+      url: new URL("/api/inngest", siteUrl()).toString(),
+    },
+    { headers: PROTOCOL_HEADERS },
+  );
 }
