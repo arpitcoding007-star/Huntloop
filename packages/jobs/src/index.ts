@@ -41,7 +41,7 @@ export {
 } from "./queue.ts";
 
 export { HANDLERS, type JobContext, type JobHandler, type JobOutcome } from "./registry.ts";
-export { sweep, tick, type TickOptions, type TickReport } from "./runner.ts";
+export { sweep, tick, TICK_DEFAULTS, type TickOptions, type TickReport } from "./runner.ts";
 
 /* Product email (Resend). Sending is safe from the app; anything that needs
    the service-role client (admins' addresses, digests) runs as a job. */
@@ -80,16 +80,6 @@ export {
   type Extraction,
 } from "./extract.ts";
 
-export {
-  enrichmentProvider,
-  findContacts,
-  verificationProvider,
-  verifyEmail,
-  type ContactCandidate,
-  type ContactKind,
-  type Verification,
-  type VerificationStatus,
-} from "./providers.ts";
 
 export { AiUnavailable, runForOrg } from "./ai.ts";
 

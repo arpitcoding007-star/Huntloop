@@ -996,6 +996,331 @@ console.log("\nMailbox limits — the allowance is claimed before the send, not 
   else fail("a disconnected mailbox cannot be claimed", JSON.stringify(refused.rows[0]));
 }
 
+// ── Warm-up (0048) ─────────────────────────────────────────────────────────
+// A mailbox connected today may not send its full limit today.
+console.log("\nWarm-up — a new mailbox ramps up instead of sending its full limit on day one");
+{
+  await db.exec(`
+    insert into mailboxes (id, org_id, provider, email, daily_limit) values
+      ('11110000-0000-0000-0000-000000000002',
+       'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'gmail', 'new@a.test', 50);
+  `);
+  const MB = "11110000-0000-0000-0000-000000000002";
+  const cap = async () =>
+    (await db.query<{ n: number }>(`select public.mailbox_daily_cap($1) as n`, [MB])).rows[0]!.n;
+
+  if ((await cap()) === 10) ok("a mailbox connected today may send 10, not its limit of 50");
+  else fail("a mailbox connected today may send 10", await cap());
+
+  await db.query(`update mailboxes set warmup_started_at = now() - interval '3 days' where id = $1`, [MB]);
+  if ((await cap()) === 25) ok("three days in, the cap is 25");
+  else fail("three days in, the cap is 25", await cap());
+
+  await db.query(`update mailboxes set warmup_started_at = now() - interval '30 days' where id = $1`, [MB]);
+  if ((await cap()) === 50) ok("once ramped, the configured limit applies");
+  else fail("once ramped, the configured limit applies", await cap());
+
+  await db.query(`update mailboxes set warmup_target = 30 where id = $1`, [MB]);
+  if ((await cap()) === 30) ok("a warm-up target lower than the limit holds");
+  else fail("a warm-up target lower than the limit holds", await cap());
+
+  await db.query(
+    `update mailboxes set warmup_target = null, warmup_started_at = now(), sent_today = 0, sent_today_on = null where id = $1`,
+    [MB],
+  );
+  const claims: boolean[] = [];
+  for (let i = 0; i < 11; i++) {
+    const r = await db.query<{ ok: boolean }>(`select public.claim_mailbox_send($1) as ok`, [MB]);
+    claims.push(r.rows[0]!.ok);
+  }
+  if (claims.slice(0, 10).every(Boolean) && claims[10] === false)
+    ok("the 11th claim on day one is refused");
+  else fail("the 11th claim on day one is refused", JSON.stringify(claims));
+
+  const remaining = await db.query<{ n: number }>(`select public.mailbox_remaining_today($1) as n`, [MB]);
+  if (remaining.rows[0]!.n === 0) ok("and remaining agrees with the ramp");
+  else fail("and remaining agrees with the ramp", JSON.stringify(remaining.rows[0]));
+
+  await db.query(`update mailboxes set warmup_started_at = null where id = $1`, [MB]);
+  if ((await cap()) === 50) ok("a mailbox with no warm-up date is treated as warm");
+  else fail("a mailbox with no warm-up date is treated as warm", await cap());
+
+  await expectReject(
+    db,
+    "domain_status accepts only pass, warn or fail",
+    `update mailboxes set domain_status = 'maybe' where id = '${MB}'`,
+  );
+}
+
+// ── 0049: soft deletes reach outreach; merges keep evidence ────────────────
+console.log("\nRemoval and merge — SEC-101 / FLOW-102 (0049)");
+{
+  const ORG = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  await db.exec(`
+    insert into companies (id, org_id, canonical_domain, name) values
+      ('c0000000-0000-0000-0000-0000000049a1', '${ORG}', 'removed-49.test', 'Removed Co'),
+      ('c0000000-0000-0000-0000-0000000049a2', '${ORG}', 'winner-49.test', 'Winner Co'),
+      ('c0000000-0000-0000-0000-0000000049a3', '${ORG}', 'loser-49.test', 'Loser Co');
+    insert into opportunities (id, org_id, company_id, priority, priority_reason) values
+      ('0bbbbbbb-0000-0000-0000-0000000049a1', '${ORG}', 'c0000000-0000-0000-0000-0000000049a1', 'hot', 'r');
+    insert into campaigns (id, org_id, name, status) values
+      ('ca000000-0000-0000-0000-0000000049a1', '${ORG}', 'Seq 49', 'active');
+    insert into enrollments (id, org_id, campaign_id, opportunity_id, status) values
+      ('e0000000-0000-0000-0000-0000000049a1', '${ORG}', 'ca000000-0000-0000-0000-0000000049a1',
+       '0bbbbbbb-0000-0000-0000-0000000049a1', 'active');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id, opportunity_id, scheduled_at) values
+      ('d0000000-0000-0000-0000-0000000049a1', '${ORG}', 'outbound', 'dana@removed-49.test', 'Hi',
+       'e0000000-0000-0000-0000-0000000049a1', '0bbbbbbb-0000-0000-0000-0000000049a1', now());
+  `);
+
+  await db.query(`update companies set deleted_at = now() where id = 'c0000000-0000-0000-0000-0000000049a1'`);
+  const opp = await db.query<{ gone: boolean }>(
+    `select deleted_at is not null as gone from opportunities where id = '0bbbbbbb-0000-0000-0000-0000000049a1'`,
+  );
+  if (opp.rows[0]?.gone) ok("removing a company removes its opportunities");
+  else fail("removing a company removes its opportunities", opp.rows[0]);
+  const enr = await db.query<{ status: string }>(
+    `select status from enrollments where id = 'e0000000-0000-0000-0000-0000000049a1'`,
+  );
+  if (enr.rows[0]?.status === "stopped") ok("and stops their sequences");
+  else fail("and stops their sequences", enr.rows[0]);
+  const msg = await db.query<{ scheduled: boolean }>(
+    `select scheduled_at is not null as scheduled from messages where id = 'd0000000-0000-0000-0000-0000000049a1'`,
+  );
+  if (msg.rows[0] && !msg.rows[0].scheduled) ok("and unschedules their approved, unsent emails");
+  else fail("and unschedules their approved, unsent emails", msg.rows[0]);
+
+  const W = "c0000000-0000-0000-0000-0000000049a2";
+  const L = "c0000000-0000-0000-0000-0000000049a3";
+  await db.exec(`
+    insert into evidence (org_id, subject_type, subject_id, claim, kind, source_url, field) values
+      ('${ORG}', 'company', '${W}', '120 employees', 'fact', 'https://p.test/a', 'employee_count'),
+      ('${ORG}', 'company', '${L}', '120 employees', 'fact', 'https://p.test/a', 'employee_count'),
+      ('${ORG}', 'company', '${L}', 'Hiring an AE', 'fact', 'https://jobs.test/1', 'hiring_signal:x:1'),
+      ('${ORG}', 'company', '${L}', 'Opening a London office', 'fact', 'https://news.test/1', null);
+  `);
+  await db.query(`update companies set merged_into_id = $1, deleted_at = now() where id = $2`, [W, L]);
+  const moved = await db.query<{ n: number }>(
+    `select count(*)::int as n from evidence where subject_id = $1 and deleted_at is null`,
+    [W],
+  );
+  if (moved.rows[0]?.n === 3) ok("a merge moves the loser's evidence to the survivor, without duplicating a shared source");
+  else fail("a merge moves the loser's evidence to the survivor", moved.rows[0]);
+  const left = await db.query<{ n: number }>(
+    `select count(*)::int as n from evidence where subject_id = $1 and deleted_at is null`,
+    [L],
+  );
+  if (left.rows[0]?.n === 0) ok("and nothing live is left on the merged-away row");
+  else fail("and nothing live is left on the merged-away row", left.rows[0]);
+}
+
+console.log("\nQueue history — JOB-011 (0049)");
+{
+  await db.exec(`
+    insert into job_executions (job_name, status, finished_at, updated_at) values
+      ('prune_probe', 'succeeded', now() - interval '40 days', now() - interval '40 days'),
+      ('prune_probe', 'succeeded', now() - interval '2 days', now() - interval '2 days'),
+      ('prune_probe', 'queued', null, now() - interval '40 days');
+  `);
+  const pruned = await db.query<{ n: number }>(`select public.prune_job_executions() as n`);
+  if (pruned.rows[0]?.n === 1) ok("finished jobs older than 30 days are pruned, and nothing else");
+  else fail("finished jobs older than 30 days are pruned", pruned.rows[0]);
+  const queued = await db.query<{ n: number }>(
+    `select count(*)::int as n from job_executions where status = 'queued' and job_name = 'prune_probe'`,
+  );
+  if ((queued.rows[0]?.n ?? 0) >= 1) ok("a queued job is never pruned, however old");
+  else fail("a queued job is never pruned", queued.rows[0]);
+  // Leave the queue as the claim tests further down expect to find it.
+  await db.exec(`delete from job_executions where job_name = 'prune_probe'`);
+}
+
+console.log("\nMailbox safety columns — SEC-103 (0049)");
+{
+  const MB = "11110000-0000-0000-0000-000000000002";
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["11111111-1111-1111-1111-111111111111"]);
+  await expectReject(db, "a signed-in owner cannot reset the warm-up ramp", `update mailboxes set warmup_started_at = now() - interval '60 days' where id = '${MB}'`);
+  await db.exec("rollback");
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["11111111-1111-1111-1111-111111111111"]);
+  await expectReject(db, "or mark a failing domain as passing", `update mailboxes set domain_status = 'pass' where id = '${MB}'`);
+  await db.exec("rollback");
+  const engine = await db.query(`update mailboxes set domain_status = 'warn' where id = '${MB}' returning id`);
+  if (engine.rows.length === 1) ok("the engine still can");
+  else fail("the engine still can", engine.rows);
+}
+
+console.log("\nMailbox connect after 0049 — DB-203");
+{
+  /* The harness grants `authenticated` SELECT on every table after the
+     migrations run, which silently undoes 0049's column-level revoke on the
+     token columns. That is how the upsert the connect callback used to send
+     passed here and would have failed on Supabase. So 0049's grant is put
+     back for this block, exactly as the migration writes it. */
+  const OWNER = "11111111-1111-1111-1111-111111111111";
+  const cols = await db.query<{ list: string }>(`
+    select string_agg(quote_ident(column_name), ', ' order by ordinal_position) as list
+      from information_schema.columns
+     where table_schema = 'public' and table_name = 'mailboxes'
+       and column_name not in ('oauth_token_enc', 'refresh_token_enc')`);
+  await db.exec("begin");
+  await db.exec(`revoke select on public.mailboxes from authenticated`);
+  await db.exec(`grant select (${cols.rows[0]!.list}) on public.mailboxes to authenticated`);
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER]);
+
+  await expectRejectTx(
+    db,
+    "a session cannot read a mailbox's token ciphertext (SEC-102)",
+    `select oauth_token_enc from mailboxes limit 1`,
+  );
+  await expectRejectTx(
+    db,
+    "an upsert is refused: ON CONFLICT reads excluded token columns (why the callback no longer sends one)",
+    `insert into mailboxes (org_id, provider, email, oauth_token_enc, status)
+     values ($1, 'gmail', 'upsert-203@huntloop.test', 'enc', 'connected')
+     on conflict (org_id, email) do update set oauth_token_enc = excluded.oauth_token_enc`,
+    [ORG_A],
+  );
+
+  /* The callback's three statements, as `saveMailbox` sends them: look up by
+     granted columns, then a plain insert or update with nothing returned. */
+  const email = "connect-203@huntloop.test";
+  try {
+    const before = await db.query(`select id from mailboxes where org_id = $1 and email = $2 limit 1`, [ORG_A, email]);
+    await db.query(
+      `insert into mailboxes (org_id, provider, email, oauth_token_enc, refresh_token_enc, token_expires_at, status, last_error, deleted_at)
+       values ($1, 'gmail', $2, 'enc-access', 'enc-refresh', now() + interval '1 hour', 'connected', null, null)`,
+      [ORG_A, email],
+    );
+    const found = await db.query<{ id: string }>(`select id from mailboxes where org_id = $1 and email = $2 limit 1`, [ORG_A, email]);
+    if (before.rows.length === 0 && found.rows.length === 1) ok("a first connect stores the mailbox as authenticated");
+    else fail("a first connect stores the mailbox as authenticated", { before: before.rows, found: found.rows });
+
+    await db.query(
+      `update mailboxes set oauth_token_enc = 'enc-access-2', token_expires_at = now() + interval '1 hour',
+              status = 'connected', last_error = null, deleted_at = null
+        where id = $1 and org_id = $2`,
+      [found.rows[0]!.id, ORG_A],
+    );
+    ok("a reconnect refreshes the tokens as authenticated");
+  } catch (e) {
+    fail("the callback's write shape succeeds as authenticated after 0049", e instanceof Error ? e.message : e);
+  }
+  await db.exec("rollback");
+
+  const leaked = await db.query(`select count(*)::int as n from mailboxes where email like '%-203@huntloop.test'`);
+  if ((leaked.rows[0] as { n: number }).n === 0) ok("and the block leaves nothing behind");
+  else fail("and the block leaves nothing behind", leaked.rows);
+}
+
+console.log("\nSafety records a member cannot undo — DB-201 (0051)");
+{
+  const OWNER = "11111111-1111-1111-1111-111111111111"; // owner of org A: every member right
+  const OTHER = "33333333-3333-3333-3333-333333333333"; // a user in org B
+  const UNSENT = "d0000000-0000-0000-0000-0000000051a1";
+  const SENT = "d0000000-0000-0000-0000-0000000051a2";
+  const APPROVED = "d0000000-0000-0000-0000-0000000051a3"; // approved by someone else, not sent yet
+  await db.exec(`
+    insert into suppressions (org_id, kind, value, reason) values
+      ('${ORG_A}', 'email', 'optout-51@alphio.ai', 'asked');
+    insert into people (id, org_id, company_id, first_name) values
+      ('9e000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'c0000000-0000-0000-0000-00000000000a', 'Pat 51');
+    insert into campaigns (id, org_id, name, status) values
+      ('ca000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'Seq 51', 'active');
+    insert into enrollments (id, org_id, campaign_id, opportunity_id, status) values
+      ('e0000000-0000-0000-0000-0000000051a1', '${ORG_A}', 'ca000000-0000-0000-0000-0000000051a1',
+       '0bbbbbbb-0000-0000-0000-00000000000a', 'active');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id) values
+      ('${UNSENT}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Hi', 'e0000000-0000-0000-0000-0000000051a1');
+    insert into messages (id, org_id, direction, to_email, subject, enrollment_id, scheduled_at, approved_by) values
+      ('${APPROVED}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Approved words', 'e0000000-0000-0000-0000-0000000051a1', now(), '${OTHER}');
+    insert into messages (id, org_id, direction, to_email, subject, sent_at, provider_message_id, approved_by) values
+      ('${SENT}', '${ORG_A}', 'outbound', 'dana@alphio.ai', 'Sent', now(), 'gmail-51', '${OWNER}');
+  `);
+
+  await db.exec("begin");
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER]);
+
+  const count = async (sql: string) => ((await db.query<{ n: number }>(sql)).rows[0]!.n);
+
+  await db.query(`delete from suppressions where value = 'optout-51@alphio.ai'`);
+  await db.query(`update suppressions set value = 'someone-else@alphio.ai' where value = 'optout-51@alphio.ai'`);
+  if ((await count(`select count(*)::int as n from suppressions where value = 'optout-51@alphio.ai'`)) === 1)
+    ok("a member cannot delete or rewrite a suppression, so an unsubscribe stays honoured");
+  else fail("a member cannot delete or rewrite a suppression", "the row changed");
+  try {
+    await db.query(`insert into suppressions (org_id, kind, value, reason) values ($1, 'email', 'added-51@alphio.ai', 'manual')`, [ORG_A]);
+    ok("a member can still add one");
+  } catch (e) {
+    fail("a member can still add one", e instanceof Error ? e.message : e);
+  }
+
+  for (const [table, where] of [
+    ["opportunities", `id = '0bbbbbbb-0000-0000-0000-00000000000a'`],
+    ["enrollments", `id = 'e0000000-0000-0000-0000-0000000051a1'`],
+    ["messages", `id = '${UNSENT}'`],
+    ["people", `id = '9e000000-0000-0000-0000-0000000051a1'`],
+  ] as const) {
+    await db.query(`delete from ${table} where ${where}`);
+    if ((await count(`select count(*)::int as n from ${table} where ${where}`)) === 1)
+      ok(`a member cannot hard-delete ${table} (soft delete only)`);
+    else fail(`a member cannot hard-delete ${table}`, "the row is gone");
+  }
+
+  await expectRejectTx(db, "approved_by cannot name somebody else", `update messages set approved_by = '${OTHER}' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a session cannot mark a message sent", `update messages set sent_at = now(), provider_message_id = 'forged' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "or clear/set the at-most-once send claim", `update messages set send_attempted_at = now() where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a sent message is a record a session cannot change", `update messages set subject = 'Edited after the fact' where id = '${SENT}'`);
+  await expectRejectTx(db, "including its approver", `update messages set approved_by = null where id = '${SENT}'`);
+  await expectRejectTx(db, "a session cannot insert an inbound 'reply'", `insert into messages (org_id, direction, to_email, subject) values ('${ORG_A}', 'inbound', 'dana@alphio.ai', 'Re: Hi')`);
+  await expectRejectTx(db, "or a message already marked sent", `insert into messages (org_id, direction, to_email, subject, sent_at, provider_message_id) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', now(), 'forged')`);
+  await expectRejectTx(db, "or one approved in somebody else's name", `insert into messages (org_id, direction, to_email, subject, approved_by) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', '${OTHER}')`);
+  await expectRejectTx(db, "an enrollment status must be one the engine knows", `update enrollments set status = 'bogus' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+
+  /* SEC-301 (pass 17): the approval itself, not only the approver column. */
+  await expectRejectTx(db, "a draft cannot be scheduled with nobody named as approver", `update messages set scheduled_at = now() where id = '${UNSENT}'`);
+  await expectRejectTx(db, "nor scheduled in somebody else's name", `update messages set scheduled_at = now(), approved_by = '${OTHER}' where id = '${UNSENT}'`);
+  await expectRejectTx(db, "a message cannot be inserted ready to send without approving it as yourself", `insert into messages (org_id, direction, to_email, subject, scheduled_at) values ('${ORG_A}', 'outbound', 'x@alphio.ai', 'Hi', now())`);
+  await expectRejectTx(db, "an approved message's words cannot be rewritten under that approval", `update messages set body_text = 'Different words' where id = '${APPROVED}'`);
+  await expectRejectTx(db, "nor its recipient", `update messages set to_email = 'someone-else@elsewhere.test' where id = '${APPROVED}'`);
+  await expectRejectTx(db, "nor rewritten while re-approving it as yourself in one step", `update messages set subject = 'New', approved_by = '${OWNER}' where id = '${APPROVED}'`);
+  try {
+    await db.query(`update messages set subject = 'Rewritten', scheduled_at = null, approved_by = null, edited_by = $1 where id = '${APPROVED}'`, [OWNER]);
+    await db.query(`update messages set scheduled_at = now(), approved_by = $1 where id = '${APPROVED}'`, [OWNER]);
+    ok("rewriting it works by withdrawing the approval, then approving again as yourself");
+  } catch (e) {
+    fail("rewriting it works by withdrawing the approval, then approving again", e instanceof Error ? e.message : e);
+  }
+
+  try {
+    /* In the order the app does them: edit the unapproved draft, then approve it. */
+    await db.query(`update messages set edited_by = $1, subject = 'Edited' where id = '${UNSENT}'`, [OWNER]);
+    await db.query(`update messages set approved_by = $1, scheduled_at = now(), error = null where id = '${UNSENT}'`, [OWNER]);
+    await db.query(`update messages set error = 'Not sent: the sequence was stopped.' where id = '${UNSENT}'`);
+    await db.query(`update messages set deleted_at = now() where id = '${UNSENT}'`);
+    await db.query(
+      `insert into messages (org_id, direction, to_email, subject, scheduled_at, approved_by) values ($1, 'outbound', 'reply-51@alphio.ai', 'Re: Hi', now(), $2)`,
+      [ORG_A, OWNER],
+    );
+    await db.query(`update enrollments set status = 'stopped' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+    ok("the app's own writes still pass: approve, edit, withdraw, soft delete, reply, stop");
+  } catch (e) {
+    fail("the app's own writes still pass", e instanceof Error ? e.message : e);
+  }
+  await db.exec("rollback");
+
+  const engine = await db.query(
+    `update messages set send_attempted_at = now() where id = '${UNSENT}' returning id`,
+  );
+  if (engine.rows.length === 1) ok("the engine can still claim and record a send");
+  else fail("the engine can still claim and record a send", engine.rows);
+  await expectReject(db, "and even the engine cannot invent an enrollment status", `update enrollments set status = 'bogus' where id = 'e0000000-0000-0000-0000-0000000051a1'`);
+}
+
 // ── Source health (0008) ───────────────────────────────────────────────────
 console.log("\nSource health — §58's degrade-and-retry, in the database");
 {
@@ -1049,7 +1374,10 @@ console.log("\nSource health — §58's degrade-and-retry, in the database");
 // longer claimable, and an abandoned one comes back.
 console.log("\nJob queue — claim once, and recover from a dead worker");
 {
+  /* The fixture companies above queued their follow-ups (0050, FLOW-106);
+     these checks count the queue, so they start from an empty one. */
   await db.exec(`
+    delete from job_executions;
     insert into job_executions (id, org_id, job_name, payload) values
       ('99990000-0000-0000-0000-000000000001',
        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'scan_source', '{"n":1}'::jsonb),
@@ -1569,6 +1897,107 @@ console.log("\n0011 — a provider budget is a control, not a number");
   );
   if (Number(afterHit.rows[0]?.used) === 10) ok("a cache hit is recorded and costs no budget");
   else fail("a cache hit is recorded and costs no budget", JSON.stringify(afterHit.rows[0]));
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — the last credit is reserved once (PROV-015)");
+{
+  await db.exec("begin");
+  await db.query(
+    `insert into provider_accounts (org_id, capability, provider, monthly_credit_limit)
+     values ($1, 'company.search', 'apollo', 10)`,
+    [ORG_A],
+  );
+  await db.query(`select public.record_provider_call($1, 'company.search', 'apollo', 'h1', 'ok', 9)`, [ORG_A]);
+
+  const first = await db.query<{ allowed: boolean }>(
+    `select allowed from public.reserve_provider_credit($1, 'apollo')`,
+    [ORG_A],
+  );
+  const second = await db.query<{ allowed: boolean }>(
+    `select allowed from public.reserve_provider_credit($1, 'apollo')`,
+    [ORG_A],
+  );
+  if (first.rows[0]?.allowed === true && second.rows[0]?.allowed === false) {
+    ok("one credit left: the first reservation holds it, the second is refused");
+  } else {
+    fail("one credit left: the first reservation holds it, the second is refused", JSON.stringify([first.rows, second.rows]));
+  }
+
+  // The call spent 2; the ledger counts it, then the hold is handed back.
+  await db.query(`select public.record_provider_call($1, 'company.search', 'apollo', 'h2', 'ok', 2)`, [ORG_A]);
+  await db.query(`select public.settle_provider_credit($1, 'apollo', 1)`, [ORG_A]);
+  const settled = await db.query<{ used: number }>(
+    `select used from public.provider_budget_state($1, 'apollo')`,
+    [ORG_A],
+  );
+  if (Number(settled.rows[0]?.used) === 11) ok("settling leaves the real spend, not the reservation");
+  else fail("settling leaves the real spend, not the reservation", JSON.stringify(settled.rows[0]));
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — one send per address in flight (OUT-013)");
+{
+  await db.exec("begin");
+  const M1 = "d0000000-0000-0000-0000-0000000050a1";
+  const M2 = "d0000000-0000-0000-0000-0000000050a2";
+  const claim = async (email: string, message: string) =>
+    (await db.query<{ ok: boolean }>(`select public.claim_contact_lane($1, $2, $3) as ok`, [ORG_A, email, message]))
+      .rows[0]?.ok;
+
+  if ((await claim("Pat@Example.test", M1)) === true) ok("the first message takes the lane");
+  else fail("the first message takes the lane", "refused");
+  if ((await claim(" pat@example.test", M2)) === false) ok("a second message to the same address waits");
+  else fail("a second message to the same address waits", "allowed");
+  if ((await claim("pat@example.test", M1)) === true) ok("the holder may claim again (a retry)");
+  else fail("the holder may claim again (a retry)", "refused");
+  if ((await claim("sam@example.test", M2)) === true) ok("another address is its own lane");
+  else fail("another address is its own lane", "refused");
+
+  await db.query(`select public.release_contact_lane($1, $2)`, [ORG_A, M1]);
+  if ((await claim("pat@example.test", M2)) === true) ok("a released lane is free at once");
+  else fail("a released lane is free at once", "refused");
+
+  await db.query(`update contact_send_lanes set claimed_at = now() - interval '11 minutes'`);
+  if ((await claim("pat@example.test", M1)) === true) ok("a lane older than ten minutes is stale");
+  else fail("a lane older than ten minutes is stale", "refused");
+
+  await db.exec("rollback");
+}
+
+console.log("\n0050 — every new company is resolved and profiled (FLOW-106)");
+{
+  await db.exec("begin");
+  const C = "c0000000-0000-0000-0000-0000000050c1";
+  const queued = async () =>
+    (
+      await db.query<{ job_name: string }>(
+        `select job_name from job_executions
+          where payload->>'companyId' = $1 or payload->>'entityId' = $1
+          order by job_name`,
+        [C],
+      )
+    ).rows.map((r) => r.job_name);
+
+  await db.query(
+    `insert into companies (id, org_id, canonical_domain, name) values ($1, $2, 'added-50.test', 'Added Co')`,
+    [C, ORG_A],
+  );
+  const added = await queued();
+  if (added.join() === "profile_company,resolve_entity") ok("a company added by any path queues both");
+  else fail("a company added by any path queues both", JSON.stringify(added));
+
+  await db.query(`update companies set name = 'Renamed' where id = $1`, [C]);
+  if ((await queued()).length === 2) ok("an ordinary update queues nothing more");
+  else fail("an ordinary update queues nothing more", JSON.stringify(await queued()));
+
+  await db.query(`update job_executions set status = 'succeeded' where payload->>'companyId' = $1 or payload->>'entityId' = $1`, [C]);
+  await db.query(`update companies set deleted_at = now() where id = $1`, [C]);
+  await db.query(`update companies set deleted_at = null where id = $1`, [C]);
+  if ((await queued()).length === 4) ok("a restored company is looked at again");
+  else fail("a restored company is looked at again", JSON.stringify(await queued()));
 
   await db.exec("rollback");
 }

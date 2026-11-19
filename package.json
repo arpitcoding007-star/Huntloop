@@ -18,7 +18,8 @@
     "db:seed": "npm run seed --workspace @huntloop/db --",
     "audit:site": "node scripts/audit.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run audit:site && npm run build && npm run audit:bundle",
-    "audit:bundle": "node scripts/bundle-budget.mjs"
+    "audit:bundle": "node scripts/bundle-budget.mjs",
+    "live-check": "node --experimental-strip-types scripts/live-check.ts"
   },
   "engines": {
     "node": ">=22.6"

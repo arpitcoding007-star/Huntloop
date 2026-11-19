@@ -41,6 +41,8 @@ export interface Message {
   evidenceCount: number;
   sentAt: string | null;
   scheduledAt: string | null;
+  /** OUT-014: a queued send the engine is holding, and why (0050). */
+  waiting?: { until: string; reason: string | null } | null;
   createdAt: string | null;
   /** A person changed the AI's words before approving (0037). */
   edited: boolean;
@@ -77,7 +79,7 @@ export async function listThreads(orgSlug: string): Promise<Loaded<Thread[]>> {
           `id, subject, status, classification, opportunity_id, assignee_id, last_message_at,
            opportunities(companies(name)),
            messages(id, direction, subject, body_text, ai_generated, evidence_ids,
-             sent_at, scheduled_at, created_at, deleted_at, edited_at,
+             sent_at, scheduled_at, not_before, wait_reason, created_at, deleted_at, edited_at,
              message_events(kind, occurred_at))`,
         )
         .eq("org_id", orgId)
@@ -143,6 +145,10 @@ function mapMessage(row: any): Message {
     evidenceCount: Array.isArray(row.evidence_ids) ? row.evidence_ids.length : 0,
     sentAt: row.sent_at ?? null,
     scheduledAt: row.scheduled_at ?? null,
+    waiting:
+      row.not_before && !row.sent_at && Date.parse(row.not_before) > Date.now()
+        ? { until: String(row.not_before), reason: row.wait_reason ?? null }
+        : null,
     createdAt: row.created_at ?? null,
     edited: Boolean(row.edited_at),
     latestEvent: events[0]

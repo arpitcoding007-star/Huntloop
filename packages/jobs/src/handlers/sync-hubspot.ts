@@ -40,6 +40,7 @@ import {
   upsertContact,
 } from "@huntloop/crm";
 import { decryptSecret } from "@huntloop/db";
+import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -237,13 +238,22 @@ async function loadPrimaryPerson(scope: OrgScope, personId: string | null): Prom
   return (data as PrimaryPerson | null) ?? null;
 }
 
+/**
+ * The address to push, or none (CRM-005). Never a provider placeholder or a
+ * known-bad address — HubSpot searches contacts by email, and pushing
+ * `email_not_unlocked@domain.com` matched and overwrote someone else's
+ * contact. A verified address is preferred over an unverified one.
+ */
 async function loadEmail(scope: OrgScope, personId: string): Promise<string | null> {
   const { data: points } = await scope
-    .select("contact_points", "value")
+    .select("contact_points", "value, verification_status")
     .eq("person_id", personId)
     .eq("kind", "email")
-    .limit(1);
-  return Array.isArray(points) && points.length ? String((points[0] as { value: string }).value) : null;
+    .limit(20);
+  const rows = (Array.isArray(points) ? points : []) as { value: string; verification_status: string | null }[];
+  const sendable = rows.filter((p) => isSendableEmail(p.value, p.verification_status));
+  const best = sendable.find((p) => isVerifiedEmail(p.verification_status)) ?? sendable[0];
+  return best ? String(best.value) : null;
 }
 
 async function linkExternal(scope: OrgScope, entityType: string, entityId: string, providerId: string): Promise<void> {

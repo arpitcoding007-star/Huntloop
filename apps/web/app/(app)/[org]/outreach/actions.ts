@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { fail, mutate, ok, requireOrgId, type ActionResult } from "../../../../lib/data/org";
 import { recordAudit } from "../../../../lib/data/audit";
 import { resolveDataSource } from "../../../../lib/data/source";
+import { withdrawQueuedMail } from "../../../../lib/data/withdraw-mail";
 import {
   campaignSchema,
   parseForm,
@@ -386,6 +387,10 @@ export async function setEnrollmentStatusAction(
       .maybeSingle();
     if (error) return fail(`That could not be changed: ${error.message}`);
     if (!data) return fail("That enrollment has already moved on.");
+    if (next === "stopped") {
+      await withdrawQueuedMail(db, orgId, [id.data], "the sequence was stopped.");
+      revalidatePath(`/${org}/inbox`);
+    }
     revalidatePath(`/${org}/outreach`);
     return ok(undefined, next === "active" ? "Resumed. The step is retried on the engine's next run." : "Stopped.");
   });

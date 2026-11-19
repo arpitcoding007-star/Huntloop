@@ -68,6 +68,8 @@ function fakeDb(options: {
   budget?: { allowed: boolean; used: number; limit: number | null; remaining: number | null };
   breakerOpenUntil?: string | null;
   credentialsBad?: boolean;
+  /** 0050 applied: the budget is reserved rather than read. */
+  reserves?: boolean;
 } = {}) {
   const calls: Recorded[] = [];
 
@@ -118,7 +120,7 @@ function fakeDb(options: {
     },
     rpc(fn: string, args: unknown) {
       calls.push({ table: fn, verb: "rpc", payload: args });
-      if (fn === "provider_budget_state") {
+      if (fn === "provider_budget_state" || (fn === "reserve_provider_credit" && options.reserves)) {
         const b = options.budget ?? { allowed: true, used: 0, limit: null, remaining: null };
         return Promise.resolve({ data: [b], error: null });
       }
@@ -225,6 +227,38 @@ console.log("\ncall — five of the eight steps exist to not spend money");
     );
     expect("costing nothing", ledger(calls)[0]?.p_credits === 0);
   }
+}
+
+console.log("\ncall — the budget is reserved, then settled (PROV-015)");
+{
+  const { db, calls } = fakeDb({ reserves: true });
+  await callProvider(base(db, async () => ({ data: { items: [1] }, credits: 3, httpStatus: 200 })));
+  const names = calls.filter((c) => c.verb === "rpc").map((c) => c.table);
+  expect("the credit is reserved, not just read", names.includes("reserve_provider_credit") && !names.includes("provider_budget_state"));
+  expect(
+    "and handed back after the ledger counted the real spend",
+    names.indexOf("record_provider_call") < names.indexOf("settle_provider_credit"),
+  );
+}
+{
+  const { db, calls } = fakeDb({ reserves: true });
+  try {
+    await callProvider(base(db, async () => { throw new ProviderError("testvendor", "bad request", { retryable: false, httpStatus: 400 }); }));
+  } catch { /* expected */ }
+  expect(
+    "a failed call gives its reservation back too",
+    calls.some((c) => c.verb === "rpc" && c.table === "settle_provider_credit"),
+  );
+}
+{
+  const { db, calls } = fakeDb({ reserves: true, budget: { allowed: false, used: 10, limit: 10, remaining: 0 } });
+  try {
+    await callProvider(base(db, async () => ({ data: { items: [] }, credits: 1, httpStatus: 200 })));
+  } catch { /* expected */ }
+  expect(
+    "a refused reservation holds nothing, so nothing is settled",
+    !calls.some((c) => c.verb === "rpc" && c.table === "settle_provider_credit"),
+  );
 }
 
 console.log("\ncall — a cached answer is served before the budget is consulted");
@@ -389,6 +423,16 @@ console.log("\napollo — email_status is the most important mapping in the pack
       ok(`email_status "${status}" is low and unverified`);
     }
   }
+
+  // PROV-005: Apollo's stand-in for an address it has not sold us.
+  respond({ person: { id: "p1", first_name: "A", last_name: "B", email: "email_not_unlocked@domain.com", email_status: "verified" } });
+  const locked = await adapter.matchPerson!({
+    firstName: "A", lastName: "B", title: null, companyDomain: "acme.com", companyName: "Acme",
+  });
+  expect(
+    "a locked placeholder address is dropped, not stored",
+    !locked.data?.contacts.some((c) => c.kind === "email"),
+  );
 
   console.log("\napollo — a social profile never becomes a company identity");
   respond({

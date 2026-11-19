@@ -11,7 +11,7 @@ import { getActiveIcp } from "../data/icp";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `qualify_opportunity`, wrapped for the §17 analyze screen.
@@ -134,7 +134,7 @@ export async function qualify(
     }
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Qualification failed.",
+      error: publicAiError(error, "Qualification failed."),
     };
   }
 }

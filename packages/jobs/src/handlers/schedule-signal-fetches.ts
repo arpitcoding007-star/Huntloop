@@ -46,9 +46,15 @@ export async function scheduleSignalFetches(_ctx: JobContext): Promise<JobOutcom
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
      The same reason every other handler gives: no generated Supabase types. */
   const { data, error } = await (db.from("companies") as any)
-    .select("id, org_id, external_ids!inner(provider)")
+    /* Phase 4.3: only companies with a live opportunity. A signal is read
+       to decide whether to reach out now, and a company nobody is working —
+       won, lost, archived, or never an opportunity — gains nothing from a
+       fetch every 48 hours. P2-5: no Apollo id is required any more, since
+       the company's own job board is read without one. */
+    .select("id, org_id, opportunities!inner(status)")
     .is("deleted_at", null)
-    .eq("external_ids.provider", "apollo")
+    .is("opportunities.deleted_at", null)
+    .not("opportunities.status", "in", "(won,lost,archived)")
     .or(`last_signal_checked_at.is.null,last_signal_checked_at.lt.${staleBefore}`)
     .order("last_signal_checked_at", { ascending: true, nullsFirst: true })
     .limit(MAX_PER_TICK);

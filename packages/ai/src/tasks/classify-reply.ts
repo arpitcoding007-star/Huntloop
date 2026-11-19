@@ -192,7 +192,9 @@ export const classifyReply: LLMTask<ReplyInput, ReplyClassification> = {
   name: "classify_reply",
   prompt: PROMPT,
   schema: SCHEMA,
-  maxTokens: 1_000,
+  // A label and a sentence, plus Haiku 5.5's thinking at low effort, which
+  // shares this budget.
+  maxTokens: 4_000,
 
   renderInput: (input) => [
     "Classify this reply.",

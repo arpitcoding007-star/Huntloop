@@ -37,7 +37,7 @@ import {
 } from "@huntloop/ai";
 import { parseOrgProfile, voiceGuidance } from "@huntloop/db/org-profile";
 import { asGuidance, asReference, resolvePreferences } from "@huntloop/db/preferences";
-import { isSendableEmail } from "@huntloop/db/contact";
+import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
 import { enqueue } from "../queue.ts";
@@ -119,7 +119,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       "enrollments",
       `id, campaign_id, opportunity_id, current_step, mailbox_id,
        campaigns!inner(id, name, status, autonomy_level, product_id),
-       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id)`,
+       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at)`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -147,6 +147,12 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   /* Closed by a person — "Not a fit" archives the opportunity (0037). A
      sequence that kept writing to a company somebody had just ruled out would
      be the product overruling the one judgement it most needs to respect. */
+  /* SEC-101: removed — directly, with its company, or in a merge. 0049 stops
+     these in the database; this is the backstop for a database without it. */
+  if ((opportunity as { deleted_at?: string | null } | null)?.deleted_at) {
+    await stop(scope, enrollmentId, "The opportunity was removed.");
+    return "stopped";
+  }
   if (opportunity?.status === "archived") {
     await stop(scope, enrollmentId, "The opportunity was closed as not a fit.");
     return "stopped";
@@ -154,6 +160,26 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
 
   const step = await nextStep(scope, String(enrollment.campaign_id), Number(enrollment.current_step));
   if (!step) {
+    /* OUT-201: `send_message` refuses mail whose enrollment is no longer
+       active, so the last step must have left before the sequence counts as
+       finished. An approved message still waiting (business hours, the daily
+       cap) holds the enrollment open. */
+    const { data: pending } = await scope
+      .select("messages", "id")
+      .eq("enrollment_id", enrollmentId)
+      .eq("direction", "outbound")
+      .not("scheduled_at", "is", null)
+      .is("sent_at", null)
+      .is("error", null)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (pending) {
+      await scope
+        .update("enrollments", { next_action_at: new Date(Date.now() + APPROVAL_RECHECK_MS).toISOString() })
+        .eq("id", enrollmentId);
+      return "waited";
+    }
     await stop(scope, enrollmentId, "The sequence finished.");
     return "stopped";
   }
@@ -197,12 +223,25 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
     return "waited";
   }
 
-  const recipient = await resolveRecipient(scope, String(opportunity?.company_id), opportunity?.primary_person_id);
+  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
+
+  /* P0-3. Unattended sends go only to verified addresses. At autonomy 0–1 a
+     person approves the draft and the screen tells them the address is
+     unverified; at 2+ nobody does, and an unverified address is how a list
+     bounces a mailbox into the spam folder. */
+  const recipient = await resolveRecipient(
+    scope,
+    String(opportunity?.company_id),
+    opportunity?.primary_person_id,
+    autonomous,
+  );
   if (!recipient) {
     await park(
       scope,
       enrollmentId,
-      "No verified email address for anyone at this company. Enrich or add a contact.",
+      autonomous
+        ? "No verified email address for anyone at this company, and this campaign sends without review. Verify a contact or lower the campaign's autonomy."
+        : "No verified email address for anyone at this company. Enrich or add a contact.",
     );
     return "stopped";
   }
@@ -220,7 +259,6 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   }
 
   const mailboxId = enrollment.mailbox_id ?? (await pickMailbox(scope));
-  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
 
   /* OUT-002. A run that drafted this step and died before advancing left it
      due again. Its message is reused rather than drafted twice — and found
@@ -401,6 +439,7 @@ async function resolveRecipient(
   scope: OrgScope,
   companyId: string,
   personId: string | null | undefined,
+  requireVerified = false,
 ): Promise<Recipient | null> {
   const { data: people } = await scope
     .select(
@@ -424,7 +463,10 @@ async function resolveRecipient(
          the address (TRUST-004), and it refuses provider placeholders such as
          email_not_unlocked@domain.com (PROV-004). */
       const email = points.find(
-        (p) => p.kind === "email" && isSendableEmail(p.value, p.verification_status),
+        (p) =>
+          p.kind === "email" &&
+          isSendableEmail(p.value, p.verification_status) &&
+          (!requireVerified || isVerifiedEmail(p.verification_status)),
       );
       if (!email) return null;
       return {
@@ -498,6 +540,15 @@ async function draftMessage(
     for (const c of competitors.evidence) {
       if (!known.has(c.id)) evidence.push(c);
     }
+    /* FLOW-103: hiring and site evidence is filed on the company, and the
+       draft read only the opportunity's — so the freshest reason to write
+       never reached the email. Citable the same way. */
+    for (const s of await loadCompanySignals(scope, String(input.opportunity.company_id))) {
+      if (!known.has(s.id)) {
+        known.add(s.id);
+        evidence.push(s);
+      }
+    }
 
     const run = await runForOrg(scope, personalizeMessage, {
       companyName,
@@ -567,6 +618,54 @@ async function loadEvidence(scope: OrgScope, opportunityId: string): Promise<Mes
     sourceUrl: (row.source_url as string | null) ?? null,
     eventDate: (row.event_date as string | null) ?? null,
   }));
+}
+
+/** How far back a hiring signal is still news worth opening an email with. */
+const SIGNAL_RECENT_DAYS = 90;
+const MAX_COMPANY_SIGNALS = 4;
+
+/**
+ * Recent hiring postings and the site's own facts, from the company (FLOW-103).
+ *
+ * Hiring evidence must carry an `event_date` inside the window: a posting
+ * with no date cannot be shown to be news, and an old one is not. Site facts
+ * are undated by nature — what the homepage says today — and come after.
+ */
+export async function loadCompanySignals(scope: OrgScope, companyId: string): Promise<MessageEvidence[]> {
+  if (!companyId || companyId === "undefined" || companyId === "null") return [];
+  const since = new Date(Date.now() - SIGNAL_RECENT_DAYS * 86_400_000).toISOString();
+
+  const { data: hiring } = await scope
+    .select("evidence", "id, claim, kind, source_url, event_date")
+    .eq("subject_type", "company")
+    .eq("subject_id", companyId)
+    .like("field", "hiring_signal%")
+    .gte("event_date", since)
+    .is("deleted_at", null)
+    .is("superseded_by", null)
+    .order("event_date", { ascending: false })
+    .limit(MAX_COMPANY_SIGNALS);
+
+  const { data: site } = await scope
+    .select("evidence", "id, claim, kind, source_url, event_date")
+    .eq("subject_type", "company")
+    .eq("subject_id", companyId)
+    .like("field", "site:%")
+    .is("deleted_at", null)
+    .is("superseded_by", null)
+    .limit(MAX_COMPANY_SIGNALS);
+
+  return [...rowsOf(hiring), ...rowsOf(site)].slice(0, MAX_COMPANY_SIGNALS * 2).map((row) => ({
+    id: String(row.id),
+    claim: String(row.claim),
+    kind: row.kind as MessageEvidence["kind"],
+    sourceUrl: (row.source_url as string | null) ?? null,
+    eventDate: (row.event_date as string | null) ?? null,
+  }));
+}
+
+function rowsOf(data: unknown): Record<string, unknown>[] {
+  return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
 }
 
 /**

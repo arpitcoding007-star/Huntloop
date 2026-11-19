@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { recordSignal } from "../../../../lib/data/signals";
+import { enrollmentsOf, withdrawQueuedMail } from "../../../../lib/data/withdraw-mail";
 import {
   opportunityStatusSchema,
   outcomeReasonSchema,
@@ -21,6 +22,8 @@ import {
  */
 /** Pipeline stages that are also `outcomes.kind` values (0004). */
 const OUTCOME_STAGES = new Set<string>(["meeting", "proposal", "won", "lost"]);
+/** Stages at which `send_message` refuses an enrollment's mail (its `CLOSED_STAGES`). */
+const CLOSED_STAGES = new Set<string>(["replied", "meeting", "proposal", "won", "lost", "archived"]);
 
 export async function setOpportunityStatusAction(
   org: string,
@@ -53,6 +56,13 @@ export async function setOpportunityStatusAction(
       .is("deleted_at", null);
 
     if (error) return fail(`That opportunity could not be moved: ${error.message}`);
+
+    /* OUT-201: a closed deal's queued sequence mail does not go. `send_message`
+       refuses it regardless; this makes the inbox say so at once. */
+    if (CLOSED_STAGES.has(parsed.data)) {
+      await withdrawQueuedMail(db, orgId, await enrollmentsOf(db, orgId, id.data), `the opportunity is ${parsed.data}.`);
+      revalidatePath(`/${org}/inbox`);
+    }
 
     /* FLOW-006. Meetings, proposals, wins and losses are the outcomes the
        learning loop exists to explain, and the only outcome writer was reply

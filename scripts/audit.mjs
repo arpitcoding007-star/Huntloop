@@ -414,6 +414,81 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 4 — Paid calls go through the provider seam (pass 15, PROV-003) ── */
+
+{
+  // A raw fetch to a vendor outside packages/providers skips the cache, the
+  // budget, the circuit breaker and the ledger the spend screens read.
+  const VENDOR_HOSTS = /api\.apollo\.io|api\.hunter\.io|api\.zerobounce\.(?:net|in)/;
+  const offenders = [...walk("apps"), ...walk("packages")]
+    .filter((f) => /\.(ts|tsx|mjs)$/.test(f))
+    .filter((f) => !f.startsWith("packages/providers/"))
+    .filter((f) => !/\/scripts\/|\.test\.tsx?$/.test(f))
+    .filter((f) => VENDOR_HOSTS.test(read(f) ?? ""));
+  check(
+    4,
+    "PROV-003",
+    "No vendor API is called outside packages/providers",
+    offenders.length === 0,
+    "fail",
+    offenders.join(", "),
+  );
+}
+
+/* ── Phase 4 — Readiness tracks the newest migration (pass 16, PROD-201) ─── */
+
+{
+  // Production refuses to serve on a partial schema, judged by one marker.
+  // When that marker names an older migration than the repo has, a database
+  // missing the newest one reads "complete" and the code that needs it fails
+  // quietly. Pass 16 found it three migrations behind.
+  const files = walk("packages/db/migrations")
+    .map((f) => f.split("/").pop())
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort();
+  const newest = files.at(-1) ?? "";
+  const number = newest.slice(0, 4);
+  const marker = `migration_${number}_applied`;
+  const schema = read("apps/web/lib/schema.ts") ?? "";
+  const doctor = read("packages/db/scripts/doctor.ts") ?? "";
+  const declared = schema.match(/LATEST_MIGRATION\s*=\s*"(\d{4})"/)?.[1] ?? null;
+  const problems = [];
+  if (declared !== number) problems.push(`lib/schema.ts LATEST_MIGRATION=${declared ?? "unset"}, newest is ${number}`);
+  if (!(read(`packages/db/migrations/${newest}`) ?? "").includes(marker)) problems.push(`${newest} defines no ${marker}()`);
+  if (!doctor.includes(newest)) problems.push(`db:doctor has no row for ${newest}`);
+  check(
+    4,
+    "SCHEMA-01",
+    "The readiness probe and db:doctor name the newest migration",
+    problems.length === 0,
+    "fail",
+    problems.join("; ") || null,
+  );
+}
+
+/* ── Phase 4 — `as any` only goes down (pass 15, DEBT-003) ──────────────── */
+
+{
+  // Triaged in pass 15: nearly every cast is an untyped PostgREST row, the
+  // rest a client surface shared by the tenant and admin clients — each with
+  // its reason beside it. Removing them needs generated database types; until
+  // then the count is a ceiling. Lower it when a cast goes; never raise it.
+  const AS_ANY_CEILING = 104;
+  const source = [...walk("apps/web/app"), ...walk("apps/web/lib"), ...walk("packages")]
+    .filter((f) => /\.(ts|tsx)$/.test(f))
+    .filter((f) => /^(apps\/web\/(app|lib)|packages\/[^/]+\/src)\//.test(f))
+    .filter((f) => !/\.test\.tsx?$/.test(f));
+  const count = source.reduce((n, f) => n + ((read(f) ?? "").match(/\bas any\b/g)?.length ?? 0), 0);
+  check(
+    4,
+    "DEBT-003",
+    `\`as any\` casts stay at or under ${AS_ANY_CEILING}`,
+    count <= AS_ANY_CEILING,
+    "fail",
+    `${count} found`,
+  );
+}
+
 /* ── Phase 5 — Security ─────────────────────────────────────────────────── */
 
 {

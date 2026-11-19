@@ -1,4 +1,5 @@
 import "server-only";
+import { mailboxDailyCap } from "../mailbox-cap";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
@@ -89,7 +90,7 @@ export async function getOutreach(orgSlug: string): Promise<Loaded<Outreach>> {
         db
           .from("mailboxes")
           .select(
-            `id, email, provider, display_name, status, daily_limit, sent_today,
+            `id, email, provider, display_name, status, daily_limit, sent_today, warmup_started_at, warmup_target,
              health_score, warmup_stage`,
           )
           .eq("org_id", orgId)
@@ -170,7 +171,7 @@ function mapMailbox(row: any): Mailbox {
     provider: String(row.provider ?? "smtp"),
     displayName: row.display_name ?? null,
     status: String(row.status ?? "connected"),
-    dailyLimit: Number(row.daily_limit ?? 0),
+    dailyLimit: mailboxDailyCap(row),
     sentToday: Number(row.sent_today ?? 0),
     healthScore: typeof row.health_score === "number" ? row.health_score : null,
     warmupStage: row.warmup_stage ?? null,

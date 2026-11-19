@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { LATEST_TABLE, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
+import { LATEST_MIGRATION, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
 
 /**
  * What this deployment is connected to, as booleans.
  *
- * Exists so "is seefluence.com the real production?" is one request rather
+ * Exists so "is huntloop.pro the real production?" is one request rather
  * than a dashboard tour: which commit is serving, whether the database is
  * configured and fully migrated, and which integrations have a key. The
  * go/no-go checklist in SETUP.md reads it.
@@ -45,7 +45,7 @@ export async function GET() {
     database: {
       host: env ? new URL(env.url).host : null,
       schema: database,
-      latestTableProbed: LATEST_TABLE,
+      requiredMigration: LATEST_MIGRATION,
       serviceKey: has("SUPABASE_SECRET_KEY") || has("SUPABASE_SERVICE_ROLE_KEY"),
     },
     jobs: {

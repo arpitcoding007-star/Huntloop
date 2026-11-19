@@ -54,3 +54,32 @@ export function toFailureState(failure: AiFailure): FailureState {
     ? { error: failure.error, rateLimited: { retryAt: failure.retryAt ?? null } }
     : { error: failure.error };
 }
+
+/**
+ * The message a screen may show for an error thrown inside an AI wrapper.
+ *
+ * Our own errors are written to be read — a §7 violation, an invalid URL,
+ * a refusal. The SDK's are not: they carry request ids, status lines and the
+ * API's raw JSON, which tell a customer nothing and tell anyone else how the
+ * call was made. Those become a sentence here and the original goes to the
+ * server log, where it is useful.
+ */
+export function publicAiError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const name = error.name;
+  const status = (error as { status?: unknown }).status;
+  const fromSdk =
+    /^(APIError|APIConnectionError|APIConnectionTimeoutError|APIUserAbortError|AuthenticationError|PermissionDeniedError|NotFoundError|ConflictError|UnprocessableEntityError|RateLimitError|InternalServerError|BadRequestError)$/.test(name) ||
+    typeof status === "number";
+  if (!fromSdk) return error.message || fallback;
+
+  console.error(`[ai] ${name}${typeof status === "number" ? ` ${status}` : ""}: ${error.message}`);
+  if (name === "APIConnectionTimeoutError") return "The model took too long to answer. Try again in a moment.";
+  if (status === 401 || status === 403 || name === "AuthenticationError" || name === "PermissionDeniedError") {
+    return "The AI service rejected this workspace's key. An administrator needs to check the Anthropic API key.";
+  }
+  if (status === 429 || name === "RateLimitError") return "The AI service is busy. Try again in a minute.";
+  if (typeof status === "number" && status >= 500) return "The AI service is having trouble right now. Try again shortly.";
+  if (name === "APIConnectionError") return "Huntloop could not reach the AI service. Try again shortly.";
+  return fallback;
+}

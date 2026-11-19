@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { encryptSecret } from "@huntloop/db";
+import { encryptSecret, type TenantClient } from "@huntloop/db";
 import { providerFor, type ProviderId } from "@huntloop/jobs";
 import { currentViewer, canWrite } from "../../../../../lib/data/membership";
 import { getDb } from "../../../../../lib/data/source";
@@ -158,9 +158,7 @@ export async function GET(
     return refuse(origin, back, e instanceof Error ? e.message : "Those tokens could not be encrypted.");
   }
 
-  const { error } = await db
-    .from("mailboxes")
-    .upsert(row, { onConflict: "org_id,email" });
+  const { error } = await saveMailbox(db, row, viewer.orgId, tokens.email);
 
   clear();
 
@@ -173,6 +171,45 @@ export async function GET(
   const url = new URL(back, origin);
   url.searchParams.set("mailbox_connected", tokens.email);
   return NextResponse.redirect(url);
+}
+
+/**
+ * DB-203: write the mailbox without an upsert.
+ *
+ * 0049 makes `oauth_token_enc` and `refresh_token_enc` unreadable by any
+ * session: SELECT is granted on every other column, not on those two. An
+ * upsert is `INSERT … ON CONFLICT DO UPDATE SET col = excluded.col`, and
+ * reading `excluded.col` needs SELECT on `col`, so it was refused for every
+ * connect, first or repeat. A plain INSERT or UPDATE writes those columns
+ * without reading them.
+ *
+ * Every read here names granted columns only, and no write asks for rows
+ * back, so nothing needs SELECT on the token columns. The existing row is
+ * looked up first, including a soft-deleted one, because reconnecting
+ * restores it. Two connects racing to insert the same address meet the
+ * `(org_id, email)` unique index, and the loser updates instead.
+ */
+async function saveMailbox(
+  db: TenantClient,
+  row: Record<string, unknown>,
+  orgId: string,
+  email: string,
+): Promise<{ error: { message: string } | null }> {
+  const update = (id: string) => db.from("mailboxes").update(row).eq("id", id).eq("org_id", orgId);
+  const existing = async () =>
+    db.from("mailboxes").select("id").eq("org_id", orgId).eq("email", email).limit(1).maybeSingle();
+
+  const found = await existing();
+  if (found.error) return { error: found.error };
+  if (found.data) return update(String(found.data.id));
+
+  const inserted = await db.from("mailboxes").insert(row);
+  if (!inserted.error) return { error: null };
+  if (inserted.error.code !== "23505") return { error: inserted.error };
+
+  const raced = await existing();
+  if (raced.error || !raced.data) return { error: raced.error ?? inserted.error };
+  return update(String(raced.data.id));
 }
 
 interface Flow {

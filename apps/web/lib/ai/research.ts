@@ -10,7 +10,7 @@ import {
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `research_company`, wrapped for the screens that call it.
@@ -105,7 +105,7 @@ export async function research(
     }
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Research failed.",
+      error: publicAiError(error, "Research failed."),
     };
   }
 }

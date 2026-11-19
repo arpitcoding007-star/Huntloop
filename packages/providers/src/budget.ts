@@ -71,6 +71,71 @@ export async function budgetAllows(
   };
 }
 
+export interface Reservation extends BudgetState {
+  /** Credits held against the counter until `settleReservation`. */
+  reserved: number;
+}
+
+/**
+ * The budget check and the spend, as one step (PROV-015, 0050).
+ *
+ * `budgetAllows` then a call is check-then-act: four lanes could each read
+ * "one left" and all four spend it. This takes the credit a call needs to be
+ * allowed in the statement that decides. Same fail-open posture as
+ * `budgetAllows` when the state cannot be read — and then nothing is held,
+ * so there is nothing to give back.
+ */
+export async function reserveCredit(
+  db: AdminClient,
+  orgId: string,
+  provider: string,
+): Promise<Reservation> {
+  const { data, error } = await (db.rpc as Query)("reserve_provider_credit", {
+    p_org: orgId,
+    p_provider: provider,
+  });
+
+  /* Before 0050 the function does not exist; the old check still applies. */
+  if (error || !Array.isArray(data) || data.length === 0) {
+    return { ...(await budgetAllows(db, orgId, provider)), reserved: 0 };
+  }
+
+  const row = data[0] as {
+    used: number | string;
+    limit: number | string | null;
+    remaining: number | string | null;
+    allowed: boolean;
+  };
+  const allowed = row.allowed === true;
+
+  return {
+    allowed,
+    used: Number(row.used ?? 0),
+    limit: row.limit === null || row.limit === undefined ? null : Number(row.limit),
+    remaining: row.remaining === null || row.remaining === undefined ? null : Number(row.remaining),
+    assumed: false,
+    reserved: allowed ? 1 : 0,
+  };
+}
+
+/** Hands a reservation back once the ledger has counted the real spend. */
+export async function settleReservation(
+  db: AdminClient,
+  orgId: string,
+  provider: string,
+  reservation: Reservation,
+): Promise<void> {
+  if (reservation.reserved <= 0) return;
+  const { error } = await (db.rpc as Query)("settle_provider_credit", {
+    p_org: orgId,
+    p_provider: provider,
+    p_reserved: reservation.reserved,
+  });
+  /* Unsettled means the counter is one high until the month turns: the safe
+     direction, and worth a line in the log. */
+  if (error) console.error(`[providers] could not settle a ${provider} reservation: ${error.message}`);
+}
+
 /**
  * Is this provider being left alone?
  *

@@ -50,7 +50,8 @@ export interface OpportunityRow {
   domain: string;
   priority: Priority;
   priorityReason: string;
-  score: number;
+  /** Null until the opportunity is scored — never shown as 0 (TRUST-008). */
+  score: number | null;
   scoreExplanation: string;
   confidence: "high" | "medium" | "low";
   dimensions: ScoreDimension[];
@@ -95,7 +96,8 @@ export interface OpportunityDetail {
   employees: string;
   priority: Priority;
   priorityReason: string;
-  score: number;
+  /** Null until the opportunity is scored — never shown as 0 (TRUST-008). */
+  score: number | null;
   scoreExplanation: string;
   confidence: "high" | "medium" | "low";
   dimensions: ScoreDimension[];
@@ -344,11 +346,12 @@ const PRIORITY_ORDER: Priority[] = ["hot", "warm", "watch", "ignore"];
  * two screens is one ordering, not two that happen to agree today.
  */
 export function byPriorityThenScore(
-  a: { priority: Priority; score: number },
-  b: { priority: Priority; score: number },
+  a: { priority: Priority; score: number | null },
+  b: { priority: Priority; score: number | null },
 ): number {
   const p = PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority);
-  return p !== 0 ? p : b.score - a.score;
+  /* Unscored sorts after every score, rather than as a zero (TRUST-008). */
+  return p !== 0 ? p : (b.score ?? -1) - (a.score ?? -1);
 }
 
 /**
@@ -475,7 +478,7 @@ export function mapListRow(
     industry: r.companies.industry ?? "—",
     priority: r.priority,
     priorityReason: r.priority_reason,
-    score: score?.score ?? 0,
+    score: score?.score ?? null,
     scoreExplanation: score?.explanation ?? "Not scored yet.",
     confidence: score?.confidence ?? "low",
     dimensions: dimensionsOf(score),
@@ -636,7 +639,7 @@ export function mapDetail(
       r.companies.employee_count === null ? "—" : String(r.companies.employee_count),
     priority: r.priority,
     priorityReason: r.priority_reason,
-    score: score?.score ?? 0,
+    score: score?.score ?? null,
     scoreExplanation: score?.explanation ?? "Not scored yet.",
     confidence: score?.confidence ?? r.confidence ?? "low",
     dimensions: dimensionsOf(score),

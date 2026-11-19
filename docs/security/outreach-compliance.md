@@ -144,9 +144,10 @@ campaign *create* action does not accept an autonomy level at all.
 
 | Item | Status |
 |---|---|
-| `emails` plan limit is counted but never checked | 🔴 Nothing refuses a send for being over plan |
-| `contact_frequency` table | Written by the send path; **not read by application code** |
-| GDPR erasure has no request intake | `purge_contact_data` exists and is **never enqueued** |
+| `emails` plan limit | ✅ Checked before every send (`send-message.ts`, step 3d) |
+| `contact_frequency` table | Written by the send path and read by `can_contact` (0017) for the cadence and 30-day caps |
+| GDPR erasure | ✅ Served by Settings → Data & privacy through `erase_contact_for_org`. The `purge_contact_data` job is the same function run from the queue and has no producer by design |
+| Removed or merged companies | ✅ 0049 stops their sequences and unschedules their unsent email in the database |
 | Lawful basis for enrichment and outreach in the EU | **Needs counsel.** Affects whether EU prospecting is viable at all |
 | CAN-SPAM / PECR content and sender-identification requirements | A policy matter, not an engineering one |
 | Data-processing agreements with Apollo, Hunter, ZeroBounce, Anthropic, HubSpot | Not in place |

@@ -303,6 +303,10 @@ export async function approveMessageAction(
       .from("messages")
       .update({
         scheduled_at: new Date().toISOString(),
+        /* A message the pre-send check or a pending reply sent back carries
+           the reason in `error`, and `schedule_sends` skips any row with one.
+           Approving it is the answer to that reason, so it is cleared. */
+        error: null,
         /* Who approved it, on the row. §46's ladder is an accountability
            mechanism as much as a safety one, and "a person approved this" is
            worth little if the record does not say which person. */

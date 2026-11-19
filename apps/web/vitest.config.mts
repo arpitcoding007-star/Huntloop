@@ -51,7 +51,8 @@ export default defineConfig({
      * Anthropic SDK. That is a one-off cost of roughly a second in isolation
      * and it was measured at 12.7s when `npm test` ran every workspace's suite
      * concurrently on a loaded machine, which tripped the 5s default and
-     * produced a red build for correct code.
+     * produced a red build for correct code. A cold Windows run took 51s for
+     * the import phase and tripped the later 30s limit, hence 90s.
      *
      * Raised rather than worked around by pre-importing, because the dynamic
      * import is load-bearing: the module has to be evaluated *after*
@@ -59,6 +60,6 @@ export default defineConfig({
      * real `runTask` and a regression makes an outbound request to
      * api.anthropic.com from somebody's laptop.
      */
-    testTimeout: 30_000,
+    testTimeout: 90_000,
   },
 });

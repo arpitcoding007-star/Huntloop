@@ -65,9 +65,10 @@ if (!url || !key) {
  * One representative object per migration — the last thing each file creates,
  * so a half-run file reports as missing rather than as applied.
  *
- * When a new migration adds a table the app cannot run without, also bump
- * `LATEST_TABLE` in apps/web/lib/schema.ts: that is what a production
- * deployment checks before it agrees to serve the app instead of a 503.
+ * When a migration is added, add its row here and bump `LATEST_MIGRATION` in
+ * apps/web/lib/schema.ts: that is what a production deployment checks before
+ * it agrees to serve the app instead of a 503. `scripts/audit.mjs` (SCHEMA-01)
+ * fails the build when either is missing.
  */
 const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0001_identity.sql", probe: "audit_logs", kind: "table" },
@@ -114,6 +115,10 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0045_assistant_conversations.sql", probe: "migration_0045_applied", kind: "rpc" },
   { file: "0046_usage_limit_privileges.sql", probe: "migration_0046_applied", kind: "rpc" },
   { file: "0047_security_leads.sql", probe: "migration_0047_applied", kind: "rpc" },
+  { file: "0048_mailbox_readiness.sql", probe: "migration_0048_applied", kind: "rpc" },
+  { file: "0049_soft_delete_propagation.sql", probe: "migration_0049_applied", kind: "rpc" },
+  { file: "0050_atomic_spend_and_send_lanes.sql", probe: "migration_0050_applied", kind: "rpc" },
+  { file: "0051_safety_record_integrity.sql", probe: "migration_0051_applied", kind: "rpc" },
 ];
 
 /**

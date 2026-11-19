@@ -3,6 +3,8 @@ import { listCompanies } from "../../../../lib/data/company";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
 import { CompanyManager } from "./CompanyManager";
+import { MergeReview } from "./MergeReview";
+import { listMergeCandidates } from "../../../../lib/data/merge-candidates";
 
 /**
  * Companies — master context §12.
@@ -20,7 +22,10 @@ export default async function CompaniesPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const { data: companies, source } = await listCompanies(org);
+  const [{ data: companies, source }, { data: duplicates }] = await Promise.all([
+    listCompanies(org),
+    listMergeCandidates(org),
+  ]);
 
   return (
     <>
@@ -29,6 +34,7 @@ export default async function CompaniesPage({
           <DemoFigures what="These are example companies, not the ones on your account." />
         </div>
       )}
+      <MergeReview org={org} candidates={duplicates} canWrite={canWrite(viewer)} />
       <CompanyManager org={org} companies={companies} canWrite={canWrite(viewer)} />
     </>
   );

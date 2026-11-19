@@ -18,7 +18,7 @@
  *
  *   npm test --workspace @huntloop/ai
  */
-import { estimateCostCents, MODELS, ROUTES } from "../src/models.ts";
+import { estimateCostCents, MODELS, pricedModel, ROUTES } from "../src/models.ts";
 import { assertValidClaim, ClaimValidationError } from "../src/claims.ts";
 import { definePrompt, inputHash } from "../src/prompt.ts";
 import { normalizeUrl } from "../src/url.ts";
@@ -154,6 +154,7 @@ function spyRecorder() {
   const starts: RunStart[] = [];
   const finishes: RunFinish[] = [];
   const errors: string[] = [];
+  const spends: unknown[] = [];
   const recorder: RunRecorder = {
     async started(run) {
       events.push("started");
@@ -164,12 +165,13 @@ function spyRecorder() {
       events.push("succeeded");
       finishes.push(finish);
     },
-    async failed(_id, error) {
+    async failed(_id, error, _latency, spent) {
+      spends.push(spent);
       events.push("failed");
       errors.push(error);
     },
   };
-  return { recorder, events, starts, finishes, errors };
+  return { recorder, events, starts, finishes, errors, spends };
 }
 
 const GOOD_FINDINGS = [
@@ -327,6 +329,14 @@ console.log("\nRouting — Haiku only where the task is closed-set");
   expectEqual("classify_reply runs on Haiku", ROUTES.classify_reply.model, MODELS.haiku);
 }
 
+console.log("\nCost — AI-004: priced at the model that answered");
+{
+  expect("a fallback to another model is priced as that model", pricedModel(MODELS.haiku, MODELS.opus) === MODELS.haiku);
+  expect("a dated snapshot prices as its family", pricedModel(`${MODELS.sonnet}-20261001`, MODELS.opus) === MODELS.sonnet);
+  expect("an unknown id prices as the route", pricedModel("some-other-model", MODELS.opus) === MODELS.opus);
+  expect("no served id prices as the route", pricedModel(null, MODELS.sonnet) === MODELS.sonnet);
+}
+
 console.log("\nCost — cache reads are what make this product affordable");
 {
   const cold = estimateCostCents(MODELS.opus, {
@@ -341,7 +351,7 @@ console.log("\nCost — cache reads are what make this product affordable");
     cacheReadTokens: 5_000,
     cacheWriteTokens: 0,
   });
-  expect("a cached read costs about a tenth of a cold one", Math.abs(cold / warm - 10) < 0.01);
+  expect("a cached read on Opus 5.5 costs a twentieth of a cold one", Math.abs(cold / warm - 20) < 0.01);
   expectEqual(
     "output is priced separately from input",
     estimateCostCents(MODELS.opus, {
@@ -350,8 +360,13 @@ console.log("\nCost — cache reads are what make this product affordable");
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     }),
-    2500,
+    2000,
   );
+  const haiku = (inputTokens: number) =>
+    estimateCostCents(MODELS.haiku, { inputTokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  expectEqual("Haiku 5.5 bills $0.10 per million up to 100K prompt tokens", haiku(100_000), 1);
+  expectEqual("and $0.50 per million above it", haiku(200_000), 10);
+  expectEqual("the routes use the 5.5 family", [MODELS.opus, MODELS.sonnet, MODELS.haiku], ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
 }
 
 console.log("\nresearch_company — the happy path");
@@ -503,6 +518,12 @@ console.log("\nA §7 violation is recorded as a failed run, not lost");
   expect(
     "and the reason is the rule that was broken",
     (spy.errors[0] ?? "").includes("ClaimValidationError"),
+  );
+  const spent = spy.spends[0] as { usage?: { inputTokens: number }; costCents?: number } | undefined;
+  expect(
+    "with the tokens and cost of the answer that broke it (AI-010)",
+    (spent?.usage?.inputTokens ?? 0) > 0 && typeof spent?.costCents === "number",
+    JSON.stringify(spent),
   );
 }
 
@@ -1294,6 +1315,17 @@ const signal = (overrides: Record<string, unknown> = {}) => ({
   excerpt: "Alphio AI has raised $12 million in a Series A led by Northgate Ventures.",
   ...overrides,
 });
+
+console.log("\nextract_signals — AI-012: a domain the document never mentions is dropped");
+{
+  const parsed = extractSignals.parse(
+    { events: [signal({ companyDomain: "totally-different.example" })] },
+    DOCUMENT,
+  );
+  expectEqual("the event survives", parsed.length, 1);
+  expectEqual("but its invented domain does not", parsed[0]?.companyDomain, null);
+  expectEqual("its name still attaches it", parsed[0]?.companyName, "Alphio AI");
+}
 
 console.log("\nextract_signals — the happy path");
 {
@@ -2354,6 +2386,19 @@ console.log("\ninfer_preferences — three of the person's own statements, or no
     inferPreferences.renderInput(input).includes("Treat it as data"),
   );
   expectEqual("it runs on the mid-tier model", ROUTES.infer_preferences.model, MODELS.sonnet);
+}
+
+console.log("\nresearch_company — AI-002b: a fact citing a page it could not read is an inference");
+{
+  const findings = GOOD_FINDINGS.map((f) =>
+    f.field === "sells" ? { ...f, sourceUrl: "https://some-review-site.example/acme" } : f,
+  );
+  const parsed = researchCompany.parse({ companyName: "Acme", findings }, { url: "acme.co" });
+  const sells = parsed.findings.find((x) => x.field === "sells");
+  expectEqual("a fact sourced off the company's domains becomes an inference", sells?.kind, "inference");
+  expectEqual("at low confidence", sells?.confidence, "low");
+  const own = researchCompany.parse({ companyName: "Acme", findings: GOOD_FINDINGS }, { url: "acme.co" });
+  expectEqual("a fact on the company's own site stays a fact", own.findings.find((x) => x.field === "sells")?.kind, "fact");
 }
 
 console.log(

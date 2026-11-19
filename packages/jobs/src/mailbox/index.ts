@@ -57,6 +57,8 @@ export interface AuthorizedMailbox {
   provider: MailboxProvider;
   accessToken: string;
   syncCursor: string | null;
+  /** When the inbox was last read; null if never. Sequence sends wait for a fresh read. */
+  lastSyncAt: string | null;
   dailyLimit: number;
 }
 
@@ -74,7 +76,7 @@ export async function authorize(
   const { data: row, error } = await scope
     .select(
       "mailboxes",
-      "id, email, provider, status, oauth_token_enc, refresh_token_enc, token_expires_at, sync_cursor, daily_limit",
+      "id, email, provider, status, oauth_token_enc, refresh_token_enc, token_expires_at, sync_cursor, daily_limit, last_sync_at",
     )
     .eq("id", mailboxId)
     .is("deleted_at", null)
@@ -100,6 +102,7 @@ export async function authorize(
       provider,
       accessToken: decryptSecret(String(row.oauth_token_enc)),
       syncCursor: row.sync_cursor ?? null,
+      lastSyncAt: row.last_sync_at ? String(row.last_sync_at) : null,
       dailyLimit: Number(row.daily_limit ?? 0),
     };
   }
@@ -118,6 +121,14 @@ export async function authorize(
     refreshed = await provider.refresh(decryptSecret(String(row.refresh_token_enc)));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
+    /* OUT-012: only the provider saying the grant is no good — a 400 or 401
+       from its token endpoint — means a person has to reconnect. A timeout or
+       a 5xx is the provider's weather; disconnecting on it stopped every
+       mailbox in the org during one outage. Those stay a retryable error. */
+    if (!isRevokedGrant(reason)) {
+      await scope.update("mailboxes", { last_error: reason.slice(0, 1000) }).eq("id", mailboxId);
+      throw new Error(`${row.email} could not be renewed just now and will be retried: ${reason}`);
+    }
     await disconnect(scope, mailboxId, reason);
     throw new MailboxUnavailable(
       mailboxId,
@@ -144,6 +155,7 @@ export async function authorize(
     provider,
     accessToken: refreshed.accessToken,
     syncCursor: row.sync_cursor ?? null,
+    lastSyncAt: row.last_sync_at ? String(row.last_sync_at) : null,
     dailyLimit: Number(row.daily_limit ?? 0),
   };
 }
@@ -173,7 +185,7 @@ export async function disconnect(
  */
 export async function pickMailbox(scope: OrgScope): Promise<string | null> {
   const { data } = await scope
-    .select("mailboxes", "id, daily_limit, sent_today, sent_today_on")
+    .select("mailboxes", "id, daily_limit, sent_today, sent_today_on, warmup_started_at, warmup_target")
     .eq("status", "connected")
     .is("deleted_at", null);
 
@@ -187,12 +199,28 @@ export async function pickMailbox(scope: OrgScope): Promise<string | null> {
       const usedToday = String(row.sent_today_on ?? "").slice(0, 10) === today
         ? Number(row.sent_today ?? 0)
         : 0;
-      return { id: String(row.id), remaining: Number(row.daily_limit ?? 0) - usedToday };
+      /* OUT-010: the same cap `claim_mailbox_send` enforces (0048), so a
+         warming mailbox is not picked over a warm one and then refused. */
+      return { id: String(row.id), remaining: dailyCap(row) - usedToday };
     })
     .filter((m) => m.remaining > 0)
     .sort((a, b) => b.remaining - a.remaining);
 
   return candidates[0]?.id ?? null;
+}
+
+/** A token-endpoint refusal (400/401: `invalid_grant`, revoked consent), as both adapters word it. */
+export function isRevokedGrant(reason: string): boolean {
+  return /refused the token request \((400|401)\)/.test(reason) || /invalid_grant/.test(reason);
+}
+
+/** `mailbox_daily_cap` (0048) in TypeScript: the limit, lowered during warm-up to 10 + 5 a day. */
+export function dailyCap(row: Record<string, unknown>, now: Date = new Date()): number {
+  const limit = Number(row.daily_limit ?? 0);
+  const target = row.warmup_target == null ? limit : Number(row.warmup_target);
+  const started = row.warmup_started_at ? new Date(String(row.warmup_started_at)).getTime() : null;
+  const ramp = started === null ? limit : 10 + 5 * Math.max(0, Math.floor((now.getTime() - started) / 86_400_000));
+  return Math.min(limit, target, ramp);
 }
 
 export type { ProviderId };

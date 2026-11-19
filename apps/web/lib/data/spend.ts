@@ -202,7 +202,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_01",
     task: "qualify_opportunity",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "succeeded",
     costCents: 41.2,
     inputTokens: 4_800,
@@ -214,7 +214,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_02",
     task: "research_company",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "succeeded",
     costCents: 88.6,
     inputTokens: 12_300,
@@ -226,7 +226,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_03",
     task: "explain_why_now",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "succeeded",
     costCents: 12.4,
     inputTokens: 2_100,
@@ -238,7 +238,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_04",
     task: "qualify_opportunity",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "failed",
     costCents: 6.1,
     inputTokens: 1_200,
@@ -250,7 +250,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_05",
     task: "research_company",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "started",
     costCents: 0,
     inputTokens: 0,
@@ -262,7 +262,7 @@ const DEMO_RUNS: SpendRun[] = [
   {
     id: "run_06",
     task: "recommend_sources",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     status: "succeeded",
     costCents: 19.8,
     inputTokens: 3_100,

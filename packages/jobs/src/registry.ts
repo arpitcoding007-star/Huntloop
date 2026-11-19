@@ -71,6 +71,8 @@ import { scheduleDemand } from "./handlers/schedule-demand.ts";
 import { clusterDemandJob } from "./handlers/cluster-demand.ts";
 import { schedulePreferences } from "./handlers/schedule-preferences.ts";
 import { learnPreferencesJob } from "./handlers/learn-preferences.ts";
+import { checkMailboxDomain } from "./handlers/check-mailbox-domain.ts";
+import { profileCompany } from "./handlers/profile-company.ts";
 
 export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_scans: scheduleScans,
@@ -107,4 +109,6 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   cluster_demand: clusterDemandJob,
   schedule_preferences: schedulePreferences,
   learn_preferences: learnPreferencesJob,
+  check_mailbox_domain: (ctx) => checkMailboxDomain(ctx),
+  profile_company: (ctx) => profileCompany(ctx),
 };

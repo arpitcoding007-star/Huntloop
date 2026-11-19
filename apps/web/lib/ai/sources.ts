@@ -10,7 +10,7 @@ import {
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
-import type { AiFailure } from "./outcome";
+import { publicAiError, type AiFailure } from "./outcome";
 
 /**
  * `recommend_sources`, wrapped for the onboarding step that calls it.
@@ -94,7 +94,7 @@ export async function recommend(
     }
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Source recommendation failed.",
+      error: publicAiError(error, "Source recommendation failed."),
     };
   }
 }

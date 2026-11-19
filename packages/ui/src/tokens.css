@@ -386,8 +386,8 @@
      Value does the lifting in Dark; shadows are kept for things that float
      free of the layout (menus, modals), where they separate a layer from
      whatever happens to be under it. */
-  --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
-  --hl-shadow-modal: 0 2px 4px rgba(0, 0, 0, 0.45), 0 32px 72px -16px rgba(0, 0, 0, 0.7);
+  --hl-shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px -4px rgba(0, 0, 0, 0.45);
+  --hl-shadow-modal: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
   --hl-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
   --hl-shadow-card: none;
   --hl-violet-surface: rgba(176, 154, 224, 0.14);
@@ -548,8 +548,8 @@
   --hl-violet-text: #451aaf;
   --hl-tile-neutral: #ececec;
   --hl-tile-neutral-text: #3b3d4a;
-  --hl-shadow-popover: 0 2px 4px rgba(10, 11, 12, 0.05), 0 24px 48px -28px rgba(10, 11, 12, 0.28);
-  --hl-shadow-modal: 0 4px 8px rgba(10, 11, 12, 0.06), 0 48px 90px -36px rgba(10, 11, 12, 0.4);
+  --hl-shadow-popover: 0 1px 2px rgba(10, 11, 12, 0.06), 0 4px 12px -4px rgba(10, 11, 12, 0.1);
+  --hl-shadow-modal: 0 1px 2px rgba(10, 11, 12, 0.06), 0 8px 24px -8px rgba(10, 11, 12, 0.14);
 
   /* ── Sidebar — the reference screenshot, light ──────────────────────
      A flat column a step darker than the page. The active row is a blue

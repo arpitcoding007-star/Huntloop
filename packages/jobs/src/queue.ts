@@ -88,7 +88,11 @@ export type JobName =
   | "cluster_demand"
   /* 0044: the learning layer — one person's habits, from their own actions. */
   | "schedule_preferences"
-  | "learn_preferences";
+  | "learn_preferences"
+  /* 0048: whether a mailbox's domain can send cold email at all. */
+  | "check_mailbox_domain"
+  /* P2-4: facts a company's homepage states about itself, read without a model. */
+  | "profile_company";
 
 export interface JobRow {
   id: string;
@@ -164,6 +168,29 @@ export async function claim(
   return (data ?? []) as JobRow[];
 }
 
+/**
+ * How long the oldest due job has waited, in seconds; 0 when nothing is due.
+ *
+ * The number that tells a stopped engine from a quiet one (P0-6). A tick that
+ * claims nothing looks the same either way; a due job that has waited fifteen
+ * minutes means ticks are not arriving, or not keeping up. Null when it cannot
+ * be read, so a failed probe never reads as healthy.
+ */
+export async function oldestDueSeconds(db: AdminClient = adminClient()): Promise<number | null> {
+  const now = new Date();
+  const { data, error } = await db
+    .from("job_executions")
+    .select("run_at")
+    .eq("status", "queued")
+    .lte("run_at", now.toISOString())
+    .order("run_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  const runAt = (data as { run_at?: string } | null)?.run_at;
+  return runAt ? Math.max(0, Math.round((now.getTime() - new Date(runAt).getTime()) / 1000)) : 0;
+}
+
 export async function succeed(
   jobId: string,
   result: Record<string, unknown>,
@@ -218,6 +245,28 @@ export async function markFailed(
     .eq("id", job.id);
 
   if (error) throw new Error(`markFailed(${job.id}): ${error.message}`);
+}
+
+/**
+ * Gives a claimed job back untouched (JOB-010).
+ *
+ * For a job the worker never started — out of time before its turn. Going
+ * through `markFailed` charged it an attempt and pushed it back by minutes,
+ * so a job could exhaust its retries without ever running. This undoes the
+ * claim instead: same attempt count, same place in the queue.
+ */
+export async function release(job: JobRow, db: AdminClient = adminClient()): Promise<void> {
+  const { error } = await db
+    .from("job_executions")
+    .update({
+      status: "queued",
+      attempts: Math.max(0, job.attempts - 1),
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq("id", job.id)
+    .eq("status", "running");
+  if (error) throw new Error(`release(${job.id}): ${error.message}`);
 }
 
 /** Hands abandoned work back to the queue. Called at the start of every tick. */

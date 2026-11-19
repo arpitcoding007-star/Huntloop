@@ -179,7 +179,7 @@ export const researchCompany: LLMTask<ResearchCompanyInput, CompanyUnderstanding
   entity: () => ({ type: "company", id: null }),
 
   parse: (json, input) => {
-    const { url, canonicalDomain } = normalizeUrl(input.url);
+    const { url, canonicalDomain, fetchDomains: fetchable } = normalizeUrl(input.url);
     if (!json || typeof json !== "object") {
       throw new Error("research_company: response was not an object.");
     }
@@ -229,6 +229,15 @@ export const researchCompany: LLMTask<ResearchCompanyInput, CompanyUnderstanding
             : null,
       };
 
+      /* AI-002b: the fetch tool is restricted to the company's own domains,
+         so a "fact" citing anywhere else cites a page that was never read —
+         recalled or invented. It is kept as an inference, not dropped: the
+         claim may be right, it just is not observed. */
+      if (finding.kind === "fact" && finding.sourceUrl && !citesAllowedDomain(finding.sourceUrl, fetchable)) {
+        finding.kind = "inference";
+        finding.confidence = "low";
+      }
+
       // §7, at the boundary. A fact with no URL never becomes a finding.
       assertValidClaim({
         kind: finding.kind,
@@ -263,4 +272,18 @@ export const researchCompany: LLMTask<ResearchCompanyInput, CompanyUnderstanding
 
 function isResearchField(value: string): value is ResearchField {
   return (RESEARCH_FIELDS as readonly string[]).includes(value);
+}
+
+/** Whether a cited URL is on one of the domains the fetch tool was allowed to read. */
+function citesAllowedDomain(sourceUrl: string, allowed: string[]): boolean {
+  let host: string;
+  try {
+    host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return false;
+  }
+  return allowed.some((d) => {
+    const domain = d.toLowerCase().replace(/^www\./, "");
+    return host === domain || host.endsWith(`.${domain}`);
+  });
 }

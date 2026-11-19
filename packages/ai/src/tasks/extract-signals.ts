@@ -213,9 +213,9 @@ export const extractSignals: LLMTask<SignalDocument, ExtractedSignal[]> = {
   name: "extract_signals",
   prompt: PROMPT,
   schema: SCHEMA,
-  // Eight events with an excerpt each. Haiku has no adaptive thinking, so this
-  // is output budget only.
-  maxTokens: 8_000,
+  // Eight events with an excerpt each, plus room for Haiku 5.5's adaptive
+  // thinking, which shares this budget at medium effort.
+  maxTokens: 16_000,
 
   renderInput: (doc) => {
     const body = doc.text.length > MAX_CHARS ? `${doc.text.slice(0, MAX_CHARS)}\n…[truncated]` : doc.text;
@@ -296,7 +296,13 @@ export const extractSignals: LLMTask<SignalDocument, ExtractedSignal[]> = {
       }
 
       const companyName = text(item.companyName);
-      const companyDomain = domain(item.companyDomain);
+      /* AI-012: the domain becomes a company row's key, so it has to come
+         from the document. A domain the model supplied from memory — or that
+         a page planted in its instructions — is dropped; the name, if any,
+         still attaches the event. */
+      const proposedDomain = domain(item.companyDomain);
+      const label = normalizeForMatch(proposedDomain?.split(".")[0] ?? "");
+      const companyDomain = proposedDomain && label.length >= 3 && haystack.includes(label) ? proposedDomain : null;
 
       /* An event about nobody cannot be attached to a company, and the whole
          point of source_events is that it can. Dropped rather than raised:

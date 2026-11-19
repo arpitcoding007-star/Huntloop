@@ -291,6 +291,24 @@ export async function discoverCompanies(ctx: JobContext): Promise<JobOutcome> {
       idempotencyKey: `research:${scope.orgId}:${row.company_id}`,
     });
     if (didCreate) enqueued++;
+
+    /* Phase 0.2: the fuzzy second pass for duplicates the exact resolution
+       at insert could not see. It only ever proposes, except on a fact
+       (provider id or exact domain) — see `resolve_entity`. */
+    await enqueue({
+      orgId: scope.orgId,
+      name: "resolve_entity",
+      payload: { entityType: "company", entityId: row.company_id },
+      idempotencyKey: `resolve:company:${row.company_id}`,
+    });
+
+    /* P2-4: the homepage's own facts, free, before research reads it. */
+    await enqueue({
+      orgId: scope.orgId,
+      name: "profile_company",
+      payload: { companyId: row.company_id },
+      idempotencyKey: `profile:${row.company_id}`,
+    });
   }
 
   return {

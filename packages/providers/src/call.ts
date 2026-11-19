@@ -37,7 +37,7 @@ import {
 } from "./contract.ts";
 import { readCache, writeCache, type CacheTtl } from "./cache.ts";
 import { recordCall } from "./ledger.ts";
-import { budgetAllows, breakerOpen } from "./budget.ts";
+import { breakerOpen, reserveCredit, settleReservation } from "./budget.ts";
 
 /**
  * The retry policy, in one place.
@@ -131,7 +131,7 @@ export class ProviderRefused extends Error {
 }
 
 export async function callProvider<T>(options: CallOptions<T>): Promise<ProviderResult<T>> {
-  const { db, orgId, capability, provider, requestHash, ttl } = options;
+  const { db, orgId, capability, provider, requestHash } = options;
   const entity = options.entity ?? null;
 
   /* ── 3. breaker ──────────────────────────────────────────────────────
@@ -176,8 +176,10 @@ export async function callProvider<T>(options: CallOptions<T>): Promise<Provider
     }
   }
 
-  /* ── 5. budget ───────────────────────────────────────────────────── */
-  const budget = await budgetAllows(db, orgId, provider);
+  /* ── 5. budget ───────────────────────────────────────────────────────
+     Reserved, not read (PROV-015): the check and the hold are one statement,
+     so parallel lanes cannot each spend the last credit. */
+  const budget = await reserveCredit(db, orgId, provider);
   if (!budget.allowed) {
     const meta = refusal(
       provider,
@@ -188,6 +190,20 @@ export async function callProvider<T>(options: CallOptions<T>): Promise<Provider
     await recordCall(db, { orgId, meta, requestHash, entity });
     throw new ProviderRefused(meta);
   }
+
+  try {
+    return await spend(options, entity);
+  } finally {
+    /* After the ledger has counted the real spend, success or failure. */
+    await settleReservation(db, orgId, provider, budget);
+  }
+}
+
+async function spend<T>(
+  options: CallOptions<T>,
+  entity: { type: string; id: string } | null,
+): Promise<ProviderResult<T>> {
+  const { db, orgId, capability, provider, requestHash, ttl } = options;
 
   /* ── 6. call ─────────────────────────────────────────────────────── */
   const started = Date.now();
