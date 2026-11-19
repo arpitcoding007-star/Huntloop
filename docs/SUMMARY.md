@@ -26,6 +26,7 @@
 * [Core workflows](product/core-workflows.md)
 * [Feature reference](product/features.md)
 * [Plans, quotas and billing](product/plans-and-quotas.md)
+* [Exchange: intent marketplace (proposed)](product/marketplace-spec.md)
 
 ## Architecture
 
