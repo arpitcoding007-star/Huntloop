@@ -121,6 +121,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0051_safety_record_integrity.sql", probe: "migration_0051_applied", kind: "rpc" },
   { file: "0052_reserve_cost_inbox_indexes_verified_domain.sql", probe: "migration_0052_applied", kind: "rpc" },
   { file: "0053_platform_pauses.sql", probe: "migration_0053_applied", kind: "rpc" },
+  { file: "0054_fk_indexes_why_now_date_activation.sql", probe: "migration_0054_applied", kind: "rpc" },
 ];
 
 /**

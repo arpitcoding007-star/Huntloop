@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 53 migrations
-> (`0001_identity.sql` … `0053_platform_pauses.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 54 migrations
+> (`0001_identity.sql` … `0054_fk_indexes_why_now_date_activation.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 9 views · 123 public functions · 10 enum types · 147 RLS policies · 245 indexes · 128 triggers.
+**Totals:** 83 tables · 10 views · 124 public functions · 10 enum types · 147 RLS policies · 262 indexes · 128 triggers.
 
 **RLS enabled on:** 83 of 83 tables.
 
@@ -70,8 +70,10 @@ RLS: **enabled**
 
 **Indexes**
 
+- `activities_company_fk_idx` — `activities USING btree (company_id)`
 - `activities_company_idx` — `activities USING btree (org_id, company_id, occurred_at DESC) WHERE (deleted_at IS NULL)`
 - `activities_kind_idx` — `activities USING btree (org_id, kind, occurred_at DESC) WHERE (deleted_at IS NULL)`
+- `activities_opportunity_fk_idx` — `activities USING btree (opportunity_id)`
 - `activities_opportunity_idx` — `activities USING btree (org_id, opportunity_id, occurred_at DESC) WHERE (deleted_at IS NULL)`
 - `activities_person_idx` — `activities USING btree (org_id, person_id) WHERE (person_id IS NOT NULL)`
 - `activities_projection_key` — `UNIQUE activities USING btree (org_id, ref_type, ref_id, kind) WHERE (ref_id IS NOT NULL)`
@@ -565,6 +567,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `company_triggers_company_fk_idx` — `company_triggers USING btree (company_id)`
 - `company_triggers_recent_idx` — `company_triggers USING btree (org_id, company_id, event_date DESC) WHERE (deleted_at IS NULL)`
 
 **Policies**
@@ -823,6 +826,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `contact_points_person_fk_idx` — `contact_points USING btree (person_id)`
 - `contact_points_person_idx` — `contact_points USING btree (org_id, person_id) WHERE (deleted_at IS NULL)`
 
 **Policies**
@@ -883,6 +887,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `conversation_messages_conversation_fk_idx` — `conversation_messages USING btree (conversation_id)`
 - `conversation_messages_idx` — `conversation_messages USING btree (org_id, conversation_id, created_at)`
 
 **Policies**
@@ -1291,7 +1296,9 @@ RLS: **enabled**
 
 **Indexes**
 
+- `enrollments_campaign_fk_idx` — `enrollments USING btree (campaign_id)`
 - `enrollments_due_idx` — `enrollments USING btree (org_id, next_action_at) WHERE (status = 'active'::text)`
+- `enrollments_opportunity_fk_idx` — `enrollments USING btree (opportunity_id)`
 
 **Policies**
 
@@ -2222,9 +2229,11 @@ RLS: **enabled**
 - `messages_angle_idx` — `messages USING btree (org_id, outreach_angle, sent_at DESC) WHERE ((outreach_angle IS NOT NULL) AND (sent_at IS NOT NULL))`
 - `messages_awaiting_approval_idx` — `messages USING btree (org_id, created_at DESC) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (scheduled_at IS NULL) AND (deleted_at IS NULL))`
 - `messages_one_per_enrollment_step` — `UNIQUE messages USING btree (enrollment_id, step_id) WHERE ((direction = 'outbound'::text) AND (enrollment_id IS NOT NULL) AND (step_id IS NOT NULL) AND (deleted_at IS NULL))`
+- `messages_opportunity_fk_idx` — `messages USING btree (opportunity_id)`
 - `messages_opportunity_idx` — `messages USING btree (org_id, opportunity_id, created_at DESC) WHERE (opportunity_id IS NOT NULL)`
 - `messages_scheduled_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (deleted_at IS NULL))`
 - `messages_sendable_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (error IS NULL) AND (deleted_at IS NULL))`
+- `messages_step_fk_idx` — `messages USING btree (step_id)`
 - `messages_thread_created_idx` — `messages USING btree (thread_id, created_at)`
 - `messages_thread_idx` — `messages USING btree (org_id, thread_id, created_at)`
 
@@ -2315,6 +2324,7 @@ RLS: **enabled**
 | `next_step_set_at` | timestamp with time zone | null |  |
 | `estimated_value_cents` | bigint | null |  |
 | `estimated_value_currency` | text | NOT NULL | `'USD'::text` |
+| `why_now_written_at` | timestamp with time zone | null |  |
 
 **Constraints**
 
@@ -2334,6 +2344,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `opportunities_company_fk_idx` — `opportunities USING btree (company_id)`
 - `opportunities_contacts_unsought_idx` — `opportunities USING btree (org_id, priority) WHERE ((contacts_sought_at IS NULL) AND (deleted_at IS NULL))`
 - `opportunities_crm_sync_requested_idx` — `opportunities USING btree (crm_sync_requested_at) WHERE ((crm_sync_requested_at IS NOT NULL) AND (deleted_at IS NULL))`
 - `opportunities_next_step_due_idx` — `opportunities USING btree (org_id, next_step_due_at) WHERE ((next_step_due_at IS NOT NULL) AND (deleted_at IS NULL))`
@@ -2406,6 +2417,7 @@ RLS: **enabled**
 
 - `opportunity_scores_current_idx` — `opportunity_scores USING btree (org_id, opportunity_id, computed_at DESC)`
 - `opportunity_scores_drift_idx` — `opportunity_scores USING btree (org_id, model_version, computed_at DESC)`
+- `opportunity_scores_opportunity_fk_idx` — `opportunity_scores USING btree (opportunity_id)`
 - `opportunity_scores_prompt_drift_idx` — `opportunity_scores USING btree (org_id, prompt_version, computed_at DESC) WHERE (prompt_version IS NOT NULL)`
 
 **Policies**
@@ -2514,6 +2526,7 @@ RLS: **enabled**
 **Indexes**
 
 - `outcomes_learning_idx` — `outcomes USING btree (org_id, kind, occurred_at DESC)`
+- `outcomes_opportunity_fk_idx` — `outcomes USING btree (opportunity_id)`
 - `outcomes_score_idx` — `outcomes USING btree (org_id, score_id) WHERE (score_id IS NOT NULL)`
 
 **Policies**
@@ -2566,6 +2579,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `people_company_fk_idx` — `people USING btree (company_id)`
 - `people_company_idx` — `people USING btree (org_id, company_id)`
 - `people_company_rank_idx` — `people USING btree (org_id, company_id, seniority_rank DESC) WHERE (deleted_at IS NULL)`
 
@@ -3150,6 +3164,10 @@ RLS: **enabled**
 - PK `sequence_steps_pkey` — `PRIMARY KEY (id)`
 - UNIQUE `sequence_steps_org_id_sequence_id_position_key` — `UNIQUE (org_id, sequence_id, "position")`
 
+**Indexes**
+
+- `sequence_steps_sequence_fk_idx` — `sequence_steps USING btree (sequence_id)`
+
 **Policies**
 
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
@@ -3261,7 +3279,9 @@ RLS: **enabled**
 
 **Indexes**
 
+- `source_events_company_fk_idx` — `source_events USING btree (company_id)`
 - `source_events_company_idx` — `source_events USING btree (org_id, company_id, event_date DESC)`
+- `source_events_document_fk_idx` — `source_events USING btree (source_document_id)`
 
 **Policies**
 
@@ -3419,6 +3439,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `threads_opportunity_fk_idx` — `threads USING btree (opportunity_id)`
 - `threads_org_last_message_idx` — `threads USING btree (org_id, last_message_at DESC NULLS LAST) WHERE (deleted_at IS NULL)`
 - `threads_provider_idx` — `UNIQUE threads USING btree (org_id, mailbox_id, provider_thread_id) WHERE (provider_thread_id IS NOT NULL)`
 
@@ -3504,6 +3525,7 @@ RLS: **enabled**
 - `discovery_performance`
 - `job_dead_letters`
 - `job_health`
+- `org_activation`
 - `persona_performance`
 - `pipeline_throughput`
 - `provider_health`
@@ -3611,6 +3633,7 @@ RLS: **enabled**
 | `migration_0051_applied` |  | boolean |  |
 | `migration_0052_applied` |  | boolean |  |
 | `migration_0053_applied` |  | boolean |  |
+| `migration_0054_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

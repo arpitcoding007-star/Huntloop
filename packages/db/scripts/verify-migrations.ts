@@ -128,6 +128,21 @@ for (const f of files) {
   }
 }
 
+/* PERF-302's ratchet (asserted in the 0054 block). Counted here, on the
+   migrations alone, because later blocks create test tables of their own. */
+const unindexedFkAfterMigrations = Number(
+  (
+    await db.query<{ n: number }>(
+      `select count(*)::int as n
+         from pg_constraint c
+        where c.contype = 'f' and array_length(c.conkey, 1) = 1
+          and c.connamespace = 'public'::regnamespace
+          and not exists (select 1 from pg_index i
+                           where i.indrelid = c.conrelid and i.indkey[0] = c.conkey[1])`,
+    )
+  ).rows[0]?.n,
+);
+
 // ── Fixtures ───────────────────────────────────────────────────────────────
 console.log("\nSeeding fixtures");
 await db.exec(`
@@ -2014,6 +2029,72 @@ console.log("\n0053 — the kill switch (PROD-207)");
   const peek = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_A]);
   if (peek.rows[0]?.r === null) ok("and cannot learn another workspace's pause");
   else fail("cannot learn another workspace's pause", JSON.stringify(peek.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0054 — hot-path FK indexes (PERF-302), why-now date (TRUST-301), activation (ANL-301)");
+{
+  const HOT_PATH = [
+    "opportunities_company_fk_idx", "opportunity_scores_opportunity_fk_idx", "people_company_fk_idx",
+    "contact_points_person_fk_idx", "enrollments_opportunity_fk_idx", "enrollments_campaign_fk_idx",
+    "messages_opportunity_fk_idx", "messages_step_fk_idx", "threads_opportunity_fk_idx",
+    "activities_opportunity_fk_idx", "activities_company_fk_idx", "company_triggers_company_fk_idx",
+    "source_events_company_fk_idx", "source_events_document_fk_idx",
+    "conversation_messages_conversation_fk_idx", "sequence_steps_sequence_fk_idx", "outcomes_opportunity_fk_idx",
+  ];
+  const idx = await db.query<{ indexname: string }>(
+    `select indexname from pg_indexes where schemaname = 'public' and indexname = any($1)`,
+    [HOT_PATH],
+  );
+  if (idx.rows.length === HOT_PATH.length) ok(`the ${HOT_PATH.length} hot-path FK indexes exist`);
+  else fail("the hot-path FK indexes exist", `${idx.rows.length}/${HOT_PATH.length}`);
+
+  /* A ratchet, not an allow-list of 125 names: a new single-column FK with no
+     index leading on it raises the count and fails here. Index it, or raise
+     the ceiling in the same change and say why. */
+  const UNINDEXED_FK_CEILING = 125;
+  const n = unindexedFkAfterMigrations;
+  if (n <= UNINDEXED_FK_CEILING) ok(`unindexed single-column FKs: ${n} (ceiling ${UNINDEXED_FK_CEILING})`);
+  else fail("no new FK lands without an index", `${n} > ceiling ${UNINDEXED_FK_CEILING}`);
+
+  const col = await db.query(
+    `select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'opportunities' and column_name = 'why_now_written_at'`,
+  );
+  if (col.rows.length === 1) ok("opportunities.why_now_written_at exists");
+  else fail("opportunities.why_now_written_at exists", "missing");
+
+  await db.exec("begin");
+  await db.query(
+    `insert into opportunity_scores (org_id, opportunity_id, model_version, score, confidence, explanation, computed_at)
+     values ($1, '0bbbbbbb-0000-0000-0000-00000000000a', 'fixture', 80, 'high', 'fixture', '2026-01-02T00:00:00Z')`,
+    [ORG_A],
+  );
+  const all = await db.query<{ org_id: string; first_warm_at: string | null; sent_30d: number }>(
+    `select org_id, first_warm_at, sent_30d from public.org_activation order by slug`,
+  );
+  const a = all.rows.find((r) => r.org_id === ORG_A);
+  /* Earlier blocks leave sent messages behind, so the count is checked
+     against the table rather than against a number. */
+  const sent = await db.query<{ n: number }>(
+    `select count(*)::int as n from messages
+      where org_id = $1 and direction = 'outbound' and deleted_at is null
+        and sent_at > now() - interval '30 days'`,
+    [ORG_A],
+  );
+  if (all.rows.length === 2 && a?.first_warm_at && Number(a.sent_30d) === Number(sent.rows[0]?.n)) {
+    ok("org_activation: one row per workspace, first warm opportunity dated, sends counted");
+  } else {
+    fail("org_activation reads the loop", JSON.stringify(all.rows));
+  }
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["33333333-3333-3333-3333-333333333333"]);
+  const own = await db.query<{ org_id: string }>(`select org_id from public.org_activation`);
+  if (own.rows.length === 1 && own.rows[0]?.org_id === "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb") {
+    ok("a session sees only its own workspace's row (security_invoker)");
+  } else {
+    fail("a session sees only its own workspace's row", JSON.stringify(own.rows));
+  }
   await db.exec("rollback");
 }
 
