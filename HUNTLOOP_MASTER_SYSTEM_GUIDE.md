@@ -5,7 +5,7 @@
 > Parts 10 to 14 are for developers.
 >
 > **Written from the code** on branch `feat/pass-15-audit-fixes`, 19 Nov 2026,
-> with 55 migrations. Where this guide and the code disagree, the code wins.
+> with 56 migrations. Where this guide and the code disagree, the code wins.
 
 ### How to read the labels in this guide
 
@@ -162,6 +162,13 @@ more frequent than daily. Each knock:
 1. **Sweeps**: schedulers look at the clock and add jobs that are due (a
    source that hasn't been scanned for its interval, a follow-up that is due).
 2. **Ticks**: a batch of waiting jobs is picked up and run.
+
+**Workspaces take turns** (migration 0056). If one company imports 10,000
+companies and queues 20,000 jobs, it does not hold everyone else up: each
+workspace with work waiting gets its oldest job picked first, then each one's
+second-oldest, and so on. Inside one workspace, oldest still goes first. The
+same rule applies when drafting the next campaign step and when picking
+approved emails to send.
 
 If the clock stops, nothing new happens, but nothing breaks either: the jobs
 wait. If a job fails, it is retried a few times and then marked "given up on",
@@ -667,13 +674,13 @@ only in the app.
 | Providers | `packages/providers`: Apollo (search, person match), Hunter (email finding), ZeroBounce (verification); budgets reserved before each call |
 | Email out | Gmail and Microsoft Graph via OAuth (`packages/jobs`); product email via Resend |
 | CRM | HubSpot (`packages/crm`), one-way push |
-| Observability | Sentry; server-side analytics only; CSP in report-only mode |
+| Observability | Sentry 11, set to collect nothing personal (`lib/sentry-data-collection.ts`); server-side analytics only; CSP in report-only mode |
 
 ### Monorepo
 
 ```
 apps/web            Next.js app: pages, server actions, lib/data loaders, lib/ai wrappers
-packages/db         55 migrations, PGlite verification suites, doctor, seed, schema reference
+packages/db         56 migrations, PGlite verification suites, doctor, seed, schema reference
 packages/jobs       job handlers, queue, scheduler, mailbox adapters, email templates
 packages/ai         LLM task definitions, prompt versioning, grounding checks
 packages/providers  vendor adapters, budget reservation, caching, circuit breakers
@@ -837,6 +844,8 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 | TRUST-301: why-now text had no date and could say "three days ago" | `why_now_written_at` (0054), "Written <date>" on the page, both prompts forbid relative time, fixtures fixed | ✅ |
 | PERF-302: 142 unindexed foreign keys | 17 hot-path indexes (0054); a ratchet check fails the build if a new unindexed FK appears (ceiling 125) | ✅ |
 | ANL-301: nothing measured activation | `org_activation` view (0054), tenant-scoped, shown as **Is the loop working?** on Performance | ✅ |
+| JOB-202/JOB-301: one workspace's backlog could stall everyone | Round-robin claiming and fair sweeps (0056) | ✅ |
+| Sentry 10 → 11 (5 moderate advisories) | Upgraded to 11.11.0; v11's new data-collection defaults switched off explicitly; Node minimum 22.12 | ✅ |
 | DB-202: five status columns accepted any text | CHECKs on mailbox, job, campaign, thread (status and reply class) and AI-run statuses (0055) | ✅ |
 | UX-301: `/compare` and `/for` gave 404 | Redirect to the home page | ✅ |
 | SEO-302: `/discover` not in the sitemap | **No change, on purpose**: its URLs carry company domains, and `sitemap.ts` records that decision | ✅ decided |
@@ -864,13 +873,13 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 
 | # | Blocker | Who |
 |---|---|---|
-| 1 | Apply migrations 0048 → 0055 to production, then deploy, in that order | Owner with Supabase access |
+| 1 | Apply migrations 0048 → 0056 to production, then deploy, in that order | Owner with Supabase access |
 | 2 | One live run with real keys (Anthropic, Apollo, Hunter, ZeroBounce, Gmail/Graph, HubSpot) | Owner |
 | 3 | Set `CRON_SECRET` and `HUNTLOOP_URL` on the GitHub repo so the 5-minute tick workflow runs (or move to a plan with minute cron) | Owner |
 | 4 | Seven legal facts for the legal pages (`LEGAL-01`) | Owner / counsel |
 | 5 | Billing decision and Stripe keys | Owner |
-| 6 | Sentry SDK has moderate advisories that need a major upgrade (`@sentry/nextjs` 11) | Engineering, as its own change |
-| 7 | Exchange: run the demand test before any buyer-side code | Founder |
+| 6 | Exchange: run the demand test before any buyer-side code | Founder |
+| 7 | Fix or delete the `huntloop` Vercel project (no root directory set; `huntloop-web` is the real app) | Owner with Vercel access |
 
 ---
 
