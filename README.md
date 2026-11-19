@@ -76,9 +76,10 @@ nothing in this UI is communicated by colour alone.
 
 ## Local development
 
-Requires Node 22.6+ — the version in `package.json`'s `engines` field. The
-floor is 22.6 rather than 20 because `packages/ai` and `packages/db` run their
-test suites through `node --experimental-strip-types`, which lands there.
+Requires Node 22.12+ — the version in `package.json`'s `engines` field. The
+floor is 22.12 because Sentry 11 supports Node 22 only from 22.12, and it is
+above 20 because `packages/ai` and `packages/db` run their test suites through
+`node --experimental-strip-types`, which lands in 22.6.
 
 ```bash
 npm install

@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./lib/sentry-data-collection";
 
 /**
  * Browser-side error reporting.
@@ -12,7 +13,8 @@ import * as Sentry from "@sentry/nextjs";
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   tracesSampleRate: 0,
-  sendDefaultPii: false,
+  // Nothing personal leaves; see lib/sentry-data-collection.ts (v11's replacement for sendDefaultPii).
+  dataCollection: SENTRY_DATA_COLLECTION,
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV,
 
   /*

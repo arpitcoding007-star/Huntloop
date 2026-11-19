@@ -22,7 +22,7 @@
     "live-check": "node --experimental-strip-types scripts/live-check.ts"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
