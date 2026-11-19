@@ -5,7 +5,7 @@
 > Parts 10 to 14 are for developers.
 >
 > **Written from the code** on branch `feat/pass-15-audit-fixes`, 19 Nov 2026,
-> with 54 migrations. Where this guide and the code disagree, the code wins.
+> with 55 migrations. Where this guide and the code disagree, the code wins.
 
 ### How to read the labels in this guide
 
@@ -501,7 +501,17 @@ records the outcome, and withdraws queued mail when a deal closes.
 
 #### Performance · `/[org]/performance` and `/report` ✅
 
-Where replies come from, your pace against goals, reply rate, meeting rate,
+**Is the loop working?** (top card, new): the five steps of the loop (workspace
+created, first hot or warm opportunity, first email sent, first reply, first
+meeting), each with the date it first happened and the day since sign-up. The
+next step is highlighted with what to do and a **Go there** link. Below it,
+the last 30 days: sent, replies, reply rate, the share of AI drafts rejected,
+and meetings. A rate with nothing to divide by shows "—", not 0%. The badge
+reads **Activated** once the first email went out within 7 days of sign-up.
+It is the whole workspace, whatever "Me / Everyone" is set to. Reads the
+`org_activation` view (`getActivation`).
+
+Below that: where replies come from, your pace against goals, reply rate, meeting rate,
 time to an answer, pipeline value, why deals ended, stalled deals, and what it
 cost. **Set goals** (admins) → `saveGoalsAction`. **Summarise this period** →
 `explainPerformanceAction` (AI). The report page has **Print or save as PDF**.
@@ -663,7 +673,7 @@ only in the app.
 
 ```
 apps/web            Next.js app: pages, server actions, lib/data loaders, lib/ai wrappers
-packages/db         54 migrations, PGlite verification suites, doctor, seed, schema reference
+packages/db         55 migrations, PGlite verification suites, doctor, seed, schema reference
 packages/jobs       job handlers, queue, scheduler, mailbox adapters, email templates
 packages/ai         LLM task definitions, prompt versioning, grounding checks
 packages/providers  vendor adapters, budget reservation, caching, circuit breakers
@@ -826,7 +836,8 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 | **"Why now" was never saved on real workspaces** (found in this pass) | Nothing on the live path wrote `opportunities.why_now`. New `refreshWhyNowAction` and **Work out why now** button, reading evidence from the database | ✅ code + tests · ⚠️ not run against a live model |
 | TRUST-301: why-now text had no date and could say "three days ago" | `why_now_written_at` (0054), "Written <date>" on the page, both prompts forbid relative time, fixtures fixed | ✅ |
 | PERF-302: 142 unindexed foreign keys | 17 hot-path indexes (0054); a ratchet check fails the build if a new unindexed FK appears (ceiling 125) | ✅ |
-| ANL-301: nothing measured activation | `org_activation` view (0054), tenant-scoped | ✅ |
+| ANL-301: nothing measured activation | `org_activation` view (0054), tenant-scoped, shown as **Is the loop working?** on Performance | ✅ |
+| DB-202: five status columns accepted any text | CHECKs on mailbox, job, campaign, thread (status and reply class) and AI-run statuses (0055) | ✅ |
 | UX-301: `/compare` and `/for` gave 404 | Redirect to the home page | ✅ |
 | SEO-302: `/discover` not in the sitemap | **No change, on purpose**: its URLs carry company domains, and `sitemap.ts` records that decision | ✅ decided |
 | Exchange demand-test kit | [docs/product/exchange-demand-test.md](docs/product/exchange-demand-test.md) | ✅ written · not run |
@@ -844,7 +855,7 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 | Safety: suppressions, caps, domain checks, approval guard, kill switch | ✅ (0051–0053 must be applied in production) |
 | HubSpot push | ✅ ⚠️ not proven live |
 | Prospect demand themes, memory, preferences | ✅ |
-| Activation metrics | 🟡 view exists; no screen reads it yet |
+| Activation metrics | ✅ Performance → Is the loop working? |
 | Billing | ❌ **No payment path.** Plans are priced and shown; Stripe is not implemented. Deferred by decision (decision log #1). |
 | Public API, webhooks | ❌ Deliberately not built (no external consumer yet) |
 | Exchange marketplace (B2C/B2B buyers) | 📝 Planned only. See Part 15. |
@@ -853,7 +864,7 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 
 | # | Blocker | Who |
 |---|---|---|
-| 1 | Apply migrations 0048 → 0054 to production, then deploy, in that order | Owner with Supabase access |
+| 1 | Apply migrations 0048 → 0055 to production, then deploy, in that order | Owner with Supabase access |
 | 2 | One live run with real keys (Anthropic, Apollo, Hunter, ZeroBounce, Gmail/Graph, HubSpot) | Owner |
 | 3 | Set `CRON_SECRET` and `HUNTLOOP_URL` on the GitHub repo so the 5-minute tick workflow runs (or move to a plan with minute cron) | Owner |
 | 4 | Seven legal facts for the legal pages (`LEGAL-01`) | Owner / counsel |
