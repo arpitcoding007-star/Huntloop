@@ -215,7 +215,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
   return (
-    <div className="overflow-x-auto print:overflow-visible">
+    /* A11Y-301: on a phone this scrolls sideways, and a region that scrolls
+       must be reachable from the keyboard to be scrolled at all. */
+    <div
+      className="hl-focusable overflow-x-auto print:overflow-visible"
+      tabIndex={0}
+      role="region"
+      aria-label={`${head.join(", ")} table`}
+    >
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr>

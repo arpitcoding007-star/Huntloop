@@ -34,28 +34,56 @@ import { expect, test } from "@playwright/test";
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
 /**
- * One page per distinct layout, rather than every route.
+ * Every route, not one per layout.
  *
- * These five cover the four shells the app actually has — marketing, auth,
- * onboarding, and the org chrome — plus the design-system gallery, which is
- * where a component regresses before any screen shows it. Adding the other
- * thirty routes would multiply runtime for pages whose structure is already
- * represented here.
+ * This used to be five pages, one per shell, on the argument that the other
+ * routes share their structure. Pass 17 (A11Y-301) ran axe on all of them and
+ * found every violation on a page this list skipped: an unlabelled file input
+ * on Imports, contrast on the Inbox's provenance chip and the Companies table,
+ * a scroll region on the report. Components that live on one page are only
+ * checked by checking that page. All of them together take about two minutes.
  */
+const ORG_ROUTES = [
+  "dashboard", "opportunities", "opportunities/alphio-ai", "companies", "companies/demo-company-1",
+  "competitors", "competitors/demo-competitor-1", "analytics", "analyze", "assistant", "demand",
+  "imports", "inbox", "intelligence", "learn", "memory", "needs-you", "ops", "outreach", "outreach/log",
+  "performance", "performance/report", "pipeline", "settings", "settings/icp", "settings/integrations",
+  "settings/privacy", "settings/product", "settings/scoring", "settings/you", "sources", "team",
+  "team/assignments",
+];
+
 const PAGES: { path: string; name: string }[] = [
   { path: "/", name: "the landing page" },
   { path: "/login", name: "sign-in" },
-  { path: "/demo/dashboard", name: "the Command Center" },
-  { path: "/demo/opportunities", name: "the opportunity list" },
+  { path: "/signup", name: "sign-up" },
+  { path: "/discover", name: "anonymous research" },
+  { path: "/for/founder-led-sales", name: "a use-case page" },
   { path: "/kitchen-sink", name: "the design-system gallery" },
+  ...ORG_ROUTES.map((route) => ({ path: `/demo/${route}`, name: `/demo/${route}` })),
 ];
+
+/**
+ * Rules switched off for one page, each with its reason. Empty is the goal.
+ *
+ * `scrollable-region-focusable` on the org shell's `<main>`: it scrolls, and
+ * it carries `tabIndex={-1}` so the skip link can focus it, after which the
+ * arrow keys scroll it. Axe wants `tabIndex={0}`, which would add a tab stop
+ * to the frame of every page. Pages with focusable content (all but this
+ * one in demo data) pass anyway.
+ */
+const PAGE_EXCEPTIONS: Record<string, string[]> = {
+  "/demo/intelligence": ["scrollable-region-focusable"],
+};
 
 test.describe("accessibility", () => {
   for (const { path, name } of PAGES) {
     test(`${name} has no detectable WCAG A/AA violation`, async ({ page }) => {
       await page.goto(path);
 
-      const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      const { violations } = await new AxeBuilder({ page })
+        .withTags(TAGS)
+        .disableRules(PAGE_EXCEPTIONS[path] ?? [])
+        .analyze();
 
       /* Reported as a readable list rather than as a bare count. A failure
          saying "expected 0, got 3" sends the next person to go and re-run
