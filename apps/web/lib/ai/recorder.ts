@@ -2,6 +2,7 @@ import { nullRecorder, type RunFinish, type RunRecorder, type RunSpend, type Run
 import { resolveDataSource } from "../data/source";
 import { canSpend, currentViewer } from "../data/membership";
 import type { TenantClient } from "@huntloop/db";
+import { pauseState } from "@huntloop/db/pause";
 
 /**
  * `ai_runs`, written through the caller's own session.
@@ -92,6 +93,13 @@ export async function resolveRecorder(orgSlug: string): Promise<RecorderOutcome>
   /* SEC-008. Reading the org proved membership, not the right to spend: a
      viewer passed, and the `ai_runs` insert RLS refused them was then
      treated as "run unmetered". Checked here, once, for every model path. */
+  /* PROD-207: the kill switch, for every model call the app makes. An
+     unreadable answer keeps the AI budget's fail-open posture. */
+  const pause = await pauseState(db, "ai", orgId);
+  if (pause.paused) {
+    return { ok: false, error: `Model calls are paused by an operator: ${pause.reason}` };
+  }
+
   if (!canSpend(await currentViewer(orgSlug))) {
     return {
       ok: false,

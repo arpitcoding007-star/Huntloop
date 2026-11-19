@@ -28,6 +28,7 @@
  * task, against the same `usage_counters` the plan quota uses — so the ceiling
  * a customer sees on the billing screen is the ceiling the engine obeys.
  */
+import { pauseState } from "@huntloop/db/pause";
 import {
   isAiConfigured,
   runTask,
@@ -160,6 +161,13 @@ export async function runForOrg<TInput, TOutput>(
       "ANTHROPIC_API_KEY is not set on this deployment, so nothing can be extracted, " +
         "qualified or written. The documents were still fetched and stored.",
     );
+  }
+
+  /* PROD-207: the kill switch. Unreadable keeps the AI budget's fail-open
+     posture (see `withinBudget`); a pause someone set is honoured. */
+  const pause = await pauseState(scope, "ai", scope.orgId);
+  if (pause.paused) {
+    throw new AiUnavailable(`Model calls are paused by an operator: ${pause.reason}`);
   }
 
   const budget = await withinBudget(scope);

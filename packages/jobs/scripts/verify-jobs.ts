@@ -1432,6 +1432,42 @@ console.log("\nsend_message — PROD-201: a database without 0050 fails loudly")
   setAdminClientForTests(null);
 }
 
+console.log("\nsend_message — PROD-207: the kill switch");
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: "Bounce spike, investigating", error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  const wait = calls.find((c) => c.table === "messages" && c.verb === "update" && "wait_reason" in ((c.payload as object) ?? {}));
+  expect("a paused deployment sends nothing", outcome.ok && !markedSent(calls));
+  expect("it waits instead, so lifting the pause sends it", calls.some((c) => c.verb === "update" && "not_before" in ((c.payload as object) ?? {})));
+  expect("and the inbox shows the operator's reason", String((wait?.payload as { wait_reason?: string })?.wait_reason).includes("Bounce spike"));
+  expect("nothing was claimed or spent", !calls.some((c) => c.table === "claim_mailbox_send" || c.table === "can_contact"));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: null, error: { code: "08006", message: "connection failure" } },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an unreadable pause state also waits (sends fail closed)", outcome.ok && !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: null, error: { code: "PGRST202", message: "not found" } },
+  });
+  const original = gmail.send;
+  gmail.send = async () => ({ providerMessageId: "g-nopause", providerThreadId: "t", messageIdHeader: "<n@b>" });
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+  expect("before 0053 (no switch at all) sending is not blocked", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
 console.log("\nsend_message — §78: sent means sent, and failed means failed");
 
 {
