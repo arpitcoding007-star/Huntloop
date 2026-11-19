@@ -154,8 +154,10 @@ step that touches another person.
 ### The heartbeat
 
 Huntloop has a list of jobs waiting to be done, kept in a database table
-called `job_executions`. Once a minute a clock (a Vercel cron) knocks on
-`/api/jobs/tick`. Each knock:
+called `job_executions`. Every five minutes a clock knocks on
+`/api/jobs/tick`. The clock is a GitHub Actions workflow
+(`.github/workflows/tick.yml`), because the Vercel Hobby plan refuses any cron
+more frequent than daily. Each knock:
 
 1. **Sweeps**: schedulers look at the clock and add jobs that are due (a
    source that hasn't been scanned for its interval, a follow-up that is due).
@@ -165,9 +167,11 @@ If the clock stops, nothing new happens, but nothing breaks either: the jobs
 wait. If a job fails, it is retried a few times and then marked "given up on",
 where you can see it on the **Engine** screen and retry it.
 
-> ⚠️ The clock needs a Vercel plan that allows a once-a-minute cron. If the
-> deployment is on a plan that doesn't, the engine only runs when something
-> else calls the tick.
+> ⚠️ The workflow does nothing until the repository has the secret
+> `CRON_SECRET` (the same value as on Vercel) and the variable `HUNTLOOP_URL`
+> (the production address). GitHub may delay scheduled runs, and pauses them
+> on a repository with no activity for 60 days. Moving to a Vercel plan with
+> minute-level cron (or to Inngest) retires the workflow.
 
 ### The emergency stop (kill switch) ✅ (migration 0053)
 
@@ -648,7 +652,7 @@ only in the app.
 |---|---|
 | Web | Next.js 16.4.5 (App Router, Turbopack), React, TypeScript, Tailwind v4 |
 | Data | Supabase Postgres with row-level security on all 83 tables; Supabase Auth (magic link) |
-| Jobs | A Postgres table (`job_executions`), claimed with `for update skip locked`, driven by `/api/jobs/tick` (Vercel cron) |
+| Jobs | A Postgres table (`job_executions`), claimed with `for update skip locked`, driven by `/api/jobs/tick`, called every 5 minutes by a GitHub Actions workflow (`tick.yml`) |
 | AI | Anthropic Claude through `packages/ai`, 16 tasks, each with a versioned prompt and a JSON schema; every run is recorded in `ai_runs` |
 | Providers | `packages/providers`: Apollo (search, person match), Hunter (email finding), ZeroBounce (verification); budgets reserved before each call |
 | Email out | Gmail and Microsoft Graph via OAuth (`packages/jobs`); product email via Resend |
@@ -705,7 +709,7 @@ flowchart TB
   H --> HS[HubSpot]
   SA --> AI
   CB --> PG
-  CRON[Vercel cron, every minute] --> TICK
+  CRON[GitHub Actions tick.yml, every 5 min] --> TICK
 ```
 
 ---
@@ -767,7 +771,7 @@ flowchart TD
   OUTC --> LEARN[Learning]
   LEARN --> SCORE
   SCORE --> HS[HubSpot push · needs token]
-  TICK[The clock · needs minute cron] -.drives.-> DISC & SIG & RES & SEND & SYNC & LEARN
+  TICK[The clock · tick.yml + CRON_SECRET] -.drives.-> DISC & SIG & RES & SEND & SYNC & LEARN
 ```
 
 **What this means:** without the clock, the product only does what a person
@@ -851,7 +855,7 @@ and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18
 |---|---|---|
 | 1 | Apply migrations 0048 → 0054 to production, then deploy, in that order | Owner with Supabase access |
 | 2 | One live run with real keys (Anthropic, Apollo, Hunter, ZeroBounce, Gmail/Graph, HubSpot) | Owner |
-| 3 | Minute-level cron on the Vercel plan | Owner |
+| 3 | Set `CRON_SECRET` and `HUNTLOOP_URL` on the GitHub repo so the 5-minute tick workflow runs (or move to a plan with minute cron) | Owner |
 | 4 | Seven legal facts for the legal pages (`LEGAL-01`) | Owner / counsel |
 | 5 | Billing decision and Stripe keys | Owner |
 | 6 | Sentry SDK has moderate advisories that need a major upgrade (`@sentry/nextjs` 11) | Engineering, as its own change |
