@@ -200,7 +200,8 @@ There is deliberately **no Inngest SDK dependency**. The durable steps in this
 system are rows in `job_executions`; re-expressing them as Inngest step
 functions would create a second definition of "what work is outstanding", and
 the two would disagree the first time one of them was down. The dependency is
-an eleven-line HMAC signature check.
+the slice of Inngest's SDK protocol the route needs: sync (PUT), a signed call
+(POST), in `apps/web/lib/inngest.ts`.
 
 ## Observing it
 

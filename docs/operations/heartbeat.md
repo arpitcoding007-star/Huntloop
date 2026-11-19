@@ -97,8 +97,19 @@ Hobby, use Inngest instead.
 
 ### B — Inngest (free, already built, recommended on Hobby)
 
-Set **both** `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. `/api/inngest`
-serves the identical tick, and the queue is in Postgres either way.
+Set **both** `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`, and
+`NEXT_PUBLIC_SITE_URL`. Then sync the app in the Inngest dashboard at
+`https://<your domain>/api/inngest` (or send that URL a `PUT`). It registers one
+function, **Run one engine tick**, every five minutes. `/api/inngest` serves the
+identical tick, and the queue is in Postgres either way.
+
+{% hint style="warning" %}
+The sync and signature code was rewritten to Inngest's SDK spec on 19 Nov 2026
+(the earlier version could not have worked) and has not yet been run against a
+live Inngest account. After the first sync, confirm the function is listed in
+Inngest, and that within five minutes a run appears in its history whose
+output is the tick report (jobs claimed, completed, failed).
+{% endhint %}
 
 Inngest keeps a run history, retries the invocation itself, and can be paused —
 worth having once the engine is spending money on a customer's behalf. Vercel
