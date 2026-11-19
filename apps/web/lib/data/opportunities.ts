@@ -388,7 +388,7 @@ async function evidenceFor(
 ): Promise<EvidenceItem[]> {
   const { data, error } = await db
     .from("evidence")
-    .select("claim, kind, confidence, source_url, excerpt, event_date, observed_at, reliability")
+    .select("claim, kind, confidence, source_url, excerpt, event_date, observed_at, reliability, evidence_citations(count)")
     .eq("org_id", orgId)
     .or(
       `and(subject_type.eq.opportunity,subject_id.eq.${opportunityId}),` +

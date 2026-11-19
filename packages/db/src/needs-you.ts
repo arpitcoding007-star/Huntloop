@@ -69,6 +69,12 @@ export interface AttentionCandidate {
   nextStep?: string | null;
   /** A short fact the reason can quote — e.g. the trigger type. */
   detail?: string | null;
+  /**
+   * The opportunity's primary contact and their latest fit score (0–100,
+   * null when never scored). Debt #12: the third ranking, beside priority and
+   * the opportunity score, so an item can say who to start with.
+   */
+  contact?: { name: string; title: string | null; fit: number | null } | null;
 }
 
 export interface RankedItem extends AttentionCandidate {
@@ -252,7 +258,7 @@ function describe(c: AttentionCandidate, now: Date, quietAfter: number) {
       return {
         why: `Hot${c.detail ? `, with a ${c.detail} trigger` : ""}${
           c.at ? ` ${age === 0 ? "today" : `${agoLabel(age)} ago`}` : ""
-        }, and nobody has reached out yet.`,
+        }, and nobody has reached out yet.${contactClause(c.contact)}`,
         actionLabel: "Open",
         label: "Hot",
         tone: "danger" as const,
@@ -304,6 +310,19 @@ function describe(c: AttentionCandidate, now: Date, quietAfter: number) {
   }
 }
 
+/** " Start with Ana Ruiz (VP Ops, fit 82)." or nothing. */
+export function contactClause(contact: AttentionCandidate["contact"]): string {
+  if (!contact?.name) return "";
+  const bits = [contact.title, typeof contact.fit === "number" ? `fit ${contact.fit}` : null].filter(Boolean);
+  return ` Start with ${contact.name}${bits.length ? ` (${bits.join(", ")})` : ""}.`;
+}
+
+/** The newest row by `computed_at`, or null. */
+function latest<T extends { computed_at?: string | null }>(rows: T[] | T | null | undefined): T | null {
+  const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+  return list.reduce<T | null>((best, row) => (!best || String(row.computed_at ?? "") > String(best.computed_at ?? "") ? row : best), null);
+}
+
 /** How strongly this item should pull, given its kind, age and value. */
 function scoreOf(c: AttentionCandidate, now: Date, quietAfter: number): number {
   let s = BASE[c.kind];
@@ -337,6 +356,7 @@ function scoreOf(c: AttentionCandidate, now: Date, quietAfter: number): number {
   if (c.priority) s *= PRIORITY_WEIGHT[c.priority];
   if (c.stage && STAGE_WEIGHT[c.stage]) s *= STAGE_WEIGHT[c.stage]!;
   if (typeof c.score === "number") s += c.score / 25; // a tie-breaker, never a driver
+  if (typeof c.contact?.fit === "number") s += c.contact.fit / 100; // smaller still: at most a quarter of the score's pull, reachability after value
   return Math.round(s * 10) / 10;
 }
 
@@ -474,7 +494,9 @@ export async function gatherAttention(
         .from("opportunities")
         .select(
           `id, priority, status, owner_id, first_seen_at, next_step, next_step_due_at,
-           companies!inner(name, company_triggers(trigger_type, event_date, deleted_at))`,
+           companies!inner(name, company_triggers(trigger_type, event_date, deleted_at)),
+           opportunity_scores(score, computed_at),
+           primary:people!primary_person_id(first_name, last_name, title, contact_fit_scores(score, computed_at))`,
         )
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -612,6 +634,8 @@ export async function gatherAttention(
       ownerId: o.owner_id ?? null,
       priority: priorityOf(o.priority),
       stage: String(o.status ?? ""),
+      score: latest<{ score: number; computed_at: string }>(o.opportunity_scores)?.score ?? null,
+      contact: contactOf(o.primary),
     };
     const touch = latestTouch.get(id);
     const dueAt = o.next_step_due_at ? String(o.next_step_due_at) : null;
@@ -720,3 +744,16 @@ function priorityOf(value: unknown): Priority | null {
   return value === "hot" || value === "warm" || value === "watch" || value === "ignore" ? value : null;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** The embedded primary contact, as the candidate carries it. */
+function contactOf(raw: unknown): AttentionCandidate["contact"] {
+  const p = (Array.isArray(raw) ? raw[0] : raw) as
+    | { first_name?: string | null; last_name?: string | null; title?: string | null; contact_fit_scores?: { score: number; computed_at: string }[] | null }
+    | null
+    | undefined;
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter((v) => v && String(v).trim()).join(" ").trim();
+  if (!name) return null;
+  const fit = latest(p.contact_fit_scores ?? null)?.score;
+  return { name, title: p.title?.trim() || null, fit: typeof fit === "number" ? fit : null };
+}

@@ -182,3 +182,36 @@ describe("rank", () => {
     expect(rank(candidates, options()).map((r) => r.title)).toEqual(["Alpha", "Bravo"]);
   });
 });
+
+describe("the contact behind an item (debt #12)", () => {
+  const hot = (id: string, contact: AttentionCandidate["contact"], score: number | null = null) =>
+    item({ kind: "hot-untouched", opportunityId: id, title: id, priority: "hot", stage: "qualified", at: daysAgo(2), contact, score });
+
+  it("names who to start with, their title and fit", () => {
+    const [ranked] = rank([hot("a", { name: "Ana Ruiz", title: "VP Ops", fit: 82 })], options());
+    expect(ranked?.why).toContain("Start with Ana Ruiz (VP Ops, fit 82).");
+  });
+
+  it("says nothing about a contact it does not have", () => {
+    const [ranked] = rank([hot("a", null)], options());
+    expect(ranked?.why).not.toContain("Start with");
+  });
+
+  it("omits a fit that was never computed rather than printing zero", () => {
+    const [ranked] = rank([hot("a", { name: "Ana Ruiz", title: null, fit: null })], options());
+    expect(ranked?.why).toContain("Start with Ana Ruiz.");
+  });
+
+  it("breaks a tie between equal opportunities by contact fit", () => {
+    const ranked = rank([hot("low", { name: "L", title: null, fit: 20 }), hot("high", { name: "H", title: null, fit: 90 })], options());
+    expect(ranked.map((r) => r.title)).toEqual(["high", "low"]);
+  });
+
+  it("but the opportunity score outweighs contact fit", () => {
+    const ranked = rank(
+      [hot("better-deal", { name: "A", title: null, fit: 10 }, 90), hot("better-contact", { name: "B", title: null, fit: 100 }, 50)],
+      options(),
+    );
+    expect(ranked[0]?.title).toBe("better-deal");
+  });
+});

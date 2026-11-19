@@ -19,7 +19,8 @@
     "audit:site": "node scripts/audit.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run audit:site && npm run build && npm run audit:bundle",
     "audit:bundle": "node scripts/bundle-budget.mjs",
-    "live-check": "node --experimental-strip-types scripts/live-check.ts"
+    "live-check": "node --experimental-strip-types scripts/live-check.ts",
+    "load:rate-limit": "node scripts/load-rate-limit.mjs"
   },
   "engines": {
     "node": ">=22.12"

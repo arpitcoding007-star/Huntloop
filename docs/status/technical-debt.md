@@ -24,8 +24,15 @@ re-verified rather than believed.
 > | 14 | ✅ `npm run check:types` (in `@huntloop/db` test): every field in `src/types.ts` is a column of its table in the migrated schema, with the same nullability | `packages/db/scripts/check-types.ts` |
 > | 19 | ✅ `/api/health` reports `jobs.queue` and answers 503 when stalled (oldest due job over 15 min), so an uptime monitor catches a tick that never arrives | `lib/queue-health.ts` + test |
 >
-> Still open: 3, 6, 7, 8 (`evidence_citations` and `contact_frequency` still
-> have no application reader), 12, 13, 15–18, 20–23.
+> | 7 | ✅ In code: `packages/db/scripts/migrate.ts` keeps a ledger (`schema_migrations`) and `.github/workflows/migrate.yml` applies new files on push to main. **Waits on the `DATABASE_URL` secret** (and `MIGRATIONS_BASELINE` once). | `verify-migrate.ts` |
+> | 8 | ✅ `evidence_citations` is written by `merge_duplicate_evidence` (0022, called by `scan_source`) and now read: evidence shows "Seen in N sources". `contact_frequency` is read by `can_contact()` in SQL, which is its job; it needs no app reader. `company_gaps` stays: read by company intel and the merge function, and nothing writes it until research produces gaps (a prompt change to verify against a live model). `company_merges` is written by merge review. `subscriptions` waits on billing (#5). | `opportunity-map.test.ts` |
+> | 12 | ✅ Needs-you already composes priority, recency and next action. It now also uses the opportunity score (the loader never selected it, so the documented tie-breaker never fired) and the primary contact's latest fit, and a hot item says who to start with: "Start with Ana Ruiz (VP Ops, fit 82)." Weights: score/25, fit/100, so value outranks reachability. | `rank.test.ts` |
+> | 13 | ✅ **What changed** card on the Command Center: opportunities found, triggers recorded and replies received since this browser's last visit (cookie `hl_seen_<org>`; 7 days without one, capped at 30), plus the five newest triggers. Hidden when nothing changed. | `changes-window.test.ts` |
+> | 15 | ✅ Tool: `npm run load:rate-limit` fires N concurrent `consume_rate_limit` calls through PostgREST as a test member and fails on over-admission. **Needs a staging project to run.** | `scripts/load-rate-limit.mjs` |
+> | 20 | ✅ Parse at the cap (1,000 rows, 2 MB) is tested. Found and fixed: the import passed every domain, email and company id in one `.in()` URL (20–40 KB at 1,000 rows, past the gateway's limit); reads are now chunked by 100. | `csv-volume.test.ts`, `in-chunks.test.ts` |
+> | 21 | ✅ vitest 4.1.12 fixes the `@vitest/mocker` advisories. Left: `minimatch` under typescript-eslint (dev-only; needs typescript-eslint 8.73, released 16 Nov; take it after 30 Nov). | `npm audit --omit=dev`: 0 |
+>
+> Still open: 3 (deployment), 6 (live vendor keys), 16 and 18 (need a staging database), 17 (flip CSP after a quiet week), 22 and 23 (need dashboard and invoice access), and 5 (held).
 
 ***
 

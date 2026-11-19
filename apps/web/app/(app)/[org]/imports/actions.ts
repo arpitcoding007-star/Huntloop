@@ -12,6 +12,7 @@ import {
 import { normalizeDomain } from "../../../../lib/domain";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { csvSchema, emailSchema, parseInput } from "../../../../lib/validation";
+import { inChunks } from "../../../../lib/in-chunks";
 
 /**
  * CSV import — master context §59, §60.
@@ -162,12 +163,14 @@ export async function importCsvAction(
     /* Which of these we already have. Read before the insert so the summary
        can distinguish "added" from "already there" — an importer that reports
        "300 imported" when 300 already existed has told the user nothing. */
-    const { data: before, error: beforeError } = await db
-      .from("companies")
-      .select("id, canonical_domain")
-      .eq("org_id", orgId)
-      .is("deleted_at", null)
-      .in("canonical_domain", domains);
+    const { data: before, error: beforeError } = await inChunks(domains, (chunk) =>
+      db
+        .from("companies")
+        .select("id, canonical_domain")
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .in("canonical_domain", chunk),
+    );
     if (beforeError) return fail(`The import could not run: ${beforeError.message}`);
 
     const known = new Map(
@@ -197,12 +200,14 @@ export async function importCsvAction(
     /* Re-read to get every id, including the ones just written. A `.select()`
        on the insert would return only the new rows, and people attach to both
        new and existing companies. */
-    const { data: after, error: afterError } = await db
-      .from("companies")
-      .select("id, canonical_domain")
-      .eq("org_id", orgId)
-      .is("deleted_at", null)
-      .in("canonical_domain", domains);
+    const { data: after, error: afterError } = await inChunks(domains, (chunk) =>
+      db
+        .from("companies")
+        .select("id, canonical_domain")
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .in("canonical_domain", chunk),
+    );
     if (afterError) return fail(`The import could not finish: ${afterError.message}`);
 
     const idByDomain = new Map(
@@ -270,20 +275,18 @@ async function importPeople(
 
   const [{ data: existingContacts, error: contactError }, { data: existingPeople, error: peopleError }] =
     await Promise.all([
-      emails.length > 0
-        ? db
-            .from("contact_points")
-            .select("value")
-            .eq("org_id", orgId)
-            .eq("kind", "email")
-            .in("value", emails)
-        : Promise.resolve({ data: [], error: null }),
-      db
-        .from("people")
-        .select("first_name, last_name, company_id")
-        .eq("org_id", orgId)
-        .is("deleted_at", null)
-        .in("company_id", [...new Set(withCompany.map((p) => p.companyId))]),
+      /* Chunked (debt #20): a 1,000-row import put every value in one URL. */
+      inChunks(emails, (chunk) =>
+        db.from("contact_points").select("value").eq("org_id", orgId).eq("kind", "email").in("value", chunk),
+      ),
+      inChunks(withCompany.map((p) => p.companyId), (chunk) =>
+        db
+          .from("people")
+          .select("first_name, last_name, company_id")
+          .eq("org_id", orgId)
+          .is("deleted_at", null)
+          .in("company_id", chunk),
+      ),
     ]);
 
   if (contactError) return { peopleAdded: 0, emailsAdded: 0, error: `The contacts could not be read: ${contactError.message}` };

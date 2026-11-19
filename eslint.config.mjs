@@ -146,6 +146,8 @@ export default tseslint.config(
         URL: "readonly",
         Buffer: "readonly",
         __dirname: "readonly",
+        fetch: "readonly",
+        performance: "readonly",
       },
     },
   },
