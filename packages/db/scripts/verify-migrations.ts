@@ -2098,6 +2098,44 @@ console.log("\n0054 — hot-path FK indexes (PERF-302), why-now date (TRUST-301)
   await db.exec("rollback");
 }
 
+console.log("\n0055 — status columns only hold states the code knows (DB-202)");
+{
+  const NAMES = [
+    "mailboxes_status_check", "job_executions_status_check", "campaigns_status_check",
+    "threads_status_check", "threads_classification_check", "ai_runs_status_check",
+  ];
+  const cons = await db.query<{ conname: string; convalidated: boolean }>(
+    `select conname, convalidated from pg_constraint where conname = any($1)`,
+    [NAMES],
+  );
+  if (cons.rows.length === NAMES.length && cons.rows.every((r) => r.convalidated)) {
+    ok(`all ${NAMES.length} status CHECKs exist and are validated`);
+  } else {
+    fail("the status CHECKs exist and are validated", JSON.stringify(cons.rows));
+  }
+
+  /* One transaction: expectRejectTx scopes each refusal to a savepoint, and a
+     savepoint outside a transaction is itself an error that would read as a
+     pass. */
+  await db.exec("begin");
+  await expectRejectTx(db, "a job status nothing handles ('done') is rejected",
+    `insert into job_executions (org_id, job_name, status) values ($1, 'scan_source', 'done')`, [ORG_A]);
+  await expectAccept(db, "every job status the queue uses is accepted",
+    `insert into job_executions (org_id, job_name, status)
+     select $1, 'scan_source', s from unnest(array['queued','running','succeeded','failed','cancelled']) s`, [ORG_A]);
+  await expectRejectTx(db, "an AI run status outside started/succeeded/failed is rejected",
+    `insert into ai_runs (org_id, task, model, prompt_version, status) values ($1, 'x', 'm', 'v', 'refused')`, [ORG_A]);
+  await expectAccept(db, "and the same run as 'started' is accepted (so the refusal above is the CHECK)",
+    `insert into ai_runs (org_id, task, model, prompt_version, status) values ($1, 'x', 'm', 'v', 'started')`, [ORG_A]);
+  await expectRejectTx(db, "a thread status typo is rejected",
+    `insert into threads (org_id, status) values ($1, 'opne')`, [ORG_A]);
+  await expectRejectTx(db, "a reply class the classifier cannot produce is rejected",
+    `insert into threads (org_id, classification) values ($1, 'maybe')`, [ORG_A]);
+  await expectAccept(db, "an unclassified open thread is accepted",
+    `insert into threads (org_id, status, classification) values ($1, 'open', null)`, [ORG_A]);
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

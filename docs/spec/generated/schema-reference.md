@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 54 migrations
-> (`0001_identity.sql` … `0054_fk_indexes_why_now_date_activation.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 55 migrations
+> (`0001_identity.sql` … `0055_status_checks.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 10 views · 124 public functions · 10 enum types · 147 RLS policies · 262 indexes · 128 triggers.
+**Totals:** 83 tables · 10 views · 125 public functions · 10 enum types · 147 RLS policies · 262 indexes · 128 triggers.
 
 **RLS enabled on:** 83 of 83 tables.
 
@@ -166,6 +166,7 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `ai_runs_status_check` — `CHECK ((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text])))`
 - FK `ai_runs_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `ai_runs_pkey` — `PRIMARY KEY (id)`
 
@@ -259,6 +260,7 @@ RLS: **enabled**
 **Constraints**
 
 - CHECK `campaigns_autonomy_level_check` — `CHECK (((autonomy_level >= 0) AND (autonomy_level <= 5)))`
+- CHECK `campaigns_status_check` — `CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'paused'::text, 'archived'::text])))`
 - FK `campaigns_icp_id_fkey` — `FOREIGN KEY (icp_id) REFERENCES icps(id) ON DELETE SET NULL`
 - FK `campaigns_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - FK `campaigns_product_id_fkey` — `FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL`
@@ -1706,6 +1708,7 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `job_executions_status_check` — `CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))`
 - FK `job_executions_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `job_executions_pkey` — `PRIMARY KEY (id)`
 
@@ -1911,6 +1914,7 @@ RLS: **enabled**
 - CHECK `mailboxes_domain_status_check` — `CHECK ((domain_status = ANY (ARRAY['pass'::text, 'warn'::text, 'fail'::text])))`
 - CHECK `mailboxes_health_score_check` — `CHECK (((health_score >= 0) AND (health_score <= 100)))`
 - CHECK `mailboxes_provider_check` — `CHECK ((provider = ANY (ARRAY['gmail'::text, 'outlook'::text, 'smtp'::text])))`
+- CHECK `mailboxes_status_check` — `CHECK ((status = ANY (ARRAY['connected'::text, 'disconnected'::text])))`
 - FK `mailboxes_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `mailboxes_pkey` — `PRIMARY KEY (id)`
 - UNIQUE `mailboxes_org_id_email_key` — `UNIQUE (org_id, email)`
@@ -3431,6 +3435,8 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `threads_classification_check` — `CHECK (((classification IS NULL) OR (classification = ANY (ARRAY['positive'::text, 'neutral'::text, 'negative'::text, 'unsubscribe'::text, 'out_of_office'::text, 'bounce'::text, 'wrong_person'::text]))))`
+- CHECK `threads_status_check` — `CHECK ((status = ANY (ARRAY['open'::text, 'snoozed'::text, 'closed'::text])))`
 - FK `threads_assignee_id_fkey` — `FOREIGN KEY (assignee_id) REFERENCES auth.users(id) ON DELETE SET NULL`
 - FK `threads_mailbox_id_fkey` — `FOREIGN KEY (mailbox_id) REFERENCES mailboxes(id) ON DELETE SET NULL`
 - FK `threads_opportunity_id_fkey` — `FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE SET NULL`
@@ -3634,6 +3640,7 @@ RLS: **enabled**
 | `migration_0052_applied` |  | boolean |  |
 | `migration_0053_applied` |  | boolean |  |
 | `migration_0054_applied` |  | boolean |  |
+| `migration_0055_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |
