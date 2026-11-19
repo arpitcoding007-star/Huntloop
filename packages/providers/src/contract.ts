@@ -81,7 +81,9 @@ export type RefusalReason =
   | "credentials_invalid"
   | "budget_exhausted"
   | "breaker_open"
-  | "capability_unsupported";
+  | "capability_unsupported"
+  /** An operator paused paid provider calls (0053, PROD-207). */
+  | "paused";
 
 export interface CallMeta {
   provider: string;
@@ -332,6 +334,13 @@ export interface ProviderAdapter {
    * consume a search credit.
    */
   verifyCredentials(): Promise<{ ok: boolean; detail: string }>;
+
+  /**
+   * What one call costs, per capability, before it is made (HL-1605). The
+   * budget reserves this much, so a two-credit call cannot slip through on the
+   * last credit. Missing means one. `RawCall.credits` stays the real figure.
+   */
+  credits?: Partial<Record<Capability, number>>;
 
   searchCompanies?(query: CompanySearchQuery): Promise<RawCall<CompanySearchResult>>;
   enrichCompany?(input: { domain: string | null; name: string | null; providerId: string | null }): Promise<RawCall<ProviderCompany | null>>;
