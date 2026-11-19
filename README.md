@@ -16,6 +16,8 @@ rules follow from that and are load-bearing everywhere in this repo:
 3. **Why now.** A strong opportunity has a recent trigger, and old evidence stops
    counting as current.
 
+**New here?** Start with the [master system guide](HUNTLOOP_MASTER_SYSTEM_GUIDE.md): every screen, button and job in plain language, with what is built and what is only planned.
+
 ### Documents, in precedence order
 
 1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20—%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
