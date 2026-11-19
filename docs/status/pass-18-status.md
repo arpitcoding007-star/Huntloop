@@ -31,7 +31,10 @@ passes).
 | `d436477` | HL-1606 kill switch (0053) |
 | `5c48ba0` | Readiness requires 0053; migration checks; schema reference |
 | `8cf2acd` | Next.js 16.4.3 → 16.4.5 |
-| *(this pass's final commits)* | 0054, why-now persistence, TRUST-301, PERF-302, ANL-301, UX-301, docs |
+| `32170e0` | Migration 0054: hot-path FK indexes, why-now date, activation view |
+| `47dc7e1` | Why-now saved with its date (TRUST-301) |
+| `c6fe71e` | `/compare` and `/for` redirect home (UX-301) |
+| `2b67c4e` | This status page, the master guide, the demand-test kit |
 
 ## Findings
 
