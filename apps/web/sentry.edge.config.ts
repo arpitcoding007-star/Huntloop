@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./lib/sentry-data-collection";
 
 /**
  * Edge runtime — middleware, and any route opting into it.
@@ -14,6 +15,7 @@ import * as Sentry from "@sentry/nextjs";
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   tracesSampleRate: 0,
-  sendDefaultPii: false,
+  // Nothing personal leaves; see lib/sentry-data-collection.ts (v11's replacement for sendDefaultPii).
+  dataCollection: SENTRY_DATA_COLLECTION,
   environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV,
 });

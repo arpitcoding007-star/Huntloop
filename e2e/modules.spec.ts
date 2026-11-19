@@ -213,7 +213,7 @@ test.describe("imports", () => {
     const errors = watchForErrors(page);
     await page.goto(`/${ORG}/imports`);
 
-    await page.getByLabel("CSV").fill(CSV);
+    await page.getByLabel("CSV", { exact: true }).fill(CSV);
 
     await expect(page.getByText("What will be imported")).toBeVisible();
     // Three data rows, two of which have a usable domain.
@@ -230,7 +230,7 @@ test.describe("imports", () => {
     // A column the importer did not understand is data the user believes they
     // imported. Naming it is the difference between a skip and a silent loss.
     await page.goto(`/${ORG}/imports`);
-    await page.getByLabel("CSV").fill(CSV);
+    await page.getByLabel("CSV", { exact: true }).fill(CSV);
 
     await expect(page.getByText("website → domain")).toBeVisible();
     await expect(page.getByText("work email → email")).toBeVisible();
@@ -246,7 +246,7 @@ test.describe("imports", () => {
     // The parser's whole reason for existing: split(",") would make
     // `"Acme, Inc."` two fields and key the company on " Inc.".
     await page.goto(`/${ORG}/imports`);
-    await page.getByLabel("CSV").fill(CSV);
+    await page.getByLabel("CSV", { exact: true }).fill(CSV);
 
     await expect(page.getByRole("cell", { name: "Acme, Inc." })).toBeVisible();
   });
@@ -257,7 +257,7 @@ test.describe("imports", () => {
     // §7 aimed at ourselves. The refusal a demo deployment must give is a
     // sentence, not a silent no-op that looks like success.
     await page.goto(`/${ORG}/imports`);
-    await page.getByLabel("CSV").fill(CSV);
+    await page.getByLabel("CSV", { exact: true }).fill(CSV);
 
     await page.getByRole("button", { name: /^Import \d+ compan/ }).click();
 

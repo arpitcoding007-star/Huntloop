@@ -38,6 +38,7 @@ import {
 import { readCache, writeCache, type CacheTtl } from "./cache.ts";
 import { recordCall } from "./ledger.ts";
 import { breakerOpen, reserveCredit, settleReservation } from "./budget.ts";
+import { pauseState } from "@huntloop/db/pause";
 
 /**
  * The retry policy, in one place.
@@ -74,6 +75,8 @@ export interface CallOptions<T> {
   ttl: CacheTtl;
   /** What the call is about, for the ledger. */
   entity?: { type: string; id: string } | null;
+  /** What the call costs, reserved before it runs (HL-1605). Defaults to 1. */
+  credits?: number;
   /** The adapter method. Called at most `MAX_ATTEMPTS` times. */
   run: () => Promise<RawCall<T>>;
   /** Rebuilds the typed result from a cached body. */
@@ -176,10 +179,21 @@ export async function callProvider<T>(options: CallOptions<T>): Promise<Provider
     }
   }
 
+  /* ── 4b. kill switch (0053, PROD-207) ────────────────────────────────
+     After the cache, which costs nothing; before the budget, so a paused
+     call reserves nothing. An unreadable answer keeps the budget's
+     documented fail-open posture. */
+  const pause = await pauseState(db, "providers", orgId);
+  if (pause.paused) {
+    const meta = refusal(provider, capability, "paused", `Paid provider calls are paused by an operator: ${pause.reason}`);
+    await recordCall(db, { orgId, meta, requestHash, entity });
+    throw new ProviderRefused(meta);
+  }
+
   /* ── 5. budget ───────────────────────────────────────────────────────
      Reserved, not read (PROV-015): the check and the hold are one statement,
      so parallel lanes cannot each spend the last credit. */
-  const budget = await reserveCredit(db, orgId, provider);
+  const budget = await reserveCredit(db, orgId, provider, options.credits ?? 1);
   if (!budget.allowed) {
     const meta = refusal(
       provider,

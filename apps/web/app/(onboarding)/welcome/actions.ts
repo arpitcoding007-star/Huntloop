@@ -186,7 +186,7 @@ async function personalName(): Promise<string | null> {
   const { data: auth } = await db.auth.getUser();
   if (!auth.user) return null;
   const { data } = await db.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle();
-  const first = String((data as { full_name?: string } | null)?.full_name ?? "").trim().split(/s+/)[0];
+  const first = String((data as { full_name?: string } | null)?.full_name ?? "").trim().split(/\s+/)[0];
   return first || null;
 }
 

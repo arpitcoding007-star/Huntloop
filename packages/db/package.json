@@ -19,7 +19,8 @@
     "./memory": "./src/memory.ts",
     "./preferences": "./src/preferences.ts",
     "./style": "./src/style.ts",
-    "./needs-you": "./src/needs-you.ts"
+    "./needs-you": "./src/needs-you.ts",
+    "./pause": "./src/pause.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

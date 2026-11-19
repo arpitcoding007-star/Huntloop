@@ -245,6 +245,10 @@ you are implementing — the number is your judgement, and it must be consistent
 with the dimensions and the explanation you give beside it. Give your
 confidence in it as high, medium or low. Never a percentage.
 
+Never write relative time ("three days ago", "last month", "recently"). What
+you write is saved and read later. Use the date the page gives, or leave the
+time out.
+
 ## Evidence
 
 List what the verdict rests on, and what it does not.

@@ -36,6 +36,7 @@
  * was lost.
  */
 import { parseOrgProfile } from "@huntloop/db/org-profile";
+import { pauseState } from "@huntloop/db/pause";
 import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../mailbox/index.ts";
 import { bareDomain, checkContent } from "../gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../business-hours.ts";
@@ -123,6 +124,17 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
      parent row, never this one, so a message deferred past that moment (for
      business hours, the daily cap, a bounce pause) still went out. Asked here,
      before anything is spent, from the parents themselves. */
+  /* PROD-207: the kill switch. A paused send waits, and so does one whose
+     pause state cannot be read: a send that should not have gone cannot be
+     taken back. */
+  const pause = await pauseState(scope, "sends", scope.orgId);
+  if (pause.paused || pause.unreadable) {
+    const why = pause.paused
+      ? `Sending is paused by an operator: ${pause.reason}`
+      : "Waiting: whether sending is paused could not be read.";
+    return defer(ctx, messageId, new Date(Date.now() + 15 * 60_000), "sends_paused", why);
+  }
+
   const hold = await withdrawnOrHeld(ctx, message.enrollment_id ? String(message.enrollment_id) : null);
   if (hold?.kind === "withdrawn") {
     const why = `Not sent: ${hold.why}`.slice(0, 2000);

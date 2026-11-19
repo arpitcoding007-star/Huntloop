@@ -125,7 +125,7 @@ export function CompanyManager({
                 worse, a link to an unfiltered list. */}
             <Link
               href={`/${org}/opportunities?company=${encodeURIComponent(c.name)}`}
-              className="hl-focusable text-[12px] text-brand underline-offset-2 hover:underline"
+              className="hl-focusable text-[12px] text-brand-text underline-offset-2 hover:underline"
             >
               {c.opportunityCount} open
             </Link>

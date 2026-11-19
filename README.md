@@ -16,6 +16,8 @@ rules follow from that and are load-bearing everywhere in this repo:
 3. **Why now.** A strong opportunity has a recent trigger, and old evidence stops
    counting as current.
 
+**New here?** Start with the [master system guide](HUNTLOOP_MASTER_SYSTEM_GUIDE.md): every screen, button and job in plain language, with what is built and what is only planned.
+
 ### Documents, in precedence order
 
 1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20—%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
@@ -74,9 +76,10 @@ nothing in this UI is communicated by colour alone.
 
 ## Local development
 
-Requires Node 22.6+ — the version in `package.json`'s `engines` field. The
-floor is 22.6 rather than 20 because `packages/ai` and `packages/db` run their
-test suites through `node --experimental-strip-types`, which lands there.
+Requires Node 22.12+ — the version in `package.json`'s `engines` field. The
+floor is 22.12 because Sentry 11 supports Node 22 only from 22.12, and it is
+above 20 because `packages/ai` and `packages/db` run their test suites through
+`node --experimental-strip-types`, which lands in 22.6.
 
 ```bash
 npm install

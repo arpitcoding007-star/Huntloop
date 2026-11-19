@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { QualificationEvidence } from "@huntloop/ai";
 import { ask } from "../../../../../lib/ai/agent";
 import { loadAgentContext } from "../../../../../lib/ai/agent-context";
+import { whyNow, type WhyNowRequest } from "../../../../../lib/ai/why-now";
 import {
   currentUserId,
   fail,
@@ -323,6 +324,115 @@ export async function overridePriorityAction(
       undefined,
       `Set to ${parsed.data}. Your correction is kept, and the weekly analysis ` +
         `reads it alongside the outcomes.`,
+    );
+  });
+}
+
+/**
+ * Work out "why now" for a saved opportunity, and keep it (TRUST-301, 0054).
+ *
+ * ── Why this exists ──────────────────────────────────────────────────────
+ *
+ * Nothing on the live path wrote `opportunities.why_now`. Analyze shows a
+ * why-now but does not save it (it is outside the verdict's seal, RT-001), and
+ * no job writes the column. So every real opportunity's "Why now" read
+ * "not established", whatever the evidence said.
+ *
+ * ── Why the evidence is read here, not passed in ─────────────────────────
+ *
+ * The same rule as `askAgentAction`: the claims the model may reason from come
+ * from the database inside this action, so a page cannot ask for a timing
+ * argument built on claims nobody gathered.
+ *
+ * ── Why the worked example is not saved ──────────────────────────────────
+ *
+ * With no model configured `whyNow` returns an illustration. Saving it would
+ * file an invented reason as this company's real one, so only an answer from
+ * a configured deployment is written.
+ */
+export async function refreshWhyNowAction(
+  org: string,
+  opportunityId: string,
+): Promise<ActionResult<{ hasReason: boolean; writtenAt: string }>> {
+  /* The id is checked inside `mutate`, as `askAgentAction` does, so the demo
+     workspace (whose fixture ids are not uuids) gets mutate's own explanation
+     rather than "reference isn't valid". */
+  return mutate(org, "refreshWhyNow", async ({ db, orgId }) => {
+    const id = uuidSchema.safeParse(opportunityId);
+    if (!id.success) return fail("That opportunity reference isn't valid.");
+
+    const { data: opportunity, error: readError } = await db
+      .from("opportunities")
+      .select("id, priority, companies!inner(name, canonical_domain)")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (readError) return fail(`That opportunity could not be read: ${readError.message}`);
+    if (!opportunity) return fail("That opportunity no longer exists.");
+
+    const { data: evidenceRows, error: evidenceError } = await db
+      .from("evidence")
+      .select("claim, kind, confidence, source_url, excerpt")
+      .eq("org_id", orgId)
+      .eq("subject_type", "opportunity")
+      .eq("subject_id", id.data)
+      .is("deleted_at", null)
+      .is("superseded_by", null)
+      .order("observed_at", { ascending: false });
+
+    if (evidenceError) return fail(`The evidence could not be read: ${evidenceError.message}`);
+
+    const evidence: QualificationEvidence[] = ((evidenceRows ?? []) as Record<string, unknown>[]).map(
+      (row) => ({
+        claim: String(row.claim ?? ""),
+        kind: row.kind as QualificationEvidence["kind"],
+        confidence: (row.confidence as QualificationEvidence["confidence"]) ?? null,
+        sourceUrl: (row.source_url as string | null) ?? null,
+        excerpt: (row.excerpt as string | null) ?? null,
+      }),
+    );
+
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+       One embedded relation, no generated row type. */
+    const company = (opportunity as any).companies;
+
+    const outcome = await whyNow(org, {
+      companyName: String(company?.name ?? ""),
+      canonicalDomain: String(company?.canonical_domain ?? ""),
+      priority: opportunity.priority as WhyNowRequest["priority"],
+      evidence,
+    });
+
+    if (!outcome.ok) return fail(outcome.error);
+
+    const { result } = outcome;
+    if (result.source !== "live") {
+      return fail(
+        "No AI model is configured on this deployment, so there is no real answer to save. " +
+          "The Analyze screen shows a worked example of what it would say.",
+      );
+    }
+
+    const writtenAt = new Date().toISOString();
+    const { data: updated, error: writeError } = await db
+      .from("opportunities")
+      .update({ why_now: result.whyNow.reason, why_now_written_at: writtenAt })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id");
+
+    if (writeError) return fail(`That answer could not be saved: ${writeError.message}`);
+    if (!updated?.length) return fail("That opportunity no longer exists.");
+
+    revalidatePath(`/${org}/opportunities/${id.data}`);
+    return ok(
+      { hasReason: result.whyNow.hasReason, writtenAt },
+      result.whyNow.hasReason
+        ? "Worked out from the evidence on file, and saved with today's date."
+        : "No reason to contact them now, based on the evidence on file. Saved, with what to watch for.",
     );
   });
 }

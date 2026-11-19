@@ -102,7 +102,7 @@ const OPPORTUNITIES: Opportunity[] = [
       "Strong fit, a problem stated in the founder's own words, and a funding trigger three days old.",
     score: 91,
     scoreWhy:
-      "Series A three days ago, hiring 3 SDRs, and running a competitor's sequencing tool that we displace in 70% of head-to-heads.",
+      "Series A closed, hiring 3 SDRs, and running a competitor's sequencing tool that we displace in 70% of head-to-heads.",
     confidence: "high",
     dimensions: [
       { label: "ICP fit", value: 94 },

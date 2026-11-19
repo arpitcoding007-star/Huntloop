@@ -348,7 +348,7 @@ function MessageRow({
         </Badge>
 
         {message.aiGenerated && (
-          <span className="flex items-center gap-1 text-[12px] text-ai">
+          <span className="flex items-center gap-1 text-[12px] text-ai-text">
             <Sparkles className="size-3" strokeWidth={1.75} />
             Drafted by Huntloop
           </span>
@@ -534,7 +534,7 @@ function DraftCard({
       <CardBody className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {draft.aiGenerated && (
-            <span className="flex items-center gap-1 text-[12px] text-ai">
+            <span className="flex items-center gap-1 text-[12px] text-ai-text">
               <Sparkles className="size-3" strokeWidth={1.75} />
               Drafted by Huntloop
             </span>

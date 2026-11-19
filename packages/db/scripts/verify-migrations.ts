@@ -128,6 +128,21 @@ for (const f of files) {
   }
 }
 
+/* PERF-302's ratchet (asserted in the 0054 block). Counted here, on the
+   migrations alone, because later blocks create test tables of their own. */
+const unindexedFkAfterMigrations = Number(
+  (
+    await db.query<{ n: number }>(
+      `select count(*)::int as n
+         from pg_constraint c
+        where c.contype = 'f' and array_length(c.conkey, 1) = 1
+          and c.connamespace = 'public'::regnamespace
+          and not exists (select 1 from pg_index i
+                           where i.indrelid = c.conrelid and i.indkey[0] = c.conkey[1])`,
+    )
+  ).rows[0]?.n,
+);
+
 // ── Fixtures ───────────────────────────────────────────────────────────────
 console.log("\nSeeding fixtures");
 await db.exec(`
@@ -1938,6 +1953,296 @@ console.log("\n0050 — the last credit is reserved once (PROV-015)");
   await db.exec("rollback");
 }
 
+console.log("\n0052 — the reservation is the call's cost (HL-1605); the inbox has its indexes (PERF-301)");
+{
+  await db.exec("begin");
+  await db.query(
+    `insert into provider_accounts (org_id, capability, provider, monthly_credit_limit)
+     values ($1, 'person.match', 'apollo', 10)`,
+    [ORG_A],
+  );
+  await db.query(`select public.record_provider_call($1, 'person.match', 'apollo', 'h52', 'ok', 9)`, [ORG_A]);
+  const two = await db.query<{ allowed: boolean }>(`select allowed from public.reserve_provider_credit($1, 'apollo', 2)`, [ORG_A]);
+  const one = await db.query<{ allowed: boolean }>(`select allowed from public.reserve_provider_credit($1, 'apollo', 1)`, [ORG_A]);
+  if (two.rows[0]?.allowed === false && one.rows[0]?.allowed === true) {
+    ok("one credit left: a two-credit call is refused, a one-credit call is not");
+  } else {
+    fail("a two-credit call is refused on the last credit", JSON.stringify([two.rows, one.rows]));
+  }
+  const used = await db.query<{ used: number }>(`select used from public.provider_budget_state($1, 'apollo')`, [ORG_A]);
+  if (Number(used.rows[0]?.used) === 10) ok("and the refused call held nothing");
+  else fail("the refused call held nothing", JSON.stringify(used.rows[0]));
+  await db.exec("rollback");
+
+  const idx = await db.query<{ indexname: string }>(
+    `select indexname from pg_indexes where schemaname = 'public'
+       and indexname in ('message_events_message_idx', 'messages_thread_created_idx', 'threads_org_last_message_idx')`,
+  );
+  if (idx.rows.length === 3) ok("the inbox's three indexes exist (PERF-301)");
+  else fail("the inbox's three indexes exist", JSON.stringify(idx.rows));
+}
+
+console.log("\n0053 — the kill switch (PROD-207)");
+{
+  const ORG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  await db.exec("begin");
+  const none = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_A]);
+  if (none.rows[0]?.r === null) ok("nothing is paused by default");
+  else fail("nothing is paused by default", JSON.stringify(none.rows));
+
+  await db.query(`insert into platform_pauses (scope, org_id, reason) values ('ai', $1, 'Org A spend')`, [ORG_A]);
+  const a = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_A]);
+  const b = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_B]);
+  const sendsA = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_A]);
+  if (a.rows[0]?.r === "Org A spend" && b.rows[0]?.r === null && sendsA.rows[0]?.r === null) {
+    ok("a per-org pause stops that org's scope only");
+  } else {
+    fail("a per-org pause stops that org's scope only", JSON.stringify([a.rows, b.rows, sendsA.rows]));
+  }
+
+  await db.query(`insert into platform_pauses (scope, reason) values ('sends', 'Bounce spike')`);
+  const global = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_B]);
+  if (global.rows[0]?.r === "Bounce spike") ok("a global pause stops every org");
+  else fail("a global pause stops every org", JSON.stringify(global.rows));
+
+  await db.query(`update platform_pauses set lifted_at = now() where scope = 'sends'`);
+  const lifted = await db.query<{ r: string | null }>(`select public.platform_paused('sends', $1) as r`, [ORG_B]);
+  if (lifted.rows[0]?.r === null) ok("lifting it resumes");
+  else fail("lifting it resumes", JSON.stringify(lifted.rows));
+
+  await expectRejectTx(db, "a pause needs a reason", `insert into platform_pauses (scope, reason) values ('ai', '  ')`);
+
+  /* As a session: no direct access, and no peeking at another org's pause.
+     The harness creates `authenticated` after the migrations and grants it
+     every table, so 0053's revoke and its function grant are re-applied here
+     as Supabase would have them. RLS (no policies) is what holds either way. */
+  await db.query(`insert into platform_pauses (scope, reason) values ('providers', 'Still paused')`);
+  await db.exec(`revoke all on public.platform_pauses from authenticated`);
+  await db.exec(`grant execute on function public.platform_paused(text, uuid) to authenticated`);
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["33333333-3333-3333-3333-333333333333"]);
+  await expectRejectTx(db, "a session cannot read the table", `select * from platform_pauses`);
+  await expectRejectTx(db, "or write it (lift a pause)", `update platform_pauses set lifted_at = now()`);
+  const own = await db.query<{ r: string | null }>(`select public.platform_paused('providers', $1) as r`, [ORG_B]);
+  if (own.rows[0]?.r === "Still paused") ok("a session can ask whether its own work is paused");
+  else fail("a session can ask whether its own work is paused", JSON.stringify(own.rows));
+  const peek = await db.query<{ r: string | null }>(`select public.platform_paused('ai', $1) as r`, [ORG_A]);
+  if (peek.rows[0]?.r === null) ok("and cannot learn another workspace's pause");
+  else fail("cannot learn another workspace's pause", JSON.stringify(peek.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0054 — hot-path FK indexes (PERF-302), why-now date (TRUST-301), activation (ANL-301)");
+{
+  const HOT_PATH = [
+    "opportunities_company_fk_idx", "opportunity_scores_opportunity_fk_idx", "people_company_fk_idx",
+    "contact_points_person_fk_idx", "enrollments_opportunity_fk_idx", "enrollments_campaign_fk_idx",
+    "messages_opportunity_fk_idx", "messages_step_fk_idx", "threads_opportunity_fk_idx",
+    "activities_opportunity_fk_idx", "activities_company_fk_idx", "company_triggers_company_fk_idx",
+    "source_events_company_fk_idx", "source_events_document_fk_idx",
+    "conversation_messages_conversation_fk_idx", "sequence_steps_sequence_fk_idx", "outcomes_opportunity_fk_idx",
+  ];
+  const idx = await db.query<{ indexname: string }>(
+    `select indexname from pg_indexes where schemaname = 'public' and indexname = any($1)`,
+    [HOT_PATH],
+  );
+  if (idx.rows.length === HOT_PATH.length) ok(`the ${HOT_PATH.length} hot-path FK indexes exist`);
+  else fail("the hot-path FK indexes exist", `${idx.rows.length}/${HOT_PATH.length}`);
+
+  /* A ratchet, not an allow-list of 125 names: a new single-column FK with no
+     index leading on it raises the count and fails here. Index it, or raise
+     the ceiling in the same change and say why. */
+  const UNINDEXED_FK_CEILING = 125;
+  const n = unindexedFkAfterMigrations;
+  if (n <= UNINDEXED_FK_CEILING) ok(`unindexed single-column FKs: ${n} (ceiling ${UNINDEXED_FK_CEILING})`);
+  else fail("no new FK lands without an index", `${n} > ceiling ${UNINDEXED_FK_CEILING}`);
+
+  const col = await db.query(
+    `select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'opportunities' and column_name = 'why_now_written_at'`,
+  );
+  if (col.rows.length === 1) ok("opportunities.why_now_written_at exists");
+  else fail("opportunities.why_now_written_at exists", "missing");
+
+  await db.exec("begin");
+  await db.query(
+    `insert into opportunity_scores (org_id, opportunity_id, model_version, score, confidence, explanation, computed_at)
+     values ($1, '0bbbbbbb-0000-0000-0000-00000000000a', 'fixture', 80, 'high', 'fixture', '2026-01-02T00:00:00Z')`,
+    [ORG_A],
+  );
+  const all = await db.query<{ org_id: string; first_warm_at: string | null; sent_30d: number }>(
+    `select org_id, first_warm_at, sent_30d from public.org_activation order by slug`,
+  );
+  const a = all.rows.find((r) => r.org_id === ORG_A);
+  /* Earlier blocks leave sent messages behind, so the count is checked
+     against the table rather than against a number. */
+  const sent = await db.query<{ n: number }>(
+    `select count(*)::int as n from messages
+      where org_id = $1 and direction = 'outbound' and deleted_at is null
+        and sent_at > now() - interval '30 days'`,
+    [ORG_A],
+  );
+  if (all.rows.length === 2 && a?.first_warm_at && Number(a.sent_30d) === Number(sent.rows[0]?.n)) {
+    ok("org_activation: one row per workspace, first warm opportunity dated, sends counted");
+  } else {
+    fail("org_activation reads the loop", JSON.stringify(all.rows));
+  }
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, ["33333333-3333-3333-3333-333333333333"]);
+  const own = await db.query<{ org_id: string }>(`select org_id from public.org_activation`);
+  if (own.rows.length === 1 && own.rows[0]?.org_id === "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb") {
+    ok("a session sees only its own workspace's row (security_invoker)");
+  } else {
+    fail("a session sees only its own workspace's row", JSON.stringify(own.rows));
+  }
+  await db.exec("rollback");
+}
+
+console.log("\n0055 — status columns only hold states the code knows (DB-202)");
+{
+  const NAMES = [
+    "mailboxes_status_check", "job_executions_status_check", "campaigns_status_check",
+    "threads_status_check", "threads_classification_check", "ai_runs_status_check",
+  ];
+  const cons = await db.query<{ conname: string; convalidated: boolean }>(
+    `select conname, convalidated from pg_constraint where conname = any($1)`,
+    [NAMES],
+  );
+  if (cons.rows.length === NAMES.length && cons.rows.every((r) => r.convalidated)) {
+    ok(`all ${NAMES.length} status CHECKs exist and are validated`);
+  } else {
+    fail("the status CHECKs exist and are validated", JSON.stringify(cons.rows));
+  }
+
+  /* One transaction: expectRejectTx scopes each refusal to a savepoint, and a
+     savepoint outside a transaction is itself an error that would read as a
+     pass. */
+  await db.exec("begin");
+  await expectRejectTx(db, "a job status nothing handles ('done') is rejected",
+    `insert into job_executions (org_id, job_name, status) values ($1, 'scan_source', 'done')`, [ORG_A]);
+  await expectAccept(db, "every job status the queue uses is accepted",
+    `insert into job_executions (org_id, job_name, status)
+     select $1, 'scan_source', s from unnest(array['queued','running','succeeded','failed','cancelled']) s`, [ORG_A]);
+  await expectRejectTx(db, "an AI run status outside started/succeeded/failed is rejected",
+    `insert into ai_runs (org_id, task, model, prompt_version, status) values ($1, 'x', 'm', 'v', 'refused')`, [ORG_A]);
+  await expectAccept(db, "and the same run as 'started' is accepted (so the refusal above is the CHECK)",
+    `insert into ai_runs (org_id, task, model, prompt_version, status) values ($1, 'x', 'm', 'v', 'started')`, [ORG_A]);
+  await expectRejectTx(db, "a thread status typo is rejected",
+    `insert into threads (org_id, status) values ($1, 'opne')`, [ORG_A]);
+  await expectRejectTx(db, "a reply class the classifier cannot produce is rejected",
+    `insert into threads (org_id, classification) values ($1, 'maybe')`, [ORG_A]);
+  await expectAccept(db, "an unclassified open thread is accepted",
+    `insert into threads (org_id, status, classification) values ($1, 'open', null)`, [ORG_A]);
+  await db.exec("rollback");
+}
+
+console.log("\n0056 — workspaces take turns in the queue (JOB-202)");
+{
+  const ORG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  await db.exec("begin");
+  /* Only this block's jobs are due: anything earlier blocks left queued is
+     moved out of the way inside the transaction. */
+  await db.exec(`update job_executions set status = 'cancelled' where status = 'queued'`);
+
+  // The audit's acceptance case: A holds 1,000 due jobs, all older than B's one.
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     select $1, 'profile_company', jsonb_build_object('n', g), now() - interval '2 hours' + (g || ' milliseconds')::interval
+       from generate_series(1, 1000) g`,
+    [ORG_A],
+  );
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     values ($1, 'send_message', '{"b":1}'::jsonb, now() - interval '1 minute')`,
+    [ORG_B],
+  );
+  await db.query(
+    `insert into job_executions (org_id, job_name, payload, run_at)
+     values (null, 'schedule_sends', '{}'::jsonb, now() - interval '30 seconds')`,
+  );
+
+  const batch = await db.query<{ org_id: string | null; payload: Record<string, unknown> }>(
+    `select org_id, payload from public.claim_job_executions(5, 'fair-1')`,
+  );
+  const orgs = batch.rows.map((r) => r.org_id);
+  if (batch.rows.length === 5 && orgs.includes(ORG_B) && orgs.includes(null)) {
+    ok("B's one job and the global sweeper are in the first batch, ahead of A's backlog of 1,000");
+  } else {
+    fail("B is not starved by A's backlog", JSON.stringify(orgs));
+  }
+  const aTaken = batch.rows.filter((r) => r.org_id === ORG_A).map((r) => Number(r.payload.n)).sort((x, y) => x - y);
+  if (JSON.stringify(aTaken) === JSON.stringify([1, 2, 3])) ok("inside one workspace, oldest still goes first");
+  else fail("inside one workspace, oldest still goes first", JSON.stringify(aTaken));
+
+  const again = await db.query<{ org_id: string | null }>(
+    `select org_id from public.claim_job_executions(5, 'fair-2')`,
+  );
+  if (again.rows.length === 5 && again.rows.every((r) => r.org_id === ORG_A)) {
+    ok("once the others are served, A's backlog drains at full speed");
+  } else {
+    fail("A's backlog drains once the others are served", JSON.stringify(again.rows));
+  }
+  const running = await db.query<{ n: number }>(`select count(*)::int as n from job_executions where status = 'running'`);
+  if (Number(running.rows[0]?.n) === 10) ok("no job was claimed twice across the two batches");
+  else fail("no job was claimed twice", JSON.stringify(running.rows));
+
+  // The two sweepers, by the same rule.
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at)
+     select $1, 'outbound', now() - interval '2 hours' + (g || ' seconds')::interval from generate_series(1, 200) g`,
+    [ORG_A],
+  );
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at) values ($1, 'outbound', now() - interval '1 minute')`,
+    [ORG_B],
+  );
+  const sends = await db.query<{ org_id: string }>(`select org_id from public.due_sends_fair(now(), 2)`);
+  if (sends.rows.length === 2 && sends.rows.some((r) => r.org_id === ORG_B)) {
+    ok("due_sends_fair: B's approved message is picked beside A's 200 older ones");
+  } else {
+    fail("due_sends_fair takes turns", JSON.stringify(sends.rows));
+  }
+  await db.query(
+    `insert into messages (org_id, direction, scheduled_at, not_before)
+     values ($1, 'outbound', now() - interval '3 hours', now() + interval '1 hour')`,
+    [ORG_B],
+  );
+  const deferred = await db.query<{ n: number }>(
+    `select count(*)::int as n from public.due_sends_fair(now(), 500) where org_id = $1`,
+    [ORG_B],
+  );
+  if (Number(deferred.rows[0]?.n) === 1) ok("due_sends_fair: a deferred message (not_before) waits");
+  else fail("due_sends_fair respects not_before", JSON.stringify(deferred.rows));
+
+  const camp = await db.query<{ id: string }>(
+    `insert into campaigns (org_id, name) values ($1, 'Fairness A') returning id`, [ORG_A]);
+  const campB = await db.query<{ id: string }>(
+    `insert into campaigns (org_id, name) values ($1, 'Fairness B') returning id`, [ORG_B]);
+  await db.query(
+    `insert into enrollments (org_id, campaign_id, opportunity_id, status, next_action_at)
+     select $1, $2, '0bbbbbbb-0000-0000-0000-00000000000a', 'active', now() - interval '1 day'`,
+    [ORG_A, camp.rows[0]!.id],
+  );
+  await db.query(
+    `insert into enrollments (org_id, campaign_id, opportunity_id, status, next_action_at)
+     values ($1, $2, '0bbbbbbb-0000-0000-0000-00000000000b', 'active', now() - interval '1 minute')`,
+    [ORG_B, campB.rows[0]!.id],
+  );
+  const enr = await db.query<{ org_id: string }>(`select org_id from public.due_enrollments_fair(now(), 2)`);
+  if (enr.rows.length === 2 && new Set(enr.rows.map((r) => r.org_id)).size === 2) {
+    ok("due_enrollments_fair: one enrollment from each workspace with due work");
+  } else {
+    fail("due_enrollments_fair takes turns", JSON.stringify(enr.rows));
+  }
+
+  /* Sessions cannot call them. The harness grants `authenticated` everything
+     after the migrations, so 0056's revoke is re-applied as Supabase has it. */
+  await db.exec(`revoke execute on function public.due_sends_fair(timestamptz, integer) from authenticated`);
+  await db.exec("set local role authenticated");
+  await expectRejectTx(db, "a session cannot call the cross-tenant sweep", `select * from public.due_sends_fair(now(), 5)`);
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");
@@ -3072,6 +3377,17 @@ console.log("\n0027 — colleagues can find their own company, and nobody else's
   } else {
     fail("cross-domain leak", JSON.stringify(found.rows));
   }
+
+  /* SEC-302 (0052): Org B's owner is owner@b.test. Claiming a.test does not
+     make Org B "your company's workspace" to everybody at a.test. */
+  await db.query(`update organizations set primary_domain = 'a.test' where id = $1`, ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]);
+  const claimed = await db.query<{ org_slug: string }>(`select org_slug from public.discoverable_workspaces()`);
+  if (claimed.rows.length === 1 && claimed.rows[0]?.org_slug === "org-a") {
+    ok("a workspace claiming a domain none of its owners or admins has an address at is not offered there (SEC-302)");
+  } else {
+    fail("a claimed domain is not discoverable without an owner there (SEC-302)", JSON.stringify(claimed.rows));
+  }
+  await db.query(`update organizations set primary_domain = 'b.test' where id = $1`, ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]);
 
   /* Opting out has to actually work, or the column is decoration. */
   await db.query(`update organizations set is_discoverable = false where id = $1`, [ORG_A]);

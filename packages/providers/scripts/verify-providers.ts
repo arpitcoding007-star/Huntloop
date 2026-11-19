@@ -261,6 +261,35 @@ console.log("\ncall — the budget is reserved, then settled (PROV-015)");
   );
 }
 
+console.log("\ncall — the reservation is the call's cost, not one credit (HL-1605)");
+{
+  const { db, calls } = fakeDb({ reserves: true });
+  await callProvider({ ...base(db, async () => ({ data: { items: [1] }, credits: 2, httpStatus: 200 })), credits: 2 });
+  const reserve = calls.find((c) => c.verb === "rpc" && c.table === "reserve_provider_credit");
+  const settle = calls.find((c) => c.verb === "rpc" && c.table === "settle_provider_credit");
+  expect("a two-credit call reserves two", (reserve?.payload as { p_credits?: number })?.p_credits === 2);
+  expect("and hands two back after the ledger", (settle?.payload as { p_reserved?: number })?.p_reserved === 2);
+}
+{
+  /* A database at 0050: the three-argument function is missing, the
+     two-argument one is not. Still a reservation, of one. */
+  const { db, calls } = fakeDb({ reserves: true });
+  const rpc = db.rpc;
+  db.rpc = (fn: string, args: Record<string, unknown>) =>
+    fn === "reserve_provider_credit" && "p_credits" in args
+      ? (calls.push({ table: fn, verb: "rpc", payload: args }), Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } }))
+      : rpc(fn, args);
+  await callProvider({ ...base(db, async () => ({ data: { items: [1] }, credits: 2, httpStatus: 200 })), credits: 2 });
+  const reserves = calls.filter((c) => c.verb === "rpc" && c.table === "reserve_provider_credit");
+  const settle = calls.find((c) => c.verb === "rpc" && c.table === "settle_provider_credit");
+  expect("before 0052 it falls back to the two-argument reservation", reserves.length === 2 && !("p_credits" in (reserves[1]!.payload as object)));
+  expect("which held one credit, so one is handed back", (settle?.payload as { p_reserved?: number })?.p_reserved === 1);
+}
+{
+  const { apolloAdapter: apollo } = await import("../src/adapters/apollo.ts");
+  expect("Apollo declares a person match at two credits", apollo("k").credits?.["person.match"] === 2);
+}
+
 console.log("\ncall — a cached answer is served before the budget is consulted");
 {
   // Deliberate ordering. A cached answer cost nothing to serve, so refusing
@@ -592,6 +621,71 @@ console.log("\nhunter — a derived address is never called verified");
     firstName: "A", lastName: "B", title: null, companyDomain: "acme.com", companyName: "Acme",
   });
   expect("a 404 is an answer, not a failure", nothing.data === null);
+
+  globalThis.fetch = (async () => new Response(JSON.stringify({ data: { email: null } }), { status: 200 })) as typeof fetch;
+  const empty = await hunterAdapter("k").matchPerson!({
+    firstName: "A", lastName: "B", title: null, companyDomain: "acme.com", companyName: "Acme",
+  });
+  expect("a data object with no email is also an answer", empty.data === null);
+
+  globalThis.fetch = original;
+}
+
+console.log("\ncall — PROD-207: an operator pause stops paid calls, not cached ones");
+{
+  const { db, calls } = fakeDb({ reserves: true });
+  const rpc = db.rpc;
+  db.rpc = (fn: string, args: Record<string, unknown>) =>
+    fn === "platform_paused" ? Promise.resolve({ data: "Vendor incident", error: null }) : rpc(fn, args);
+  let ran = false;
+  try {
+    await callProvider(base(db, async () => { ran = true; return { data: { items: [1] }, credits: 1, httpStatus: 200 }; }));
+    fail("a paused call is refused", "it ran");
+  } catch (e) {
+    expect("a paused call is refused, with the operator's reason", e instanceof ProviderRefused && e.meta.refusal === "paused" && /Vendor incident/.test(e.message));
+  }
+  expect("the vendor is never called", !ran);
+  expect("and nothing is reserved", !calls.some((c) => c.verb === "rpc" && c.table === "reserve_provider_credit"));
+}
+{
+  const { db } = fakeDb({ cache: { body: { items: [7] }, fetchedAt: new Date().toISOString() } });
+  const rpc = db.rpc;
+  db.rpc = (fn: string, args: Record<string, unknown>) =>
+    fn === "platform_paused" ? Promise.resolve({ data: "Vendor incident", error: null }) : rpc(fn, args);
+  const result = await callProvider(base(db, async () => ({ data: { items: [1] }, credits: 1, httpStatus: 200 })));
+  expect("a cached answer is still served while paused (it costs nothing)", result.meta.outcome === "cache_hit");
+}
+
+console.log("\nPROV-301 — a response we do not understand is a failure, not an empty answer");
+{
+  const original = globalThis.fetch;
+  const person = { firstName: "A", lastName: "B", title: null, companyDomain: "acme.com", companyName: "Acme" };
+  const shapeError = async (label: string, run: () => Promise<unknown>) => {
+    try {
+      await run();
+      fail(label, "returned instead of throwing");
+    } catch (e) {
+      expect(label, e instanceof ProviderError && !e.retryable && /unexpected response shape/.test(e.message));
+    }
+  };
+
+  globalThis.fetch = (async () => new Response(JSON.stringify({ people: [] }), { status: 200 })) as typeof fetch;
+  await shapeError("Apollo: a 200 without a `person` key throws, not 'no match'", () => apolloAdapter("k").matchPerson!(person));
+  globalThis.fetch = (async () => new Response(JSON.stringify({ person: null }), { status: 200 })) as typeof fetch;
+  const noMatch = await apolloAdapter("k").matchPerson!(person);
+  expect("Apollo: `person: null` is still a real no-match", noMatch.data === null);
+
+  globalThis.fetch = (async () => new Response(JSON.stringify({ result: "ok" }), { status: 200 })) as typeof fetch;
+  await shapeError("Hunter: a 200 without `data` throws, not 'no match'", () => hunterAdapter("k").matchPerson!(person));
+
+  /* Through callProvider: not cached, and no credits on the ledger. */
+  const { db, calls } = fakeDb();
+  globalThis.fetch = (async () => new Response(JSON.stringify({ people: [] }), { status: 200 })) as typeof fetch;
+  try {
+    await callProvider({ ...base(db, () => apolloAdapter("k").matchPerson!(person)), capability: "person.match" as const });
+  } catch { /* expected */ }
+  expect("and through the call plumbing it is recorded failed, with 0 credits", ledger(calls)[0]?.p_outcome === "failed" && ledger(calls)[0]?.p_credits === 0);
+  expect("and is not cached", !calls.some((c) => c.table === "provider_cache" && (c.verb === "upsert" || c.verb === "insert")));
 
   globalThis.fetch = original;
 }

@@ -120,6 +120,8 @@ export interface OpportunityDetail {
   potentialGap: string | null;
   currentApproach: string | null;
   whyNow: string | null;
+  /** When `whyNow` was written (0054). Null for the seed, fixtures and pre-0054 text. */
+  whyNowWrittenAt?: string | null;
   potentialUseCase: string | null;
   outreachAngle: string | null;
   /** The sentence of `nextAction`, kept for callers that only need the words. */
@@ -249,6 +251,8 @@ export interface DetailQueryRow {
   identified_problem: string | null;
   potential_gap: string | null;
   why_now: string | null;
+  /** 0054 */
+  why_now_written_at?: string | null;
   current_approach: string | null;
   potential_use_case: string | null;
   outreach_angle: string | null;
@@ -663,6 +667,7 @@ export function mapDetail(
     potentialGap: r.potential_gap,
     currentApproach: r.current_approach,
     whyNow: r.why_now,
+    whyNowWrittenAt: r.why_now_written_at ?? null,
     potentialUseCase: r.potential_use_case,
     outreachAngle: r.outreach_angle,
     recommendedAction: action.text,

@@ -69,6 +69,7 @@ export function zerobounceAdapter(apiKey: string): ProviderAdapter {
   return {
     name: NAME,
     capabilities,
+    credits: { "email.verify": CREDITS.verify },
 
     async verifyCredentials() {
       try {

@@ -90,6 +90,7 @@ export function hunterAdapter(apiKey: string): ProviderAdapter {
   return {
     name: NAME,
     capabilities,
+    credits: { "person.match": CREDITS.match },
 
     /**
      * Hunter's account endpoint. Free, and the reason `PRV-01` is workable:
@@ -113,6 +114,16 @@ export function hunterAdapter(apiKey: string): ProviderAdapter {
         first_name: query.firstName,
         last_name: query.lastName,
       });
+
+      /* PROV-301: Hunter's "nothing found" is a 404 (handled in `get`) or a
+         `data` object without an email. A 200 with no `data` at all is a
+         response we do not understand, not an empty answer. */
+      if (status !== 404 && (!body || typeof body !== "object" || !body.data || typeof body.data !== "object")) {
+        throw new ProviderError(NAME, "Hunter returned an unexpected response shape for an email lookup.", {
+          httpStatus: status,
+          retryable: false,
+        });
+      }
 
       const email = body.data?.email;
       if (!email) return { data: null, credits: CREDITS.match, httpStatus: status };

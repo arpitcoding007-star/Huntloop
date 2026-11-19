@@ -1432,6 +1432,42 @@ console.log("\nsend_message — PROD-201: a database without 0050 fails loudly")
   setAdminClientForTests(null);
 }
 
+console.log("\nsend_message — PROD-207: the kill switch");
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: "Bounce spike, investigating", error: null },
+  });
+  const outcome = await sendMessage(ctx);
+  const wait = calls.find((c) => c.table === "messages" && c.verb === "update" && "wait_reason" in ((c.payload as object) ?? {}));
+  expect("a paused deployment sends nothing", outcome.ok && !markedSent(calls));
+  expect("it waits instead, so lifting the pause sends it", calls.some((c) => c.verb === "update" && "not_before" in ((c.payload as object) ?? {})));
+  expect("and the inbox shows the operator's reason", String((wait?.payload as { wait_reason?: string })?.wait_reason).includes("Bounce spike"));
+  expect("nothing was claimed or spent", !calls.some((c) => c.table === "claim_mailbox_send" || c.table === "can_contact"));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: null, error: { code: "08006", message: "connection failure" } },
+  });
+  const outcome = await sendMessage(ctx);
+  expect("an unreadable pause state also waits (sends fail closed)", outcome.ok && !markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+{
+  const { ctx, calls } = sendContext(sendable(), {
+    "rpc:platform_paused": { data: null, error: { code: "PGRST202", message: "not found" } },
+  });
+  const original = gmail.send;
+  gmail.send = async () => ({ providerMessageId: "g-nopause", providerThreadId: "t", messageIdHeader: "<n@b>" });
+  const outcome = await sendMessage(ctx);
+  gmail.send = original;
+  expect("before 0053 (no switch at all) sending is not blocked", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
 console.log("\nsend_message — §78: sent means sent, and failed means failed");
 
 {
@@ -4290,6 +4326,100 @@ console.log("\nschedule_signal_fetches — Phase 4.3: only companies someone is 
   expect("closed opportunities are excluded", has("not:opportunities.status", "in"));
   expect("an Apollo id is no longer required", !has("eq:external_ids.provider"));
   expect("and the due company is queued", outcome.ok && calls.some((c) => c.table === "job_executions" && c.verb === "insert"));
+  setAdminClientForTests(null);
+}
+
+console.log("\nschedule_sends — JOB-202: workspaces take turns (0056)");
+
+{
+  const { client, calls } = fakeClient({
+    "rpc:due_sends_fair": {
+      data: [
+        { id: "m-a1", org_id: ORG_A, scheduled_at: "2026-11-19T08:00:00Z" },
+        { id: "m-b1", org_id: ORG_B, scheduled_at: "2026-11-19T09:00:00Z" },
+      ],
+      error: null,
+    },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.schedule_sends({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "schedule_sends" } as never,
+    now: new Date("2026-11-19T10:00:00Z"),
+  });
+  const rpc = calls.find((c) => c.verb === "rpc" && c.table === "due_sends_fair");
+  expect("it asks the fair read, with the tick's own clock and the batch size", Boolean(rpc) &&
+    (rpc!.payload as Record<string, unknown>).p_now === "2026-11-19T10:00:00.000Z" &&
+    (rpc!.payload as Record<string, unknown>).p_limit === 50, JSON.stringify(rpc?.payload));
+  expect("not the old oldest-first table read", !calls.some((c) => c.table === "messages" && c.verb === "select"));
+  const inserts = calls.filter((c) => c.table === "job_executions" && c.verb === "insert");
+  const orgs = inserts.map((c) => (c.payload as Record<string, unknown>).org_id);
+  expect("each workspace's message is queued in its own workspace", outcome.ok && orgs.includes(ORG_A) && orgs.includes(ORG_B), JSON.stringify(orgs));
+  setAdminClientForTests(null);
+}
+
+{
+  const { client, calls } = fakeClient({
+    "rpc:due_sends_fair": { data: null, error: { code: "PGRST202", message: "Could not find the function" } },
+    "select:messages": { data: [{ id: "m-1", org_id: ORG_A, scheduled_at: "2026-11-19T08:00:00Z" }], error: null },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.schedule_sends({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "schedule_sends" } as never,
+    now: new Date("2026-11-19T10:00:00Z"),
+  });
+  expect("before 0056 it falls back to the oldest-first read, so mail still goes",
+    outcome.ok && calls.some((c) => c.table === "messages" && c.verb === "select") &&
+    calls.some((c) => c.table === "job_executions" && c.verb === "insert"));
+  setAdminClientForTests(null);
+}
+
+console.log("\nadvance_enrollments — JOB-202: workspaces take turns (0056)");
+
+{
+  const { client, calls } = fakeClient({ "rpc:due_enrollments_fair": { data: [], error: null } });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.advance_enrollments({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "advance_enrollments" } as never,
+    now: new Date("2026-11-19T10:00:00Z"),
+  });
+  const rpc = calls.find((c) => c.verb === "rpc" && c.table === "due_enrollments_fair");
+  expect("it asks the fair read for five", outcome.ok && (rpc?.payload as Record<string, unknown>)?.p_limit === 5, JSON.stringify(rpc?.payload));
+  expect("and does not read enrollments oldest-first itself", !calls.some((c) => c.table === "enrollments" && c.verb === "select"));
+  setAdminClientForTests(null);
+}
+
+{
+  const { client, calls } = fakeClient({
+    "rpc:due_enrollments_fair": { data: null, error: { code: "42883", message: "function does not exist" } },
+    "select:enrollments": { data: [], error: null },
+  });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.advance_enrollments({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "advance_enrollments" } as never,
+    now: new Date("2026-11-19T10:00:00Z"),
+  });
+  expect("before 0056 it falls back to the old read", outcome.ok && calls.some((c) => c.table === "enrollments" && c.verb === "select"));
+  setAdminClientForTests(null);
+}
+
+{
+  const { client } = fakeClient({ "rpc:due_enrollments_fair": { data: null, error: { code: "42501", message: "permission denied" } } });
+  setAdminClientForTests(client);
+  const outcome = await HANDLERS.advance_enrollments({
+    scope: OrgScope.global() as never,
+    payload: {},
+    job: { id: "j", org_id: null, job_name: "advance_enrollments" } as never,
+    now: new Date("2026-11-19T10:00:00Z"),
+  });
+  expect("any other error fails the sweep loudly rather than falling back", !outcome.ok);
   setAdminClientForTests(null);
 }
 

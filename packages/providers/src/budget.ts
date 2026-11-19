@@ -89,14 +89,36 @@ export async function reserveCredit(
   db: AdminClient,
   orgId: string,
   provider: string,
+  /** HL-1605: what the call costs. 0052 holds all of it; 0050 could hold one. */
+  credits = 1,
 ): Promise<Reservation> {
-  const { data, error } = await (db.rpc as Query)("reserve_provider_credit", {
+  const cost = Math.max(1, Math.floor(credits));
+  let held = cost;
+  let { data, error } = await (db.rpc as Query)("reserve_provider_credit", {
     p_org: orgId,
     p_provider: provider,
+    p_credits: cost,
   });
 
-  /* Before 0050 the function does not exist; the old check still applies. */
+  /* A database at 0050 has the two-argument version: still atomic, but it
+     holds one credit whatever the call costs. */
+  if (error && isMissingFunction(error)) {
+    ({ data, error } = await (db.rpc as Query)("reserve_provider_credit", {
+      p_org: orgId,
+      p_provider: provider,
+    }));
+    held = 1;
+  }
+
+  /* Before 0050 there is no reservation at all, and the old check-then-call
+     applies. Any other error is not "the migration is missing": it is said
+     out loud rather than swallowed, and the read below decides (PROV-201). */
   if (error || !Array.isArray(data) || data.length === 0) {
+    if (error && !isMissingFunction(error)) {
+      console.error(`[providers] reserve_provider_credit failed for ${provider}; falling back to a read: ${error.message}`);
+    } else {
+      warnOnce(`reserve_provider_credit is missing; ${provider} spend is check-then-call until 0050 and 0052 are applied.`);
+    }
     return { ...(await budgetAllows(db, orgId, provider)), reserved: 0 };
   }
 
@@ -114,8 +136,20 @@ export async function reserveCredit(
     limit: row.limit === null || row.limit === undefined ? null : Number(row.limit),
     remaining: row.remaining === null || row.remaining === undefined ? null : Number(row.remaining),
     assumed: false,
-    reserved: allowed ? 1 : 0,
+    reserved: allowed ? held : 0,
   };
+}
+
+/** Postgres 42883 / PostgREST PGRST202: no function with that name and those arguments. */
+function isMissingFunction(error: { code?: string | null }): boolean {
+  return error.code === "42883" || error.code === "PGRST202";
+}
+
+const warned = new Set<string>();
+function warnOnce(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  console.warn(`[providers] ${message}`);
 }
 
 /** Hands a reservation back once the ledger has counted the real spend. */

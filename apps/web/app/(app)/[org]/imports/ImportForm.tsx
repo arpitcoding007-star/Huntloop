@@ -139,6 +139,11 @@ export function ImportForm({ org, canWrite }: { org: string; canWrite: boolean }
               ref={fileInput}
               type="file"
               accept=".csv,text/csv"
+              /* A11Y-301: the visible "Choose a file" button is the control.
+                 Without these, keyboard and screen-reader users met an
+                 unnamed second tab stop for the same action. */
+              aria-label="CSV file"
+              tabIndex={-1}
               className="sr-only"
               onChange={(e) => {
                 const file = e.target.files?.[0];

@@ -39,6 +39,7 @@
  *      bill.
  */
 import { adminClient } from "./scope.ts";
+import { pauseState } from "@huntloop/db/pause";
 
 export interface CachedResearch {
   domain: string;
@@ -129,6 +130,17 @@ export async function lookupPublicResearch(domain: string): Promise<CachedResear
  * Fails closed. If the reservation cannot be made, nothing is spent.
  */
 export async function reserveAnonymousResearch(ipHash: string): Promise<AllowanceDecision> {
+  /* PROD-207: the global AI switch stops anonymous research too. Only a
+     global pause applies here; there is no workspace yet. */
+  const pause = await pauseState(adminClient(), "ai", null);
+  if (pause.paused) {
+    return {
+      allowed: false,
+      reason: "over_budget",
+      message: "Reading sites is paused for a moment. Create a free account and we'll read yours as soon as it's back.",
+    };
+  }
+
   const ceiling = dailyCeiling();
   if (ceiling === 0) {
     return {

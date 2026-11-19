@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./lib/sentry-data-collection";
 
 /**
  * Server-side error reporting.
@@ -35,10 +36,11 @@ Sentry.init({
    * This is a B2B tool whose error payloads would otherwise carry prospect
    * email addresses, company research, and the contents of outreach drafts —
    * i.e. our customers' commercial data and third parties' personal data, in
-   * a system neither of them agreed to. `sendDefaultPii: false` is the SDK
-   * default; it is set explicitly because it is a decision, not an oversight.
+   * a system neither of them agreed to. v11 replaced `sendDefaultPii: false`
+   * with `dataCollection`, whose defaults collect far more; see
+   * `lib/sentry-data-collection.ts`. Set explicitly: a decision, not an oversight.
    */
-  sendDefaultPii: false,
+  dataCollection: SENTRY_DATA_COLLECTION,
 
   environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV,
 

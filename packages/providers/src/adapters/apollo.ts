@@ -380,6 +380,13 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
   return {
     name: NAME,
     capabilities,
+    credits: {
+      "company.search": CREDITS.organizationSearch,
+      "company.enrich": CREDITS.organizationEnrich,
+      "person.search": CREDITS.peopleSearch,
+      "person.match": CREDITS.personMatch,
+      "company.signals": CREDITS.jobPostings,
+    },
 
     /**
      * The credential check.
@@ -537,6 +544,17 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
            the original `providers.ts`. */
         reveal_personal_emails: false,
       });
+
+      /* PROV-301: Apollo says "no match" as `{"person": null}`. A body with no
+         `person` key at all is not that answer, and treating it as one would
+         bill, cache and show "nobody findable" for every lookup the day the
+         response changes shape. */
+      if (!response || typeof response !== "object" || !("person" in response)) {
+        throw new ProviderError(NAME, "Apollo returned an unexpected response shape for a person match.", {
+          httpStatus: status,
+          retryable: false,
+        });
+      }
 
       return {
         data: response.person ? toPerson(response.person) : null,

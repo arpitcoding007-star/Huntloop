@@ -131,6 +131,12 @@ One short paragraph a salesperson could paraphrase on a call. Say what changed
 and why it makes the problem urgent, in that order. No preamble, no restating
 the company's name back, no "in today's fast-moving landscape".
 
+Never write relative time: no "three days ago", "last week", "recently" or
+"just". Your answer is saved and read later, and relative time goes stale
+while still reading as current. When the evidence dates something, use that
+date ("closed its Series A in March 2026"). When it does not, say what
+happened without placing it in time.
+
 When there is no reason, say what would create one — the thing to watch for —
 so the answer is useful rather than merely negative.
 `,

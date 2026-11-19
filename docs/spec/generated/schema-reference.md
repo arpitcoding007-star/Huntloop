@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 51 migrations
-> (`0001_identity.sql` … `0051_safety_record_integrity.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 56 migrations
+> (`0001_identity.sql` … `0056_fair_claiming.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 82 tables · 9 views · 120 public functions · 10 enum types · 146 RLS policies · 240 indexes · 128 triggers.
+**Totals:** 83 tables · 10 views · 128 public functions · 10 enum types · 147 RLS policies · 263 indexes · 128 triggers.
 
-**RLS enabled on:** 82 of 82 tables.
+**RLS enabled on:** 83 of 83 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -70,8 +70,10 @@ RLS: **enabled**
 
 **Indexes**
 
+- `activities_company_fk_idx` — `activities USING btree (company_id)`
 - `activities_company_idx` — `activities USING btree (org_id, company_id, occurred_at DESC) WHERE (deleted_at IS NULL)`
 - `activities_kind_idx` — `activities USING btree (org_id, kind, occurred_at DESC) WHERE (deleted_at IS NULL)`
+- `activities_opportunity_fk_idx` — `activities USING btree (opportunity_id)`
 - `activities_opportunity_idx` — `activities USING btree (org_id, opportunity_id, occurred_at DESC) WHERE (deleted_at IS NULL)`
 - `activities_person_idx` — `activities USING btree (org_id, person_id) WHERE (person_id IS NOT NULL)`
 - `activities_projection_key` — `UNIQUE activities USING btree (org_id, ref_type, ref_id, kind) WHERE (ref_id IS NOT NULL)`
@@ -164,6 +166,7 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `ai_runs_status_check` — `CHECK ((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text])))`
 - FK `ai_runs_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `ai_runs_pkey` — `PRIMARY KEY (id)`
 
@@ -257,6 +260,7 @@ RLS: **enabled**
 **Constraints**
 
 - CHECK `campaigns_autonomy_level_check` — `CHECK (((autonomy_level >= 0) AND (autonomy_level <= 5)))`
+- CHECK `campaigns_status_check` — `CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'paused'::text, 'archived'::text])))`
 - FK `campaigns_icp_id_fkey` — `FOREIGN KEY (icp_id) REFERENCES icps(id) ON DELETE SET NULL`
 - FK `campaigns_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - FK `campaigns_product_id_fkey` — `FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL`
@@ -565,6 +569,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `company_triggers_company_fk_idx` — `company_triggers USING btree (company_id)`
 - `company_triggers_recent_idx` — `company_triggers USING btree (org_id, company_id, event_date DESC) WHERE (deleted_at IS NULL)`
 
 **Policies**
@@ -823,6 +828,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `contact_points_person_fk_idx` — `contact_points USING btree (person_id)`
 - `contact_points_person_idx` — `contact_points USING btree (org_id, person_id) WHERE (deleted_at IS NULL)`
 
 **Policies**
@@ -883,6 +889,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `conversation_messages_conversation_fk_idx` — `conversation_messages USING btree (conversation_id)`
 - `conversation_messages_idx` — `conversation_messages USING btree (org_id, conversation_id, created_at)`
 
 **Policies**
@@ -1291,7 +1298,9 @@ RLS: **enabled**
 
 **Indexes**
 
+- `enrollments_campaign_fk_idx` — `enrollments USING btree (campaign_id)`
 - `enrollments_due_idx` — `enrollments USING btree (org_id, next_action_at) WHERE (status = 'active'::text)`
+- `enrollments_opportunity_fk_idx` — `enrollments USING btree (opportunity_id)`
 
 **Policies**
 
@@ -1699,12 +1708,14 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `job_executions_status_check` — `CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))`
 - FK `job_executions_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `job_executions_pkey` — `PRIMARY KEY (id)`
 
 **Indexes**
 
 - `job_executions_due_idx` — `job_executions USING btree (run_at) WHERE (status = 'queued'::text)`
+- `job_executions_due_org_idx` — `job_executions USING btree (org_id, run_at) WHERE (status = 'queued'::text)`
 - `job_executions_idempotency_idx` — `UNIQUE job_executions USING btree (job_name, idempotency_key, org_id) NULLS NOT DISTINCT WHERE ((idempotency_key IS NOT NULL) AND (status = ANY (ARRAY['queued'::text, 'running'::text])))`
 - `job_executions_idx` — `job_executions USING btree (org_id, job_name, created_at DESC)`
 - `job_executions_name_key_idx` — `job_executions USING btree (job_name, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
@@ -1904,6 +1915,7 @@ RLS: **enabled**
 - CHECK `mailboxes_domain_status_check` — `CHECK ((domain_status = ANY (ARRAY['pass'::text, 'warn'::text, 'fail'::text])))`
 - CHECK `mailboxes_health_score_check` — `CHECK (((health_score >= 0) AND (health_score <= 100)))`
 - CHECK `mailboxes_provider_check` — `CHECK ((provider = ANY (ARRAY['gmail'::text, 'outlook'::text, 'smtp'::text])))`
+- CHECK `mailboxes_status_check` — `CHECK ((status = ANY (ARRAY['connected'::text, 'disconnected'::text])))`
 - FK `mailboxes_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `mailboxes_pkey` — `PRIMARY KEY (id)`
 - UNIQUE `mailboxes_org_id_email_key` — `UNIQUE (org_id, email)`
@@ -2122,6 +2134,7 @@ RLS: **enabled**
 **Indexes**
 
 - `message_events_lookup_idx` — `message_events USING btree (org_id, message_id, kind)`
+- `message_events_message_idx` — `message_events USING btree (message_id)`
 
 **Policies**
 
@@ -2221,9 +2234,12 @@ RLS: **enabled**
 - `messages_angle_idx` — `messages USING btree (org_id, outreach_angle, sent_at DESC) WHERE ((outreach_angle IS NOT NULL) AND (sent_at IS NOT NULL))`
 - `messages_awaiting_approval_idx` — `messages USING btree (org_id, created_at DESC) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (scheduled_at IS NULL) AND (deleted_at IS NULL))`
 - `messages_one_per_enrollment_step` — `UNIQUE messages USING btree (enrollment_id, step_id) WHERE ((direction = 'outbound'::text) AND (enrollment_id IS NOT NULL) AND (step_id IS NOT NULL) AND (deleted_at IS NULL))`
+- `messages_opportunity_fk_idx` — `messages USING btree (opportunity_id)`
 - `messages_opportunity_idx` — `messages USING btree (org_id, opportunity_id, created_at DESC) WHERE (opportunity_id IS NOT NULL)`
 - `messages_scheduled_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (deleted_at IS NULL))`
 - `messages_sendable_idx` — `messages USING btree (scheduled_at) WHERE ((direction = 'outbound'::text) AND (sent_at IS NULL) AND (error IS NULL) AND (deleted_at IS NULL))`
+- `messages_step_fk_idx` — `messages USING btree (step_id)`
+- `messages_thread_created_idx` — `messages USING btree (thread_id, created_at)`
 - `messages_thread_idx` — `messages USING btree (org_id, thread_id, created_at)`
 
 **Policies**
@@ -2313,6 +2329,7 @@ RLS: **enabled**
 | `next_step_set_at` | timestamp with time zone | null |  |
 | `estimated_value_cents` | bigint | null |  |
 | `estimated_value_currency` | text | NOT NULL | `'USD'::text` |
+| `why_now_written_at` | timestamp with time zone | null |  |
 
 **Constraints**
 
@@ -2332,6 +2349,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `opportunities_company_fk_idx` — `opportunities USING btree (company_id)`
 - `opportunities_contacts_unsought_idx` — `opportunities USING btree (org_id, priority) WHERE ((contacts_sought_at IS NULL) AND (deleted_at IS NULL))`
 - `opportunities_crm_sync_requested_idx` — `opportunities USING btree (crm_sync_requested_at) WHERE ((crm_sync_requested_at IS NOT NULL) AND (deleted_at IS NULL))`
 - `opportunities_next_step_due_idx` — `opportunities USING btree (org_id, next_step_due_at) WHERE ((next_step_due_at IS NOT NULL) AND (deleted_at IS NULL))`
@@ -2404,6 +2422,7 @@ RLS: **enabled**
 
 - `opportunity_scores_current_idx` — `opportunity_scores USING btree (org_id, opportunity_id, computed_at DESC)`
 - `opportunity_scores_drift_idx` — `opportunity_scores USING btree (org_id, model_version, computed_at DESC)`
+- `opportunity_scores_opportunity_fk_idx` — `opportunity_scores USING btree (opportunity_id)`
 - `opportunity_scores_prompt_drift_idx` — `opportunity_scores USING btree (org_id, prompt_version, computed_at DESC) WHERE (prompt_version IS NOT NULL)`
 
 **Policies**
@@ -2512,6 +2531,7 @@ RLS: **enabled**
 **Indexes**
 
 - `outcomes_learning_idx` — `outcomes USING btree (org_id, kind, occurred_at DESC)`
+- `outcomes_opportunity_fk_idx` — `outcomes USING btree (opportunity_id)`
 - `outcomes_score_idx` — `outcomes USING btree (org_id, score_id) WHERE (score_id IS NOT NULL)`
 
 **Policies**
@@ -2564,6 +2584,7 @@ RLS: **enabled**
 
 **Indexes**
 
+- `people_company_fk_idx` — `people USING btree (company_id)`
 - `people_company_idx` — `people USING btree (org_id, company_id)`
 - `people_company_rank_idx` — `people USING btree (org_id, company_id, seniority_rank DESC) WHERE (deleted_at IS NULL)`
 
@@ -2639,6 +2660,34 @@ RLS: **enabled**
 **Policies**
 
 - `plans_read` — SELECT USING `true`
+
+## platform_pauses
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `scope` | text | NOT NULL |  |
+| `org_id` | uuid | null |  |
+| `reason` | text | NOT NULL |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `lifted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `platform_pauses_reason_check` — `CHECK ((length(TRIM(BOTH FROM reason)) > 0))`
+- CHECK `platform_pauses_scope_check` — `CHECK ((scope = ANY (ARRAY['sends'::text, 'ai'::text, 'providers'::text])))`
+- FK `platform_pauses_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- PK `platform_pauses_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `platform_pauses_live_idx` — `platform_pauses USING btree (scope, org_id) WHERE (lifted_at IS NULL)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
 
 ## preference_signals
 
@@ -3120,6 +3169,10 @@ RLS: **enabled**
 - PK `sequence_steps_pkey` — `PRIMARY KEY (id)`
 - UNIQUE `sequence_steps_org_id_sequence_id_position_key` — `UNIQUE (org_id, sequence_id, "position")`
 
+**Indexes**
+
+- `sequence_steps_sequence_fk_idx` — `sequence_steps USING btree (sequence_id)`
+
 **Policies**
 
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
@@ -3231,7 +3284,9 @@ RLS: **enabled**
 
 **Indexes**
 
+- `source_events_company_fk_idx` — `source_events USING btree (company_id)`
 - `source_events_company_idx` — `source_events USING btree (org_id, company_id, event_date DESC)`
+- `source_events_document_fk_idx` — `source_events USING btree (source_document_id)`
 
 **Policies**
 
@@ -3381,6 +3436,8 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `threads_classification_check` — `CHECK (((classification IS NULL) OR (classification = ANY (ARRAY['positive'::text, 'neutral'::text, 'negative'::text, 'unsubscribe'::text, 'out_of_office'::text, 'bounce'::text, 'wrong_person'::text]))))`
+- CHECK `threads_status_check` — `CHECK ((status = ANY (ARRAY['open'::text, 'snoozed'::text, 'closed'::text])))`
 - FK `threads_assignee_id_fkey` — `FOREIGN KEY (assignee_id) REFERENCES auth.users(id) ON DELETE SET NULL`
 - FK `threads_mailbox_id_fkey` — `FOREIGN KEY (mailbox_id) REFERENCES mailboxes(id) ON DELETE SET NULL`
 - FK `threads_opportunity_id_fkey` — `FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE SET NULL`
@@ -3389,6 +3446,8 @@ RLS: **enabled**
 
 **Indexes**
 
+- `threads_opportunity_fk_idx` — `threads USING btree (opportunity_id)`
+- `threads_org_last_message_idx` — `threads USING btree (org_id, last_message_at DESC NULLS LAST) WHERE (deleted_at IS NULL)`
 - `threads_provider_idx` — `UNIQUE threads USING btree (org_id, mailbox_id, provider_thread_id) WHERE (provider_thread_id IS NOT NULL)`
 
 **Policies**
@@ -3473,6 +3532,7 @@ RLS: **enabled**
 - `discovery_performance`
 - `job_dead_letters`
 - `job_health`
+- `org_activation`
 - `persona_performance`
 - `pipeline_throughput`
 - `provider_health`
@@ -3526,6 +3586,8 @@ RLS: **enabled**
 | `demand_from_activity` |  | trigger | yes |
 | `demand_from_outcome` |  | trigger | yes |
 | `discoverable_workspaces` |  | TABLE(org_id uuid, org_name text, org_slug text, member_count bigint) | yes |
+| `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
+| `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
 | `enforce_same_org_refs` |  | trigger | yes |
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
@@ -3578,8 +3640,14 @@ RLS: **enabled**
 | `migration_0049_applied` |  | boolean |  |
 | `migration_0050_applied` |  | boolean |  |
 | `migration_0051_applied` |  | boolean |  |
+| `migration_0052_applied` |  | boolean |  |
+| `migration_0053_applied` |  | boolean |  |
+| `migration_0054_applied` |  | boolean |  |
+| `migration_0055_applied` |  | boolean |  |
+| `migration_0056_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
+| `platform_paused` | `p_scope text, p_org uuid` | text | yes |
 | `project_message_activity` |  | trigger | yes |
 | `project_message_event_activity` |  | trigger | yes |
 | `project_opportunity_activity` |  | trigger | yes |
@@ -3604,7 +3672,7 @@ RLS: **enabled**
 | `request_score_recompute` | `p_org uuid, p_icp uuid, p_reason text` | uuid | yes |
 | `request_to_join` | `p_org uuid` | text | yes |
 | `requeue_stalled_jobs` | `p_older_than interval` | integer |  |
-| `reserve_provider_credit` | `p_org uuid, p_provider text` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
+| `reserve_provider_credit` | `p_org uuid, p_provider text, p_credits integer` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
 | `reserve_public_research` | `p_ip_hash text, p_per_ip_hour integer, p_daily integer` | TABLE(allowed boolean, reason text) | yes |
 | `resolve_company` | `p_org uuid, p_domain text, p_provider text, p_provider_id text` | TABLE(company_id uuid, matched_on text) | yes |
 | `retry_job` | `p_org uuid, p_job uuid` | boolean | yes |

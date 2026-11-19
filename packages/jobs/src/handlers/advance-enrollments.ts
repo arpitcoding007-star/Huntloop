@@ -40,6 +40,7 @@ import { asGuidance, asReference, resolvePreferences } from "@huntloop/db/prefer
 import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
+import { isMissingFunction } from "./send-message.ts";
 import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
@@ -60,15 +61,26 @@ export async function advanceEnrollments(ctx: JobContext): Promise<JobOutcome> {
      and the same justification as `schedule_scans`. */
   const db = OrgScope.global();
 
-  const { data, error } = await db
-    .from("enrollments")
-    .select("id, org_id, campaign_id, opportunity_id, current_step, mailbox_id")
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .not("next_action_at", "is", null)
-    .lte("next_action_at", ctx.now.toISOString())
-    .order("next_action_at", { ascending: true })
-    .limit(MAX_PER_TICK);
+  /* JOB-202 (0056): workspaces take turns. Five a tick, oldest-first across
+     everyone, meant one workspace with a large campaign held the whole
+     platform's sequences. The fair read gives each workspace with due work
+     its oldest enrollment before anyone gets a second. */
+  let { data, error } = await db.rpc("due_enrollments_fair", {
+    p_now: ctx.now.toISOString(),
+    p_limit: MAX_PER_TICK,
+  });
+  if (error && isMissingFunction(error)) {
+    // Before 0056 is applied: the old oldest-first read, so sequences still move.
+    ({ data, error } = await db
+      .from("enrollments")
+      .select("id, org_id")
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .not("next_action_at", "is", null)
+      .lte("next_action_at", ctx.now.toISOString())
+      .order("next_action_at", { ascending: true })
+      .limit(MAX_PER_TICK));
+  }
 
   if (error) return { ok: false, error: `advance_enrollments: ${error.message}` };
 

@@ -27,6 +27,7 @@
 * [Feature reference](product/features.md)
 * [Plans, quotas and billing](product/plans-and-quotas.md)
 * [Exchange: intent marketplace (proposed)](product/marketplace-spec.md)
+* [Exchange demand test (run by hand)](product/exchange-demand-test.md)
 
 ## Architecture
 
@@ -71,6 +72,8 @@
 
 ## Decisions and history
 
+* [Master system guide](../HUNTLOOP_MASTER_SYSTEM_GUIDE.md)
+* [Pass 18 status](status/pass-18-status.md)
 * [Decision log](decisions/README.md)
   * [Exchange: decisions before P0](decisions/exchange.md)
 * [Documentation vs. code](status/doc-vs-code.md)

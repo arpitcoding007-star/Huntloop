@@ -30,7 +30,9 @@ import {
   type Insight,
   type Period,
 } from "../../../../lib/performance/compute";
+import { getActivation } from "../../../../lib/data/activation";
 import { DemoFigures } from "../DemoFigures";
+import { ActivationCard } from "./ActivationCard";
 import { Breakdowns } from "./Breakdowns";
 import { GoalsCard } from "./GoalsCard";
 import { Narrative } from "./Narrative";
@@ -85,7 +87,10 @@ export default async function PerformancePage({
     personalize(onboarding?.role ?? null, onboarding?.goals ?? [], org).defaultFilter === "assigned" ? "mine" : "everyone";
   const scope: PerformanceScope =
     requestedScope === "mine" || requestedScope === "everyone" ? requestedScope : roleDefault;
-  const { data, source } = await getPerformance(org, period, scope);
+  const [{ data, source }, { data: activation }] = await Promise.all([
+    getPerformance(org, period, scope),
+    getActivation(org),
+  ]);
   const p = data.performance;
   const f: Funnel = p.funnel;
   const prev: Funnel = p.previousFunnel;
@@ -161,6 +166,13 @@ export default async function PerformancePage({
         <div className="mt-6">
           <Note tone="warning">{data.partial}</Note>
         </div>
+      )}
+
+      {/* ── Is the loop working? (ANL-301) ─────────────────────────────── */}
+      {activation && (
+        <section aria-label="Is the loop working?" className="mt-8">
+          <ActivationCard summary={activation} />
+        </section>
       )}
 
       {/* ── What the data says ─────────────────────────────────────────── */}

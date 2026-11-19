@@ -8,7 +8,8 @@ description: From a clean checkout to a running app, in three tiers of configura
 
 ## Prerequisites
 
-* **Node ≥ 22.6.** The floor is 22.6, not 20, because `packages/ai`,
+* **Node ≥ 22.12.** Sentry 11 (`@sentry/nextjs`) supports Node 22 only from
+  22.12. Separately, the floor is above 20 because `packages/ai`,
   `packages/db`, `packages/crm`, `packages/jobs` and `packages/providers` run
   their test suites through `node --experimental-strip-types`, which lands
   there. It is pinned in the root `engines` field, and `REPO-01` in the audit
