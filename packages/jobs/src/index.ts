@@ -32,6 +32,7 @@ export {
   claim,
   enqueue,
   markFailed,
+  oldestDueSeconds,
   requeueStalled,
   succeed,
   type EnqueueOptions,

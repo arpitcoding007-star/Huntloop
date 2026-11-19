@@ -39,8 +39,10 @@
  *
  * When both Apollo and Hunter are configured, Hunter wins `person.match`. It
  * is the specialist, it is cheaper per lookup, and preferring it leaves
- * Apollo's more expensive credits for the searching only Apollo can do. An
- * org that wants otherwise says so in `provider_accounts`.
+ * Apollo's more expensive credits for the searching only Apollo can do.
+ * Apollo stays second in line: when Hunter is refused (breaker, budget, a
+ * known-bad key) or fails after its retries, `index.ts` asks Apollo. A Hunter
+ * "no match" is an answer and does not fall through.
  */
 import type { AdminClient } from "@huntloop/db/admin";
 import { apolloAdapter } from "./adapters/apollo.ts";
@@ -59,41 +61,56 @@ type Query = any;
  * is called by a health screen that would otherwise re-read the environment
  * on every render.
  */
-let cached: Map<Capability, ProviderAdapter> | null = null;
+let cached: Map<Capability, ProviderAdapter[]> | null = null;
 
 export function resetRegistryForTests(): void {
   cached = null;
 }
 
-function build(): Map<Capability, ProviderAdapter> {
-  const map = new Map<Capability, ProviderAdapter>();
+/**
+ * Every configured adapter for each capability, most preferred first.
+ *
+ * Registration order is preference order. Hunter is registered before
+ * Apollo, so with both keys `person.match` is `[hunter, apollo]`: the
+ * specialist first (see the note above), Apollo as the fallback (debt #11).
+ */
+function build(): Map<Capability, ProviderAdapter[]> {
+  const map = new Map<Capability, ProviderAdapter[]>();
 
   const apolloKey = process.env.APOLLO_API_KEY?.trim();
   const enrichmentKey = process.env.ENRICHMENT_API_KEY?.trim();
   const verifyKey = process.env.EMAIL_VERIFICATION_API_KEY?.trim();
 
-  if (apolloKey) {
-    const adapter = apolloAdapter(apolloKey);
-    for (const capability of adapter.capabilities) map.set(capability, adapter);
-  }
+  const register = (adapter: ProviderAdapter) => {
+    for (const capability of adapter.capabilities) {
+      const chain = map.get(capability) ?? [];
+      chain.push(adapter);
+      map.set(capability, chain);
+    }
+  };
 
-  /* Hunter takes `person.match` from Apollo when both are present — see the
-     note above. Registered second so the `set` overwrites. */
-  if (enrichmentKey) {
-    const adapter = hunterAdapter(enrichmentKey);
-    for (const capability of adapter.capabilities) map.set(capability, adapter);
-  }
-
-  if (verifyKey) {
-    const adapter = zerobounceAdapter(verifyKey);
-    for (const capability of adapter.capabilities) map.set(capability, adapter);
-  }
+  if (enrichmentKey) register(hunterAdapter(enrichmentKey));
+  if (apolloKey) register(apolloAdapter(apolloKey));
+  if (verifyKey) register(zerobounceAdapter(verifyKey));
 
   return map;
 }
 
 /**
- * The adapter for a capability, or null.
+ * The adapters that can serve a capability, in the order to try them.
+ *
+ * Empty is a normal state (see `adapterFor`). More than one means a refusal
+ * or a failure from the first does not end the question: `index.ts` tries
+ * the next before giving up. An empty answer does end it, because asking a
+ * second vendor the same question is a spending decision nobody made.
+ */
+export function adaptersFor(capability: Capability): ProviderAdapter[] {
+  cached ??= build();
+  return [...(cached.get(capability) ?? [])];
+}
+
+/**
+ * The preferred adapter for a capability, or null.
  *
  * Null is a normal state and every caller is written around it. Contact
  * discovery is a paid third-party service, "no provider" is an ordinary
@@ -102,8 +119,7 @@ function build(): Map<Capability, ProviderAdapter> {
  * `providers.ts`, and it now applies to five capabilities rather than one.
  */
 export function adapterFor(capability: Capability): ProviderAdapter | null {
-  cached ??= build();
-  return cached.get(capability) ?? null;
+  return adaptersFor(capability)[0] ?? null;
 }
 
 export function providerFor(capability: Capability): string | null {
@@ -209,15 +225,21 @@ export async function credentialsKnownBad(
   db: AdminClient,
   orgId: string,
   capability: Capability,
+  /** The adapter about to be called. The row records one provider's key, and
+      a fallback adapter's key is a different key that it does not condemn. */
+  provider?: string,
 ): Promise<boolean> {
   const { data, error } = await (db.from("provider_accounts") as Query)
-    .select("credential_status, is_enabled")
+    .select("provider, credential_status, is_enabled")
     .eq("org_id", orgId)
     .eq("capability", capability)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (error || !data) return false;
-  const row = data as { credential_status: string; is_enabled: boolean };
-  return row.is_enabled === false || row.credential_status === "invalid";
+  const row = data as { provider?: string | null; credential_status: string; is_enabled: boolean };
+  /* A disabled capability is the org's decision and holds for every vendor. */
+  if (row.is_enabled === false) return true;
+  if (provider && row.provider && row.provider !== provider) return false;
+  return row.credential_status === "invalid";
 }

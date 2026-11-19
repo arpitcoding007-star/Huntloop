@@ -66,8 +66,11 @@ What the code now guarantees about production (`VERCEL_ENV=production`):
 - **`/kitchen-sink` is 404.**
 - **`GET /api/health`** reports the commit, the database state
   (`unconfigured` / `none` / `partial` / `complete`) and which integrations
-  have keys — booleans only, never values. 200 when the core chain works,
-  503 when it does not. Point an uptime monitor at it.
+  have keys — booleans only, never values — and `jobs.queue`
+  (`ok` / `stalled` / `unknown` / `unchecked`): `stalled` when a due job has
+  waited over 15 minutes. 200 when the core chain works and the queue is
+  moving, 503 when it does not. Point an uptime monitor at it: it is the
+  alarm for a tick that never arrives, which the tick cannot raise itself.
 - **`npm run db:seed` refuses the production project** unless passed
   `--i-know-this-is-production`.
 

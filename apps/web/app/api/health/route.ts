@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { oldestDueSeconds } from "@huntloop/jobs";
 import { LATEST_MIGRATION, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
+import { queueBlocksHealth, queueState, type QueueState } from "../../../lib/queue-health";
 
 /**
  * What this deployment is connected to, as booleans.
@@ -16,8 +18,9 @@ import { LATEST_MIGRATION, isProductionDeployment, probeSchema, supabaseEnv } fr
  * by using the feature.
  *
  * 200 when the core chain works (database migrated, jobs can authenticate,
- * site URL set), 503 otherwise — so an uptime monitor pointed here alerts on
- * a broken deployment rather than only on a dead one.
+ * site URL set, job queue moving), 503 otherwise — so an uptime monitor
+ * pointed here alerts on a broken deployment, or a stopped engine, rather
+ * than only on a dead one.
  */
 
 export const runtime = "nodejs";
@@ -38,6 +41,21 @@ export async function GET() {
     }
   }
 
+  const serviceKey = has("SUPABASE_SECRET_KEY") || has("SUPABASE_SERVICE_ROLE_KEY");
+
+  /* Debt #19: a state, not the number, like every other field here. Probed
+     only when there is a migrated database and a key to read it with; the
+     missing pieces already fail the check on their own. Bounded at 3 s so a
+     slow database makes the answer "unknown" rather than a hung monitor. */
+  let queue: QueueState = "unchecked";
+  if (database === "complete" && serviceKey) {
+    const lag = await Promise.race([
+      oldestDueSeconds().catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    queue = queueState(lag);
+  }
+
   const report = {
     environment: process.env.VERCEL_ENV ?? "local",
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
@@ -46,9 +64,10 @@ export async function GET() {
       host: env ? new URL(env.url).host : null,
       schema: database,
       requiredMigration: LATEST_MIGRATION,
-      serviceKey: has("SUPABASE_SECRET_KEY") || has("SUPABASE_SERVICE_ROLE_KEY"),
+      serviceKey,
     },
     jobs: {
+      queue,
       cronSecret: has("CRON_SECRET"),
       inngest: has("INNGEST_SIGNING_KEY") && has("INNGEST_EVENT_KEY"),
     },
@@ -71,6 +90,7 @@ export async function GET() {
     database === "complete" &&
     report.database.serviceKey &&
     report.jobs.cronSecret &&
+    !queueBlocksHealth(queue) &&
     report.credentialEncryption &&
     Boolean(report.siteUrl);
 

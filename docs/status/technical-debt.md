@@ -20,9 +20,12 @@ re-verified rather than believed.
 > | 9 | ✅ Settings → **Activity log** (admins only) reads `audit_logs` through `listAudit` | `settings/activity/page.tsx` |
 > | 10 | ✅ Merge review on Companies | `companies/actions.ts`, `merge-actions.test.ts` |
 > | 5 | ⏸ Held by decision (billing, open decision #1) | `pass-18-status.md` |
+> | 11 | ✅ Fallback chain. The registry keeps every configured adapter per capability in preference order; a refusal (breaker, budget, known-bad key) or a failure after retries moves to the next. An answer, empty included, does not, and an operator pause stops all. Today only `person.match` has two vendors (Hunter, then Apollo). | `verify-providers.ts` “fallback” cases |
+> | 14 | ✅ `npm run check:types` (in `@huntloop/db` test): every field in `src/types.ts` is a column of its table in the migrated schema, with the same nullability | `packages/db/scripts/check-types.ts` |
+> | 19 | ✅ `/api/health` reports `jobs.queue` and answers 503 when stalled (oldest due job over 15 min), so an uptime monitor catches a tick that never arrives | `lib/queue-health.ts` + test |
 >
 > Still open: 3, 6, 7, 8 (`evidence_citations` and `contact_frequency` still
-> have no application reader), 11–23.
+> have no application reader), 12, 13, 15–18, 20–23.
 
 ***
 

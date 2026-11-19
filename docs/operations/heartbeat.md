@@ -176,6 +176,12 @@ order by 1;
 | No rows at all | Nothing is sweeping. Check the driver |
 | Growing `failed` count | Read `job_executions.error` and the Engine screen |
 
+**From outside:** `GET /api/health` carries `jobs.queue`. It reads
+`stalled` (and the response is 503) once a due job has waited more than 15
+minutes, the same threshold `tick.yml` uses. The tick can only raise that
+alarm when it runs; an uptime monitor on `/api/health` raises it when the
+tick has stopped arriving at all.
+
 In the product, `/[org]/ops` — the **Engine** screen — shows job and provider
 health and offers retry and cancel. The Sources screen shows the last tick time
 and states plainly when nothing is reading sources on a timer.

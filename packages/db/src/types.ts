@@ -5,7 +5,8 @@
  * and this package has to typecheck offline. They are kept deliberately thin —
  * only the columns the app reads today — and `verify-migrations.ts` is what
  * proves the *database* matches its own rules. If these drift from the SQL,
- * the SQL wins.
+ * the SQL wins, and `npm run check:types` (part of this package's `test`)
+ * fails: every field must be a column, with the same nullability.
  */
 
 export type ClaimKind = "fact" | "inference" | "unknown";
