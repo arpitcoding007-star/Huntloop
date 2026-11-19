@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { CAMPAIGN_NOT_RUNNING } from "@huntloop/jobs";
 import { fail, mutate, ok, requireOrgId, type ActionResult } from "../../../../lib/data/org";
 import { recordAudit } from "../../../../lib/data/audit";
 import { resolveDataSource } from "../../../../lib/data/source";
@@ -88,8 +89,41 @@ export async function saveCampaignAction(
 
       if (error) return fail(`That campaign could not be saved: ${error.message}`);
 
+      /* PANEL-301. While a campaign is draft, paused or archived, the engine
+         parks each enrollment it reaches with CAMPAIGN_NOT_RUNNING. Nothing
+         else reverses that, so starting the campaign has to: without this,
+         enrolling first and starting second drafted nothing, ever. Only rows
+         parked for that reason are released. A row parked for a rejected
+         draft or a missing address still needs a person, and the engine
+         re-checks the opportunity (replied, closed) before it drafts. */
+      let resumed = 0;
+      if (value.status === "active") {
+        const { data: released, error: releaseError } = await db
+          .from("enrollments")
+          .update({ status: "active", parked_reason: null, next_action_at: new Date().toISOString() })
+          .eq("org_id", orgId)
+          .eq("campaign_id", value.id)
+          .eq("status", "parked")
+          .eq("parked_reason", CAMPAIGN_NOT_RUNNING)
+          .is("deleted_at", null)
+          .select("id");
+        if (releaseError) {
+          revalidatePath(`/${org}/outreach`);
+          return fail(
+            `The campaign is running, but its waiting enrollments could not be resumed: ${releaseError.message}. ` +
+              "Resume them from the enrollment list.",
+          );
+        }
+        resumed = released?.length ?? 0;
+      }
+
       revalidatePath(`/${org}/outreach`);
-      return ok({ id: value.id }, "Campaign saved.");
+      return ok(
+        { id: value.id },
+        resumed > 0
+          ? `Campaign saved. ${resumed} waiting ${resumed === 1 ? "enrollment" : "enrollments"} resumed; drafts follow on the engine's next run.`
+          : "Campaign saved.",
+      );
     }
 
     const { data, error } = await db

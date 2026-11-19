@@ -43,6 +43,13 @@ export interface Message {
   scheduledAt: string | null;
   /** OUT-014: a queued send the engine is holding, and why (0050). */
   waiting?: { until: string; reason: string | null } | null;
+  /**
+   * PANEL-303: why an unsent message will not go, from `messages.error`.
+   * Withdrawn (a stopped sequence, an archived campaign, a closed deal),
+   * suppressed, or a send that failed. Without it the inbox kept saying
+   * "Queued to send" about mail that was never going to leave.
+   */
+  notSent?: string | null;
   createdAt: string | null;
   /** A person changed the AI's words before approving (0037). */
   edited: boolean;
@@ -79,7 +86,7 @@ export async function listThreads(orgSlug: string): Promise<Loaded<Thread[]>> {
           `id, subject, status, classification, opportunity_id, assignee_id, last_message_at,
            opportunities(companies(name)),
            messages(id, direction, subject, body_text, ai_generated, evidence_ids,
-             sent_at, scheduled_at, not_before, wait_reason, created_at, deleted_at, edited_at,
+             sent_at, scheduled_at, not_before, wait_reason, error, created_at, deleted_at, edited_at,
              message_events(kind, occurred_at))`,
         )
         .eq("org_id", orgId)
@@ -149,6 +156,7 @@ function mapMessage(row: any): Message {
       row.not_before && !row.sent_at && Date.parse(row.not_before) > Date.now()
         ? { until: String(row.not_before), reason: row.wait_reason ?? null }
         : null,
+    notSent: !row.sent_at && row.error ? String(row.error) : null,
     createdAt: row.created_at ?? null,
     edited: Boolean(row.edited_at),
     latestEvent: events[0]

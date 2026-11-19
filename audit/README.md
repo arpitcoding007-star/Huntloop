@@ -18,6 +18,7 @@ once before a launch and never again.
 | [pass-15/](pass-15/00_SUMMARY.md) | The fifteenth pass (2026-11-01, `8021d3f` + working tree): production origin fails TLS, removed and merged companies kept emailing, merge dropped evidence, and the two free evidence sources overclaimed — fixed in the same session, see `07_FIX_STATUS.md` |
 | [pass-16/](pass-16/00_SUMMARY.md) | The sixteenth pass (2026-11-14, `7e09759`), the first `/audit-system` run: the pass-15 fixes are in the repo but not live (0048–0050 unapplied, prod on `8021d3f`); applying 0049 breaks mailbox connect and HEAD on a 0047 DB stalls every send; stop/archive does not stop queued mail (Critical) |
 | [pass-17/](pass-17/README.md) | The seventeenth pass (2026-11-14, `69c8d4c` + 0051): everything pass 16 left open (UX, a11y on 43 routes, SEO, analytics, failure injection, measured query plans). Inbox query quadratic (46.7 s → 0.74 s with three indexes); 0051 still lets approval be bypassed by omission; workspace domain self-asserted; owner-access list A1–A9 |
+| [pass-20/](pass-20/00_SUMMARY.md) | The twentieth pass (2026-11-20, `32b0c6f`): dashboard and panel wiring. 59 findings (0 Critical, 9 High). Outreach stalls on two common paths (parked enrollments, stranded approved mail), inference reaches the UI labelled as fact, two loaders select missing columns and swallow the error, and a deleted ICP keeps its paid search running |
 | [`scripts/audit.mjs`](../scripts/audit.mjs) | The mechanizable checks, gating CI |
 
 ```bash

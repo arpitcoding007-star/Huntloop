@@ -26,6 +26,7 @@ import {
   redraftAction,
   rejectDraftAction,
   replyToThreadAction,
+  retrySendAction,
   setThreadStatusAction,
 } from "./actions";
 
@@ -301,7 +302,7 @@ function ThreadCard({
         <ol className="space-y-3">
           {thread.messages.map((m) => (
             <li key={m.id}>
-              <MessageRow message={m} now={now} canWrite={canWrite} />
+              <MessageRow org={org} message={m} now={now} canWrite={canWrite} onResult={onResult} />
             </li>
           ))}
         </ol>
@@ -320,16 +321,25 @@ function ThreadCard({
 }
 
 function MessageRow({
+  org,
   message,
   now,
   canWrite,
+  onResult,
 }: {
+  org: string;
   message: Message;
   now: string;
   canWrite: boolean;
+  onResult: (r: { ok: true; message?: string } | { ok: false; error: string }) => void;
 }) {
+  const [pending, start] = useTransition();
   const failed =
     message.latestEvent && EVENT_TONE[message.latestEvent.kind] === "danger";
+  /* PANEL-303: `error` on an unsent message means it will not go as things
+     stand: withdrawn, suppressed or refused. Checked before "queued", which
+     is what this row used to say about all of them. */
+  const notSent = message.direction === "outbound" && !message.sentAt ? message.notSent ?? null : null;
 
   return (
     <div
@@ -380,14 +390,20 @@ function MessageRow({
              Neither says "sent". `messages_sent_has_provider_id` in 0004
              refuses a send time without the provider id that proves it left,
              so an outbound message with no `sent_at` genuinely has not gone. */
-          <Badge variant={message.scheduledAt ? "neutral" : "warning"}>
-            {message.scheduledAt ? (message.waiting ? "Waiting to send" : "Queued to send") : "Awaiting approval"}
+          <Badge variant={notSent && message.scheduledAt ? "danger" : message.scheduledAt ? "neutral" : "warning"}>
+            {message.scheduledAt
+              ? notSent
+                ? "Not sent"
+                : message.waiting
+                  ? "Waiting to send"
+                  : "Queued to send"
+              : "Awaiting approval"}
           </Badge>
         )}
 
         {/* OUT-014: a deferral used to leave no trace, so a held message read
             as stuck. It says what it is waiting for, and until when. */}
-        {message.direction === "outbound" && !message.sentAt && message.scheduledAt && message.waiting && (
+        {message.direction === "outbound" && !message.sentAt && message.scheduledAt && !notSent && message.waiting && (
           <span className="text-[12px] text-fg-muted">
             {message.waiting.reason ?? "Held by the engine."} Next try{" "}
             {new Date(message.waiting.until).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
@@ -413,6 +429,28 @@ function MessageRow({
           )}
         </span>
       </div>
+
+      {notSent && message.scheduledAt && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <p className="text-[12px] text-danger-text">{notSent}</p>
+          {canWrite && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={RefreshCw}
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await retrySendAction(org, message.id);
+                  onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                })
+              }
+            >
+              Try again
+            </Button>
+          )}
+        </div>
+      )}
 
       {message.subject && (
         <p className="mt-1.5 text-[13px] font-medium text-fg">{message.subject}</p>

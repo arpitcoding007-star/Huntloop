@@ -131,6 +131,9 @@ export {
  */
 export { estimateReach, type ReachEstimate } from "./reach.ts";
 
+/** Read by `saveCampaignAction` to release enrollments when a campaign starts. */
+export { CAMPAIGN_NOT_RUNNING } from "./enrollment-reasons.ts";
+
 /**
  * The first sixty seconds of a workspace.
  *
