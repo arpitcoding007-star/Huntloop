@@ -25,7 +25,8 @@ import { ProviderError, type RawCall } from "../src/contract.ts";
 import { apolloAdapter, employeeRanges } from "../src/adapters/apollo.ts";
 import { hunterAdapter } from "../src/adapters/hunter.ts";
 import { zerobounceAdapter } from "../src/adapters/zerobounce.ts";
-import { adapterFor, configuredProviders, resetRegistryForTests } from "../src/registry.ts";
+import { adapterFor, adaptersFor, configuredProviders, resetRegistryForTests } from "../src/registry.ts";
+import { matchPerson } from "../src/index.ts";
 
 let failures = 0;
 let checks = 0;
@@ -756,6 +757,64 @@ console.log("\nregistry — nothing is configured until a key says so");
   // more expensive credits for the searching only Apollo can do.
   expect("Hunter takes person match from Apollo when both are present", adapterFor("person.match")?.name === "hunter");
   expect("and Apollo keeps company search", adapterFor("company.search")?.name === "apollo");
+  expectEqual("Apollo stays behind Hunter as the person-match fallback (debt #11)", adaptersFor("person.match").map((a) => a.name), ["hunter", "apollo"]);
+  expectEqual("a capability one vendor serves has a chain of one", adaptersFor("company.search").map((a) => a.name), ["apollo"]);
+
+  /* ── The fallback, through the public function ─────────────────────── */
+  const original = globalThis.fetch;
+  const person = { firstName: "A", lastName: "B", title: null, companyDomain: "acme.com", companyName: "Acme" };
+  const hosts: string[] = [];
+  const respond = (hunter: Response, apollo: () => Response) =>
+    (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      hosts.push(new URL(url).host);
+      return url.includes("hunter.io") ? hunter.clone() : apollo();
+    }) as typeof fetch;
+  const apolloFound = () =>
+    new Response(JSON.stringify({ person: { id: "p1", first_name: "A", last_name: "B", email: "a@acme.com", email_status: "verified" } }), { status: 200 });
+
+  {
+    hosts.length = 0;
+    const { db, calls } = fakeDb();
+    globalThis.fetch = respond(new Response("{}", { status: 401 }), apolloFound);
+    const result = await matchPerson({ db, orgId: ORG }, person);
+    expect("Hunter rejecting its key falls through to Apollo", result.meta.provider === "apollo" && result.data !== null);
+    expectEqual("and the ledger shows both attempts, the failed one first", ledger(calls).map((r) => [r.p_provider, r.p_outcome]), [["hunter", "failed"], ["apollo", "ok"]]);
+  }
+
+  {
+    hosts.length = 0;
+    const { db } = fakeDb();
+    globalThis.fetch = respond(new Response("{}", { status: 404 }), apolloFound);
+    const result = await matchPerson({ db, orgId: ORG }, person);
+    expect("Hunter's no-match is an answer: Apollo is not asked", result.meta.provider === "hunter" && result.data === null && !hosts.includes("api.apollo.io"));
+  }
+
+  {
+    hosts.length = 0;
+    const { db } = fakeDb({ breakerOpenUntil: new Date(Date.now() + 60_000).toISOString() });
+    globalThis.fetch = respond(new Response("{}", { status: 401 }), apolloFound);
+    try {
+      await matchPerson({ db, orgId: ORG }, person);
+      fail("with every breaker open, the last refusal reaches the caller", "returned");
+    } catch (e) {
+      expect("with every breaker open, the last refusal reaches the caller", e instanceof ProviderRefused && e.meta.provider === "apollo" && e.meta.refusal === "breaker_open");
+    }
+    expect("and nothing was called", hosts.length === 0);
+  }
+
+  {
+    const { db } = fakeDb({ credentialsBad: true });
+    /* The stand-in's row names no provider, so it condemns every adapter. */
+    try {
+      await matchPerson({ db, orgId: ORG }, person);
+      fail("a known-bad key on every adapter is still refused", "returned");
+    } catch (e) {
+      expect("a known-bad key on every adapter is still refused", e instanceof ProviderRefused && e.meta.refusal === "credentials_invalid");
+    }
+  }
+
+  globalThis.fetch = original;
 
   if (saved.apollo === undefined) delete process.env.APOLLO_API_KEY;
   else process.env.APOLLO_API_KEY = saved.apollo;

@@ -265,6 +265,26 @@ describe("mapEvidence", () => {
     expect(item?.source).toBe("techcrunch.com");
     expect(item?.sourceUrl).toBe("https://techcrunch.com/x");
   });
+
+  it("counts sightings only when more than one source reported the claim", () => {
+    const base = {
+      claim: "Raised $12M.",
+      kind: "fact" as const,
+      confidence: "high" as const,
+      source_url: "https://techcrunch.com/x",
+      excerpt: null,
+      event_date: null,
+      observed_at: null,
+    };
+    const [three, one, none] = mapEvidence([
+      { ...base, evidence_citations: [{ count: 3 }] },
+      { ...base, evidence_citations: [{ count: 1 }] },
+      base,
+    ]);
+    expect(three?.sightings).toBe(3);
+    expect(one?.sightings).toBeUndefined();
+    expect(none?.sightings).toBeUndefined();
+  });
 });
 
 describe("mapListRow", () => {

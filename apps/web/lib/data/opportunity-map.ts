@@ -297,6 +297,8 @@ export interface EvidenceQueryRow {
   observed_at: string | null;
   /** 0020's reliability band; absent on loaders that do not select it. */
   reliability?: string | null;
+  /** `evidence_citations(count)`: one per source that reported the claim (0022). */
+  evidence_citations?: { count: number }[] | null;
 }
 
 /* ── Guards and small rules ──────────────────────────────────────────────── */
@@ -454,7 +456,16 @@ export function mapEvidence(rows: EvidenceQueryRow[]): EvidenceItem[] {
     excerpt: e.excerpt ?? undefined,
     eventDate: e.event_date ?? undefined,
     observedAt: e.observed_at ?? undefined,
+    /* Debt #8: 0022 records every source that reported a merged claim, and
+       nothing read it. Two outlets saying the same thing is corroboration a
+       reader should see; one is the default and needs no label. */
+    sightings: sightingsOf(e.evidence_citations),
   }));
+}
+
+function sightingsOf(rows: { count: number }[] | null | undefined): number | undefined {
+  const n = Number(rows?.[0]?.count ?? 0);
+  return n > 1 ? n : undefined;
 }
 
 export function mapListRow(

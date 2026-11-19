@@ -18,6 +18,10 @@ import { IcpQualityCard } from "./IcpQualityCard";
 import { getNudge } from "../../../../lib/data/nudges";
 import { LearningNudge } from "./LearningNudge";
 import { RefreshButton } from "../RefreshButton";
+import { cookies } from "next/headers";
+import { ChangesCard } from "./ChangesCard";
+import { getChangesSince } from "../../../../lib/data/changes";
+import { resolveWindow, seenCookieName } from "../../../../lib/changes-window";
 import {
   BreakdownList,
   Button,
@@ -93,9 +97,11 @@ export default async function DashboardPage({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
+  /* Debt #13: the window "What changed" counts over, from this browser's last visit. */
+  const changesWindow = resolveWindow((await cookies()).get(seenCookieName(org))?.value ?? null, new Date());
   /* `chrome` is the layout's own request-cached lookup, so the eyebrow can
      name the workspace — not echo the URL slug — at no extra cost. */
-  const [viewer, { data }, onboarding, icpQuality, nudge, chrome, learningNews, questionKey] = await Promise.all([
+  const [viewer, { data }, onboarding, icpQuality, nudge, chrome, learningNews, questionKey, { data: changes }] = await Promise.all([
     currentViewer(org),
     getDashboard(org),
     getOnboardingState(org),
@@ -104,6 +110,7 @@ export default async function DashboardPage({
     getShellChrome(org),
     getLearningNews(org),
     getQuestionFor(org, "dashboard"),
+    getChangesSince(org, changesWindow.since),
   ]);
 
   /* The layout this person gets. Order and defaults only — never capability;
@@ -565,6 +572,8 @@ export default async function DashboardPage({
             a component and cannot take one itself. */}
         {/* A personal workspace (K1) that has not said what it sells yet: what
             it can do now, and the way into the part that needs a company. */}
+        <ChangesCard org={org} changes={changes} window={changesWindow} now={now} />
+
         {learningNews && <LearningNewsCard org={org} news={learningNews} />}
         {/* K4: one question at most, and only when nothing above is asking. */}
         {!learningNews && <QuestionCard org={org} questionKey={questionKey} />}

@@ -147,6 +147,7 @@ export const OPPORTUNITIES: OpportunityFixture[] = [
         observedAt: "2026-08-09",
         excerpt:
           "Alphio AI has raised $12 million to scale its autonomous trading agents to institutional desks.",
+        sightings: 3,
       },
       {
         claim:

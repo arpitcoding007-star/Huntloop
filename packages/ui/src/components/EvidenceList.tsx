@@ -24,6 +24,8 @@ export interface EvidenceItem {
   observedAt?: Date | string;
   /** Verbatim excerpt supporting the claim — quoted, never paraphrased. */
   excerpt?: string;
+  /** How many distinct sources reported this claim. Shown only above one. */
+  sightings?: number;
 }
 
 export interface EvidenceListProps {
@@ -83,7 +85,7 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
             </blockquote>
           )}
 
-          {(item.source || item.observedAt) && (
+          {(item.source || item.observedAt || (item.sightings ?? 0) > 1) && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
               {item.source &&
                 (item.sourceUrl ? (
@@ -106,6 +108,9 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
                 <span className="hl-tabular">
                   Observed {formatDate(item.observedAt)}
                 </span>
+              )}
+              {(item.sightings ?? 0) > 1 && (
+                <span className="hl-tabular">Seen in {item.sightings} sources</span>
               )}
             </div>
           )}
