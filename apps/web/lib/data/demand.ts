@@ -19,6 +19,8 @@ export interface DemandStatement {
   kind: DemandKind;
   statement: string;
   sourceType: "reply" | "outcome" | "note";
+  /** PANEL-201: the model's paraphrase, not the prospect's words (`claim_kind = 'inference'`). */
+  paraphrased: boolean;
   company: string | null;
   opportunityId: string | null;
   occurredAt: string;
@@ -69,7 +71,7 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
         db
           .from("demand_signals")
           .select(
-            "id, kind, statement, source_type, opportunity_id, theme_id, occurred_at, " +
+            "id, kind, statement, source_type, claim_kind, opportunity_id, theme_id, occurred_at, " +
               "companies(name), opportunities(status, estimated_value_cents)",
           )
           .eq("org_id", orgId)
@@ -87,6 +89,7 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
           kind: s.kind as DemandKind,
           statement: String(s.statement),
           sourceType: s.source_type as DemandStatement["sourceType"],
+          paraphrased: s.claim_kind !== "fact",
           company: one(s.companies)?.name ?? null,
           opportunityId: s.opportunity_id ? String(s.opportunity_id) : null,
           occurredAt: String(s.occurred_at),

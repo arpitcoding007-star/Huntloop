@@ -946,6 +946,125 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 6 — Data access: select strings name real columns (C1) ──────── */
+
+{
+  /*
+   * PANEL-102 selected `contact_fit_scores.explanation` and PANEL-115
+   * `messages.approved_at`. Neither column exists, PostgREST answered 42703,
+   * the loader swallowed the error, and a live feature was silently empty
+   * while the demo fixtures made it look fine. `check:types` checks
+   * `types.ts`, not the strings passed to `.select()`.
+   *
+   * This reads every literal `.from("t").select("…")` (and the jobs scope's
+   * `.select("t", "…")`) in app and package source, and resolves each column
+   * — including inside an embedded `rel(…)` whose name is a known table —
+   * against the generated schema reference, which is built from the
+   * migrations themselves. Non-literal selects are skipped, not guessed.
+   */
+  const reference = read("docs/spec/generated/schema-reference.md") ?? "";
+  const columns = new Map();
+  let current = null;
+  for (const line of reference.split(/\r?\n/)) {
+    const heading = /^## ([a-z_][a-z0-9_]*)\s*$/.exec(line);
+    if (heading) {
+      current = heading[1];
+      columns.set(current, new Set());
+      continue;
+    }
+    if (/^## /.test(line)) current = null;
+    const col = current && /^\| `([a-z_][a-z0-9_]*)` \|/.exec(line);
+    if (col) columns.get(current).add(col[1]);
+  }
+  // Sections that are not relations (functions, enums) end up empty; drop them.
+  for (const [t, set] of columns) if (set.size === 0) columns.delete(t);
+
+  /** Split on top-level commas, keeping `rel(a, b)` together. */
+  const splitTop = (s) => {
+    const out = [];
+    let depth = 0;
+    let buf = "";
+    for (const ch of s) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+      if (ch === "," && depth === 0) {
+        out.push(buf);
+        buf = "";
+      } else buf += ch;
+    }
+    out.push(buf);
+    return out.map((x) => x.trim()).filter(Boolean);
+  };
+
+  const unknown = [];
+  const verify = (table, list, where) => {
+    const known = columns.get(table);
+    if (!known) return; // auth.*, views not in the reference, RPCs
+    for (const token of splitTop(list)) {
+      const embed = /^(?:[a-z_][a-z0-9_]*:)?([a-z_][a-z0-9_]*)(?:![a-z0-9_]+)*\s*\(([\s\S]*)\)$/i.exec(token);
+      if (embed) {
+        const [, rel, inner] = embed;
+        if (rel === "count" && inner.trim() === "") continue;
+        if (columns.has(rel)) verify(rel, inner, where);
+        continue;
+      }
+      if (token === "*" || token === "count") continue;
+      const name = token
+        .replace(/^[a-z_][a-z0-9_]*:/i, "") // alias:
+        .replace(/::[a-z_ ]+$/i, "") // ::cast
+        .replace(/->>?.*$/, "") // json path
+        .trim();
+      if (!/^[a-z_][a-z0-9_]*$/.test(name)) continue;
+      if (!known.has(name)) unknown.push(`${where}: ${table}.${name}`);
+    }
+  };
+
+  /** A string expression made only of literals joined by `+`, or null. */
+  const literal = (expr) => {
+    const parts = expr.trim().split(/\s*\+\s*/);
+    let out = "";
+    for (const p of parts) {
+      const m = /^"([^"\\]*)"$|^'([^'\\]*)'$|^`([^`$\\]*)`$/.exec(p.trim());
+      if (!m) return null;
+      out += m[1] ?? m[2] ?? m[3];
+    }
+    return out;
+  };
+
+  const files = [
+    ...walk("apps/web/lib"),
+    ...walk("apps/web/app"),
+    ...readdirSync(join(ROOT, "packages")).flatMap((p) => walk(`packages/${p}/src`)),
+  ].filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f));
+
+  let scanned = 0;
+  for (const f of files) {
+    const src = read(f) ?? "";
+    const fromSelect = /\.from\(\s*["'`]([a-z_][a-z0-9_]*)["'`]\s*\)\s*\.select\(\s*((?:["'`][^"'`]*["'`]\s*\+?\s*)+)[,)]/g;
+    const scopeSelect = /\.select\(\s*["']([a-z_][a-z0-9_]*)["']\s*,\s*((?:["'`][^"'`]*["'`]\s*\+?\s*)+)[,)]/g;
+    for (const re of [fromSelect, scopeSelect]) {
+      for (const m of src.matchAll(re)) {
+        const list = literal(m[2]);
+        if (list === null) continue;
+        scanned++;
+        const line = src.slice(0, m.index).split("\n").length;
+        verify(m[1], list, `${f}:${line}`);
+      }
+    }
+  }
+
+  check(
+    6,
+    "DATA-C1",
+    "Every literal .select() names columns that exist in the migrated schema",
+    unknown.length === 0,
+    "fail",
+    unknown.length
+      ? `${unknown.length} unknown: ${unknown.slice(0, 12).join("; ")}${unknown.length > 12 ? " …" : ""}`
+      : `${scanned} selects checked against ${columns.size} relations`,
+  );
+}
+
 /* ── Report ─────────────────────────────────────────────────────────────── */
 
 const failed = results.filter((r) => !r.ok && r.severity === "fail");

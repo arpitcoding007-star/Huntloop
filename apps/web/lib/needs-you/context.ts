@@ -11,6 +11,8 @@
 export interface ItemContext {
   /** The qualifier's why-now sentence, or null when none was written. */
   whyNow: string | null;
+  /** PANEL-103: when the why-now was written, so the queue can date it. */
+  whyNowWrittenAt?: string | null;
   /** Who to reach, or null when nobody is on file yet. */
   buyer: { name: string; title: string | null } | null;
 }

@@ -297,8 +297,12 @@ export interface EvidenceQueryRow {
   observed_at: string | null;
   /** 0020's reliability band; absent on loaders that do not select it. */
   reliability?: string | null;
-  /** `evidence_citations(count)`: one per source that reported the claim (0022). */
-  evidence_citations?: { count: number }[] | null;
+  /**
+   * The citations behind a merged claim (0022): either the rows themselves
+   * (`evidence_citations(source_id, source_url)`, counted as distinct sources
+   * below) or a bare `evidence_citations(count)` from older callers.
+   */
+  evidence_citations?: ({ count: number } | { source_id: string | null; source_url: string | null })[] | null;
 }
 
 /* ── Guards and small rules ──────────────────────────────────────────────── */
@@ -463,9 +467,34 @@ export function mapEvidence(rows: EvidenceQueryRow[]): EvidenceItem[] {
   }));
 }
 
-function sightingsOf(rows: { count: number }[] | null | undefined): number | undefined {
-  const n = Number(rows?.[0]?.count ?? 0);
-  return n > 1 ? n : undefined;
+/**
+ * PANEL-207. A source is the configured source or, without one, the host —
+ * not the URL. 0022's citation key is (source_id, source_url), so a feed's
+ * summary and the full article it links to were two "sources".
+ */
+export function sightingsOf(
+  rows: ({ count: number } | { source_id: string | null; source_url: string | null })[] | null | undefined,
+): number | undefined {
+  if (!rows?.length) return undefined;
+  const first = rows[0]!;
+  if ("count" in first) {
+    const n = Number(first.count ?? 0);
+    return n > 1 ? n : undefined;
+  }
+  const keys = new Set<string>();
+  for (const row of rows as { source_id: string | null; source_url: string | null }[]) {
+    if (row.source_id) {
+      keys.add(`source:${row.source_id}`);
+      continue;
+    }
+    if (!row.source_url) continue;
+    try {
+      keys.add(`host:${new URL(row.source_url).hostname.replace(/^www\./, "").toLowerCase()}`);
+    } catch {
+      keys.add(`url:${row.source_url}`);
+    }
+  }
+  return keys.size > 1 ? keys.size : undefined;
 }
 
 export function mapListRow(

@@ -164,10 +164,13 @@ function Statement({ org, s }: { org: string; s: DemandStatement }) {
   return (
     <span className="min-w-0 flex-1 text-[13px] text-fg-secondary">
       <MessageSquareQuote className="mr-1 inline size-3.5 text-fg-muted" strokeWidth={1.75} aria-hidden />
-      “{s.statement}”
+      {/* PANEL-201: quote marks only for the prospect's own words. A
+          paraphrase the model wrote is labelled as one. */}
+      {s.paraphrased ? s.statement : <>“{s.statement}”</>}
       <span className="text-[12px] text-fg-muted">
         {" "}
-        — {s.company ?? "a prospect"}, {SOURCE_LABEL[s.sourceType]}
+        — {s.paraphrased ? "paraphrased from " : ""}
+        {s.company ?? "a prospect"}, {SOURCE_LABEL[s.sourceType]}
         {s.opportunityId && (
           <>
             {" · "}

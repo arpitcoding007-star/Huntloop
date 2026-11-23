@@ -130,9 +130,12 @@ export async function listCompetitors(orgSlug: string): Promise<Loaded<Competito
         db.from("competitor_profiles").select("competitor_id, positioning").eq("org_id", orgId).limit(200),
         db
           .from("company_competitor_signals")
-          .select("competitor_id, relationship")
+          /* PANEL-210: inner-join the company so removed companies stop
+             counting, as the detail page already does. */
+          .select("competitor_id, relationship, companies!inner(deleted_at)")
           .eq("org_id", orgId)
           .not("evidence_id", "is", null)
+          .is("companies.deleted_at", null)
           .limit(5000),
         db
           .from("outcomes")

@@ -8,6 +8,7 @@ import { toFailureState } from "../../../../lib/ai/outcome";
 import { sealVerdict, verifyVerdict } from "../../../../lib/ai/seal";
 import { revalidatePath } from "next/cache";
 import type { Qualification } from "@huntloop/ai";
+import { resolveOrInsertCompany } from "../../../../lib/data/company-resolve";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import {
   orgSlugSchema,
@@ -193,50 +194,78 @@ export async function saveQualificationAction(
     /* §59's entity-resolution key. The domain the qualifier canonicalised, not
        the URL the user typed — which is what makes acme.com, www.acme.com and
        acme.com/pricing one company. */
-    const { data: company, error: companyError } = await db
-      .from("companies")
-      .upsert(
-        {
-          org_id: orgId,
-          canonical_domain: q.canonicalDomain,
-          name: q.companyName,
-          website: q.url,
-          discovered_via: "manual",
-        },
-        { onConflict: "org_id,canonical_domain" },
-      )
-      .select("id")
-      .single();
+    /* PANEL-202: resolve, then write. An existing company keeps its name and
+       `discovered_via` (a `competitor:` provenance is what competitor and
+       Performance attribution read); a merged-away domain resolves to its
+       survivor; a removed one is restored. Only a new domain is inserted. */
+    const company = await resolveOrInsertCompany(db, orgId, q.canonicalDomain, {
+      name: q.companyName,
+      website: q.url,
+      discovered_via: "manual",
+    });
+    if (company.kind === "unavailable") return fail(company.reason);
 
-    if (companyError) return fail(`That company could not be saved: ${companyError.message}`);
+    const companyId = company.id;
 
-    const companyId = String(company.id);
+    /* The scoring fields are this verdict's to write. Priority is not when a
+       person set it (`priority_set_by = 'user'`): a human verdict outranks a
+       re-run of the model. Provenance stays with whoever found it first. */
+    const scored = {
+      why_this_company: q.summary,
+      outreach_angle: q.recommendation,
+      confidence: q.scoreConfidence,
+      last_scored_at: new Date().toISOString(),
+    };
 
-    const { data: opportunity, error: opportunityError } = await db
+    /* Removed rows too: `unique nulls not distinct (org_id, company_id,
+       icp_id)` (0003) is not partial, so a removed opportunity still holds
+       the key. Saving the verdict again restores it. */
+    let existingQuery = db
       .from("opportunities")
-      .upsert(
-        {
+      .select("id, priority_set_by")
+      .eq("org_id", orgId)
+      .eq("company_id", companyId);
+    existingQuery = icpId ? existingQuery.eq("icp_id", icpId) : existingQuery.is("icp_id", null);
+    const { data: existing, error: existingError } = await existingQuery.limit(1).maybeSingle();
+    if (existingError) {
+      return fail(`That opportunity could not be read: ${existingError.message}`);
+    }
+
+    let opportunityId: string;
+    if (existing) {
+      const humanPriority = (existing as { priority_set_by?: string | null }).priority_set_by === "user";
+      const { error: updateError } = await db
+        .from("opportunities")
+        .update(
+          humanPriority
+            ? { ...scored, deleted_at: null }
+            : { ...scored, deleted_at: null, priority: q.priority, priority_reason: q.priorityReason },
+        )
+        .eq("org_id", orgId)
+        .eq("id", (existing as { id: string }).id);
+      if (updateError) {
+        return fail(`That opportunity could not be saved: ${updateError.message}`);
+      }
+      opportunityId = String((existing as { id: string }).id);
+    } else {
+      const { data: opportunity, error: opportunityError } = await db
+        .from("opportunities")
+        .insert({
           org_id: orgId,
           company_id: companyId,
           icp_id: icpId,
           priority: q.priority,
           priority_reason: q.priorityReason,
-          why_this_company: q.summary,
-          outreach_angle: q.recommendation,
-          confidence: q.scoreConfidence,
           discovered_via: "manual",
-          last_scored_at: new Date().toISOString(),
-        },
-        { onConflict: "org_id,company_id,icp_id" },
-      )
-      .select("id")
-      .single();
-
-    if (opportunityError) {
-      return fail(`That opportunity could not be saved: ${opportunityError.message}`);
+          ...scored,
+        })
+        .select("id")
+        .single();
+      if (opportunityError) {
+        return fail(`That opportunity could not be saved: ${opportunityError.message}`);
+      }
+      opportunityId = String(opportunity.id);
     }
-
-    const opportunityId = String(opportunity.id);
 
     /* A dimension the model could not establish is NULL, never 0. `0003` makes
        every dimension column nullable for this reason, and §78 states it: a

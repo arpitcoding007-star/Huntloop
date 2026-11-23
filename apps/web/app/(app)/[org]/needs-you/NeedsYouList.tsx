@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Badge, Button, Field, FormMessage, Menu, Select, Textarea } from "@huntloop/ui";
+import { Badge, Button, ClaimBadge, Field, FormMessage, Menu, Select, Textarea } from "@huntloop/ui";
 import { AlarmClock, CalendarClock, Clock, MessageSquarePlus, PenLine, Sunrise } from "lucide-react";
 import type { NeedsYouItem } from "../../../../lib/data/needs-you";
 import type { AttentionGroup } from "../../../../lib/needs-you/rank";
@@ -187,8 +187,23 @@ function ItemCard({
           {item.context.whyNow && (
             <div className="flex min-w-0 gap-1.5">
               <dt className="shrink-0 text-fg-muted">Why now</dt>
-              <dd className="min-w-0 truncate text-fg-secondary" title={item.context.whyNow}>
-                {item.context.whyNow}
+              {/* PANEL-103: model prose, so it carries the inference label and
+                  the date it was written, as on the opportunity page. */}
+              <dd className="flex min-w-0 items-center gap-1.5 text-fg-secondary">
+                <ClaimBadge kind="inference" />
+                <span className="min-w-0 truncate" title={item.context.whyNow}>
+                  {item.context.whyNow}
+                </span>
+                {item.context.whyNowWrittenAt && (
+                  <span className="shrink-0 text-fg-muted">
+                    ·{" "}
+                    {new Date(item.context.whyNowWrittenAt).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      timeZone: "UTC",
+                    })}
+                  </span>
+                )}
               </dd>
             </div>
           )}

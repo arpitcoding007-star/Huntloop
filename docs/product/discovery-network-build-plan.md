@@ -80,7 +80,7 @@ doubles the risk.
 | DN-03 | INTEGRATE | Turn on the tick | Set `CRON_SECRET` and `HUNTLOOP_URL` for `.github/workflows/tick.yml` (5-minute cron), or move to a host with minute-level cron | P0 | S | 1 |
 | DN-04 | INTEGRATE | Fix or delete the stray `huntloop` Vercel project | Master guide blocker #7 | P2 | S | 1 |
 | DN-05 | IMPROVE | Tick latency | A 5-minute GitHub cron (delayed under load) is fine for discovery, but too slow for "instant" supplier alerts. Decide: Inngest event triggers (already a dependency, `apps/web/app/api/inngest`) or a minute cron | P1 | M | 1 |
-| DN-06 | IMPROVE | Close the pass-20 audit findings that break live data | **Update 2026-11-23:** `COMMAND.md` §14 has no open mismatches; the real list is `audit/pass-20/06_PLAN.md`. P0 (PANEL-301–303, 401) and PANEL-101, 406, 102, 115 are fixed in code; the rest of P1 (PANEL-201/103/210/207/212, 202/203/211, 313) remains | P1 | M | 1 |
+| DN-06 | IMPROVE | Close the pass-20 audit findings that break live data | **Update 2026-11-23:** `COMMAND.md` §14 has no open mismatches; the real list is `audit/pass-20/06_PLAN.md`. P0 (PANEL-301–303, 401) and PANEL-101, 406, 102, 115 are merged; the rest of P1 (PANEL-201/103/210/207/212, 202/203/211, 313) plus check C1 are fixed on `feat/pass-20-p1`. P2 and P3 of that plan remain | P1 | M | 1 |
 | DN-07 | MODIFY | Billing decision recorded (decision log #1) | Needed before Phase 4. Stripe or not, which plans | P1 | S | 1 |
 | DN-08 | INTEGRATE | Legal facts for the legal pages (`LEGAL-01`) | Master guide blocker #4. Exchange privacy notices depend on them | P0 | S | 1 |
 | DN-09 | IMPROVE | Production monitoring baseline | Sentry exists. Add alerts for job failure rate, queue depth (`0055` status checks) and AI spend per day | P1 | S | 1 |

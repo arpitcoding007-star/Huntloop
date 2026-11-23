@@ -12,6 +12,7 @@ import {
 import { normalizeDomain } from "../../../../lib/domain";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { csvSchema, emailSchema, parseInput } from "../../../../lib/validation";
+import { resolveExistingCompanies } from "../../../../lib/data/company-resolve";
 import { inChunks } from "../../../../lib/in-chunks";
 
 /**
@@ -163,24 +164,30 @@ export async function importCsvAction(
     /* Which of these we already have. Read before the insert so the summary
        can distinguish "added" from "already there" — an importer that reports
        "300 imported" when 300 already existed has told the user nothing. */
-    const { data: before, error: beforeError } = await inChunks(domains, (chunk) =>
-      db
-        .from("companies")
-        .select("id, canonical_domain")
-        .eq("org_id", orgId)
-        .is("deleted_at", null)
-        .in("canonical_domain", chunk),
-    );
-    if (beforeError) return fail(`The import could not run: ${beforeError.message}`);
+    /* PANEL-203: every row that holds the domain, removed and merged ones
+       included — `(org_id, canonical_domain)` is not partial, so reading only
+       live rows and inserting the rest failed the whole file on 23505. A
+       removed company is restored; a merged-away domain attaches to its
+       survivor; nothing existing is overwritten. */
+    const { resolved, error: beforeError } = await resolveExistingCompanies(db, orgId, domains);
+    if (beforeError) return fail(`The import could not run: ${beforeError}`);
 
-    const known = new Map(
-      (before ?? []).map((c) => [String(c.canonical_domain), String(c.id)]),
-    );
+    let alreadyPresent = 0;
+    let restoredCount = 0;
+    const idByDomain = new Map<string, string>();
+    for (const [domain, r] of resolved) {
+      if (r.kind === "unavailable") continue;
+      idByDomain.set(domain, r.id);
+      if (r.kind === "restored") restoredCount += 1;
+      else alreadyPresent += 1;
+    }
 
-    const toInsert = [...companies.values()].filter((c) => !known.has(c.domain));
+    const toInsert = [...companies.values()].filter((c) => !resolved.has(c.domain));
 
     if (toInsert.length > 0) {
-      const { error } = await db.from("companies").insert(
+      /* Insert-or-skip: a row another tab inserted a moment ago is left as it
+         is, never overwritten, and the file still imports. */
+      const { error } = await db.from("companies").upsert(
         toInsert.map((c) => ({
           org_id: orgId,
           canonical_domain: c.domain,
@@ -193,26 +200,27 @@ export async function importCsvAction(
           description: c.description,
           employee_count: c.employeeCount,
         })),
+        { onConflict: "org_id,canonical_domain", ignoreDuplicates: true },
       );
       if (error) return fail(`The companies could not be imported: ${error.message}`);
+
+      /* Read back the ids of the domains just written. Existing, restored and
+         merged domains already have theirs from the resolve above. */
+      const { data: after, error: afterError } = await inChunks(
+        toInsert.map((c) => c.domain),
+        (chunk) =>
+          db
+            .from("companies")
+            .select("id, canonical_domain")
+            .eq("org_id", orgId)
+            .is("deleted_at", null)
+            .in("canonical_domain", chunk),
+      );
+      if (afterError) return fail(`The import could not finish: ${afterError.message}`);
+      for (const c of after ?? []) idByDomain.set(String(c.canonical_domain), String(c.id));
     }
 
-    /* Re-read to get every id, including the ones just written. A `.select()`
-       on the insert would return only the new rows, and people attach to both
-       new and existing companies. */
-    const { data: after, error: afterError } = await inChunks(domains, (chunk) =>
-      db
-        .from("companies")
-        .select("id, canonical_domain")
-        .eq("org_id", orgId)
-        .is("deleted_at", null)
-        .in("canonical_domain", chunk),
-    );
-    if (afterError) return fail(`The import could not finish: ${afterError.message}`);
-
-    const idByDomain = new Map(
-      (after ?? []).map((c) => [String(c.canonical_domain), String(c.id)]),
-    );
+    const companiesAdded = toInsert.length + restoredCount;
 
     const { peopleAdded, emailsAdded, error: peopleError } = await importPeople(
       db,
@@ -231,14 +239,14 @@ export async function importCsvAction(
         malformed,
         unusable,
         truncated,
-        companiesAdded: toInsert.length,
-        companiesAlreadyPresent: known.size,
+        companiesAdded,
+        companiesAlreadyPresent: alreadyPresent,
         peopleAdded,
         emailsAdded,
         recognised: Object.keys(columns) as ColumnKey[],
         ignored: headers.filter((h) => !Object.values(columns).includes(h)),
       },
-      summarise(toInsert.length, known.size, peopleAdded),
+      summarise(companiesAdded, alreadyPresent, peopleAdded),
     );
   });
 }

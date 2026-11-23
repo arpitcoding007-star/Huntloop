@@ -424,7 +424,12 @@ async function loadProvenance(
 
   const { data: events } = await ctx.scope.select(
     "source_events",
-    "company_id, source_id, event_date, created_at, sources(id, name)",
+    /* `source_events` has no `source_id` and no foreign key to `sources`: it
+       points at the document it was read from, and the document at its
+       source (0002). Selecting `source_id, sources(...)` here failed with
+       42703, the error was not read, and every opportunity's provenance
+       came back empty — found by the select-column check (DATA-C1). */
+    "company_id, event_date, created_at, source_documents(source_id, sources(id, name))",
   )
     .in("company_id", companyIds)
     .order("created_at", { ascending: true });
@@ -435,9 +440,10 @@ async function loadProvenance(
     if (seen.has(companyId)) continue;
     seen.add(companyId);
 
-    const source = embedded<Record<string, unknown>>(row.sources);
+    const document = embedded<Record<string, unknown>>(row.source_documents);
+    const source = embedded<Record<string, unknown>>(document?.sources);
     const value = {
-      id: row.source_id ? String(row.source_id) : null,
+      id: document?.source_id ? String(document.source_id) : null,
       name: source?.name ? String(source.name) : null,
     };
     for (const opportunityId of companyToOpportunities.get(companyId) ?? []) {

@@ -40,6 +40,9 @@ export interface EvidenceRow {
   eventDate: string | null;
   observedAt: string | null;
   subjectType: string;
+  /** PANEL-212: the company the claim is about, when it can be resolved. */
+  subject?: string | null;
+  subjectHref?: string | null;
 }
 
 export interface TriggerRow {
@@ -78,7 +81,7 @@ export async function getIntelligence(orgSlug: string): Promise<Loaded<Intellige
         db
           .from("evidence")
           .select(
-            "id, claim, kind, confidence, source_url, excerpt, event_date, observed_at, subject_type",
+            "id, claim, kind, confidence, source_url, excerpt, event_date, observed_at, subject_type, subject_id",
           )
           .eq("org_id", orgId)
           .is("deleted_at", null)
@@ -107,7 +110,7 @@ export async function getIntelligence(orgSlug: string): Promise<Loaded<Intellige
       if (triggers.error) throw new Error(`getIntelligence triggers: ${triggers.error.message}`);
       if (decisions.error) throw new Error(`getIntelligence decisions: ${decisions.error.message}`);
 
-      const rows = (evidence.data ?? []).map(mapEvidence);
+      const rows = await withSubjects(db, orgId, orgSlug, evidence.data ?? []);
 
       return {
         evidence: rows,
@@ -141,6 +144,55 @@ function mapEvidence(row: any): EvidenceRow {
     observedAt: row.observed_at ?? null,
     subjectType: String(row.subject_type ?? "company"),
   };
+}
+
+/**
+ * PANEL-212. Evidence mixes subjects, so each row is labelled with the company
+ * it is about: directly for `company`, through the opportunity for
+ * `opportunity`. Two bounded reads by id. If either fails, the rows still
+ * render, unlabelled, as they did before.
+ */
+async function withSubjects(db: any, orgId: string, orgSlug: string, raw: any[]): Promise<EvidenceRow[]> {
+  const ids = (type: string) => [
+    ...new Set(raw.filter((r) => r.subject_type === type && r.subject_id).map((r) => String(r.subject_id))),
+  ];
+  const companyIds = ids("company");
+  const opportunityIds = ids("opportunity");
+  const none: { data: unknown[]; error: null } = { data: [], error: null };
+
+  const [companies, opportunities] = await Promise.all([
+    companyIds.length
+      ? db.from("companies").select("id, name").eq("org_id", orgId).in("id", companyIds)
+      : Promise.resolve(none),
+    opportunityIds.length
+      ? db.from("opportunities").select("id, companies(name)").eq("org_id", orgId).in("id", opportunityIds)
+      : Promise.resolve(none),
+  ]);
+
+  const companyName = new Map<string, string>();
+  if (!companies.error) {
+    for (const c of (companies.data ?? []) as { id: string; name: string }[]) companyName.set(String(c.id), String(c.name));
+  }
+  const opportunityCompany = new Map<string, string>();
+  if (!opportunities.error) {
+    for (const o of (opportunities.data ?? []) as { id: string; companies: { name: string | null } | { name: string | null }[] | null }[]) {
+      const company = Array.isArray(o.companies) ? o.companies[0] : o.companies;
+      if (company?.name) opportunityCompany.set(String(o.id), String(company.name));
+    }
+  }
+
+  const base = `/${encodeURIComponent(orgSlug)}`;
+  return raw.map((row) => {
+    const mapped = mapEvidence(row);
+    const id = row.subject_id ? String(row.subject_id) : null;
+    if (id && row.subject_type === "company" && companyName.has(id)) {
+      return { ...mapped, subject: companyName.get(id)!, subjectHref: `${base}/companies/${id}` };
+    }
+    if (id && row.subject_type === "opportunity" && opportunityCompany.has(id)) {
+      return { ...mapped, subject: opportunityCompany.get(id)!, subjectHref: `${base}/opportunities/${id}` };
+    }
+    return mapped;
+  });
 }
 
 function mapTrigger(row: any): TriggerRow {

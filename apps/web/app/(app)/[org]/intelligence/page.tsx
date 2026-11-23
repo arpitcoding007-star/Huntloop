@@ -194,6 +194,8 @@ function toEvidenceItem(row: {
   excerpt: string | null;
   eventDate: string | null;
   observedAt: string | null;
+  subject?: string | null;
+  subjectHref?: string | null;
 }): EvidenceItem {
   /* `EvidenceItem`'s fields are optional, not nullable, while the columns
      behind them are nullable — so each null becomes `undefined` rather than
@@ -208,6 +210,8 @@ function toEvidenceItem(row: {
     excerpt: row.excerpt ?? undefined,
     eventDate: row.eventDate ?? undefined,
     observedAt: row.observedAt ?? undefined,
+    subject: row.subject ?? undefined,
+    subjectHref: row.subjectHref ?? undefined,
   };
 }
 
