@@ -171,7 +171,11 @@ export function CompetitorList({
 
 function summarize(c: CompetitorSummary): string {
   const parts: string[] = [];
-  if (c.signals.uses) parts.push(`${c.signals.uses} prospect${c.signals.uses === 1 ? "" : "s"} use them`);
+  /* PANEL-210: most of these links are inferred from mentions, so the line
+     says what was seen, not that it is established. */
+  if (c.signals.uses) {
+    parts.push(`${c.signals.uses} prospect${c.signals.uses === 1 ? "" : "s"} seen using them`);
+  }
   if (c.signals.evaluating) parts.push(`${c.signals.evaluating} evaluating`);
   if (c.signals.former) parts.push(`${c.signals.former} left them`);
   if (c.losses) parts.push(`${c.losses} deal${c.losses === 1 ? "" : "s"} lost to them`);

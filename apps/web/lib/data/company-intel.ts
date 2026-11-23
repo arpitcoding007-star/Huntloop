@@ -25,6 +25,9 @@ export interface CompetitorUse {
   tier: string | null;
   relationship: Relationship;
   hasEvidence: boolean;
+  /** What the writer recorded (PANEL-201). A phrase match is an inference. */
+  claimKind: "fact" | "inference" | "unknown";
+  confidence: "high" | "medium" | "low" | null;
   claim: string | null;
   sourceUrl: string | null;
   observedAt: string | null;
@@ -86,7 +89,7 @@ export async function getCompanyIntel(
         db
           .from("company_competitor_signals")
           .select(
-            "relationship, evidence_id, observed_at, " +
+            "relationship, claim_kind, confidence, evidence_id, observed_at, " +
               "competitors!inner(id, name, tier, status, our_advantage, deleted_at), " +
               "evidence(claim, source_url, excerpt)",
           )
@@ -146,6 +149,17 @@ export async function getCompanyIntel(
           tier: comp.tier ?? null,
           relationship: s.relationship as Relationship,
           hasEvidence: Boolean(s.evidence_id),
+          /* PANEL-201: the kind comes from the row, never from "has an
+             evidence id". With no evidence it is unknown whatever was stored. */
+          claimKind: !s.evidence_id
+            ? "unknown"
+            : s.claim_kind === "fact" || s.claim_kind === "inference"
+              ? s.claim_kind
+              : "unknown",
+          confidence:
+            s.confidence === "high" || s.confidence === "medium" || s.confidence === "low"
+              ? s.confidence
+              : null,
           claim: ev?.excerpt ?? ev?.claim ?? null,
           sourceUrl: ev?.source_url ?? null,
           observedAt: s.observed_at ?? null,

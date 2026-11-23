@@ -136,7 +136,7 @@ async function withContext(db: TenantClient, orgId: string, items: RankedItem[])
 
   const { data, error } = await db
     .from("opportunities")
-    .select("id, why_now, companies(people(first_name, last_name, title, is_decision_maker, deleted_at))")
+    .select("id, why_now, why_now_written_at, companies(people(first_name, last_name, title, is_decision_maker, deleted_at))")
     .eq("org_id", orgId)
     .in("id", ids);
   if (error || !data) return items;
@@ -145,10 +145,15 @@ async function withContext(db: TenantClient, orgId: string, items: RankedItem[])
   for (const row of data as unknown as {
     id: string;
     why_now: string | null;
+    why_now_written_at: string | null;
     companies: { people: ContextPerson[] | null } | { people: ContextPerson[] | null }[] | null;
   }[]) {
     const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
-    byId.set(String(row.id), { whyNow: oneLine(row.why_now), buyer: pickBuyer(company?.people ?? []) });
+    byId.set(String(row.id), {
+      whyNow: oneLine(row.why_now),
+      whyNowWrittenAt: row.why_now_written_at ?? null,
+      buyer: pickBuyer(company?.people ?? []),
+    });
   }
   return items.map((i) => {
     const context = wantsContext(i) ? byId.get(String(i.opportunityId)) : undefined;
@@ -276,7 +281,7 @@ function demo(orgSlug: string, filter: OwnershipFilter): NeedsYou {
       const buyer = o.buyers.find((b) => b.isDecisionMaker) ?? o.buyers[0];
       return {
         ...i,
-        context: { whyNow: oneLine(o.whyNow), buyer: buyer ? { name: buyer.name, title: buyer.title || null } : null },
+        context: { whyNow: oneLine(o.whyNow), whyNowWrittenAt: null, buyer: buyer ? { name: buyer.name, title: buyer.title || null } : null },
       };
     }),
     total: candidates.length,

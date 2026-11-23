@@ -294,9 +294,19 @@ export default async function OpportunityPage({
               description="What to say — and what the evidence will not support."
             />
             <CardBody className="space-y-3">
-              <p className="text-[14px] leading-[1.6] text-fg-secondary">
-                {o.outreachAngle}
-              </p>
+              {/* PANEL-103: the angle is model prose, so it carries the
+                  inference label, and says plainly when none was written. */}
+              {o.outreachAngle && o.outreachAngle.trim() !== "" ? (
+                <div className="space-y-1.5">
+                  <ClaimBadge kind="inference" />
+                  <p className="text-[14px] leading-[1.6] text-fg-secondary">{o.outreachAngle}</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ClaimBadge kind="unknown" />
+                  <p className="text-[14px] leading-[1.6] text-fg-muted">No outreach angle has been written yet.</p>
+                </div>
+              )}
               {/* §62 rule 9 and §63: name the speculative parts before the
                   message is written, not after it has been sent. */}
               {o.evidence.some((e) => e.kind === "unknown") && (

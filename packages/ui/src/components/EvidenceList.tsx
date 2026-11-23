@@ -26,6 +26,13 @@ export interface EvidenceItem {
   excerpt?: string;
   /** How many distinct sources reported this claim. Shown only above one. */
   sightings?: number;
+  /**
+   * What the claim is about, for lists that mix subjects (Intelligence).
+   * "Raised a Series B" means nothing without the company it is about.
+   */
+  subject?: string;
+  /** In-app link to the subject, when there is a page for it. */
+  subjectHref?: string;
 }
 
 export interface EvidenceListProps {
@@ -68,6 +75,21 @@ export function EvidenceList({ items, now, className }: EvidenceListProps) {
           <div className="flex flex-wrap items-center gap-2">
             <ClaimBadge kind={item.kind} confidence={item.confidence} />
             {item.eventDate && <Freshness date={item.eventDate} now={now} label="Happened" />}
+            {item.subject && (
+              <span className="text-[12px] text-fg-muted">
+                About{" "}
+                {item.subjectHref ? (
+                  <a
+                    href={item.subjectHref}
+                    className="hl-focusable rounded-sm font-medium text-fg-secondary underline-offset-2 hover:underline"
+                  >
+                    {item.subject}
+                  </a>
+                ) : (
+                  <span className="font-medium text-fg-secondary">{item.subject}</span>
+                )}
+              </span>
+            )}
           </div>
 
           <p

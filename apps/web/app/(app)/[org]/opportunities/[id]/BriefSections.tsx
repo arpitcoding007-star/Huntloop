@@ -115,10 +115,9 @@ export function WhatTheyUseCard({ org, intel }: { org: string; intel: CompanyInt
                   </span>
                   {c.relationship === "partner" ? (
                     <Badge variant="neutral">Not competitive</Badge>
-                  ) : c.hasEvidence ? (
-                    <ClaimBadge kind="fact" />
                   ) : (
-                    <ClaimBadge kind="unknown" />
+                    /* PANEL-201: from the row, so a phrase match reads as a guess. */
+                    <ClaimBadge kind={c.claimKind} confidence={c.confidence ?? undefined} />
                   )}
                 </div>
                 {c.claim && (

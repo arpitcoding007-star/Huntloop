@@ -285,6 +285,44 @@ describe("mapEvidence", () => {
     expect(one?.sightings).toBeUndefined();
     expect(none?.sightings).toBeUndefined();
   });
+
+  it("counts distinct sources, not distinct URLs (PANEL-207)", () => {
+    const base = {
+      claim: "Raised $12M.",
+      kind: "fact" as const,
+      confidence: "high" as const,
+      source_url: "https://techcrunch.com/x",
+      excerpt: null,
+      event_date: null,
+      observed_at: null,
+    };
+    const [sameFeed, sameHost, two] = mapEvidence([
+      {
+        ...base,
+        evidence_citations: [
+          { source_id: "feed-1", source_url: "https://news.example.com/summary" },
+          { source_id: "feed-1", source_url: "https://news.example.com/full-article" },
+        ],
+      },
+      {
+        ...base,
+        evidence_citations: [
+          { source_id: null, source_url: "https://www.techcrunch.com/a" },
+          { source_id: null, source_url: "https://techcrunch.com/b" },
+        ],
+      },
+      {
+        ...base,
+        evidence_citations: [
+          { source_id: "feed-1", source_url: "https://news.example.com/summary" },
+          { source_id: null, source_url: "https://techcrunch.com/b" },
+        ],
+      },
+    ]);
+    expect(sameFeed?.sightings).toBeUndefined();
+    expect(sameHost?.sightings).toBeUndefined();
+    expect(two?.sightings).toBe(2);
+  });
 });
 
 describe("mapListRow", () => {

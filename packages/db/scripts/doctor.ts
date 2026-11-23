@@ -125,6 +125,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0055_status_checks.sql", probe: "migration_0055_applied", kind: "rpc" },
   { file: "0056_fair_claiming.sql", probe: "migration_0056_applied", kind: "rpc" },
   { file: "0057_icp_retires_discovery.sql", probe: "migration_0057_applied", kind: "rpc" },
+  { file: "0058_activation_counts_real_replies.sql", probe: "migration_0058_applied", kind: "rpc" },
 ];
 
 /**

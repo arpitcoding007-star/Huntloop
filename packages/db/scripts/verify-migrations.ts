@@ -2305,6 +2305,38 @@ console.log("\n0057 — a removed ICP stops its paid searches (PANEL-401)");
   await db.exec("rollback");
 }
 
+console.log("\n0058 — activation counts replies, not inbound mail (PANEL-313)");
+{
+  const ORG = "58585858-0058-0058-0058-000000000058";
+  await db.exec("begin");
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'Act Co', 'act-0058')`, [ORG]);
+  /* Three inbound messages nobody replied with — a newsletter, an
+     out-of-office and a bounce — and one real, classified reply. */
+  await db.query(
+    `insert into messages (org_id, direction, body_text) values
+       ($1, 'inbound', 'newsletter'), ($1, 'inbound', 'out of office'), ($1, 'inbound', 'bounce')`,
+    [ORG],
+  );
+  await db.query(`insert into outcomes (org_id, kind) values ($1, 'reply'), ($1, 'won')`, [ORG]);
+
+  const row = await db.query<{ replies_30d: string; first_reply_at: string | null }>(
+    `select replies_30d, first_reply_at from public.org_activation where org_id = $1`,
+    [ORG],
+  );
+  if (Number(row.rows[0]?.replies_30d) === 1) {
+    ok("replies_30d counts the one reply outcome, not the three inbound messages");
+  } else {
+    fail("replies_30d counts reply outcomes only", JSON.stringify(row.rows));
+  }
+  if (row.rows[0]?.first_reply_at) ok("first_reply_at comes from the reply outcome");
+  else fail("first_reply_at comes from the reply outcome", JSON.stringify(row.rows));
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0058_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0058_applied() exists for db:doctor");
+  else fail("migration_0058_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

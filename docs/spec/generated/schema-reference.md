@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 57 migrations
-> (`0001_identity.sql` … `0057_icp_retires_discovery.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 58 migrations
+> (`0001_identity.sql` … `0058_activation_counts_real_replies.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 10 views · 130 public functions · 10 enum types · 147 RLS policies · 263 indexes · 129 triggers.
+**Totals:** 83 tables · 10 views · 131 public functions · 10 enum types · 147 RLS policies · 263 indexes · 129 triggers.
 
 **RLS enabled on:** 83 of 83 tables.
 
@@ -3647,6 +3647,7 @@ RLS: **enabled**
 | `migration_0055_applied` |  | boolean |  |
 | `migration_0056_applied` |  | boolean |  |
 | `migration_0057_applied` |  | boolean |  |
+| `migration_0058_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

@@ -269,6 +269,30 @@ export async function scanSource(ctx: JobContext): Promise<JobOutcome> {
  * resolution key there is no company row to hang a trigger on, and matching on
  * name would merge two companies called Northwind.
  */
+interface CompanyKey {
+  id: unknown;
+  deleted_at: string | null;
+  merged_into_id: string | null;
+}
+
+const MAX_MERGE_HOPS = 5;
+
+/** The live company a domain's row stands for, or null (PANEL-211). */
+async function liveCompanyId(ctx: JobContext, row: CompanyKey): Promise<string | null> {
+  let current: CompanyKey | null = row;
+  for (let hop = 0; current && hop < MAX_MERGE_HOPS; hop++) {
+    if (current.merged_into_id) {
+      const next: { data: unknown } = await ctx.scope.select("companies", "id, deleted_at, merged_into_id")
+        .eq("id", current.merged_into_id)
+        .maybeSingle();
+      current = (next.data as CompanyKey | null) ?? null;
+      continue;
+    }
+    return current.deleted_at ? null : String(current.id);
+  }
+  return null;
+}
+
 async function recordSignal(
   ctx: JobContext,
   sourceId: string,
@@ -281,12 +305,17 @@ async function recordSignal(
   let companyCreated = false;
 
   if (signal.companyDomain) {
-    const { data: existing } = await scope.select("companies", "id")
+    /* PANEL-211: the domain's row may be removed or merged away — the key
+       `(org_id, canonical_domain)` is not partial, so it keeps the domain
+       either way. A merged row hands the signal to its live survivor. A
+       removed one gets nothing: the person removed that company, and a news
+       article is no reason to bring it back or file evidence nobody sees. */
+    const { data: existing } = await scope.select("companies", "id, deleted_at, merged_into_id")
       .eq("canonical_domain", signal.companyDomain)
       .maybeSingle();
 
     if (existing) {
-      companyId = String(existing.id);
+      companyId = await liveCompanyId(ctx, existing as CompanyKey);
     } else {
       const { data: created, error } = await scope
         .insert("companies", {
@@ -303,10 +332,10 @@ async function recordSignal(
          not written as an upsert: an upsert would overwrite a researched
          company's name with whatever a news article happened to call it. */
       if (error?.code === "23505") {
-        const { data: raced } = await scope.select("companies", "id")
+        const { data: raced } = await scope.select("companies", "id, deleted_at, merged_into_id")
           .eq("canonical_domain", signal.companyDomain)
           .maybeSingle();
-        companyId = raced ? String(raced.id) : null;
+        companyId = raced ? await liveCompanyId(ctx, raced as CompanyKey) : null;
       } else if (created) {
         companyId = String(created.id);
         companyCreated = true;
