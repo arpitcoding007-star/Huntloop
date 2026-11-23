@@ -126,6 +126,9 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0056_fair_claiming.sql", probe: "migration_0056_applied", kind: "rpc" },
   { file: "0057_icp_retires_discovery.sql", probe: "migration_0057_applied", kind: "rpc" },
   { file: "0058_activation_counts_real_replies.sql", probe: "migration_0058_applied", kind: "rpc" },
+  { file: "0059_exchange_firewall.sql", probe: "migration_0059_applied", kind: "rpc" },
+  { file: "0060_exchange_core.sql", probe: "migration_0060_applied", kind: "rpc" },
+  { file: "0061_exchange_category_seed.sql", probe: "migration_0061_applied", kind: "rpc" },
 ];
 
 /**

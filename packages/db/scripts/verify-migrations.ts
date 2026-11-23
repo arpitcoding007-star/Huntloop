@@ -2337,6 +2337,211 @@ console.log("\n0058 — activation counts replies, not inbound mail (PANEL-313)"
   await db.exec("rollback");
 }
 
+console.log("\n0059 — the Exchange firewall: declared data is never enriched or sequenced");
+{
+  const ORG = "59595959-0059-0059-0059-000000000059";
+  const CO = "59595959-0059-0059-0059-0000000000c1";
+  const BUYER = "59595959-0059-0059-0059-0000000000b1";
+  const COLD = "59595959-0059-0059-0059-0000000000b2";
+  const OPP_X = "59595959-0059-0059-0059-0000000000d1";
+  const CAMP = "59595959-0059-0059-0059-0000000000e1";
+  await db.exec("begin");
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'FW Co', 'fw-0059')`, [ORG]);
+  await db.query(`insert into companies (id, org_id, canonical_domain, name) values ($1, $2, 'buyer.test', 'Buyer')`, [CO, ORG]);
+  await db.query(
+    `insert into people (id, org_id, company_id, first_name, origin) values
+       ($1, $3, $4, 'Bea', 'exchange'), ($2, $3, $4, 'Cole', 'engine')`,
+    [BUYER, COLD, ORG, CO],
+  );
+  await db.query(
+    `insert into opportunities (id, org_id, company_id, priority_reason, origin) values ($1, $2, $3, 'Stated need.', 'exchange')`,
+    [OPP_X, ORG, CO],
+  );
+  await db.query(`insert into campaigns (id, org_id, name, status) values ($1, $2, 'C', 'active')`, [CAMP, ORG]);
+
+  await expectRejectTx(db, "an invalid origin is refused", `update people set origin = 'scraped' where id = $1`, [COLD]);
+  await expectRejectTx(db, "an Exchange person cannot be laundered back to 'engine'", `update people set origin = 'engine' where id = $1`, [BUYER]);
+  await expectRejectTx(db, "an Exchange opportunity cannot be laundered either", `update opportunities set origin = 'engine' where id = $1`, [OPP_X]);
+  await expectRejectTx(
+    db,
+    "an Exchange opportunity cannot be enrolled in a sequence",
+    `insert into enrollments (org_id, campaign_id, opportunity_id, status) values ($1, $2, $3, 'active')`,
+    [ORG, CAMP, OPP_X],
+  );
+  await expectRejectTx(
+    db,
+    "no enrichment record can be written for an Exchange person",
+    `insert into enrichment_records (org_id, entity_type, entity_id, provider, field, value) values ($1, 'person', $2, 'apollo', 'email', '"x"'::jsonb)`,
+    [ORG, BUYER],
+  );
+  await expectRejectTx(
+    db,
+    "no provider-sourced contact point can be written for an Exchange person",
+    `insert into contact_points (org_id, person_id, kind, value, provider) values ($1, $2, 'email', 'bea@buyer.test', 'hunter')`,
+    [ORG, BUYER],
+  );
+
+  await db.exec("savepoint fw_accept");
+  try {
+    await db.query(
+      `insert into contact_points (org_id, person_id, kind, value) values ($1, $2, 'email', 'bea@buyer.test')`,
+      [ORG, BUYER],
+    );
+    ok("a contact detail the buyer gave (no provider) is accepted");
+  } catch (e) {
+    fail("a contact detail the buyer gave is accepted", e);
+  }
+  try {
+    await db.query(
+      `insert into enrichment_records (org_id, entity_type, entity_id, provider, field, value) values ($1, 'person', $2, 'apollo', 'email', '"x"'::jsonb)`,
+      [ORG, COLD],
+    );
+    ok("an engine person is still enriched as before");
+  } catch (e) {
+    fail("an engine person is still enriched as before", e);
+  }
+  await db.exec("release savepoint fw_accept");
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0059_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0059_applied() exists for db:doctor");
+  else fail("migration_0059_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0060/0061 — Exchange core: universal, global, buyer data stays the buyer's");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // buyer workspace
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // provider workspace
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const VIEWER_A = "22222222-2222-2222-2222-222222222222";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const NEED = "60606060-0060-0060-0060-0000000000a1";
+  const PROV_B = "60606060-0060-0060-0060-0000000000b1";
+  const OFFER_B = "60606060-0060-0060-0060-0000000000c1";
+  const NEED_B = "60606060-0060-0060-0060-0000000000a2";
+
+  // The seed (0061).
+  const tree = await db.query<{ parents: number; leaves: number; on: number; gpus: boolean }>(`
+    select count(*) filter (where parent_id is null)::int as parents,
+           count(*) filter (where parent_id is not null)::int as leaves,
+           count(*) filter (where matching_enabled)::int as on,
+           bool_or(regulated) filter (where slug = 'gpus-accelerators') as gpus
+      from exchange_categories`);
+  const t = tree.rows[0]!;
+  if (t.parents === 15 && t.leaves >= 50) ok(`the starting taxonomy is broad: ${t.parents} parents, ${t.leaves} leaves`);
+  else fail("the starting taxonomy is broad", JSON.stringify(t));
+  if (t.on === 0) ok("every category starts with matching off, until it has supply");
+  else fail("every category starts with matching off", JSON.stringify(t));
+  if (t.gpus === true) ok("export-controlled compute starts as regulated");
+  else fail("export-controlled compute starts as regulated", JSON.stringify(t));
+  const orphans = await db.query(`select slug from exchange_categories c where c.parent_id is null and c.attributes = '[]'::jsonb`);
+  if (orphans.rows.length === 0) ok("every parent category defines the attributes its leaves inherit");
+  else fail("every parent category defines attributes", JSON.stringify(orphans.rows));
+
+  await db.exec("begin");
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+
+  // Engine context (no session): the rows a buyer and a provider would create.
+  await db.query(
+    `insert into exchange_needs (id, org_id, category_id, summary, quantity, unit, currency, budget_max, country, visibility)
+     values ($1, $2, $3, '200 NVIDIA H200 NVL PCIe cards', 200, 'units', 'EUR', 6000000, 'DE', 2)`,
+    [NEED, A, leaf],
+  );
+  await db.query(
+    `insert into exchange_provider_profiles (id, org_id, name, domain, country, claimed_at)
+     values ($1, $2, 'Northwind Compute', 'northwind.co', 'DE', now())`,
+    [PROV_B, B],
+  );
+  await db.query(
+    `insert into exchange_offerings (id, provider_id, org_id, category_id, title, currency, price_from, serves_countries, status)
+     values ($1, $2, $3, $4, 'H200 NVL, authorised partner', 'EUR', 25000, '{DE,FR}', 'active')`,
+    [OFFER_B, PROV_B, A, leaf],
+  );
+  const follows = await db.query<{ org_id: string }>(`select org_id from exchange_offerings where id = $1`, [OFFER_B]);
+  if (follows.rows[0]?.org_id === B) ok("an offering's org_id follows its provider, whatever was sent");
+  else fail("an offering's org_id follows its provider", JSON.stringify(follows.rows));
+
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $2, 72)`, [NEED, OFFER_B]);
+  await db.query(`insert into exchange_needs (id, org_id, summary) values ($1, $2, 'Our own need')`, [NEED_B, B]);
+  await expectRejectTx(
+    db,
+    "a workspace is never matched to its own offering",
+    `insert into exchange_matches (need_id, offering_id) values ($1, $2)`,
+    [NEED_B, OFFER_B],
+  );
+  await expectRejectTx(db, "an amount with no currency is refused", `insert into exchange_needs (org_id, summary, budget_max) values ($1, 'x', 10)`, [A]);
+  await expectRejectTx(db, "a currency that is not ISO 4217 is refused", `insert into exchange_needs (org_id, summary, currency) values ($1, 'x', 'usd')`, [A]);
+  await expectRejectTx(
+    db,
+    "an availability claim without its date is refused",
+    `insert into exchange_offerings (provider_id, title, availability) values ($1, 'x', 'in_stock')`,
+    [PROV_B],
+  );
+  await db.query(`insert into exchange_needs (org_id, summary) values ($1, 'Something I cannot categorise yet')`, [A]);
+  ok("a need with no category is saved and counted (describe what you need)");
+
+  await db.exec("set local role authenticated");
+
+  // The provider's view.
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const theirNeeds = await db.query(`select id from exchange_needs where org_id = $1`, [A]);
+  if (theirNeeds.rows.length === 0) ok("a provider cannot read a buyer's needs (firewall)");
+  else fail("a provider cannot read a buyer's needs", JSON.stringify(theirNeeds.rows));
+  const theirMatches = await db.query(`select id from exchange_matches where org_id = $1`, [A]);
+  if (theirMatches.rows.length === 0) ok("nor the buyer's matches");
+  else fail("nor the buyer's matches", JSON.stringify(theirMatches.rows));
+  const cats = await db.query<{ n: number }>(`select count(*)::int as n from exchange_categories`);
+  if (cats.rows[0]!.n > 0) ok("every signed-in session can read the categories");
+  else fail("every signed-in session can read the categories", "0 rows");
+  await expectRejectTx(db, "a provider cannot verify its own profile", `update exchange_provider_profiles set verified_at = now() where id = $1`, [PROV_B]);
+  await expectRejectTx(db, "a session cannot write categories", `insert into exchange_categories (slug, name) values ('mine', 'Mine')`);
+
+  // The buyer's view.
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
+  const mine = await db.query(`select id from exchange_needs where id = $1`, [NEED]);
+  if (mine.rows.length === 1) ok("the buyer reads their own need");
+  else fail("the buyer reads their own need", JSON.stringify(mine.rows));
+  const offers = await db.query(`select id from exchange_offerings where id = $1`, [OFFER_B]);
+  if (offers.rows.length === 1) ok("an active offering is visible to buyers");
+  else fail("an active offering is visible to buyers", JSON.stringify(offers.rows));
+  const matchId = (await db.query<{ id: string }>(`select id from exchange_matches where need_id = $1`, [NEED])).rows[0]?.id;
+  await db.query(`select public.exchange_set_match_state($1, 'shortlisted')`, [matchId]);
+  const state = await db.query<{ buyer_state: string }>(`select buyer_state from exchange_matches where id = $1`, [matchId]);
+  if (state.rows[0]?.buyer_state === "shortlisted") ok("the buyer can shortlist a match");
+  else fail("the buyer can shortlist a match", JSON.stringify(state.rows));
+  const direct = await db.query(`update exchange_matches set score = 100 where need_id = $1 returning id`, [NEED]);
+  if (direct.rows.length === 0) ok("the buyer cannot change a match's score (no session writes matches)");
+  else fail("the buyer cannot change a match's score", JSON.stringify(direct.rows));
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  await expectRejectTx(db, "another workspace cannot shortlist the buyer's match", `select public.exchange_set_match_state($1, 'dismissed')`, [matchId]);
+  await expectRejectTx(
+    db,
+    "an intake session cannot point at another workspace's need",
+    `insert into exchange_intake_sessions (org_id, direction, need_id) values ($1, 'buy', $2)`,
+    [B, NEED],
+  );
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
+  await expectRejectTx(db, "a session cannot write a match", `insert into exchange_matches (need_id, offering_id) values ($1, $2)`, [NEED, OFFER_B]);
+  await db.query(`insert into exchange_intake_sessions (org_id, direction) values ($1, 'buy')`, [A]);
+  ok("the buyer can start an intake session");
+
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const intake = await db.query(`select id from exchange_intake_sessions`);
+  if (intake.rows.length === 0) ok("nobody else can read someone's intake session");
+  else fail("nobody else can read someone's intake session", JSON.stringify(intake.rows));
+
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [VIEWER_A]);
+  await expectRejectTx(db, "a viewer cannot post a need", `insert into exchange_needs (org_id, summary) values ($1, 'x')`, [A]);
+
+  await db.exec("reset role");
+  for (const n of ["0060", "0061"]) {
+    const probe = await db.query<{ v: boolean }>(`select public.migration_${n}_applied() as v`);
+    if (probe.rows[0]?.v === true) ok(`migration_${n}_applied() exists for db:doctor`);
+    else fail(`migration_${n}_applied() exists`, JSON.stringify(probe.rows));
+  }
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

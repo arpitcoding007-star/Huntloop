@@ -29,6 +29,7 @@ import { isPlaceholderEmail } from "@huntloop/db/contact";
 import { ProviderRefused, matchPerson, verifyEmail } from "@huntloop/providers";
 import { OrgScope, embedded } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
+import { refusesExchange } from "../firewall.ts";
 
 export interface EnrichPayload {
   personId: string;
@@ -41,13 +42,17 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, permanent: true, error: "enrich_person: no personId in payload." };
   }
 
-  const { data: person, error } = await scope.select("people", "id, first_name, last_name, title, company_id, companies!inner(canonical_domain, name)")
+  const { data: person, error } = await scope.select("people", "id, origin, first_name, last_name, title, company_id, companies!inner(canonical_domain, name)")
     .eq("id", personId)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (error) return { ok: false, error: `enrich_person: ${error.message}` };
   if (!person) return { ok: true, result: { skipped: "the person no longer exists" } };
+
+  /* Firewall (0059): before the quota read and before any provider is paid. */
+  const refused = refusesExchange("enrich_person", person, "person");
+  if (refused) return refused;
 
   const company = embedded(person.companies);
   const domain = String(company?.canonical_domain ?? "");

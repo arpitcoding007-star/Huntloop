@@ -45,6 +45,7 @@ import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
 import { CAMPAIGN_NOT_RUNNING } from "../enrollment-reasons.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
+import { refusesExchange } from "../firewall.ts";
 
 /* OUT-002. Each enrollment is a model call, inside one 60 s function; 25
    meant the job was killed most runs and the rest of the batch never ran.
@@ -132,7 +133,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       "enrollments",
       `id, campaign_id, opportunity_id, current_step, mailbox_id,
        campaigns!inner(id, name, status, autonomy_level, product_id),
-       opportunities!inner(id, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at)`,
+       opportunities!inner(id, origin, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at)`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -144,6 +145,14 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   const campaign = one((enrollment as any).campaigns);
   const opportunity = one((enrollment as any).opportunities);
   /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  /* Firewall (0059). The trigger refuses the enrollment row itself; this is
+     the backstop for a database without 0059, and it stops before a draft is
+     written. An Exchange buyer is talked to inside their intro thread only. */
+  if (refusesExchange("advance_enrollments", opportunity, "opportunity")) {
+    await stop(scope, enrollmentId, "This opportunity came from Exchange, so it is never put in a sequence.");
+    return "stopped";
+  }
 
   /* Parked, with a reason `saveCampaignAction` looks for: starting or
      resuming the campaign sets these back to active (PANEL-301). Before that

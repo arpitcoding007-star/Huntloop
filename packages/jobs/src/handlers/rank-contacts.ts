@@ -45,6 +45,7 @@ import {
 } from "@huntloop/db/contact";
 import { OrgScope } from "../scope.ts";
 import { enqueue } from "../queue.ts";
+import { refusesExchange } from "../firewall.ts";
 
 /** How many of the best-fitting contacts are sent for enrichment per run. */
 export const ENRICH_TOP = 2;
@@ -76,7 +77,7 @@ export async function rankContactsJob(ctx: JobContext): Promise<JobOutcome> {
   const { data: opportunity, error } = await scope
     .select(
       "opportunities",
-      "id, company_id, icp_id, primary_person_id, contact_selected_by, " +
+      "id, origin, company_id, icp_id, primary_person_id, contact_selected_by, " +
         "companies!inner(id, name, canonical_domain)",
     )
     .eq("id", opportunityId)
@@ -85,6 +86,12 @@ export async function rankContactsJob(ctx: JobContext): Promise<JobOutcome> {
 
   if (error) return { ok: false, error: `rank_contacts: ${error.message}` };
   if (!opportunity) return { ok: true, result: { skipped: "the opportunity no longer exists" } };
+
+  /* Firewall (0059): an Exchange opportunity's contact is the buyer who
+     accepted the intro. Ranking would search a provider for other people at
+     their company and queue them for enrichment. */
+  const refused = refusesExchange("rank_contacts", opportunity, "opportunity");
+  if (refused) return refused;
 
   const company = embeddedOne<{ id: string; name: string; canonical_domain: string }>(
     (opportunity as Record<string, unknown>).companies,
