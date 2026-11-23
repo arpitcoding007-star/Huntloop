@@ -1065,6 +1065,48 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 5 — The Exchange firewall stays wired (FW-01) ───────────────── */
+
+{
+  /*
+   * Exchange spec §6: declared data is never enriched, sequenced or synced as
+   * a lead. Migration 0059 refuses the writes; these handlers refuse earlier,
+   * before a provider is paid. This fails the build when one of them stops
+   * calling the guard, or when a handler that pays a provider for *people*
+   * is added without it.
+   */
+  const guard = /\brefusesExchange\s*\(/;
+  const required = [
+    "packages/jobs/src/handlers/enrich-person.ts",
+    "packages/jobs/src/handlers/rank-contacts.ts",
+    "packages/jobs/src/handlers/advance-enrollments.ts",
+    "packages/jobs/src/handlers/sync-hubspot.ts",
+  ];
+  const handlers = walk("packages/jobs/src/handlers").filter((f) => f.endsWith(".ts"));
+  const paysForPeople = handlers.filter((f) => {
+    const src = read(f) ?? "";
+    return /@huntloop\/providers/.test(src) && /["']people["']/.test(src);
+  });
+  const missing = [...new Set([...required, ...paysForPeople])].filter((f) => !guard.test(read(f) ?? ""));
+  const migration = has("packages/db/migrations/0059_exchange_firewall.sql");
+  const tested = /firewall \(0059\)/.test(read("packages/jobs/scripts/verify-jobs.ts") ?? "");
+
+  check(
+    5,
+    "FW-01",
+    "Every job that could enrich, rank, sequence or sync a person refuses Exchange rows",
+    missing.length === 0 && migration && tested,
+    "fail",
+    [
+      missing.length ? `no refusesExchange(): ${missing.join(", ")}` : `${new Set([...required, ...paysForPeople]).size} guarded handlers`,
+      migration ? null : "0059_exchange_firewall.sql missing",
+      tested ? null : "verify-jobs.ts has no firewall block",
+    ]
+      .filter(Boolean)
+      .join("; "),
+  );
+}
+
 /* ── Report ─────────────────────────────────────────────────────────────── */
 
 const failed = results.filter((r) => !r.ok && r.severity === "fail");

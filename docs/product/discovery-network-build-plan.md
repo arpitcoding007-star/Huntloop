@@ -93,10 +93,10 @@ an owner and a date.
 | ID | Decision | Blocks | Recommendation (from the exploration) |
 |---|---|---|---|
 | DN-10 | **EX-1** Buyer brand and domain | `proxy.ts` host routing, email sender, privacy title | Same app, separate buyer domain behind a host check |
-| DN-11 | **EX-2** Launch region and currency | Budget columns, privacy notice, residency | India-first, `currency` stored per need from day one |
+| DN-11 ✅ | **EX-2** Launch region and currency — **decided 2026-11-23: global, multi-currency** | Budget columns, privacy notice, residency | India-first, `currency` stored per need from day one |
 | DN-12 | **EX-3** Free provider claims for non-customers | `provider_profiles.org_id` nullability, plans | Yes, free with limits |
 | DN-13 | **EX-4** Verified domain for level 3 | Intro acceptance, demand weighting | Required for level 3 |
-| DN-14 | **EX-5** First 1–2 categories and their attributes | `categories` seed, question templates | From existing seller customers' products, only leaves with ≥ 5 providers |
+| DN-14 ✅ | **EX-5** Categories — **decided 2026-11-23: all categories from the start, matching switched on per category once it has supply** (seed: 0061) | `categories` seed, question templates | From existing seller customers' products, only leaves with ≥ 5 providers |
 | DN-15 | **EX-6** Buyer is a personal workspace? | Auth and RLS for Exchange tables | Yes (`workspace_kind = 'personal'`, `0044:44-50`) |
 | DN-16 | **EX-7** Verifying providers without a domain | Freelancer offerings | Verified email + evidence, distinct badge |
 | DN-17 | **EX-8** Contacting unregistered suppliers | Supplier invites | Buyer-initiated, capped, business address only, after counsel review |
@@ -111,13 +111,13 @@ functions, as in spec §7):
 
 | ID | Action | Table | Key columns / notes | Pri | Size | Phase |
 |---|---|---|---|---|---|---|
-| DN-21 | BUILD | `categories` | `slug, parent_id, name, attributes jsonb, question_template jsonb, regulated bool, active bool`. Seeded as data, so changes need no migration | P0 | S | 2 |
-| DN-22 | BUILD | `intake_sessions`, `intake_messages` | `user_id, org_id, direction (buy/sell/partner), category_id, requirement jsonb, status, turns, created_need_id, created_offering_id, ai_run_ids`. Can't reuse `conversations`, because `opportunity_id` is `not null` there (`0004:181`) | P0 | M | 2 |
-| DN-23 | BUILD | `needs` | Spec §7, plus `quantity, unit, deliver_to, must_haves jsonb, intent_dimensions jsonb, intent_band, last_confirmed_at, visibility 0–3, status`. Each field carries fact/inference/unknown inside `attributes` | P0 | M | 2 |
-| DN-24 | BUILD | `provider_profiles` | `org_id null` until claimed, `domain, name, claimed_at, verified_at, kind (company/individual), source` | P0 | S | 2 |
-| DN-25 | BUILD | `offerings` | `provider_id, category_id, attributes, price_model, price_from/to, currency, moq, capacity, availability jsonb (+as_of), regions[], ships_to[], size_bands[], product_id null` (links to existing `products`) | P0 | M | 2 |
+| DN-21 ✅ | BUILD | `categories` | `slug, parent_id, name, attributes jsonb, question_template jsonb, regulated bool, active bool`. Seeded as data, so changes need no migration | P0 | S | 2 |
+| DN-22 ✅ | BUILD | `intake_sessions`, `intake_messages` | `user_id, org_id, direction (buy/sell/partner), category_id, requirement jsonb, status, turns, created_need_id, created_offering_id, ai_run_ids`. Can't reuse `conversations`, because `opportunity_id` is `not null` there (`0004:181`) | P0 | M | 2 |
+| DN-23 ✅ | BUILD | `needs` | Spec §7, plus `quantity, unit, deliver_to, must_haves jsonb, intent_dimensions jsonb, intent_band, last_confirmed_at, visibility 0–3, status`. Each field carries fact/inference/unknown inside `attributes` | P0 | M | 2 |
+| DN-24 ✅ | BUILD | `provider_profiles` | `org_id null` until claimed, `domain, name, claimed_at, verified_at, kind (company/individual), source` | P0 | S | 2 |
+| DN-25 ✅ | BUILD | `offerings` | `provider_id, category_id, attributes, price_model, price_from/to, currency, moq, capacity, availability jsonb (+as_of), regions[], ships_to[], size_bands[], product_id null` (links to existing `products`) | P0 | M | 2 |
 | DN-26 | BUILD | `offering_evidence` | Same shape as `evidence` (`claim_kind`, citations, freshness). Holds authorised-partner proof, pricing pages | P1 | S | 2 |
-| DN-27 | BUILD | `matches` (+ history) | `need_id, offering_id, score, dimensions jsonb, explanation, cited_evidence_ids, computed_at, buyer_state, provider_state` | P0 | M | 2 |
+| DN-27 ✅ | BUILD | `matches` (+ history) | `need_id, offering_id, score, dimensions jsonb, explanation, cited_evidence_ids, computed_at, buyer_state, provider_state` | P0 | M | 2 |
 | DN-28 | BUILD | `intro_requests` | Spec §8 state machine. `direction, state, message, decided_at`, with a check constraint on transitions | P1 | M | 3 |
 | DN-29 | BUILD | `exchange_threads`, `exchange_messages` | Two-party in-app messages. Contact details shared only on the buyer's choice | P1 | M | 3 |
 | DN-30 | BUILD | `exchange_outcomes` | Both sides report, and disagreements are kept. Also written into the existing `outcomes` for the seller org | P1 | S | 3 |
@@ -129,7 +129,7 @@ functions, as in spec §7):
 
 | ID | Action | Table | Change | Why | Pri | Size | Phase |
 |---|---|---|---|---|---|---|---|
-| DN-34 | MODIFY | `people`, `opportunities` (+ `contact_points`) | Add `origin text check (origin in ('engine','import','exchange'))`, default `'engine'` | The firewall's anchor (spec §6) | P0 | S | 2 |
+| DN-34 ✅ | MODIFY | `people`, `opportunities` (+ `contact_points`) | Add `origin text check (origin in ('engine','import','exchange'))`, default `'engine'` | The firewall's anchor (spec §6) | P0 | S | 2 |
 | DN-35 | MODIFY | `evidence.subject_type` check (`0002:113-114`) | Not extended. A stated-need opportunity uses `subject_type = 'opportunity'` with `kind = 'fact'` | Keeps the existing contract | — | — | 2 |
 | DN-36 | MODIFY | `notification_preferences` (`0040:44-52`) | Add `exchange_alerts ('off','digest','instant')`, `alert_category_ids uuid[]`, `instant_quiet_hours` | Per-category opt-in | P1 | S | 3 |
 | DN-37 | MODIFY | `organizations` | Add `purpose ('seller','buyer','both')` or derive it from usage, so analytics and plans can tell buyer workspaces apart (if EX-6 = personal workspace) | Analytics, quotas | P2 | S | 2 |
@@ -168,7 +168,7 @@ latency or quality gap. The seam is `packages/ai/src/client.ts:46-48`.
 | DN-54 | BUILD | `send_supplier_invite` | Buyer clicks Invite | One email to a published business address. Checks caps and domain suppression. Never touches Apollo or Hunter | P2 | M | 3 |
 | DN-55 | BUILD | `aggregate_demand` | Hourly or daily | Market demand counts per category × region × size band, k ≥ 10 enforced in SQL. Groups below k are widened or hidden | P1 | M | 3 |
 | DN-56 | MODIFY | `send_digests` | | Add a "matched needs" section, behind the new preference | P1 | S | 3 |
-| DN-57 | MODIFY | `enrich_person`, `send_message`, `advance_enrollments`, `sync_hubspot` | | Refuse `origin = 'exchange'` rows (firewall). HubSpot push only for intros in the accepted state | P0 | S | 2 |
+| DN-57 ✅ | MODIFY | `enrich_person`, `send_message`, `advance_enrollments`, `sync_hubspot` | | Refuse `origin = 'exchange'` rows (firewall). HubSpot push only for intros in the accepted state | P0 | S | 2 |
 | DN-58 | MODIFY | `score_opportunity` / opportunity creation | Intro accepted | Create the opportunity with `origin='exchange'` and a fact evidence row ("buyer stated this need on …"). A "Stated need" badge ranks it above signal-based opportunities when scores tie | P1 | M | 3 |
 | DN-59 | MODIFY | `finishOnboarding` hook | A new seller finishes onboarding | Queue `match_needs` for that org's offerings, so new supply is matched straight away | P2 | S | 3 |
 
@@ -212,8 +212,8 @@ data (README rule). New nav items must pass `NAV-01` (`scripts/audit.mjs:201`).
 
 | ID | Action | Item | Detail | Pri | Size | Phase |
 |---|---|---|---|---|---|---|
-| DN-83 | BUILD | **Firewall enforcement** | `origin='exchange'` refused in `packages/providers/src/call.ts` (the guard at `:9-13`) and in the send, sequence and CRM paths (DN-57). Security-definer read functions apply the visibility levels | P0 | M | 2 |
-| DN-84 | BUILD | **Firewall CI gate (FW-01)** | Added to `scripts/audit.mjs` next to NAV-01, plus an e2e spec that tries each forbidden path with an Exchange row and expects a refusal. **Phase 3 doesn't start until it's green** | P0 | M | 2 |
+| DN-83 ✅ | BUILD | **Firewall enforcement** | `origin='exchange'` refused in `packages/providers/src/call.ts` (the guard at `:9-13`) and in the send, sequence and CRM paths (DN-57). Security-definer read functions apply the visibility levels | P0 | M | 2 |
+| DN-84 ✅ | BUILD | **Firewall CI gate (FW-01)** | Added to `scripts/audit.mjs` next to NAV-01, plus an e2e spec that tries each forbidden path with an Exchange row and expects a refusal. **Phase 3 doesn't start until it's green** | P0 | M | 2 |
 | DN-85 | BUILD | Visibility read functions | `get_need_card(need, viewer_org)` widens bands when a group has fewer than k needs. Free text hidden below level 3 | P0 | M | 2 |
 | DN-86 | BUILD | Rate limits | Needs per account per day, intake turns per session (8), intro requests per provider per week, invites per need. Reuses `consume_rate_limit()` (`0005`) | P0 | S | 2 |
 | DN-87 | BUILD | Fake-buyer and spam controls | Verified email to create a need; domain verification for level 3 (EX-4); unverified needs weighted lower in aggregates; decline-rate throttle on providers | P1 | M | 3 |
@@ -450,3 +450,13 @@ flowchart TD
 
 *This plan changes no code. When an item ships, mark it built in the master guide and
 `COMMAND.md`; when a decision is made, record it in [decisions/exchange.md](../decisions/exchange.md).*
+
+---
+
+## Progress log
+
+| Date | Items | Where | Notes |
+|---|---|---|---|
+| 2026-11-23 | DN-01, DN-06 (pass-20 P0/P1) | PR #7, PR #8 | Migrations 0057 and 0058 applied to production. DATA-C1 gate added |
+| 2026-11-23 | DN-34, DN-57, DN-83, DN-84 (firewall) | `feat/exchange-firewall` | Migration 0059: `origin` on `people`/`opportunities`, permanent once `exchange`; triggers refuse enrollments, enrichment records and provider contact points for Exchange rows. `packages/jobs/src/firewall.ts` guards `enrich_person`, `rank_contacts`, `advance_enrollments`, `sync_hubspot` before any provider call. FW-01 gate in `scripts/audit.mjs`. Differences from the plan: the guard sits in the handlers, not `packages/providers/src/call.ts` (call.ts does not know a person's origin); `send_message` is covered by the enrollment trigger rather than its own check, so one-to-one intro replies stay possible later; the e2e spec is replaced by PGlite and job tests, since no UI path creates Exchange rows yet |
+| 2026-11-23 | DN-11, DN-14 decided; DN-21–25, DN-27 built | `feat/exchange-firewall` | Decision: every category and every region from the start (user, 2026-11-23). Migration 0060: `exchange_categories` (global, `matching_enabled` gate, `regulated`), `exchange_needs` (declared, buyer-only RLS, ISO currency and country, visibility 0–3), `exchange_provider_profiles` (claimed or public; verification platform-only), `exchange_offerings` (org follows provider, availability needs a date), `exchange_matches` (engine-written; sessions may only shortlist or dismiss; no self-matching), `exchange_intake_sessions` (own user only). Migration 0061 seeds 15 parent and 56 leaf categories, all with matching off. EX-6 taken as its recommendation (buyer = personal or company workspace) because the schema needed it; reversible until the UI ships. Not yet built: `offering_evidence` (DN-26), matching job, intake task and UI, the visibility functions providers read through |

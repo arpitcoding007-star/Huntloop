@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 58 migrations
-> (`0001_identity.sql` … `0058_activation_counts_real_replies.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 61 migrations
+> (`0001_identity.sql` … `0061_exchange_category_seed.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 10 views · 131 public functions · 10 enum types · 147 RLS policies · 263 indexes · 129 triggers.
+**Totals:** 89 tables · 10 views · 142 public functions · 10 enum types · 159 RLS policies · 291 indexes · 145 triggers.
 
-**RLS enabled on:** 83 of 83 tables.
+**RLS enabled on:** 89 of 89 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_matches`](#exchange_matches) · [`exchange_needs`](#exchange_needs) · [`exchange_offerings`](#exchange_offerings) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -838,6 +838,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `contact_points_firewall`
 - `contact_points_same_org`
 - `contact_points_touch`
 
@@ -1262,6 +1263,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `enrichment_records_firewall`
 - `enrichment_records_touch`
 
 ## enrollments
@@ -1310,6 +1312,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `enrollments_firewall`
 - `enrollments_same_org`
 - `enrollments_touch`
 
@@ -1435,6 +1438,336 @@ RLS: **enabled**
 **Policies**
 
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
+
+## exchange_categories
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `slug` | text | NOT NULL |  |
+| `parent_id` | uuid | null |  |
+| `name` | text | NOT NULL |  |
+| `description` | text | null |  |
+| `kind` | text | NOT NULL | `'both'::text` |
+| `attributes` | jsonb | NOT NULL | `'[]'::jsonb` |
+| `regulated` | boolean | NOT NULL | `false` |
+| `matching_enabled` | boolean | NOT NULL | `false` |
+| `active` | boolean | NOT NULL | `true` |
+| `sort` | smallint | NOT NULL | `0` |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_categories_attributes_check` — `CHECK ((jsonb_typeof(attributes) = 'array'::text))`
+- CHECK `exchange_categories_check` — `CHECK (((parent_id IS NULL) OR (parent_id <> id)))`
+- CHECK `exchange_categories_kind_check` — `CHECK ((kind = ANY (ARRAY['goods'::text, 'services'::text, 'both'::text])))`
+- CHECK `exchange_categories_name_check` — `CHECK (((length(name) >= 1) AND (length(name) <= 120)))`
+- CHECK `exchange_categories_slug_check` — `CHECK ((slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text))`
+- FK `exchange_categories_parent_id_fkey` — `FOREIGN KEY (parent_id) REFERENCES exchange_categories(id) ON DELETE RESTRICT`
+- PK `exchange_categories_pkey` — `PRIMARY KEY (id)`
+- UNIQUE `exchange_categories_slug_key` — `UNIQUE (slug)`
+
+**Indexes**
+
+- `exchange_categories_parent_idx` — `exchange_categories USING btree (parent_id, sort)`
+
+**Policies**
+
+- `exchange_categories_read` — SELECT USING `active`
+
+**Triggers**
+
+- `exchange_categories_touch`
+
+## exchange_intake_sessions
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `org_id` | uuid | NOT NULL |  |
+| `user_id` | uuid | NOT NULL | `auth.uid()` |
+| `direction` | text | NOT NULL |  |
+| `category_id` | uuid | null |  |
+| `requirement` | jsonb | NOT NULL | `'{}'::jsonb` |
+| `transcript` | jsonb | NOT NULL | `'[]'::jsonb` |
+| `turns` | smallint | NOT NULL | `0` |
+| `status` | text | NOT NULL | `'active'::text` |
+| `need_id` | uuid | null |  |
+| `offering_id` | uuid | null |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_intake_sessions_direction_check` — `CHECK ((direction = ANY (ARRAY['buy'::text, 'sell'::text, 'partner'::text])))`
+- CHECK `exchange_intake_sessions_requirement_check` — `CHECK ((jsonb_typeof(requirement) = 'object'::text))`
+- CHECK `exchange_intake_sessions_status_check` — `CHECK ((status = ANY (ARRAY['active'::text, 'completed'::text, 'abandoned'::text])))`
+- CHECK `exchange_intake_sessions_transcript_check` — `CHECK ((jsonb_typeof(transcript) = 'array'::text))`
+- CHECK `exchange_intake_sessions_turns_check` — `CHECK (((turns >= 0) AND (turns <= 50)))`
+- FK `exchange_intake_sessions_category_id_fkey` — `FOREIGN KEY (category_id) REFERENCES exchange_categories(id) ON DELETE SET NULL`
+- FK `exchange_intake_sessions_need_id_fkey` — `FOREIGN KEY (need_id) REFERENCES exchange_needs(id) ON DELETE SET NULL`
+- FK `exchange_intake_sessions_offering_id_fkey` — `FOREIGN KEY (offering_id) REFERENCES exchange_offerings(id) ON DELETE SET NULL`
+- FK `exchange_intake_sessions_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_intake_sessions_user_id_fkey` — `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`
+- PK `exchange_intake_sessions_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_intake_sessions_category_fk_idx` — `exchange_intake_sessions USING btree (category_id)`
+- `exchange_intake_sessions_need_fk_idx` — `exchange_intake_sessions USING btree (need_id)`
+- `exchange_intake_sessions_offering_fk_idx` — `exchange_intake_sessions USING btree (offering_id)`
+- `exchange_intake_sessions_org_fk_idx` — `exchange_intake_sessions USING btree (org_id)`
+- `exchange_intake_sessions_user_idx` — `exchange_intake_sessions USING btree (user_id, updated_at DESC)`
+
+**Policies**
+
+- `exchange_intake_sessions_own` — ALL USING `((user_id = auth.uid()) AND (org_id IN ( SELECT user_org_ids() AS user_org_ids)))` WITH CHECK `((user_id = auth.uid()) AND has_org_role(org_id, 'member'::org_role))`
+
+**Triggers**
+
+- `exchange_intake_sessions_same_org`
+- `exchange_intake_sessions_touch`
+
+## exchange_matches
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `need_id` | uuid | NOT NULL |  |
+| `offering_id` | uuid | NOT NULL |  |
+| `org_id` | uuid | NOT NULL |  |
+| `provider_org_id` | uuid | null |  |
+| `score` | smallint | null |  |
+| `dimensions` | jsonb | NOT NULL | `'{}'::jsonb` |
+| `explanation` | text | null |  |
+| `cited` | jsonb | NOT NULL | `'[]'::jsonb` |
+| `computed_at` | timestamp with time zone | NOT NULL | `now()` |
+| `buyer_state` | text | NOT NULL | `'new'::text` |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_matches_buyer_state_check` — `CHECK ((buyer_state = ANY (ARRAY['new'::text, 'shortlisted'::text, 'dismissed'::text])))`
+- CHECK `exchange_matches_cited_check` — `CHECK ((jsonb_typeof(cited) = 'array'::text))`
+- CHECK `exchange_matches_dimensions_check` — `CHECK ((jsonb_typeof(dimensions) = 'object'::text))`
+- CHECK `exchange_matches_score_check` — `CHECK (((score IS NULL) OR ((score >= 0) AND (score <= 100))))`
+- FK `exchange_matches_need_id_fkey` — `FOREIGN KEY (need_id) REFERENCES exchange_needs(id) ON DELETE CASCADE`
+- FK `exchange_matches_offering_id_fkey` — `FOREIGN KEY (offering_id) REFERENCES exchange_offerings(id) ON DELETE CASCADE`
+- FK `exchange_matches_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_matches_provider_org_id_fkey` — `FOREIGN KEY (provider_org_id) REFERENCES organizations(id) ON DELETE SET NULL`
+- PK `exchange_matches_pkey` — `PRIMARY KEY (id)`
+- UNIQUE `exchange_matches_need_id_offering_id_key` — `UNIQUE (need_id, offering_id)`
+
+**Indexes**
+
+- `exchange_matches_offering_idx` — `exchange_matches USING btree (offering_id)`
+- `exchange_matches_org_idx` — `exchange_matches USING btree (org_id, need_id, score DESC NULLS LAST)`
+- `exchange_matches_provider_org_fk_idx` — `exchange_matches USING btree (provider_org_id)`
+
+**Policies**
+
+- `exchange_matches_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
+
+**Triggers**
+
+- `exchange_matches_guard`
+- `exchange_matches_touch`
+
+## exchange_needs
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `org_id` | uuid | NOT NULL |  |
+| `created_by` | uuid | null | `auth.uid()` |
+| `kind` | text | NOT NULL | `'buy'::text` |
+| `category_id` | uuid | null |  |
+| `summary` | text | NOT NULL |  |
+| `requirement` | jsonb | NOT NULL | `'{}'::jsonb` |
+| `quantity` | numeric | null |  |
+| `unit` | text | null |  |
+| `budget_min` | numeric | null |  |
+| `budget_max` | numeric | null |  |
+| `currency` | text | null |  |
+| `country` | text | null |  |
+| `region` | text | null |  |
+| `deliver_to` | text | null |  |
+| `decide_by` | date | null |  |
+| `timeline` | text | null |  |
+| `urgency_inferred` | text | null |  |
+| `visibility` | smallint | NOT NULL | `1` |
+| `status` | text | NOT NULL | `'open'::text` |
+| `last_confirmed_at` | timestamp with time zone | NOT NULL | `now()` |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+| `deleted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `exchange_needs_budget_max_check` — `CHECK (((budget_max IS NULL) OR (budget_max >= (0)::numeric)))`
+- CHECK `exchange_needs_budget_min_check` — `CHECK (((budget_min IS NULL) OR (budget_min >= (0)::numeric)))`
+- CHECK `exchange_needs_check` — `CHECK (((budget_min IS NULL) OR (budget_max IS NULL) OR (budget_min <= budget_max)))`
+- CHECK `exchange_needs_check1` — `CHECK ((((budget_min IS NULL) AND (budget_max IS NULL)) OR (currency IS NOT NULL)))`
+- CHECK `exchange_needs_country_check` — `CHECK (((country IS NULL) OR (country ~ '^[A-Z]{2}$'::text)))`
+- CHECK `exchange_needs_currency_check` — `CHECK (((currency IS NULL) OR (currency ~ '^[A-Z]{3}$'::text)))`
+- CHECK `exchange_needs_deliver_to_check` — `CHECK (((deliver_to IS NULL) OR (length(deliver_to) <= 200)))`
+- CHECK `exchange_needs_kind_check` — `CHECK ((kind = ANY (ARRAY['buy'::text, 'partner'::text])))`
+- CHECK `exchange_needs_quantity_check` — `CHECK (((quantity IS NULL) OR (quantity > (0)::numeric)))`
+- CHECK `exchange_needs_region_check` — `CHECK (((region IS NULL) OR (length(region) <= 120)))`
+- CHECK `exchange_needs_requirement_check` — `CHECK ((jsonb_typeof(requirement) = 'object'::text))`
+- CHECK `exchange_needs_status_check` — `CHECK ((status = ANY (ARRAY['draft'::text, 'open'::text, 'paused'::text, 'fulfilled'::text, 'expired'::text, 'withdrawn'::text])))`
+- CHECK `exchange_needs_summary_check` — `CHECK (((length(summary) >= 1) AND (length(summary) <= 500)))`
+- CHECK `exchange_needs_timeline_check` — `CHECK (((timeline IS NULL) OR (timeline = ANY (ARRAY['this_month'::text, 'this_quarter'::text, 'later'::text, 'exploring'::text]))))`
+- CHECK `exchange_needs_unit_check` — `CHECK (((unit IS NULL) OR (length(unit) <= 40)))`
+- CHECK `exchange_needs_urgency_inferred_check` — `CHECK (((urgency_inferred IS NULL) OR (urgency_inferred = ANY (ARRAY['high'::text, 'medium'::text, 'low'::text]))))`
+- CHECK `exchange_needs_visibility_check` — `CHECK (((visibility >= 0) AND (visibility <= 3)))`
+- FK `exchange_needs_category_id_fkey` — `FOREIGN KEY (category_id) REFERENCES exchange_categories(id) ON DELETE SET NULL`
+- FK `exchange_needs_created_by_fkey` — `FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL`
+- FK `exchange_needs_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- PK `exchange_needs_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_needs_created_by_fk_idx` — `exchange_needs USING btree (created_by)`
+- `exchange_needs_open_idx` — `exchange_needs USING btree (category_id, country) WHERE ((status = 'open'::text) AND (deleted_at IS NULL))`
+- `exchange_needs_org_idx` — `exchange_needs USING btree (org_id, created_at DESC) WHERE (deleted_at IS NULL)`
+
+**Policies**
+
+- `exchange_needs_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `exchange_needs_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
+- `exchange_needs_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+
+**Triggers**
+
+- `exchange_needs_touch`
+
+## exchange_offerings
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `provider_id` | uuid | NOT NULL |  |
+| `org_id` | uuid | null |  |
+| `category_id` | uuid | null |  |
+| `title` | text | NOT NULL |  |
+| `description` | text | null |  |
+| `attributes` | jsonb | NOT NULL | `'{}'::jsonb` |
+| `price_model` | text | null |  |
+| `price_from` | numeric | null |  |
+| `price_to` | numeric | null |  |
+| `currency` | text | null |  |
+| `moq` | numeric | null |  |
+| `capacity` | text | null |  |
+| `availability` | text | null |  |
+| `availability_as_of` | timestamp with time zone | null |  |
+| `serves_global` | boolean | NOT NULL | `false` |
+| `serves_countries` | text[] | NOT NULL | `'{}'::text[]` |
+| `product_id` | uuid | null |  |
+| `status` | text | NOT NULL | `'draft'::text` |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+| `deleted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `exchange_offerings_attributes_check` — `CHECK ((jsonb_typeof(attributes) = 'object'::text))`
+- CHECK `exchange_offerings_availability_check` — `CHECK (((availability IS NULL) OR (availability = ANY (ARRAY['in_stock'::text, 'made_to_order'::text, 'available'::text, 'limited'::text, 'unavailable'::text]))))`
+- CHECK `exchange_offerings_capacity_check` — `CHECK (((capacity IS NULL) OR (length(capacity) <= 200)))`
+- CHECK `exchange_offerings_check` — `CHECK (((price_from IS NULL) OR (price_to IS NULL) OR (price_from <= price_to)))`
+- CHECK `exchange_offerings_check1` — `CHECK ((((price_from IS NULL) AND (price_to IS NULL)) OR (currency IS NOT NULL)))`
+- CHECK `exchange_offerings_check2` — `CHECK (((availability IS NULL) OR (availability_as_of IS NOT NULL)))`
+- CHECK `exchange_offerings_currency_check` — `CHECK (((currency IS NULL) OR (currency ~ '^[A-Z]{3}$'::text)))`
+- CHECK `exchange_offerings_moq_check` — `CHECK (((moq IS NULL) OR (moq > (0)::numeric)))`
+- CHECK `exchange_offerings_price_from_check` — `CHECK (((price_from IS NULL) OR (price_from >= (0)::numeric)))`
+- CHECK `exchange_offerings_price_model_check` — `CHECK (((price_model IS NULL) OR (price_model = ANY (ARRAY['fixed'::text, 'range'::text, 'quote'::text, 'subscription'::text, 'hourly'::text]))))`
+- CHECK `exchange_offerings_price_to_check` — `CHECK (((price_to IS NULL) OR (price_to >= (0)::numeric)))`
+- CHECK `exchange_offerings_serves_countries_check` — `CHECK ((array_position(serves_countries, NULL::text) IS NULL))`
+- CHECK `exchange_offerings_status_check` — `CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'paused'::text])))`
+- CHECK `exchange_offerings_title_check` — `CHECK (((length(title) >= 1) AND (length(title) <= 200)))`
+- FK `exchange_offerings_category_id_fkey` — `FOREIGN KEY (category_id) REFERENCES exchange_categories(id) ON DELETE SET NULL`
+- FK `exchange_offerings_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_offerings_product_id_fkey` — `FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL`
+- FK `exchange_offerings_provider_id_fkey` — `FOREIGN KEY (provider_id) REFERENCES exchange_provider_profiles(id) ON DELETE CASCADE`
+- PK `exchange_offerings_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_offerings_match_idx` — `exchange_offerings USING btree (category_id) WHERE ((status = 'active'::text) AND (deleted_at IS NULL))`
+- `exchange_offerings_org_idx` — `exchange_offerings USING btree (org_id) WHERE (org_id IS NOT NULL)`
+- `exchange_offerings_product_fk_idx` — `exchange_offerings USING btree (product_id)`
+- `exchange_offerings_provider_idx` — `exchange_offerings USING btree (provider_id)`
+
+**Policies**
+
+- `exchange_offerings_insert` — INSERT WITH CHECK `(EXISTS ( SELECT 1    FROM exchange_provider_profiles p   WHERE ((p.id = exchange_offerings.provider_id) AND (p.org_id IS NOT NULL) AND has_org_role(p.org_id, 'member'::org_role))))`
+- `exchange_offerings_read` — SELECT USING `(((status = 'active'::text) AND (deleted_at IS NULL)) OR (org_id IN ( SELECT user_org_ids() AS user_org_ids)))`
+- `exchange_offerings_update` — UPDATE USING `((org_id IS NOT NULL) AND has_org_role(org_id, 'member'::org_role))` WITH CHECK `((org_id IS NOT NULL) AND has_org_role(org_id, 'member'::org_role))`
+
+**Triggers**
+
+- `exchange_offerings_follow_provider`
+- `exchange_offerings_same_org`
+- `exchange_offerings_touch`
+
+## exchange_provider_profiles
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `org_id` | uuid | null |  |
+| `kind` | text | NOT NULL | `'company'::text` |
+| `name` | text | NOT NULL |  |
+| `domain` | text | null |  |
+| `description` | text | null |  |
+| `country` | text | null |  |
+| `source` | text | NOT NULL | `'claimed'::text` |
+| `claimed_at` | timestamp with time zone | null |  |
+| `verified_at` | timestamp with time zone | null |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+| `deleted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `exchange_provider_profiles_check` — `CHECK (((org_id IS NULL) = (claimed_at IS NULL)))`
+- CHECK `exchange_provider_profiles_country_check` — `CHECK (((country IS NULL) OR (country ~ '^[A-Z]{2}$'::text)))`
+- CHECK `exchange_provider_profiles_domain_check` — `CHECK (((domain IS NULL) OR (domain ~ '^[a-z0-9.-]+\.[a-z]{2,}$'::text)))`
+- CHECK `exchange_provider_profiles_kind_check` — `CHECK ((kind = ANY (ARRAY['company'::text, 'individual'::text])))`
+- CHECK `exchange_provider_profiles_name_check` — `CHECK (((length(name) >= 1) AND (length(name) <= 200)))`
+- CHECK `exchange_provider_profiles_source_check` — `CHECK ((source = ANY (ARRAY['claimed'::text, 'public'::text])))`
+- FK `exchange_provider_profiles_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE SET NULL`
+- PK `exchange_provider_profiles_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_provider_profiles_domain_key` — `UNIQUE exchange_provider_profiles USING btree (domain) WHERE ((domain IS NOT NULL) AND (deleted_at IS NULL))`
+- `exchange_provider_profiles_org_idx` — `exchange_provider_profiles USING btree (org_id) WHERE (org_id IS NOT NULL)`
+
+**Policies**
+
+- `exchange_provider_profiles_insert` — INSERT WITH CHECK `((org_id IS NOT NULL) AND has_org_role(org_id, 'admin'::org_role))`
+- `exchange_provider_profiles_read` — SELECT USING `(deleted_at IS NULL)`
+- `exchange_provider_profiles_update` — UPDATE USING `((org_id IS NOT NULL) AND has_org_role(org_id, 'admin'::org_role))` WITH CHECK `((org_id IS NOT NULL) AND has_org_role(org_id, 'admin'::org_role))`
+
+**Triggers**
+
+- `exchange_provider_profiles_touch`
+- `exchange_provider_profiles_verification`
 
 ## external_ids
 
@@ -2331,6 +2664,7 @@ RLS: **enabled**
 | `estimated_value_cents` | bigint | null |  |
 | `estimated_value_currency` | text | NOT NULL | `'USD'::text` |
 | `why_now_written_at` | timestamp with time zone | null |  |
+| `origin` | text | NOT NULL | `'engine'::text` |
 
 **Constraints**
 
@@ -2338,6 +2672,7 @@ RLS: **enabled**
 - CHECK `opportunities_estimated_value_cents_check` — `CHECK (((estimated_value_cents IS NULL) OR ((estimated_value_cents >= 0) AND (estimated_value_cents <= '100000000000'::bigint))))`
 - CHECK `opportunities_estimated_value_currency_check` — `CHECK ((estimated_value_currency ~ '^[A-Z]{3}$'::text))`
 - CHECK `opportunities_next_step_check` — `CHECK (((next_step IS NULL) OR ((length(next_step) >= 1) AND (length(next_step) <= 280))))`
+- CHECK `opportunities_origin_check` — `CHECK ((origin = ANY (ARRAY['engine'::text, 'import'::text, 'exchange'::text])))`
 - CHECK `opportunities_priority_set_by_check` — `CHECK ((priority_set_by = ANY (ARRAY['system'::text, 'user'::text])))`
 - FK `opportunities_company_id_fkey` — `FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE`
 - FK `opportunities_icp_id_fkey` — `FOREIGN KEY (icp_id) REFERENCES icps(id) ON DELETE SET NULL`
@@ -2353,6 +2688,7 @@ RLS: **enabled**
 - `opportunities_company_fk_idx` — `opportunities USING btree (company_id)`
 - `opportunities_contacts_unsought_idx` — `opportunities USING btree (org_id, priority) WHERE ((contacts_sought_at IS NULL) AND (deleted_at IS NULL))`
 - `opportunities_crm_sync_requested_idx` — `opportunities USING btree (crm_sync_requested_at) WHERE ((crm_sync_requested_at IS NOT NULL) AND (deleted_at IS NULL))`
+- `opportunities_exchange_origin_idx` — `opportunities USING btree (org_id) WHERE (origin = 'exchange'::text)`
 - `opportunities_next_step_due_idx` — `opportunities USING btree (org_id, next_step_due_at) WHERE ((next_step_due_at IS NOT NULL) AND (deleted_at IS NULL))`
 - `opportunities_owner_idx` — `opportunities USING btree (org_id, owner_id, status) WHERE (deleted_at IS NULL)`
 - `opportunities_priority_idx` — `opportunities USING btree (org_id, priority, first_seen_at DESC) WHERE (deleted_at IS NULL)`
@@ -2365,6 +2701,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `opportunities_origin_permanent`
 - `opportunities_project_activity`
 - `opportunities_same_org`
 - `opportunities_stop_outreach`
@@ -2573,10 +2910,12 @@ RLS: **enabled**
 | `departed_note` | text | null |  |
 | `last_verified_at` | timestamp with time zone | null |  |
 | `persona_id` | uuid | null |  |
+| `origin` | text | NOT NULL | `'engine'::text` |
 
 **Constraints**
 
 - CHECK `people_employment_status_check` — `CHECK ((employment_status = ANY (ARRAY['current'::text, 'departed'::text, 'unknown'::text])))`
+- CHECK `people_origin_check` — `CHECK ((origin = ANY (ARRAY['engine'::text, 'import'::text, 'exchange'::text])))`
 - CHECK `people_seniority_rank_check` — `CHECK (((seniority_rank IS NULL) OR ((seniority_rank >= 0) AND (seniority_rank <= 100))))`
 - FK `people_company_id_fkey` — `FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE`
 - FK `people_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
@@ -2588,6 +2927,7 @@ RLS: **enabled**
 - `people_company_fk_idx` — `people USING btree (company_id)`
 - `people_company_idx` — `people USING btree (org_id, company_id)`
 - `people_company_rank_idx` — `people USING btree (org_id, company_id, seniority_rank DESC) WHERE (deleted_at IS NULL)`
+- `people_exchange_origin_idx` — `people USING btree (org_id) WHERE (origin = 'exchange'::text)`
 
 **Policies**
 
@@ -2597,6 +2937,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `people_origin_permanent`
 - `people_same_org`
 - `people_touch`
 
@@ -3593,12 +3934,20 @@ RLS: **enabled**
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
 | `erase_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
+| `exchange_match_guard` |  | trigger | yes |
+| `exchange_offering_follows_provider` |  | trigger | yes |
+| `exchange_origin_is_permanent` |  | trigger |  |
+| `exchange_profile_verification_is_platform_only` |  | trigger |  |
+| `exchange_set_match_state` | `p_match uuid, p_state text` | boolean | yes |
 | `export_contact` | `p_org uuid, p_email text` | jsonb | yes |
 | `export_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
 | `export_my_learning` | `p_org uuid` | jsonb |  |
 | `export_organization` | `p_org uuid` | jsonb | yes |
 | `fail_recompute` | `p_request uuid, p_error text` | void | yes |
 | `finish_discovery_run` | `p_run uuid, p_status text, p_stop_reason text, p_error text, p_cursor text, p_total bigint` | void | yes |
+| `firewall_refuse_exchange_enrichment` |  | trigger | yes |
+| `firewall_refuse_exchange_enrollment` |  | trigger | yes |
+| `firewall_refuse_exchange_provider_contact` |  | trigger | yes |
 | `flag_contradictions` | `p_org uuid, p_subject_type text, p_subject uuid` | integer | yes |
 | `guard_activity_authorship` |  | trigger |  |
 | `guard_invitation_owner` |  | trigger | yes |
@@ -3648,6 +3997,9 @@ RLS: **enabled**
 | `migration_0056_applied` |  | boolean |  |
 | `migration_0057_applied` |  | boolean |  |
 | `migration_0058_applied` |  | boolean |  |
+| `migration_0059_applied` |  | boolean |  |
+| `migration_0060_applied` |  | boolean |  |
+| `migration_0061_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

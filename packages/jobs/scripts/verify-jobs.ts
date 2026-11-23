@@ -4638,6 +4638,100 @@ console.log("\nenrich_person — FLOW-108: a verified address is kept, and not r
   }
 }
 
+console.log("\nfirewall (0059) — Exchange rows are never enriched, ranked or sequenced");
+{
+  /* enrich_person: refused before the quota read and before any provider. */
+  const saved = { a: process.env.APOLLO_API_KEY, f: globalThis.fetch };
+  process.env.APOLLO_API_KEY = "test-apollo";
+  resetRegistryForTests();
+  const hosts: string[] = [];
+  globalThis.fetch = (async (url: string | URL) => {
+    hosts.push(new URL(String(url)).host);
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const { client, calls } = fakeClient({
+    "select:people": {
+      data: {
+        id: "pp-x", origin: "exchange", first_name: "Bea", last_name: "Buyer", title: "Founder",
+        company_id: "c-x", companies: { canonical_domain: "buyer.test", name: "Buyer" },
+      },
+      error: null,
+    },
+    "rpc:check_quota_internal": { data: [{ allowed: true, used: 0, quota: 100 }], error: null },
+  });
+  setAdminClientForTests(client);
+  try {
+    const outcome = await enrichPerson({
+      scope: new OrgScope(ORG_A, client),
+      payload: { personId: "pp-x" },
+      job: { id: "job-fw", org_id: ORG_A, job_name: "enrich_person" } as never,
+      now: new Date(),
+    });
+    const result = outcome.ok ? (outcome.result as { firewall?: boolean }) : null;
+    expect("enrich_person succeeds as a refusal, so it is not retried", outcome.ok && result?.firewall === true, outcome);
+    expect("no provider is called for an Exchange person", hosts.length === 0, hosts);
+    expect("not even the quota is read", !calls.some((c) => c.verb === "rpc"), calls.map((c) => `${c.verb}:${c.table}`));
+    expect(
+      "nothing is written",
+      !calls.some((c) => ["insert", "upsert", "update"].includes(c.verb)),
+      calls.map((c) => `${c.verb}:${c.table}`),
+    );
+  } finally {
+    globalThis.fetch = saved.f;
+    if (saved.a === undefined) delete process.env.APOLLO_API_KEY; else process.env.APOLLO_API_KEY = saved.a;
+    resetRegistryForTests();
+    setAdminClientForTests(null);
+  }
+}
+{
+  /* rank_contacts: refused before personas, discovery or enrichment. */
+  const { client, calls } = fakeClient({
+    "select:opportunities": {
+      data: {
+        id: "opp-x", origin: "exchange", company_id: "c-x", icp_id: null, primary_person_id: null,
+        contact_selected_by: null, companies: { id: "c-x", name: "Buyer", canonical_domain: "buyer.test" },
+      },
+      error: null,
+    },
+  });
+  const outcome = await rankContactsJob({
+    scope: new OrgScope(ORG_A, client),
+    payload: { opportunityId: "opp-x", discover: true },
+    job: { id: "job-fw2", org_id: ORG_A, job_name: "rank_contacts" } as never,
+    now: new Date(),
+  });
+  const result = outcome.ok ? (outcome.result as { firewall?: boolean }) : null;
+  expect("rank_contacts refuses an Exchange opportunity", outcome.ok && result?.firewall === true, outcome);
+  expect(
+    "and queues no enrichment",
+    !calls.some((c) => c.table === "job_executions" && c.verb === "insert"),
+    calls.map((c) => `${c.verb}:${c.table}`),
+  );
+}
+{
+  /* advance_enrollments: an enrollment that somehow exists is stopped, and no draft is written. */
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-x", campaign_id: "camp-1", opportunity_id: "opp-x", current_step: 0, mailbox_id: null,
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: 0, product_id: null },
+        opportunities: {
+          id: "opp-x", origin: "exchange", company_id: "c-x", primary_person_id: null,
+          outreach_angle: null, status: "qualified",
+        },
+      },
+      error: null,
+    },
+  });
+  const outcome = await advanceOne(new OrgScope(ORG_A, client), "enr-x");
+  expectEqual("an Exchange enrollment is stopped", outcome, "stopped");
+  expect(
+    "no draft is written for it",
+    !calls.some((c) => c.table === "messages" && c.verb === "insert"),
+    calls.map((c) => `${c.verb}:${c.table}`),
+  );
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed\n`,
 );

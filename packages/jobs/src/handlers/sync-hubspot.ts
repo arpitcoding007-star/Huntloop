@@ -43,6 +43,7 @@ import { decryptSecret } from "@huntloop/db";
 import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
+import { refusesExchange } from "../firewall.ts";
 
 export interface SyncHubspotPayload {
   opportunityId: string;
@@ -94,12 +95,18 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
   const slug = org ? String((org as { slug: string }).slug) : scope.orgId;
 
   const { data: opp, error: oppErr } = await scope
-    .select("opportunities", "id, company_id, primary_person_id, why_now, status")
+    .select("opportunities", "id, origin, company_id, primary_person_id, why_now, status")
     .eq("id", opportunityId)
     .is("deleted_at", null)
     .maybeSingle();
   if (oppErr) return { ok: false, error: `sync_hubspot: ${oppErr.message}` };
   if (!opp) return { ok: true, result: { skipped: "the opportunity no longer exists" } };
+
+  /* Firewall (0059). The spec allows a CRM push only for an intro in the
+     accepted state; intros do not exist yet (Exchange phase 3), so for now
+     no Exchange opportunity is pushed. */
+  const refused = refusesExchange("sync_hubspot", opp, "opportunity");
+  if (refused) return refused;
   const opportunity = opp as {
     id: string; company_id: string; primary_person_id: string | null; why_now: string | null; status: string;
   };

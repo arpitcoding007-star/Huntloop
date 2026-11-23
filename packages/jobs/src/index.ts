@@ -41,6 +41,7 @@ export {
   type JobRow,
 } from "./queue.ts";
 
+export { EXCHANGE_ORIGIN, isExchangeOrigin, refusesExchange } from "./firewall.ts";
 export { HANDLERS, type JobContext, type JobHandler, type JobOutcome } from "./registry.ts";
 export { sweep, tick, TICK_DEFAULTS, type TickOptions, type TickReport } from "./runner.ts";
 
