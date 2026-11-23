@@ -231,3 +231,36 @@ export {
   type InferredPreference,
   type InferredTask,
 } from "./tasks/infer-preferences.ts";
+
+export {
+  MAX_INTAKE_TURNS,
+  MAX_KEYS_PER_TURN,
+  attributesFor,
+  completeness,
+  finalize,
+  mergeTurn,
+  nextKeys,
+  type Completeness,
+  type FieldKind,
+  type IntakeAttribute,
+  type IntakeDirection,
+  type KnownField,
+  type Requirement,
+} from "./intake.ts";
+
+export {
+  MAX_INTAKE_CATEGORIES,
+  MAX_INTAKE_TEXT,
+  classifyIntake,
+  type ClassifyIntakeInput,
+  type ClassifyIntakeOutput,
+} from "./tasks/intake-classify.ts";
+
+export {
+  MAX_ANSWER_CHARS,
+  MAX_QUICK_REPLIES,
+  MAX_VALUE_CHARS,
+  intakeTurn,
+  type IntakeTurnInput,
+  type IntakeTurnOutput,
+} from "./tasks/intake-turn.ts";
