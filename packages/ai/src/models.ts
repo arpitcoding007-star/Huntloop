@@ -48,7 +48,9 @@ export type TaskName =
   | "explain_performance"
   | "workspace_assistant"
   | "cluster_demand"
-  | "infer_preferences";
+  | "infer_preferences"
+  | "intake_classify"
+  | "intake_turn";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -104,6 +106,14 @@ export const ROUTES: Record<TaskName, Route> = {
      three of them; style items apply with an undo, targeting ones wait for a
      yes. Mid-tier, and at most once a day per person. */
   infer_preferences: { model: MODELS.sonnet, effort: "medium" },
+  /* Exchange intake: free text to direction plus one category id from the
+     closed list sent. Closed-set classification, exactly what Haiku is for. */
+  intake_classify: { model: MODELS.haiku, effort: "low" },
+  /* Exchange intake, one questionnaire turn: extract answers into keys the
+     category defines and phrase the next question. High volume and short;
+     the code, not the model, decides what is still required and when to
+     stop (intake.ts), so the judgement here is phrasing. Mid-tier, low. */
+  intake_turn: { model: MODELS.sonnet, effort: "low" },
 };
 
 /**

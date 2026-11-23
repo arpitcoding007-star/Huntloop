@@ -266,6 +266,9 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   /* 0044: counts each person's new signals; the model is called only for new
      typed notes, at most every six hours per person (`learn_preferences`). */
   "schedule_preferences",
+  /* 0060: Exchange matching. No model call and no provider spend; does
+     nothing until a category has matching switched on. */
+  "schedule_matching",
 ]);
 
 /**
@@ -287,6 +290,7 @@ const HOURLY: ReadonlySet<JobName> = new Set<JobName>([
   "send_digests",
   "schedule_demand",
   "schedule_preferences",
+  "schedule_matching",
 ]);
 
 /**

@@ -69,6 +69,8 @@ import { sendNotifications } from "./handlers/send-notifications.ts";
 import { sendDigests } from "./handlers/send-digests.ts";
 import { scheduleDemand } from "./handlers/schedule-demand.ts";
 import { clusterDemandJob } from "./handlers/cluster-demand.ts";
+import { matchNeeds } from "./handlers/match-needs.ts";
+import { scheduleMatching } from "./handlers/schedule-matching.ts";
 import { schedulePreferences } from "./handlers/schedule-preferences.ts";
 import { learnPreferencesJob } from "./handlers/learn-preferences.ts";
 import { checkMailboxDomain } from "./handlers/check-mailbox-domain.ts";
@@ -107,6 +109,8 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   send_digests: sendDigests,
   schedule_demand: scheduleDemand,
   cluster_demand: clusterDemandJob,
+  schedule_matching: scheduleMatching,
+  match_needs: matchNeeds,
   schedule_preferences: schedulePreferences,
   learn_preferences: learnPreferencesJob,
   check_mailbox_domain: (ctx) => checkMailboxDomain(ctx),

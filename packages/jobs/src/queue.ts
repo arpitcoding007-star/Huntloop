@@ -92,7 +92,10 @@ export type JobName =
   /* 0048: whether a mailbox's domain can send cold email at all. */
   | "check_mailbox_domain"
   /* P2-4: facts a company's homepage states about itself, read without a model. */
-  | "profile_company";
+  | "profile_company"
+  /* 0060: Exchange — match open needs against offerings, and keep them current. */
+  | "schedule_matching"
+  | "match_needs";
 
 export interface JobRow {
   id: string;

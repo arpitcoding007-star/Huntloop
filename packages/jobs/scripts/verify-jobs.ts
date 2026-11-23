@@ -17,6 +17,8 @@
  */
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { enrichPerson } from "../src/handlers/enrich-person.ts";
+import { matchNeeds } from "../src/handlers/match-needs.ts";
+import { eligible, scoreMatch, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
 import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
 import { fetch as undiciFetch } from "undici";
@@ -722,7 +724,7 @@ console.log("\nreachability — every job has a producer");
 console.log("\nsweep — B-09: an hourly sweep that already ran this hour is not enqueued again");
 
 {
-  const periodic = ["schedule_learning", "send_digests", "schedule_demand", "schedule_preferences", "enforce_retention"];
+  const periodic = ["schedule_learning", "send_digests", "schedule_demand", "schedule_preferences", "schedule_matching", "enforce_retention"];
   const { client, calls } = fakeClient({
     /* This period's run exists — finished, so the idempotency index no longer covers it. */
     "select:job_executions": { data: [{ id: "done" }], error: null },
@@ -768,6 +770,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
          enrichment refresh. Spends credits, so it is listed by hand. */
       "schedule_followups",
       "schedule_learning",
+      /* 0060: Exchange matching. Hourly; no model and no provider spend. */
+      "schedule_matching",
       /* 0044: each person's habits. Hourly; the model only for new notes. */
       "schedule_preferences",
       "schedule_recomputes",
@@ -806,7 +810,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
           row.job_name !== "enforce_retention" &&
           row.job_name !== "send_digests" &&
           row.job_name !== "schedule_demand" &&
-          row.job_name !== "schedule_preferences",
+          row.job_name !== "schedule_preferences" &&
+          row.job_name !== "schedule_matching",
       )
       .every((row) => row.idempotency_key === row.job_name),
     JSON.stringify(enqueued.map((row) => row.idempotency_key)),
@@ -4730,6 +4735,93 @@ console.log("\nfirewall (0059) — Exchange rows are never enriched, ranked or s
     !calls.some((c) => c.table === "messages" && c.verb === "insert"),
     calls.map((c) => `${c.verb}:${c.table}`),
   );
+}
+
+
+console.log("\nexchange matching — hard filters, named dimensions, unknown is null");
+{
+  const now = new Date("2026-11-23T12:00:00Z");
+  const need: MatchNeed = {
+    id: "n1", org_id: "buyer", category_id: "gpu", quantity: 200,
+    budget_min: null, budget_max: 6_000_000, currency: "EUR", country: "DE",
+  };
+  const offer = (over: Partial<MatchOffering> = {}): MatchOffering => ({
+    id: "o1", org_id: "seller", category_id: "gpu", price_from: 25_000, price_to: 30_000, currency: "EUR",
+    moq: 10, availability: "in_stock", availability_as_of: "2026-11-20T00:00:00Z",
+    serves_global: false, serves_countries: ["DE", "FR"],
+    provider: { claimed_at: "2026-11-01T00:00:00Z", verified_at: "2026-11-02T00:00:00Z" }, ...over,
+  });
+
+  expect("a supplier in the same category serving the country is eligible", eligible(need, offer()));
+  expect("another category is not", !eligible(need, offer({ category_id: "crm" })));
+  expect("a workspace is never matched to itself", !eligible(need, offer({ org_id: "buyer" })));
+  expect("a supplier that does not serve the country is not", !eligible(need, offer({ serves_countries: ["US"] })));
+  expect("a worldwide supplier is", eligible(need, offer({ serves_countries: [], serves_global: true })));
+  expect("an uncategorised need matches nobody", !eligible({ ...need, category_id: null }, offer()));
+
+  const full = scoreMatch(need, offer(), now);
+  expectEqual("a full fit scores 100", full.score, 100);
+  expect("and says why", full.explanation.includes("serves DE") && full.explanation.includes("verified supplier"), full.explanation);
+
+  const fx = scoreMatch(need, offer({ currency: "USD" }), now);
+  expectEqual("a price in another currency is unknown, not guessed", fx.dimensions.budget, null);
+
+  const stale = scoreMatch(need, offer({ availability_as_of: "2026-09-01T00:00:00Z" }), now);
+  expectEqual("availability older than 30 days is unknown again", stale.dimensions.availability, null);
+
+  const thin = scoreMatch(
+    { ...need, quantity: null, budget_max: null, currency: null, country: null },
+    offer({ price_from: null, price_to: null, currency: null, moq: null, availability: null, availability_as_of: null, provider: { claimed_at: null, verified_at: null } }),
+    now,
+  );
+  expectEqual("with too little measured there is no score, not a low one", thin.score, null);
+  expectEqual("and the unmeasured dimensions read unknown", thin.dimensions.geography, null);
+
+  const small = scoreMatch(need, offer({ moq: 500 }), now);
+  expectEqual("an order below the minimum is a weaker fit", small.dimensions.quantity, 40);
+}
+{
+  /* match_needs: gated by category, writes only engine-owned matches. */
+  const gated = fakeClient({
+    "select:exchange_needs": {
+      data: { id: "n1", org_id: "buyer", category_id: "gpu", quantity: 200, budget_min: null, budget_max: null, currency: null, country: "DE", status: "open", deleted_at: null, exchange_categories: { matching_enabled: false, active: true } },
+      error: null,
+    },
+  });
+  setAdminClientForTests(gated.client);
+  try {
+    const out = await matchNeeds({ scope: new OrgScope(ORG_A, gated.client), payload: { needId: "n1" }, job: { id: "j-m1", org_id: ORG_A, job_name: "match_needs" } as never, now: new Date() });
+    const result = out.ok ? (out.result as { gated?: boolean }) : null;
+    expect("a category with matching off is gated, and the need stays saved", out.ok && result?.gated === true, out);
+    expect("and no offering is even read", !gated.calls.some((c) => c.table === "exchange_offerings"), gated.calls.map((c) => c.verb + ":" + c.table));
+  } finally {
+    setAdminClientForTests(null);
+  }
+
+  const live = fakeClient({
+    "select:exchange_needs": {
+      data: { id: "n1", org_id: "buyer", category_id: "gpu", quantity: 200, budget_min: null, budget_max: null, currency: null, country: "DE", status: "open", deleted_at: null, exchange_categories: { matching_enabled: true, active: true } },
+      error: null,
+    },
+    "select:exchange_offerings": {
+      data: [
+        { id: "o1", org_id: "seller", category_id: "gpu", price_from: null, price_to: null, currency: null, moq: 10, availability: null, availability_as_of: null, serves_global: false, serves_countries: ["DE"], exchange_provider_profiles: { claimed_at: "2026-11-01T00:00:00Z", verified_at: null, deleted_at: null } },
+        { id: "o2", org_id: "buyer", category_id: "gpu", price_from: null, price_to: null, currency: null, moq: null, availability: null, availability_as_of: null, serves_global: true, serves_countries: [], exchange_provider_profiles: { claimed_at: "2026-11-01T00:00:00Z", verified_at: null, deleted_at: null } },
+      ],
+      error: null,
+    },
+    "upsert:exchange_matches": { data: null, error: null },
+  });
+  setAdminClientForTests(live.client);
+  try {
+    const out = await matchNeeds({ scope: new OrgScope(ORG_A, live.client), payload: { needId: "n1" }, job: { id: "j-m2", org_id: ORG_A, job_name: "match_needs" } as never, now: new Date() });
+    const written = live.calls.find((c) => c.table === "exchange_matches" && c.verb === "upsert")?.payload as { offering_id: string }[] | undefined;
+    expect("an enabled category is matched", out.ok, out);
+    expectEqual("only the other workspace's offering is matched", (written ?? []).map((w) => w.offering_id), ["o1"]);
+    expect("matching never touches people, contacts or sequences", !live.calls.some((c) => ["people", "contact_points", "enrollments", "enrichment_records"].includes(c.table)), live.calls.map((c) => c.table));
+  } finally {
+    setAdminClientForTests(null);
+  }
 }
 
 console.log(
