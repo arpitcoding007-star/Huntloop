@@ -365,11 +365,14 @@ export async function getLearningTrend(orgSlug: string): Promise<LearningTrend |
       const [drafts, learned, answered, dismissed] = await Promise.all([
         db
           .from("messages")
-          .select("body_text, original_body_text, edited_at, approved_at")
+          /* PANEL-115: `messages` has no `approved_at` (that column is on
+             `scoring_rules`, 0010). Approving a draft sets `scheduled_at`
+             (inbox `approveMessageAction`), so that is the approval time. */
+          .select("body_text, original_body_text, edited_at, scheduled_at")
           .eq("org_id", orgId)
           .eq("ai_generated", true)
           .eq("approved_by", me)
-          .gte("approved_at", sixty)
+          .gte("scheduled_at", sixty)
           .limit(1000),
         db.from("memories").select("id", { count: "exact", head: true })
           .eq("org_id", orgId).eq("scope", "user").eq("scope_id", me)
@@ -379,11 +382,13 @@ export async function getLearningTrend(orgSlug: string): Promise<LearningTrend |
         db.from("preference_signals").select("id", { count: "exact", head: true })
           .eq("org_id", orgId).eq("user_id", me).eq("kind", "applied_dismissed").gte("created_at", thirty),
       ]);
-      if (learned.error || answered.error) return null;
+      /* The drafts error is checked too: unchecked, a failed read reported
+         "0 drafts" as though it were a measurement. */
+      if (drafts.error || learned.error || answered.error) return null;
 
       const window = (from: string, to: string | null) => {
-        const rows = ((drafts.data ?? []) as { body_text: string | null; original_body_text: string | null; edited_at: string | null; approved_at: string }[])
-          .filter((r) => r.approved_at >= from && (to === null || r.approved_at < to));
+        const rows = ((drafts.data ?? []) as { body_text: string | null; original_body_text: string | null; edited_at: string | null; scheduled_at: string }[])
+          .filter((r) => r.scheduled_at >= from && (to === null || r.scheduled_at < to));
         const changes = rows.map((r) =>
           r.edited_at && r.original_body_text ? changeRatio(r.original_body_text, r.body_text ?? "") : 0,
         );

@@ -38,7 +38,7 @@ export const BASE_TABLE = "organizations";
  * only once the whole file has run. `scripts/audit.mjs` (SCHEMA-01) fails the
  * build when this does not name the newest migration in the repo.
  */
-export const LATEST_MIGRATION = "0056";
+export const LATEST_MIGRATION = "0057";
 export const LATEST_MARKER = `migration_${LATEST_MIGRATION}_applied`;
 
 

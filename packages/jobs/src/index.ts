@@ -144,6 +144,7 @@ export { CAMPAIGN_NOT_RUNNING } from "./enrollment-reasons.ts";
  */
 export {
   FIRST_RUN_STAGES,
+  PROFILE_QUERY_NAME,
   ensureDiscoveryQuery,
   stageContacts,
   stageDiscover,

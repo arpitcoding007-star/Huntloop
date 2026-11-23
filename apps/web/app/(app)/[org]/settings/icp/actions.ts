@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { bandsToRange, parseIcp } from "@huntloop/db/icp";
+import { PROFILE_QUERY_NAME } from "@huntloop/jobs";
 import { mergeStoredJson } from "../../../../../lib/data/icp";
 import {
   fail,
@@ -261,6 +262,19 @@ export async function activateIcpAction(
     const parsed = uuidSchema.safeParse(id);
     if (!parsed.success) return fail("That ICP reference isn't valid.");
 
+    /* PANEL-401: checked before anything is cleared. An id that was removed
+       in another tab used to clear every active flag and then match nothing,
+       leaving the workspace with no active ICP while this said it had one. */
+    const { data: target, error: readError } = await db
+      .from("icps")
+      .select("id")
+      .eq("id", parsed.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (readError) return fail(`That ICP could not be activated: ${readError.message}`);
+    if (!target) return fail("That ICP no longer exists.");
+
     const { error: clearError } = await db
       .from("icps")
       .update({ is_active: false })
@@ -270,19 +284,47 @@ export async function activateIcpAction(
       return fail(`That ICP could not be activated: ${clearError.message}`);
     }
 
-    const { error } = await db
+    const { data: activated, error } = await db
       .from("icps")
       .update({ is_active: true })
       .eq("id", parsed.data)
       .eq("org_id", orgId)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) return fail(`That ICP could not be activated: ${error.message}`);
+    if (!activated) return fail("That ICP no longer exists. Make another one active.");
+
+    /* PANEL-401: the searches built from any other profile stop here, not as
+       a side effect of building this one's. That side effect never happened
+       when this profile's criteria translate to no search, so the old
+       profile's paid search kept running. Searches a person saved under
+       another name are theirs to turn off. */
+    const { error: retireError } = await db
+      .from("discovery_queries")
+      .update({ is_enabled: false, next_run_at: null })
+      .eq("org_id", orgId)
+      .eq("name", PROFILE_QUERY_NAME)
+      .eq("is_enabled", true)
+      .neq("icp_id", parsed.data);
+    if (retireError) {
+      revalidatePath(`/${org}`, "layout");
+      return fail(
+        `This is now the active ICP, but the previous profile's search could not be stopped: ${retireError.message}`,
+      );
+    }
 
     // FLOW-008: switching profile switches what the engine searches and scores.
-    await followActiveIcp(db, orgId, { runNow: true });
+    const follow = await followActiveIcp(db, orgId, { runNow: true });
 
     revalidatePath(`/${org}`, "layout");
-    return ok(undefined, "This is now the active ICP. Discovery and scoring now follow it.");
+    return ok(
+      undefined,
+      follow.searching
+        ? "This is now the active ICP. Discovery and scoring now follow it."
+        : "This is now the active ICP, and scoring follows it. Discovery is off until it describes a search." +
+            (follow.reason ? ` ${follow.reason}` : ""),
+    );
   });
 }
 
@@ -302,15 +344,46 @@ export async function deleteIcpAction(
     const parsed = uuidSchema.safeParse(id);
     if (!parsed.success) return fail("That ICP reference isn't valid.");
 
+    /* PANEL-401: the screen only offers Remove on an inactive ICP, and the
+       server now agrees. Removing the active one leaves the workspace with
+       no profile, so scoring skips everything discovery finds. */
+    const { data: target, error: readError } = await db
+      .from("icps")
+      .select("id, is_active")
+      .eq("id", parsed.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (readError) return fail(`That ICP could not be removed: ${readError.message}`);
+    if (!target) return fail("That ICP no longer exists.");
+    if (target.is_active) {
+      return fail("This is the active ICP. Make another one active before removing it.");
+    }
+
     const { error } = await db
       .from("icps")
       .update({ deleted_at: new Date().toISOString(), is_active: false })
       .eq("id", parsed.data)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      .is("deleted_at", null);
     if (error) return fail(`That ICP could not be removed: ${error.message}`);
 
+    /* PANEL-401: its searches stop with it. 0057 does this in a trigger and
+       refuses to claim them anyway; this covers a database without 0057,
+       where a removed profile's paid search kept running every day. */
+    const { error: retireError } = await db
+      .from("discovery_queries")
+      .update({ is_enabled: false, next_run_at: null })
+      .eq("org_id", orgId)
+      .eq("icp_id", parsed.data)
+      .eq("is_enabled", true);
+    if (retireError) {
+      revalidatePath(`/${org}`, "layout");
+      return fail(`The ICP was removed, but its searches could not be stopped: ${retireError.message}`);
+    }
+
     revalidatePath(`/${org}`, "layout");
-    return ok(undefined, "ICP removed.");
+    return ok(undefined, "ICP removed, and its searches stopped.");
   });
 }
 

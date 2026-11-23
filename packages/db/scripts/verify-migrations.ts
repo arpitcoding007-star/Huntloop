@@ -2243,6 +2243,68 @@ console.log("\n0056 — workspaces take turns in the queue (JOB-202)");
   await db.exec("rollback");
 }
 
+console.log("\n0057 — a removed ICP stops its paid searches (PANEL-401)");
+{
+  const ORG = "57575757-0057-0057-0057-000000000057";
+  const LIVE = "57575757-0057-0057-0057-0000000000a1";
+  const GONE = "57575757-0057-0057-0057-0000000000a2";
+  await db.exec("begin");
+  await db.query(`insert into organizations (id, name, slug) values ($1, 'ICP Co', 'icp-0057')`, [ORG]);
+  await db.query(
+    `insert into icps (id, org_id, name, criteria, is_active)
+     values ($1, $3, 'Live', '{"segments":["Fintech"]}'::jsonb, true),
+            ($2, $3, 'Gone', '{"segments":["Retail"]}'::jsonb, false)`,
+    [LIVE, GONE, ORG],
+  );
+  await db.query(`update icps set deleted_at = now() where id = $1`, [GONE]);
+  /* Written straight in, enabled, against the already-removed profile: the
+     state a raw API write or a pre-0057 database leaves. Only the claim
+     stands between it and a paid search. */
+  await db.query(
+    `insert into discovery_queries (org_id, icp_id, name, filters, filters_hash, is_enabled, next_run_at)
+     values ($1, $2, 'q-live', '{}'::jsonb, 'h-57-live', true, now() - interval '1 minute'),
+            ($1, $3, 'q-gone', '{}'::jsonb, 'h-57-gone', true, now() - interval '1 minute'),
+            ($1, null, 'q-adhoc', '{}'::jsonb, 'h-57-adhoc', true, now() - interval '1 minute')`,
+    [ORG, LIVE, GONE],
+  );
+
+  const claimed = await db.query<{ name: string }>(
+    `select q.name from public.claim_due_discovery_queries(100) c
+       join discovery_queries q on q.id = c.id where c.org_id = $1 order by q.name`,
+    [ORG],
+  );
+  const names = claimed.rows.map((r) => r.name);
+  if (!names.includes("q-gone")) ok("a search for a removed ICP is never claimed, so no paid search runs");
+  else fail("a search for a removed ICP is never claimed", JSON.stringify(names));
+  if (names.includes("q-live") && names.includes("q-adhoc")) {
+    ok("a live ICP's search and an ad-hoc search (no ICP) are still claimed");
+  } else {
+    fail("live and ad-hoc searches are still claimed", JSON.stringify(names));
+  }
+
+  await db.query(`update icps set deleted_at = now(), is_active = false where id = $1`, [LIVE]);
+  const after = await db.query<{ is_enabled: boolean; next_run_at: string | null }>(
+    `select is_enabled, next_run_at from discovery_queries where org_id = $1 and name = 'q-live'`,
+    [ORG],
+  );
+  if (after.rows[0]?.is_enabled === false && after.rows[0]?.next_run_at === null) {
+    ok("removing an ICP disables its searches, so the rows say what the engine does");
+  } else {
+    fail("removing an ICP disables its searches", JSON.stringify(after.rows));
+  }
+  const adhoc = await db.query<{ is_enabled: boolean }>(
+    `select is_enabled from discovery_queries where org_id = $1 and name = 'q-adhoc'`,
+    [ORG],
+  );
+  if (adhoc.rows[0]?.is_enabled === true) ok("and a search with no ICP is left alone");
+  else fail("a search with no ICP is left alone", JSON.stringify(adhoc.rows));
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0057_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0057_applied() exists for db:doctor");
+  else fail("migration_0057_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

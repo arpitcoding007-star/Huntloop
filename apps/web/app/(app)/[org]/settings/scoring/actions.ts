@@ -100,6 +100,17 @@ export async function draftRulesAction(
     const outcome = await draft(org, icp, existing);
     if (!outcome.ok) return fail(outcome.error);
 
+    /* PANEL-406. Unconfigured, the wrapper returns template rules as a
+       success. Inserted here they would sit in the live table as
+       `origin: 'drafted'` — proposals the model never made, one click from
+       active. Same refusal as `refreshWhyNowAction`. */
+    if (outcome.result.source !== "live") {
+      return fail(
+        "No AI model is configured on this deployment, so no rules can be drafted from your ICP. " +
+          "Nothing was saved. You can still write rules by hand.",
+      );
+    }
+
     const rules = outcome.result.rules;
     if (!rules.length) {
       /* An empty draft is a real answer and the task's prompt says so twice.
