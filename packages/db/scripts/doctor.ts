@@ -124,6 +124,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0054_fk_indexes_why_now_date_activation.sql", probe: "migration_0054_applied", kind: "rpc" },
   { file: "0055_status_checks.sql", probe: "migration_0055_applied", kind: "rpc" },
   { file: "0056_fair_claiming.sql", probe: "migration_0056_applied", kind: "rpc" },
+  { file: "0057_icp_retires_discovery.sql", probe: "migration_0057_applied", kind: "rpc" },
 ];
 
 /**

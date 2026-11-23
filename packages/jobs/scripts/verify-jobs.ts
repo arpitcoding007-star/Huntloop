@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
-import { sendMessage } from "../src/handlers/send-message.ts";
+import { contactAllowedAfter, sendMessage } from "../src/handlers/send-message.ts";
 import { preclassify } from "../src/mailbox/preclassify.ts";
 import { bareDomain, checkContent } from "../src/gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../src/business-hours.ts";
@@ -51,6 +51,7 @@ setBoardFetcherForTests(async () => ({ status: 404, body: "" }));
 import { hashIp } from "../src/public-research.ts";
 import { syncHubspot } from "../src/handlers/sync-hubspot.ts";
 import { advanceOne, APPROVAL_RECHECK_MS, loadCompanySignals, loadGuidance } from "../src/handlers/advance-enrollments.ts";
+import { CAMPAIGN_NOT_RUNNING } from "../src/enrollment-reasons.ts";
 import { onCompanySite } from "../src/handlers/research-company.ts";
 import { learnPreferencesJob } from "../src/handlers/learn-preferences.ts";
 import { RULE_FIELDS } from "@huntloop/db/rules";
@@ -1029,6 +1030,20 @@ function sendContext(message: Record<string, unknown>, responses: Record<string,
 }
 
 /** Did anything write a send time? The one question these tests keep asking. */
+/**
+ * PANEL-302: a refusal that clears on its own is a wait, `not_before` plus a
+ * `wait_reason`, and never `error`, which `schedule_sends` treats as final.
+ */
+function waited(calls: Recorded[], reason: RegExp): { deferred: boolean; noError: boolean; says: boolean } {
+  const updates = calls.filter((c) => c.table === "messages" && c.verb === "update");
+  const payloads = updates.map((c) => (c.payload ?? {}) as Record<string, unknown>);
+  return {
+    deferred: payloads.some((p) => typeof p.not_before === "string"),
+    noError: !payloads.some((p) => "error" in p && p.error !== null),
+    says: payloads.some((p) => reason.test(String(p.wait_reason ?? ""))),
+  };
+}
+
 function markedSent(calls: Recorded[]): boolean {
   return calls.some(
     (c) =>
@@ -1213,22 +1228,44 @@ console.log("\nsend_message — OUT-01: the cap that existed and was never asked
   const outcome = await sendMessage(ctx);
 
   expect("a contact inside the cadence window is not written to", !markedSent(calls));
+  const w = waited(calls, /every 2 days/);
   expect(
-    "and it stays retryable — 'too soon' becomes 'fine' on its own",
-    !outcome.ok,
+    "PANEL-302: 'too soon' becomes 'fine' on its own, so it waits rather than fails",
+    outcome.ok && w.deferred,
     JSON.stringify(outcome),
   );
   expect(
-    "the reason on the message names the setting rather than a code",
-    calls.some(
-      (c) =>
-        c.table === "messages" &&
-        c.verb === "update" &&
-        /every 2 days/.test(String((c.payload as { error?: string })?.error)),
-    ),
+    "and writes no `error`, which would strand an approved message for good",
+    w.noError,
     JSON.stringify(calls.filter((c) => c.table === "messages").map((c) => c.payload)),
   );
+  expect("the wait names the setting rather than a code", w.says);
   setAdminClientForTests(null);
+}
+
+{
+  /* PANEL-302: where the wait ends. A cadence wait ends when the cadence
+     does, a daily ceiling at the next UTC midnight; neither burns retries. */
+  const now = new Date("2026-11-20T10:00:00Z");
+  const cadence = contactAllowedAfter("too_soon", { lastSentAt: "2026-11-19T09:00:00Z", minDays: 2 }, now);
+  expect(
+    "a cadence wait ends just after the last send plus the cadence",
+    cadence.toISOString() === "2026-11-21T09:01:00.000Z",
+    cadence.toISOString(),
+  );
+  const daily = contactAllowedAfter("org_daily_cap", { sentToday: 200, cap: 200 }, now);
+  expect(
+    "a daily-ceiling wait ends just after the next UTC midnight",
+    daily.toISOString() === "2026-11-21T00:01:00.000Z",
+    daily.toISOString(),
+  );
+  const unreadable = contactAllowedAfter("unavailable", undefined, now);
+  expect(
+    "an unreadable check waits a short while, and does not fail open",
+    unreadable.getTime() - now.getTime() === 15 * 60_000,
+  );
+  const stale = contactAllowedAfter("too_soon", { lastSentAt: "2026-01-01T00:00:00Z", minDays: 2 }, now);
+  expect("a cadence already over falls back to an hour, never the past", stale.getTime() > now.getTime());
 }
 
 {
@@ -1241,7 +1278,13 @@ console.log("\nsend_message — OUT-01: the cap that existed and was never asked
     },
   });
   const outcome = await sendMessage(ctx);
-  expect("an org at its daily ceiling sends nothing further", !markedSent(calls) && !outcome.ok);
+  const w = waited(calls, /daily ceiling/);
+  expect("an org at its daily ceiling sends nothing further", !markedSent(calls));
+  expect(
+    "and the message waits for tomorrow instead of being stranded (PANEL-302)",
+    outcome.ok && w.deferred && w.noError && w.says,
+    JSON.stringify(outcome),
+  );
   setAdminClientForTests(null);
 }
 
@@ -1255,8 +1298,12 @@ console.log("\nsend_message — OUT-01: the cap that existed and was never asked
   const outcome = await sendMessage(ctx);
   expect(
     "a safety check that cannot be read fails CLOSED, unlike every budget in this codebase",
-    !markedSent(calls) && !outcome.ok,
+    !markedSent(calls) && !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
     JSON.stringify(outcome),
+  );
+  expect(
+    "closed means waiting and asking again, not stranded (PANEL-302)",
+    waited(calls, /did not pass/).deferred && waited(calls, /did not pass/).noError,
   );
   setAdminClientForTests(null);
 }
@@ -1637,25 +1684,18 @@ console.log("\nsend_message — a message with no way to opt out does not leave"
   const outcome = await sendMessage(ctx);
 
   process.env.NEXT_PUBLIC_SITE_URL = saved;
+  const w = waited(calls, /NEXT_PUBLIC_SITE_URL/);
 
-  expect("the send is refused", !outcome.ok);
-  expect("and nothing was marked sent", !markedSent(calls));
+  expect("nothing was marked sent", !markedSent(calls));
   expect(
     "the allowance is not claimed, so a misconfiguration costs no send budget",
     !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
   );
+  expect("the wait names the setting rather than the symptom", w.says);
   expect(
-    "the reason names the setting rather than the symptom",
-    calls.some(
-      (c) =>
-        c.table === "messages" &&
-        c.verb === "update" &&
-        /NEXT_PUBLIC_SITE_URL/.test(String((c.payload as { error?: string })?.error)),
-    ),
-  );
-  expect(
-    "and the failure is retryable — setting the variable fixes it",
-    (outcome as { permanent?: boolean }).permanent !== true,
+    "and it is a wait, not an `error`, so setting the variable releases it (PANEL-302)",
+    outcome.ok && w.deferred && w.noError,
+    JSON.stringify(outcome),
   );
   setAdminClientForTests(null);
 }
@@ -1675,21 +1715,18 @@ console.log("\nsend_message — a message with no sender address does not leave"
     "select:organizations": { data: { settings: {} }, error: null },
   });
   const outcome = await sendMessage(ctx);
+  const w = waited(calls, /Settings → Organisation/);
 
-  expect("the send is refused", !outcome.ok);
-  expect("and nothing was marked sent", !markedSent(calls));
+  expect("nothing was marked sent", !markedSent(calls));
   expect(
     "the allowance is not claimed either",
     !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
   );
+  expect("the wait names the screen that fixes it, not the column", w.says);
   expect(
-    "the reason names the screen that fixes it, not the column",
-    calls.some(
-      (c) =>
-        c.table === "messages" &&
-        c.verb === "update" &&
-        /Settings → Organisation/.test(String((c.payload as { error?: string })?.error)),
-    ),
+    "and adding the address releases it: a wait, not an `error` (PANEL-302)",
+    outcome.ok && w.deferred && w.noError,
+    JSON.stringify(outcome),
   );
   setAdminClientForTests(null);
 }
@@ -1706,7 +1743,11 @@ console.log("\nsend_message — a message with no sender address does not leave"
   });
   const outcome = await sendMessage(ctx);
 
-  expect("a one-word address is not accepted as one", !outcome.ok);
+  expect(
+    "a one-word address is not accepted as one",
+    waited(calls, /postal address/).deferred,
+    JSON.stringify(outcome),
+  );
   expect("and nothing was sent", !markedSent(calls));
   setAdminClientForTests(null);
 }
@@ -1798,25 +1839,19 @@ console.log("\nsend_message — the plan's email allowance, which was metered an
     },
   });
   const outcome = await sendMessage(ctx);
+  const w = waited(calls, /5000 of its 5000 emails/);
 
-  expect("a workspace over its email quota does not send", !outcome.ok);
-  expect("and nothing was marked sent", !markedSent(calls));
+  expect("a workspace over its email quota does not send", !markedSent(calls));
   expect(
     "the allowance is not claimed, so the cap costs no mailbox budget",
     !calls.some((c) => c.verb === "rpc" && c.table === "claim_mailbox_send"),
   );
+  expect("the wait quotes the numbers rather than saying 'quota exceeded'", w.says);
   expect(
-    "the reason quotes the numbers rather than saying 'quota exceeded'",
-    calls.some(
-      (c) =>
-        c.table === "messages" &&
-        c.verb === "update" &&
-        /5000 of its 5000 emails/.test(String((c.payload as { error?: string })?.error)),
-    ),
-  );
-  expect(
-    "and the failure is retryable — the allowance resets",
-    (outcome as { permanent?: boolean }).permanent !== true,
+    "PANEL-302: it waits and is asked again, so it sends when the allowance resets — " +
+      "the copy's promise, which an `error` made false",
+    outcome.ok && w.deferred && w.noError,
+    JSON.stringify(outcome),
   );
   setAdminClientForTests(null);
 }
@@ -3553,6 +3588,40 @@ console.log("\nadvance_enrollments — an opportunity closed as not a fit stops 
     !calls.some((c) => c.table === "messages" && c.verb === "insert"),
   );
 }
+
+console.log("\nadvance_enrollments — PANEL-301: a campaign not running parks with the reason that releases it");
+for (const status of ["draft", "paused", "archived"] as const) {
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-9",
+        campaign_id: "camp-9",
+        opportunity_id: "opp-9",
+        current_step: 0,
+        mailbox_id: null,
+        campaigns: { id: "camp-9", name: "C", status, autonomy_level: 0, product_id: null },
+        opportunities: { id: "opp-9", company_id: "co-9", primary_person_id: null, outreach_angle: null, status: "new" },
+      },
+      error: null,
+    },
+  });
+  const outcome = await advanceOne(new OrgScope(ORG_A, client), "enr-9");
+  const park = calls.find((c) => c.table === "enrollments" && c.verb === "update")?.payload as
+    | { status?: string; parked_reason?: string }
+    | undefined;
+  expectEqual(`a ${status} campaign: the enrollment does not advance`, outcome, "stopped");
+  expect(
+    `a ${status} campaign: parked with CAMPAIGN_NOT_RUNNING, the exact text saveCampaignAction releases on start`,
+    park?.status === "parked" && park?.parked_reason === CAMPAIGN_NOT_RUNNING,
+    JSON.stringify(park),
+  );
+  expect(`a ${status} campaign: nothing is drafted`, !calls.some((c) => c.table === "messages" && c.verb === "insert"));
+}
+expectEqual(
+  "the constant is the text older builds parked with, so their rows are released too",
+  CAMPAIGN_NOT_RUNNING,
+  "The campaign is not running.",
+);
 
 console.log("\nadvance_enrollments — a draft is written with its sender's preferences (0044)");
 {

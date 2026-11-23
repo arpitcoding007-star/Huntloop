@@ -173,6 +173,17 @@ export async function askAgentAction(
 
     if (!outcome.ok) return fail(outcome.error);
 
+    /* PANEL-101. With no model configured the wrapper returns its worked
+       example as a success. Stored, it would read as real advice with a real
+       citation and replay as history on every later turn — so, as
+       `refreshWhyNowAction` does, nothing that is not live is saved. */
+    if (outcome.result.source !== "live") {
+      return fail(
+        "No AI model is configured on this deployment, so the agent has no real answer to give. " +
+          "Nothing was saved to this conversation.",
+      );
+    }
+
     const answer = outcome.result.answer;
 
     /* Both turns in one statement, so a question can never be stored without

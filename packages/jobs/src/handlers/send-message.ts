@@ -173,19 +173,32 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
      it cannot be taken back. */
   if (!verdict || verdict.allowed !== true) {
     const reason = verdict?.reason ?? "unavailable";
-    await scope.update("messages", { error: refusalMessage(reason, verdict?.detail) })
-      .eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason });
 
     /* Suppression and erasure are permanent; a cadence cap is not. The first
-       group is closed out as a skip so it stops occupying the queue. The
-       second stays a retryable failure, because "too soon" becomes "fine" by
-       itself, and re-queueing a message somebody approved is what the sender
-       expects. */
+       group is closed out with `error` and a skip, so it stops occupying the
+       queue. The second is a wait: "too soon" becomes "fine" by itself, and
+       sending a message somebody approved once it may go is what the sender
+       expects.
+
+       PANEL-302 (pass 20): the second group used to write `error` too and
+       return a retryable failure. Three attempts are spent in minutes, and
+       `schedule_sends` skips every row with `error` set, so the approved
+       message was stranded for good, and approving it again was refused
+       because it was already approved. A wait is `not_before`, which the
+       sweep honours, and never `error`, which it treats as final. */
     if (reason === "suppressed" || reason === "invalid_address" || reason === "unknown_org") {
+      await scope.update("messages", { error: refusalMessage(reason, verdict?.detail) })
+        .eq("id", messageId);
+      await recordEvent(ctx, messageId, "failed", { reason });
       return { ok: true, result: { skipped: reason, to: message.to_email } };
     }
-    return { ok: false, error: refusalMessage(reason, verdict?.detail) };
+    return defer(
+      ctx,
+      messageId,
+      contactAllowedAfter(reason, verdict?.detail),
+      reason,
+      waitingMessage(reason, verdict?.detail),
+    );
   }
 
   /*
@@ -205,9 +218,11 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
    * commercial message, and none of them have an exception for a missing
    * environment variable.
    *
-   * So: the third option, refuse. Retryable rather than permanent, because
-   * the fix is one variable and the message should go out once it is set —
-   * the same shape as the allowance refusal below.
+   * So: the third option, refuse. A wait rather than a failure, because the
+   * fix is one variable and the message should go out once it is set — the
+   * same shape as the allowance refusal below. (PANEL-302: it used to write
+   * `error`, which `schedule_sends` treats as final, so setting the variable
+   * never released the message.)
    *
    * Placed before `claim_mailbox_send` so a misconfiguration cannot burn a
    * day's send allowance on a message that was never going to leave.
@@ -222,11 +237,9 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
   if (!unsubscribeUrl(unsubscribeToken)) {
     const why =
-      "Not sent: no unsubscribe link could be built for this message, so it " +
+      "Waiting: no unsubscribe link could be built for this message, so it " +
       "would arrive with no way to opt out. Set NEXT_PUBLIC_SITE_URL.";
-    await scope.update("messages", { error: why }).eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason: "no_unsubscribe_url" });
-    return { ok: false, error: why };
+    return defer(ctx, messageId, new Date(Date.now() + SETUP_RECHECK_MS), "no_unsubscribe_url", why);
   }
 
   /*
@@ -251,11 +264,9 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
   if (!postalAddress) {
     const why =
-      "Not sent: this workspace has no postal address, which every commercial " +
+      "Waiting: this workspace has no postal address, which every commercial " +
       "email is required to carry. Add one under Settings → Organisation.";
-    await scope.update("messages", { error: why }).eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason: "no_postal_address" });
-    return { ok: false, error: why };
+    return defer(ctx, messageId, new Date(Date.now() + SETUP_RECHECK_MS), "no_postal_address", why);
   }
 
   /*
@@ -287,13 +298,13 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
     | undefined;
 
   if (!quotaError && quotaRow && quotaRow.allowed === false) {
+    /* Re-checked hourly rather than parked until the 1st: a plan change
+       lifts the quota at any moment, and the message should follow it. */
     const why =
-      `Not sent: this workspace has used ${quotaRow.used ?? 0} of its ` +
+      `Waiting: this workspace has used ${quotaRow.used ?? 0} of its ` +
       `${quotaRow.quota ?? 0} emails this month. The message stays queued ` +
       `and sends when the allowance resets, or when the plan changes.`;
-    await scope.update("messages", { error: why }).eq("id", messageId);
-    await recordEvent(ctx, messageId, "failed", { reason: "over_email_quota" });
-    return { ok: false, error: why };
+    return defer(ctx, messageId, new Date(Date.now() + SETUP_RECHECK_MS), "over_email_quota", why);
   }
 
   /*
@@ -641,6 +652,49 @@ function rows<T>(data: unknown): T[] {
  * back to a retryable failure.
  */
 /** What the inbox says about a message that is waiting, by reason. */
+/** How often a wait on a setting (quota, postal address, site URL) is re-checked. */
+const SETUP_RECHECK_MS = 60 * 60_000;
+
+/**
+ * When a `can_contact` refusal that clears on its own is worth asking again.
+ * Exported for the test suite.
+ *
+ *   too_soon        the last send plus the org's cadence, from the detail
+ *   org_daily_cap   the next UTC midnight, which is when `can_contact` resets
+ *                   its count (`date_trunc('day', now())` on a UTC database)
+ *   frequency_cap   a day; the 30-day window's start is not in the detail
+ *   anything else   15 minutes, the same as an unreadable pause state —
+ *                   including `unavailable`, where the check itself failed
+ */
+export function contactAllowedAfter(
+  reason: string,
+  detail?: Record<string, unknown>,
+  now: Date = new Date(),
+): Date {
+  const minute = 60_000;
+  if (reason === "too_soon") {
+    const last = Date.parse(String(detail?.lastSentAt ?? ""));
+    const days = Number(detail?.minDays);
+    if (Number.isFinite(last) && Number.isFinite(days) && days > 0) {
+      const at = last + days * 24 * 60 * minute + minute;
+      if (at > now.getTime()) return new Date(at);
+    }
+    return new Date(now.getTime() + 60 * minute);
+  }
+  if (reason === "org_daily_cap") {
+    const midnight = new Date(now);
+    midnight.setUTCHours(24, 1, 0, 0);
+    return midnight;
+  }
+  if (reason === "frequency_cap") return new Date(now.getTime() + 24 * 60 * minute);
+  return new Date(now.getTime() + 15 * minute);
+}
+
+/** The refusal reworded as a wait, for `wait_reason` on the inbox. */
+function waitingMessage(reason: string, detail?: Record<string, unknown>): string {
+  return refusalMessage(reason, detail).replace(/^Not sent: /, "Waiting: ");
+}
+
 const WAIT_COPY: Record<string, string> = {
   inbox_not_fresh: "Waiting for the mailbox's inbox to be read, so a reply is not missed.",
   outside_business_hours: "Waiting for business hours in the recipient's country.",

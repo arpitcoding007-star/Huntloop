@@ -43,6 +43,7 @@ import { pickMailbox } from "../mailbox/index.ts";
 import { isMissingFunction } from "./send-message.ts";
 import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
+import { CAMPAIGN_NOT_RUNNING } from "../enrollment-reasons.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 /* OUT-002. Each enrollment is a model call, inside one 60 s function; 25
@@ -144,8 +145,12 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   const opportunity = one((enrollment as any).opportunities);
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
+  /* Parked, with a reason `saveCampaignAction` looks for: starting or
+     resuming the campaign sets these back to active (PANEL-301). Before that
+     existed, nothing reversed this, so enrolling into a draft campaign and
+     then starting it drafted nothing, ever. */
   if (!campaign || campaign.status !== "active") {
-    await park(scope, enrollmentId, "The campaign is not running.");
+    await park(scope, enrollmentId, CAMPAIGN_NOT_RUNNING);
     return "stopped";
   }
 

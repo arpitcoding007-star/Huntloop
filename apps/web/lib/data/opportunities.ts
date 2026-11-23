@@ -352,7 +352,10 @@ async function contactFitFor(
 
   const { data, error } = await db
     .from("contact_fit_scores")
-    .select("person_id, score, explanation, computed_at")
+    /* PANEL-102: the column is `reason` (0016). `explanation` does not exist,
+       so PostgREST answered 42703, the branch below swallowed it, and live
+       contact fit was always empty. */
+    .select("person_id, score, reason, computed_at")
     .eq("org_id", orgId)
     .in("person_id", personIds)
     .order("computed_at", { ascending: false });
@@ -362,10 +365,10 @@ async function contactFitFor(
      refuse to show an opportunity. */
   if (error || !data) return fit;
 
-  for (const row of data as { person_id: string; score: number; explanation: string | null }[]) {
+  for (const row of data as { person_id: string; score: number; reason: string | null }[]) {
     // First wins: the order above is newest-first.
     if (!fit.has(row.person_id)) {
-      fit.set(row.person_id, { score: row.score, explanation: row.explanation });
+      fit.set(row.person_id, { score: row.score, explanation: row.reason });
     }
   }
   return fit;

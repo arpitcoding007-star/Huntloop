@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 56 migrations
-> (`0001_identity.sql` … `0056_fair_claiming.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 57 migrations
+> (`0001_identity.sql` … `0057_icp_retires_discovery.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 83 tables · 10 views · 128 public functions · 10 enum types · 147 RLS policies · 263 indexes · 128 triggers.
+**Totals:** 83 tables · 10 views · 130 public functions · 10 enum types · 147 RLS policies · 263 indexes · 129 triggers.
 
 **RLS enabled on:** 83 of 83 tables.
 
@@ -1639,6 +1639,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `icps_retire_discovery`
 - `icps_same_org`
 - `icps_touch`
 
@@ -3645,6 +3646,7 @@ RLS: **enabled**
 | `migration_0054_applied` |  | boolean |  |
 | `migration_0055_applied` |  | boolean |  |
 | `migration_0056_applied` |  | boolean |  |
+| `migration_0057_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |
@@ -3675,6 +3677,7 @@ RLS: **enabled**
 | `reserve_provider_credit` | `p_org uuid, p_provider text, p_credits integer` | TABLE(used bigint, "limit" bigint, remaining bigint, allowed boolean) | yes |
 | `reserve_public_research` | `p_ip_hash text, p_per_ip_hour integer, p_daily integer` | TABLE(allowed boolean, reason text) | yes |
 | `resolve_company` | `p_org uuid, p_domain text, p_provider text, p_provider_id text` | TABLE(company_id uuid, matched_on text) | yes |
+| `retire_discovery_for_deleted_icp` |  | trigger |  |
 | `retry_job` | `p_org uuid, p_job uuid` | boolean | yes |
 | `saturated_org_ids` |  | SETOF uuid | yes |
 | `settle_provider_credit` | `p_org uuid, p_provider text, p_reserved integer` | void | yes |

@@ -258,6 +258,52 @@ export async function replyToThreadAction(
 }
 
 /**
+ * Try an approved message again, after it was not sent.
+ *
+ * PANEL-302 (pass 20). Until that fix, `send_message` recorded a full email
+ * quota, a cadence cap, a missing postal address or a missing site URL as
+ * `error`, which `schedule_sends` treats as final. Approving again was
+ * refused, because the message was already approved. Those refusals are now
+ * waits, but rows written before the fix are still stranded, and a person
+ * who has fixed the cause needs a way to say "go".
+ *
+ * This clears the reason and nothing else. The approval stands, and so does
+ * every check: `send_message` asks again whether the sequence was stopped,
+ * whether the recipient is suppressed, and whether the cadence allows it. A
+ * message that was withdrawn or suppressed comes straight back as "Not sent"
+ * with the same reason. It cannot be used to get round one.
+ */
+export async function retrySendAction(
+  org: string,
+  messageId: string,
+): Promise<ActionResult<undefined>> {
+  return mutate(org, "retrySend", async ({ db, orgId }) => {
+    const id = uuidSchema.safeParse(messageId);
+    if (!id.success) return fail("That message reference isn't valid.");
+
+    const { data, error } = await db
+      .from("messages")
+      .update({ error: null, not_before: null })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .eq("direction", "outbound")
+      .not("scheduled_at", "is", null)
+      .not("error", "is", null)
+      .is("sent_at", null)
+      .is("send_attempted_at", null)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) return fail(`That message could not be retried: ${error.message}`);
+    if (!data) return fail("That message is no longer waiting on a retry.");
+
+    revalidatePath(`/${org}/inbox`);
+    return ok(undefined, "It is checked and sent on the next run, if nothing still stops it.");
+  });
+}
+
+/**
  * Approve a drafted message, so it can leave.
  *
  * At autonomy 0 and 1 the engine writes a message and stops: `scheduled_at`

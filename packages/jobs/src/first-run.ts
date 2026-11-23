@@ -90,6 +90,13 @@ const FIRST_RUN_CONTACTS = 3;
 /* ── The discovery query ─────────────────────────────────────────────────── */
 
 /**
+ * The name every profile-built search carries. It is how `retireSuperseded`
+ * (and `activateIcpAction`, PANEL-401) tell a search built from an ICP from
+ * one a person saved, which is theirs to turn off.
+ */
+export const PROFILE_QUERY_NAME = "From your customer profile";
+
+/**
  * The saved search this workspace's profile translates to.
  *
  * Upserted on `filters_hash` rather than created blindly, because `0014` makes
@@ -221,7 +228,7 @@ export async function ensureDiscoveryQuery(
     .insert("discovery_queries", {
       icp_id: icpRow.id,
       icp_version_id: icpRow.current_version_id ?? null,
-      name: "From your customer profile",
+      name: PROFILE_QUERY_NAME,
       filters: lookAlike.filters,
       filters_hash: hash,
       /* Recorded rather than dropped. A customer whose "uses Kubernetes"
@@ -264,7 +271,7 @@ export async function ensureDiscoveryQuery(
 async function retireSuperseded(scope: OrgScope, currentId: string): Promise<void> {
   await scope
     .update("discovery_queries", { is_enabled: false, next_run_at: null })
-    .eq("name", "From your customer profile")
+    .eq("name", PROFILE_QUERY_NAME)
     .eq("is_enabled", true)
     .neq("id", currentId);
 }
