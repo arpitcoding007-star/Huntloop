@@ -287,7 +287,7 @@ export const CHANNEL_OPTIONS: readonly {
   {
     value: "email",
     label: "My work email",
-    description: "Connect Gmail or Outlook. You approve every message before it sends.",
+    description: "Connect Gmail or Outlook. You approve each message unless a campaign is set to send unattended.",
   },
   {
     value: "manual",

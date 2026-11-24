@@ -14,6 +14,7 @@ production).
 ### Fixed
 - Autonomy 2 (“Approve the first”) sent the first message without approval.
   It now waits for a person; follow-ups then send.
+- The website, onboarding and draft terms no longer say there is no autonomous mode.
 
 ### Performance
 - Functions run in Sydney, beside the database.
