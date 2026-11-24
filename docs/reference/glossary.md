@@ -16,7 +16,8 @@ either sticks or quietly reverts.
 ## Product terms
 
 **Autonomy level** — `campaigns.autonomy_level`, 0–5. At 0–1 the engine drafts
-and stops; a human approves. At ≥ 2 it sends within every safety limit. The
+and stops; a human approves. At 2 a human approves the first message
+and follow-ups send. At ≥ 3 it sends within every safety limit. The
 only field on a campaign that can hurt somebody.
 
 **Claim kind** — `fact` | `inference` | `unknown`. Every evidence row carries

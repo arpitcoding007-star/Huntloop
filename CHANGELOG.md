@@ -11,6 +11,10 @@ ship from.
 Needs database migrations **0046** and **0047** (0040–0045 are already in
 production).
 
+### Fixed
+- Autonomy 2 (“Approve the first”) sent the first message without approval.
+  It now waits for a person; follow-ups then send.
+
 ### Performance
 - Functions run in Sydney, beside the database.
 - The home page keeps the public plans for five minutes.

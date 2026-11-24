@@ -35,6 +35,7 @@
  * double-sending if the first attempt actually succeeded and only the response
  * was lost.
  */
+import { APPROVE_FIRST, openingApproved } from "../opening.ts";
 import { parseOrgProfile } from "@huntloop/db/org-profile";
 import { pauseState } from "@huntloop/db/pause";
 import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../mailbox/index.ts";
@@ -439,7 +440,21 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
    */
   /* OUT-011: only a message nobody approved. A person who read a held draft
      and approved it has answered every question this check asks. */
-  if (message.enrollment_id && !message.approved_by && (await autonomyFor(ctx, String(message.enrollment_id))) >= 2) {
+  const level = message.enrollment_id && !message.approved_by ? await autonomyFor(ctx, String(message.enrollment_id)) : 0;
+  if (level >= APPROVE_FIRST) {
+    /* Level 2 sends follow-ups, never the opening. Reached by mail queued
+       before the campaign was lowered to 2. */
+    if (level === APPROVE_FIRST && !(await openingApproved(scope, String(message.enrollment_id)))) {
+      const why = "Held for approval: this campaign needs a person to approve the first message.";
+      const { error: holdError } = await scope
+        .update("messages", { scheduled_at: null, error: why })
+        .eq("id", messageId)
+        // Not over an approval given since this run read the row.
+        .is("approved_by", null);
+      if (holdError) return { ok: false, error: `send_message: ${holdError.message}` };
+      await recordEvent(ctx, messageId, "failed", { reason: "opening_not_approved" });
+      return { ok: true, result: { skipped: "held_for_approval", issues: [why] } };
+    }
     const issues = checkContent({
       subject: String(message.subject ?? ""),
       body: String(message.body_text ?? ""),

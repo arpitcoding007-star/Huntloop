@@ -185,7 +185,7 @@ stateDiagram-v2
 |---|---|
 | Enrolled | `enrollOpportunitiesAction` writes `enrollments.next_action_at` |
 | Drafted | `advance_enrollments` sweeper plus `personalize_message` |
-| Approved | A human at autonomy 0–1; automatic at autonomy ≥ 2 |
+| Approved | A human at autonomy 0–1, and for the first message at 2; otherwise automatic |
 | Sent | `schedule_sends` then `send_message` through Gmail or Outlook |
 | Replied | `sync_mailbox` then `classify_reply` |
 | Outcome | An `outcomes` row, which feeds the learning loop |
@@ -193,7 +193,8 @@ stateDiagram-v2
 | Unsubscribed | `/unsubscribe/[token]`, `record_unsubscribe()` |
 
 **The autonomy ladder** (`campaigns.autonomy_level`, 0–5) is the only field on
-a campaign that can hurt somebody. At 0–1 the engine drafts and stops. There is
+a campaign that can hurt somebody. At 0–1 the engine drafts and stops; at 2 it does so until a person approves the
+first message. There is
 deliberately **no way to enrol and raise autonomy in one call**.
 
 Safety, all enforced in Postgres (`0017`):

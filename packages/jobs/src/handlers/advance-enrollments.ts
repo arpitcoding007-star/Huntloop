@@ -16,7 +16,8 @@
  * sent*, and §46's autonomy ladder decides whether a human sees it first:
  *
  *   level 0–1   drafted and left for approval. `scheduled_at` stays null.
- *   level 2+    drafted and queued to send.
+ *   level 2     the same until a person approves one; follow-ups then queue.
+ *   level 3+    drafted and queued to send.
  *
  * Splitting drafting from sending is what makes the approval queue possible at
  * all. A design that generated and sent in one step would have no state in
@@ -41,6 +42,7 @@ import { isSendableEmail, isVerifiedEmail } from "@huntloop/db/contact";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { pickMailbox } from "../mailbox/index.ts";
 import { isMissingFunction } from "./send-message.ts";
+import { APPROVE_FIRST, openingApproved } from "../opening.ts";
 import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
 import { CAMPAIGN_NOT_RUNNING } from "../enrollment-reasons.ts";
@@ -253,24 +255,29 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
     return "waited";
   }
 
-  const autonomous = Number(campaign.autonomy_level ?? 0) >= 2;
+  const level = Number(campaign.autonomy_level ?? 0);
+  const autonomous =
+    level > APPROVE_FIRST || (level === APPROVE_FIRST && (await openingApproved(scope, enrollmentId)));
+  /* At level 2 the opening is held to the same address rule as the follow-ups
+     it starts, or they would go to somebody else or park. */
+  const verifiedOnly = level >= APPROVE_FIRST;
 
   /* P0-3. Unattended sends go only to verified addresses. At autonomy 0–1 a
      person approves the draft and the screen tells them the address is
-     unverified; at 2+ nobody does, and an unverified address is how a list
+     unverified; at 2+ some mail goes unread, and an unverified address is how a list
      bounces a mailbox into the spam folder. */
   const recipient = await resolveRecipient(
     scope,
     String(opportunity?.company_id),
     opportunity?.primary_person_id,
-    autonomous,
+    verifiedOnly,
   );
   if (!recipient) {
     await park(
       scope,
       enrollmentId,
-      autonomous
-        ? "No verified email address for anyone at this company, and this campaign sends without review. Verify a contact or lower the campaign's autonomy."
+      verifiedOnly
+        ? "No verified email address for anyone at this company, and this campaign sends email without review. Verify a contact or lower the campaign's autonomy."
         : "No verified email address for anyone at this company. Enrich or add a contact.",
     );
     return "stopped";

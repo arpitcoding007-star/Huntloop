@@ -1106,5 +1106,47 @@
   "pass": true,
   "evidence": "",
   "ms": 3386
+ },
+ "auto.first-held": {
+  "name": "Level 2: the first message is drafted and nothing is sent",
+  "pass": true,
+  "evidence": "",
+  "ms": 2002
+ },
+ "auto.first-approved": {
+  "name": "Level 2: approving the first message sends it",
+  "pass": true,
+  "evidence": "",
+  "ms": 3561,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "auto.followup": {
+  "name": "Level 2: the follow-up is sent without approval",
+  "pass": true,
+  "evidence": "",
+  "ms": 1814,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "auto.lowered": {
+  "name": "An opening queued at level 3 is held when the campaign is lowered to 2",
+  "pass": true,
+  "evidence": "",
+  "ms": 2389,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "auto.three": {
+  "name": "Level 3: the first message is sent without approval",
+  "pass": true,
+  "evidence": "",
+  "ms": 2079,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
  }
 }

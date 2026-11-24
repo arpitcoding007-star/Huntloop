@@ -75,6 +75,7 @@ for exactly the window in which a sequence sends again.
 | The same message is never sent twice | Idempotent send; `sent_at` is the proof |
 | A mailbox cannot exceed its daily allowance | `claim_mailbox_send()` claims atomically |
 | A message cannot send at autonomy 0–1 without approval | `send_message` refuses it outright |
+| The first message cannot send at autonomy 2 without approval | Drafted unscheduled; `send_message` holds one queued earlier |
 
 ## Unsubscribe
 
@@ -135,7 +136,8 @@ somebody.
 | Level | Behaviour |
 |---|---|
 | 0–1 | The engine drafts and **stops**. A human approves in the Inbox |
-| ≥ 2 | The engine sends within every limit above |
+| 2 | The first message waits for a human; follow-ups then send within every limit above |
+| ≥ 3 | The engine sends within every limit above |
 
 There is deliberately **no way to enrol and raise autonomy in one call**, and the
 campaign *create* action does not accept an autonomy level at all.

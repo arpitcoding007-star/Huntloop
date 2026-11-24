@@ -137,8 +137,8 @@ flowchart TD
   C --> D[advance_enrollments sweeper]
   D --> E[personalize_message → messages row]
   E --> F{campaign.autonomy_level}
-  F -->|0–1| G[Draft waits for approval in Inbox]
-  F -->|>=2| H[schedule_sends → send_message]
+  F -->|0–1, or the first message at 2| G[Draft waits for approval in Inbox]
+  F -->|3+, or a follow-up at 2| H[schedule_sends → send_message]
   G -->|approveMessageAction| H
   H --> I[Gmail / Outlook API]
   I --> J[sync_mailbox reads the reply]

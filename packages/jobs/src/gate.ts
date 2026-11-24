@@ -2,7 +2,7 @@
  * The last look at a message before it leaves (P0-4).
  *
  * At autonomy 0–1 a person approves every message, and what they approved is
- * what goes. At autonomy 2 and above nobody reads it, and the draft was
+ * what goes. At autonomy 2 (follow-ups) and above nobody reads it, and the draft was
  * written by a model that had untrusted web pages in its context — so a link
  * to somewhere the org has never heard of, or a `{{first_name}}` the writer
  * left behind, would reach a prospect with nothing in the way.

@@ -124,7 +124,7 @@ export const CATS = [
 ["Outreach and Campaign Management", "Reaching out with control", [
 ["Create campaigns and multi-step sequences","B","-","camp.create camp.sequence"],
 ["Draft each email from evidence, with citations","B","AE","camp.draft"],
-["Choose one of six autonomy levels per campaign","B","-","camp.activate"],
+["Choose one of six autonomy levels per campaign","P","-","camp.activate auto.first-held auto.followup code:advance-enrollments","Levels 0–1 behave alike, and levels 3–5 behave alike"],
 ["Restrict unattended sending to administrators","B","-","safe.autonomy-admin"],
 ["Send from a connected Gmail account","B","MKE","mb.gmail inbox.approve"],
 ["Send from a connected Outlook account","B","MKE","mb.outlook mb.outlook-send"],
