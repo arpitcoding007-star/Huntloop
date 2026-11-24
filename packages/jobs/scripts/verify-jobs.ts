@@ -3588,6 +3588,40 @@ console.log("\nadvance_enrollments — a draft waiting for a person holds the se
   );
 }
 
+console.log("\nadvance_enrollments — autonomy 2 approves the first, and only the first");
+for (const [label, level, opening, queued] of [
+  ["level 1 waits", 1, null, false],
+  ["level 2, nothing approved: waits", 2, null, false],
+  ["level 2, opening approved: queued", 2, { id: "m0" }, true],
+  ["level 3: queued", 3, null, true],
+] as const) {
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-2", campaign_id: "camp-1", opportunity_id: "opp-1", current_step: 0, mailbox_id: "mb-1",
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: level, product_id: null },
+        opportunities: { id: "opp-1", company_id: "co-1", primary_person_id: null, outreach_angle: null, status: "qualified" },
+      },
+      error: null,
+    },
+    "select:sequence_steps": { data: { id: "step-1", position: 0, kind: "email", delay_hours: 72, template: { subject: "Hi", body: "Hello" } }, error: null },
+    "select:people": {
+      data: [{ id: "p1", first_name: "A", last_name: "B", title: null, is_decision_maker: true, contact_points: [{ kind: "email", value: "a@acme.co", verification_status: "deliverable" }] }],
+      error: null,
+    },
+    "select:messages": (r: Recorded) => ({ data: r.filters.some(([f]) => f === "not:approved_by") ? opening : null, error: null }),
+    "insert:messages": { data: { id: "new-1" }, error: null },
+    "rpc:is_suppressed": { data: false, error: null },
+  });
+  setAdminClientForTests(client);
+  const outcome = await advanceOne(new OrgScope(ORG_A, client), "enr-2");
+  const payload = calls.find((c) => c.table === "messages" && c.verb === "insert")?.payload;
+  const row = (Array.isArray(payload) ? payload[0] : payload) as { scheduled_at?: unknown } | undefined;
+  expectEqual(label, outcome, queued ? "queued" : "drafted");
+  expect(`${label}: ${queued ? "approved to send" : "no send time"}`, row !== undefined && Boolean(row.scheduled_at) === queued, JSON.stringify(row));
+  setAdminClientForTests(null);
+}
+
 console.log("\nadvance_enrollments — OUT-201: the sequence is not finished while its last email waits");
 for (const [label, pending, finished] of [
   ["an approved last step still waiting to send", { id: "msg-last" }, false],
@@ -4136,10 +4170,10 @@ console.log("\nsend_message — P0-4: an unreviewed message gets the reviewer's 
   const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: "Hi {{first_name}}, see https://evil.example" });
   const { ctx, calls } = sendContext(message, {
     "select:messages": messagesBy(message),
-    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 2 } }),
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 3 } }),
   });
   const outcome = await sendMessage(ctx);
-  expect("at autonomy 2 a bad draft is not sent", outcome.ok && !markedSent(calls));
+  expect("at autonomy 3 a bad draft is not sent", outcome.ok && !markedSent(calls));
   expect(
     "it goes back to the approval queue",
     calls.some((c) => c.table === "messages" && c.verb === "update" && (c.payload as { scheduled_at?: unknown })?.scheduled_at === null),
@@ -4155,6 +4189,43 @@ console.log("\nsend_message — P0-4: an unreviewed message gets the reviewer's 
   });
   const outcome = await sendMessage(ctx);
   expect("at autonomy 1 a person approved it, and it goes as approved", outcome.ok && markedSent(calls));
+  setAdminClientForTests(null);
+}
+
+console.log("\nsend_message — autonomy 2: the opening needs a person, follow-ups do not");
+for (const [label, level, opening, body, approver, sends] of [
+  ["an opening nobody approved is held", 2, null, "Hello", null, false],
+  ["a follow-up to an approved opening is sent", 2, { id: "m0" }, "Hello", null, true],
+  ["a bad follow-up is still held", 2, { id: "m0" }, "Hi {{first_name}}", null, false],
+  ["an approved opening is sent", 2, null, "Hello", "12121212-1212-1212-1212-121212121212", true],
+  ["at autonomy 3 the opening is sent", 3, null, "Hello", null, true],
+] as const) {
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999", body_text: body, approved_by: approver });
+  const other = messagesBy(message);
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": (r: Recorded) => (r.filters.some(([f]) => f === "not:approved_by") ? { data: opening, error: null } : other(r)),
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: level } }),
+  });
+  const outcome = await sendMessage(ctx);
+  expect(label, outcome.ok && markedSent(calls) === sends, JSON.stringify(outcome));
+  if (!sends) {
+    expect(
+      `${label}: back in the approval queue`,
+      calls.some((c) => c.table === "messages" && c.verb === "update" && (c.payload as { scheduled_at?: unknown })?.scheduled_at === null),
+    );
+  }
+  setAdminClientForTests(null);
+}
+{
+  const message = sendable({ enrollment_id: "99999999-9999-9999-9999-999999999999" });
+  const other = messagesBy(message);
+  const { ctx, calls } = sendContext(message, {
+    "select:messages": (r: Recorded) => (r.filters.some(([f]) => f === "not:approved_by") ? { data: null, error: { message: "timeout" } } : other(r)),
+    "select:enrollments": liveEnrollment({ campaign: { autonomy_level: 2 } }),
+  });
+  let threw = false;
+  await sendMessage(ctx).catch(() => (threw = true));
+  expect("an approval that cannot be read sends nothing, and the job retries", threw && !markedSent(calls));
   setAdminClientForTests(null);
 }
 

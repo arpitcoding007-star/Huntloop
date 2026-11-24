@@ -686,7 +686,9 @@ function EnrollPanel({
 
       {chosen && chosen.sendable && (
         <p className="mt-3 text-[13px] text-fg-muted">
-          {chosen.autonomyLevel >= 2
+          {chosen.autonomyLevel === 2
+            ? `"${chosen.name}" is at autonomy 2, so the first message waits for you and follow-ups are then sent without further approval.`
+            : chosen.autonomyLevel > 2
             ? `"${chosen.name}" is at autonomy ${chosen.autonomyLevel}, so messages it writes are sent without further approval.`
             : `"${chosen.name}" is at autonomy ${chosen.autonomyLevel}, so messages are drafted and wait for you.`}
           {chosen.status === "active"

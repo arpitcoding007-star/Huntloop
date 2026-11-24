@@ -142,7 +142,7 @@ export function InboxView({
               Waiting for your approval · {queue.length}
             </h2>
             <p className="mt-1 text-[12px] text-fg-muted">
-              Drafted by a campaign at autonomy 0–1. Nothing sends, and the sequence waits, until a
+              Drafted by a campaign that waits for approval. Nothing sends, and the sequence waits, until a
               person approves. Edit the words if they are not right; reject to stop the sequence.
             </p>
           </div>
