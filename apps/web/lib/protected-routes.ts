@@ -29,6 +29,7 @@ export const WORKSPACE_SECTIONS = [
   "competitors",
   "dashboard",
   "demand",
+  "exchange",
   "imports",
   "inbox",
   "intelligence",
