@@ -1,3 +1,4 @@
+import { supabaseEnv } from "../schema";
 import { load, type Loaded } from "./source";
 
 /**
@@ -80,16 +81,7 @@ export async function listPlans(): Promise<Loaded<Plan[]>> {
       // difference between "we have no plans" and "the query broke".
       if (error || !data || data.length === 0) return SEEDED;
 
-      return (data as { id: string; name: string; price_cents: number; limits: unknown }[])
-        .map((row) => ({
-          id: String(row.id),
-          name: String(row.name),
-          priceCents: Number(row.price_cents ?? 0),
-          limits: parseLimits(row.limits),
-        }))
-        /* Catalogue order, with anything unrecognised last. A plan added to the
-           table without a decision here still renders rather than vanishing. */
-        .sort((a, b) => (ORDER.get(a.id) ?? 99) - (ORDER.get(b.id) ?? 99));
+      return toPlans(data as PlanRow[]);
     },
     () => SEEDED,
   );
@@ -124,15 +116,56 @@ export function describeLimit(value: number | null): string {
   return value.toLocaleString();
 }
 
+interface PlanRow {
+  id: string;
+  name: string;
+  price_cents: number;
+  limits: unknown;
+}
+
+function toPlans(rows: PlanRow[]): Plan[] {
+  return (
+    rows
+      .map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        priceCents: Number(row.price_cents ?? 0),
+        limits: parseLimits(row.limits),
+      }))
+      /* Catalogue order, with anything unrecognised last. A plan added to the
+         table without a decision here still renders rather than vanishing. */
+      .sort((a, b) => (ORDER.get(a.id) ?? 99) - (ORDER.get(b.id) ?? 99))
+  );
+}
+
+/** How old the pricing a visitor sees may be. */
+const PUBLIC_PLANS_TTL_S = 300;
+
 /**
- * `listPlans`, for the public pricing section: the seeded catalogue when the
- * database cannot be reached, rather than an error page in front of visitors.
- * The strict `listPlans` stays for signed-in screens, where hiding an outage
- * behind plausible numbers would be worse.
+ * The plans for the public pricing section.
+ *
+ * Read with the publishable key and no session, so one answer serves every
+ * visitor and is kept for five minutes. Asking on every visit made the home
+ * page wait for the database each time, for rows that change a few times a
+ * year. `plans` is readable by anyone (`plans_read`, 0001).
+ *
+ * The seeded catalogue stands in when the database cannot be reached, rather
+ * than an error page in front of visitors. `listPlans` stays strict and
+ * uncached for signed-in screens, where hiding an outage behind plausible
+ * numbers would be worse.
  */
 export async function listPublicPlans(): Promise<Plan[]> {
+  const env = supabaseEnv();
+  if (!env) return SEEDED;
   try {
-    return (await listPlans()).data;
+    const res = await fetch(`${env.url}/rest/v1/plans?select=id,name,price_cents,limits`, {
+      headers: { apikey: env.key, Authorization: `Bearer ${env.key}` },
+      next: { revalidate: PUBLIC_PLANS_TTL_S },
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!res.ok) throw new Error(`plans answered HTTP ${res.status}`);
+    const rows = (await res.json()) as PlanRow[];
+    return Array.isArray(rows) && rows.length ? toPlans(rows) : SEEDED;
   } catch (error) {
     console.error("[marketing] plans unavailable; using the seeded catalogue", error);
     return SEEDED;
