@@ -5,6 +5,9 @@ import { applicableMemories } from "@huntloop/db/memory";
 import { getDefaultNeedsYou } from "../data/needs-you";
 import { getPerformance } from "../data/performance";
 import { listCompetitors } from "../data/competitor-intel";
+import { getMatchedCards } from "../data/exchange";
+import { isExchangeEnabled } from "../exchange/flag";
+import { asksAboutRequests, requestRecords } from "../exchange/request-records";
 import { performanceFacts } from "../performance/facts";
 
 /**
@@ -276,6 +279,23 @@ export async function gatherWorkspaceRecords(
       ],
     });
     hrefs.set(ref, `/${orgSlug}/competitors/${c.id}`);
+  }
+
+  /* ── Anonymous requests that match this workspace's offerings (DN-47) ──────
+     Through `exchange_matched_cards` only, which logs the view for the buyer. */
+  if (isExchangeEnabled() && asksAboutRequests(question)) {
+    const cards = await getMatchedCards(orgSlug);
+    for (const r of requestRecords(cards.data)) {
+      records.push(r);
+      hrefs.set(r.ref, `/${orgSlug}/exchange/supplier`);
+    }
+    records.push({
+      ref: "request:total",
+      type: "request",
+      title: "Buyer requests matching our offerings",
+      facts: [cards.data.length >= 200 ? "200 or more" : String(cards.data.length)],
+    });
+    hrefs.set("request:total", `/${orgSlug}/exchange/supplier`);
   }
 
   /* ── Rules, sources, notes ─────────────────────────────────────────────── */

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { isExchangeEnabled } from "../lib/exchange/flag";
 import { siteUrl } from "../lib/site-url";
 import { USE_CASES } from "./(marketing)/for/use-cases";
 import { APPROACHES } from "./(marketing)/compare/approaches";
@@ -54,6 +55,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly" as const,
       priority: 0.6,
     })),
+    ...(isExchangeEnabled() ? [{ url: url("/find"), changeFrequency: "monthly" as const, priority: 0.8 }] : []),
     { url: url("/signup"), changeFrequency: "yearly", priority: 0.8 },
     { url: url("/login"), changeFrequency: "yearly", priority: 0.5 },
   ];

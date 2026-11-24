@@ -4843,33 +4843,38 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
 }
 
 
-console.log("\nschedule_matching — a new offering is matched on the next run (DN-59)");
+console.log("\nschedule_matching — queues what SQL says is due (0068, DN-59)");
 {
-  const now = new Date("2026-11-24T12:00:00Z");
-  const run = async (offerings: unknown[]) => {
-    const { client, calls } = fakeClient({
-      "select:exchange_categories": { data: [{ id: "gpu" }, { id: "crm" }], error: null },
-      "select:exchange_offerings": { data: offerings, error: null },
-      "select:exchange_needs": {
-        data: [
-          { id: "n-gpu", org_id: ORG_A, category_id: "gpu", exchange_matches: [{ computed_at: "2026-11-24T09:00:00Z" }] },
-          { id: "n-crm", org_id: ORG_A, category_id: "crm", exchange_matches: [{ computed_at: "2026-11-24T09:00:00Z" }] },
-        ],
-        error: null,
-      },
-      "insert:job_executions": { data: { id: "j" }, error: null },
-    });
+  const run = async (due: { data: unknown; error: unknown }) => {
+    const { client, calls } = fakeClient({ "rpc:exchange_needs_due": due as never, "insert:job_executions": { data: { id: "j" }, error: null } });
     setAdminClientForTests(client);
     try {
-      const out = await HANDLERS.schedule_matching({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now });
+      const out = await HANDLERS.schedule_matching({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now: new Date() });
       return { out, keys: calls.filter((c) => c.verb === "insert").map((c) => String((c.payload as { idempotency_key: string }).idempotency_key)) };
     } finally {
       setAdminClientForTests(null);
     }
   };
-  expectEqual("requests matched today with no supplier change wait for tomorrow", (await run([])).keys, []);
-  expectEqual("an offering listed since re-matches its category only, once per change", (await run([{ category_id: "gpu", updated_at: "2026-11-24T11:00:00Z" }])).keys, ["match_needs:n-gpu:2026-11-24T11:00:00Z"]);
-  expectEqual("an offering older than the last match does not", (await run([{ category_id: "gpu", updated_at: "2026-11-24T08:00:00Z" }])).keys, []);
+  expectEqual("each due request is queued under the key SQL gave it", (await run({ data: [{ need_id: "n1", org_id: ORG_A, key: "match_needs:n1:x" }], error: null })).keys, ["match_needs:n1:x"]);
+  expectEqual("nothing due queues nothing", (await run({ data: [], error: null })).keys, []);
+  expect("an unreadable list is a failed run, not an empty one", !(await run({ data: null, error: { message: "down" } })).out.ok);
+}
+
+console.log("\nmatch_needs — a large category is read in pieces (Phase 4 load test)");
+{
+  const many = Array.from({ length: 250 }, (_, i) => `o${i}`);
+  const { client, calls } = fakeClient({
+    "select:exchange_needs": { data: { id: "n1", org_id: "buyer", category_id: "gpu", quantity: null, status: "open", deleted_at: null, exchange_categories: { matching_enabled: true, active: true } }, error: null },
+    "select:exchange_offerings": { data: [], error: null },
+    "rpc:exchange_recall_offerings": { data: many, error: null },
+  });
+  setAdminClientForTests(client);
+  try {
+    await matchNeeds({ scope: new OrgScope(ORG_A, client), payload: { needId: "n1" }, job: { id: "j", org_id: ORG_A, job_name: "match_needs" } as never, now: new Date() });
+    expectEqual("250 candidates are three reads, none too long for the gateway", calls.filter((c) => c.table === "exchange_offerings").map((c) => (c.filters.find(([k]) => k === "in:id")?.[1] as string[]).length), [100, 100, 50]);
+  } finally {
+    setAdminClientForTests(null);
+  }
 }
 
 

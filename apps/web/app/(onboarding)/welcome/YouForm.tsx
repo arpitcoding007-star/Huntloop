@@ -31,6 +31,7 @@ export function YouForm({
   initialName,
   initialRole = null,
   carry,
+  job,
   isNew = false,
 }: {
   initialName: string;
@@ -38,6 +39,7 @@ export function YouForm({
   initialRole?: UserRole | null;
   /** `&d=domain` when the visitor was already researched. See page.tsx. */
   carry: string;
+  job?: "buy";
   /** `?new=1`: creating another workspace, so the action must not resume an existing one. */
   isNew?: boolean;
 }) {
@@ -68,6 +70,7 @@ export function YouForm({
 
   return (
     <form action={formAction} className="space-y-6">
+      {job && <input type="hidden" name="job" value={job} />}
       {isNew && <input type="hidden" name="new" value="1" />}
       <div className="max-w-md">
         <label

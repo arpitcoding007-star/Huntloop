@@ -29,6 +29,7 @@ export function MatchedRequests({
         description="Buyers whose requests fit your listed offerings, as anonymous cards. Each buyer can see that your workspace viewed their card."
       />
       <div className="mt-4 space-y-3">
+        {cards.length >= 200 && <Note tone="info">Showing the 200 best fits.</Note>}
         {cards.length === 0 ? (
           <Note tone="info">
             No visible requests match your offerings yet. Buyers choose whether suppliers may see their request; many keep it counted only.

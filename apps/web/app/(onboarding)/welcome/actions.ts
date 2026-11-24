@@ -34,7 +34,8 @@ import {
   youStepSchema,
 } from "../../../lib/validation";
 import { stepIcp } from "../../../lib/onboarding/icp-step";
-import { FIRST_JOB_GOALS, type FirstJob } from "../../../lib/onboarding/steps";
+import { isExchangeEnabled } from "../../../lib/exchange/flag";
+import { EXCHANGE_JOBS, FIRST_JOB_GOALS, type FirstJob } from "../../../lib/onboarding/steps";
 import { RESERVED_SLUGS, slugify } from "../../../lib/slug";
 import { capture, captureForViewer } from "../../../lib/analytics";
 
@@ -100,6 +101,9 @@ export async function saveYou(
   const creatingAnother = formData.get("new") === "1";
   const memberships = creatingAnother ? null : await listMemberships();
   const existing = memberships?.[0];
+  if (existing && formData.get("job") === "buy" && isExchangeEnabled()) {
+    return ok({ next: `/${existing.slug}/exchange/new` });
+  }
   if (existing) {
     const done = Boolean(existing.completedAt) || existing.step === "done";
     return ok({
@@ -136,6 +140,7 @@ export async function startFirstJob(input: {
   if (!parsed.ok) return fail(parsed.error, parsed.fieldErrors);
   const job = parsed.value.job as FirstJob;
 
+  if (EXCHANGE_JOBS.includes(job) && !isExchangeEnabled()) return fail("That isn't available yet.");
   if (job === "hunt") return ok({ next: "/welcome/company" });
 
   let url: string | null = null;
@@ -156,7 +161,7 @@ export async function startFirstJob(input: {
   if (!created.ok) return created;
   const slug = created.data.slug;
 
-  const made = await makePersonalWorkspace(slug, FIRST_JOB_GOALS[job]);
+  const made = await makePersonalWorkspace(slug, FIRST_JOB_GOALS[job], job === "buy" ? "buyer" : undefined);
   if (!made.ok) return made;
 
   await captureForViewer("onboarding_step_completed", { step: "first_job", job });
@@ -175,7 +180,11 @@ export async function startFirstJob(input: {
       ? `/${slug}/analyze?url=${encodeURIComponent(url!)}&run=1`
       : job === "import"
         ? `/${slug}/imports`
-        : `/${slug}/dashboard`;
+        : job === "buy"
+          ? `/${slug}/exchange/new`
+          : job === "sell"
+            ? `/${slug}/exchange/supplier`
+            : `/${slug}/dashboard`;
   return ok({ next });
 }
 

@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { isBuyerHost, SELLER_PAGES } from "./lib/buyer-host";
+import { siteUrl } from "./lib/site-url";
 import { buildCsp, createNonce } from "./lib/csp";
 import { isProtectedRoute, workspaceSlug } from "./lib/protected-routes";
 
@@ -257,9 +259,23 @@ function sealCsp<T extends NextResponse>(
 export async function proxy(request: NextRequest) {
   const nonce = createNonce();
   const { requestHeaders, responseHeader, policy } = withCsp(request, nonce);
+  /* The buyer domain (DN-73): the same app, with /find as its home page and
+     the seller site's own pages left to the main domain. */
+  const onBuyerHost = isBuyerHost(request.headers.get("host"));
+  if (onBuyerHost && matches(request.nextUrl.pathname, SELLER_PAGES)) {
+    return sealCsp(NextResponse.redirect(new URL(request.nextUrl.pathname, siteUrl())), responseHeader, policy);
+  }
+  const buyerHome = onBuyerHost && request.nextUrl.pathname === "/";
+  const proceed = () => {
+    if (!buyerHome) return NextResponse.next({ request: { headers: requestHeaders } });
+    const find = request.nextUrl.clone();
+    find.pathname = "/find";
+    return NextResponse.rewrite(find, { request: { headers: requestHeaders } });
+  };
+
   const pass = () =>
     sealCsp(
-      NextResponse.next({ request: { headers: requestHeaders } }),
+      proceed(),
       responseHeader,
       policy,
     );
@@ -294,7 +310,7 @@ export async function proxy(request: NextRequest) {
   // In production it is an outage with a name, not a product with holes.
   if (schema === "partial" && production) return notReady("migrations-pending");
 
-  let response = NextResponse.next({ request: { headers: requestHeaders } });
+  let response = proceed();
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -304,7 +320,7 @@ export async function proxy(request: NextRequest) {
         // Rebuilt with the same request headers: dropping them here would
         // lose the nonce for exactly the requests that refresh a session,
         // which is most of them.
-        response = NextResponse.next({ request: { headers: requestHeaders } });
+        response = proceed();
         for (const { name, value, options } of all) {
           response.cookies.set(name, value, options);
         }
@@ -319,7 +335,8 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublic = matches(path, PUBLIC_PREFIXES);
+  /* `/find` exactly: an older workspace may be called `find`. */
+  const isPublic = matches(path, PUBLIC_PREFIXES) || path === "/find";
 
   if (!user && !isPublic && path !== "/") {
     /* A URL that is no page at all gets the not-found page, not a sign-in

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Field, FormMessage, Input, Note, Select, Textarea } from "@huntloop/ui";
@@ -9,6 +9,7 @@ import type { IntakeAttribute, KnownField } from "@huntloop/ai";
 import type { ExchangeCategory } from "../../../../../lib/data/exchange";
 import type { IntakeState } from "../../../../../lib/exchange/intake-state";
 import { COUNTRY_CODES, countryName, CURRENCIES, parseAmount, parseCurrency, parseTimeline, TIMELINE_LABEL, VISIBILITY } from "../../../../../lib/exchange/requirement";
+import { clearDraftRequest, readDraftRequest } from "../../../../../lib/exchange/draft-request";
 import { previewCard } from "../../../../../lib/exchange/card";
 import { answerIntakeAction, startIntakeAction, submitNeedAction } from "../actions";
 
@@ -42,11 +43,18 @@ export function IntakeFlow({ org, categories }: { org: string; categories: Excha
   const [result, setResult] = useState<Result>(null);
   const [pending, start] = useTransition();
 
+  /* What they typed on /find before they had an account. */
+  useEffect(() => {
+    const draft = readDraftRequest();
+    if (draft) setText((t) => t || draft);
+  }, []);
+
   const run = (fn: () => Promise<{ ok: true; data: IntakeState } | { ok: false; error: string }>) =>
     start(async () => {
       setResult(null);
       const res = await fn();
       if (res.ok) {
+        clearDraftRequest();
         setState(res.data);
         setAnswer("");
       } else setResult({ ok: false, error: res.error });
@@ -72,7 +80,10 @@ export function IntakeFlow({ org, categories }: { org: string; categories: Excha
             <Button type="submit" variant="primary" icon={ArrowRight} disabled={pending || text.trim().length < 3} pending={pending ? "Reading…" : undefined}>
               Continue
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setState(emptyState(text.trim(), null))}>
+            <Button type="button" variant="ghost" onClick={() => {
+                clearDraftRequest();
+                setState(emptyState(text.trim(), null));
+              }}>
               Use a plain form instead
             </Button>
           </div>

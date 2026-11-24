@@ -922,6 +922,7 @@ export async function completeOnboarding(
 export async function makePersonalWorkspace(
   orgSlug: string,
   goals: Goal[],
+  purpose?: "buyer",
 ): Promise<ActionResult<undefined>> {
   if (await isDemoMode()) return ok(undefined);
 
@@ -931,6 +932,16 @@ export async function makePersonalWorkspace(
       .update({ workspace_kind: "personal" })
       .eq("id", orgId);
     if (kindError) console.error(`makePersonalWorkspace(kind): ${kindError.message}`);
+
+    /* DN-37. The database widens it from there as the workspace is used. */
+    if (purpose) {
+      const { error: purposeError } = await db
+        .from("organizations")
+        .update({ purpose })
+        .eq("id", orgId)
+        .eq("purpose", "seller");
+      if (purposeError) console.error(`makePersonalWorkspace(purpose): ${purposeError.message}`);
+    }
 
     const { data: auth } = await db.auth.getUser();
     if (auth.user && goals.length) {

@@ -1,3 +1,4 @@
+import { isExchangeEnabled } from "../../../lib/exchange/flag";
 import Link from "next/link";
 import { AuthForm } from "../AuthForm";
 import { canonicalizeDomain } from "@huntloop/db/identity";
@@ -32,6 +33,8 @@ export default async function SignupPage({
   const domain =
     typeof query.d === "string" ? canonicalizeDomain(query.d) : null;
 
+  const buying = query.for === "buy" && isExchangeEnabled();
+
   /* An explicit `next` still wins — an invitation link is the case that
      matters, and it must survive the round trip through email. */
   const next =
@@ -39,7 +42,9 @@ export default async function SignupPage({
       ? query.next
       : domain
         ? `/welcome?d=${encodeURIComponent(domain)}`
-        : "";
+        : buying
+          ? "/welcome?job=buy"
+          : "";
 
   return (
     <>
@@ -54,6 +59,8 @@ export default async function SignupPage({
             an account and we&rsquo;ll pick up from there — you won&rsquo;t
             retype anything.
           </>
+        ) : buying ? (
+          <>Your request is waiting in this browser. Open the sign-in email on this device to carry on with it.</>
         ) : (
           <>
             Next you&rsquo;ll add your company website, and Huntloop will work

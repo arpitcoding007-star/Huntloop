@@ -45,7 +45,8 @@ export type AssistantRecordType =
   | "rule"
   | "source"
   | "memory"
-  | "pipeline";
+  | "pipeline"
+  | "request";
 
 export interface AssistantRecord {
   /** `<type>:<id>` — what a citation names. Unique within one call. */

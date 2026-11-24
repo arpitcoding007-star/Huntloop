@@ -52,6 +52,15 @@ export interface Demand {
   lastClusteredAt: string | null;
 }
 
+interface Weight {
+  theme_id: string | null;
+  signals: number;
+  opportunities: number;
+  value_cents: number;
+  lost: number;
+}
+
+/** Enough for the examples and the ungrouped list; the totals come from SQL. */
 const SIGNAL_LIMIT = 3000;
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- untyped PostgREST rows (DB-03). */
@@ -60,7 +69,7 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
   return load(
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getDemand");
-      const [themes, signals, state] = await Promise.all([
+      const [themes, signals, state, weights] = await Promise.all([
         db
           .from("demand_themes")
           .select("id, title, description, kind, status, origin, shipped_at, updated_at")
@@ -72,14 +81,19 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
           .from("demand_signals")
           .select(
             "id, kind, statement, source_type, claim_kind, opportunity_id, theme_id, occurred_at, " +
-              "companies(name), opportunities(status, estimated_value_cents)",
+              "companies(name)",
           )
           .eq("org_id", orgId)
           .order("occurred_at", { ascending: false })
           .limit(SIGNAL_LIMIT),
         db.from("demand_state").select("requested_at, last_clustered_at").eq("org_id", orgId).maybeSingle(),
+        db.rpc("demand_weights", { p_org: orgId }),
       ]);
       if (themes.error) throw new Error(`getDemand: ${themes.error.message}`);
+      if (signals.error) throw new Error(`getDemand: ${signals.error.message}`);
+      if (weights.error) throw new Error(`getDemand: ${weights.error.message}`);
+      /* Totals from SQL (PANEL-208): the rows below stop at PostgREST's cap. */
+      const weight = new Map(((weights.data ?? []) as Weight[]).map((w) => [w.theme_id ? String(w.theme_id) : null, w]));
 
       const one = (v: any) => (Array.isArray(v) ? v[0] : v) ?? null;
       const statements = ((signals.data ?? []) as any[]).map((s) => ({
@@ -108,15 +122,7 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
       const order: ThemeStatus[] = ["proposed", "open", "planned", "shipped", "wont"];
       const result: DemandTheme[] = ((themes.data ?? []) as any[]).map((t) => {
         const list = byTheme.get(String(t.id)) ?? [];
-        const deals = new Map<string, { status: string; value: number }>();
-        for (const s of list) {
-          if (!s.statement.opportunityId) continue;
-          const opp = one(s.row.opportunities);
-          deals.set(s.statement.opportunityId, {
-            status: String(opp?.status ?? ""),
-            value: Number(opp?.estimated_value_cents ?? 0),
-          });
-        }
+        const w = weight.get(String(t.id));
         return {
           id: String(t.id),
           title: String(t.title),
@@ -125,10 +131,10 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
           status: t.status as ThemeStatus,
           origin: t.origin === "user" ? "user" : "model",
           shippedAt: t.shipped_at ?? null,
-          signals: list.length,
-          opportunities: deals.size,
-          valueAtStakeCents: [...deals.values()].filter((d) => d.status !== "won").reduce((sum, d) => sum + d.value, 0),
-          lostDeals: [...deals.values()].filter((d) => d.status === "lost" || d.status === "archived").length,
+          signals: Number(w?.signals ?? 0),
+          opportunities: Number(w?.opportunities ?? 0),
+          valueAtStakeCents: Number(w?.value_cents ?? 0),
+          lostDeals: Number(w?.lost ?? 0),
           examples: list.slice(0, 4).map((s) => s.statement),
         };
       });
@@ -145,7 +151,7 @@ export async function getDemand(orgSlug: string): Promise<Loaded<Demand>> {
       return {
         themes: result,
         unthemed: unthemed.slice(0, 60),
-        unthemedCount: unthemed.length,
+        unthemedCount: Number(weight.get(null)?.signals ?? 0),
         requestedAt: st?.requested_at ?? null,
         lastClusteredAt: st?.last_clustered_at ?? null,
       };
