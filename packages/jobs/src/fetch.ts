@@ -117,7 +117,12 @@ export function isPrivateAddress(address: string): boolean {
   if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
     return isPrivateV4(v4(g[6]!, g[7]!));
   }
-  // 64:ff9b::/96 and 64:ff9b:1::/48 — NAT64 translates to the embedded IPv4.
+  /* SEC-006: 64:ff9b:1::/48 is local-use NAT64 (RFC 8215), where the IPv4
+     address may sit anywhere, and Teredo (2001::/32) obfuscates the one it
+     carries. Neither can be judged by its embedded address, so both are refused. */
+  if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0x0001) return true;
+  if (g[0] === 0x2001 && g[1] === 0x0000) return true;
+  // 64:ff9b::/96 — well-known NAT64 translates to the embedded IPv4.
   if (g[0] === 0x0064 && g[1] === 0xff9b) return isPrivateV4(v4(g[6]!, g[7]!));
   // 2002::/16 — 6to4 carries the IPv4 address in bits 16–47.
   if (g[0] === 0x2002) return isPrivateV4(v4(g[1]!, g[2]!));
@@ -133,6 +138,7 @@ function isPrivateV4(parts: number[]): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
   if (a === 192 && b === 0 && (c === 0 || c === 2)) return true; // IETF, TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return true; // 6to4 relay anycast (SEC-006)
   if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
   if (a === 198 && b === 51 && c === 100) return true; // TEST-NET-2
   if (a === 203 && b === 0 && c === 113) return true; // TEST-NET-3

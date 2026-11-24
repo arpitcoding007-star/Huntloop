@@ -35,6 +35,7 @@ import {
   ensureDealProperties,
   getHubId,
   getDealStage,
+  isNotFound,
   updateDealHuntloopFields,
   upsertCompany,
   upsertContact,
@@ -137,6 +138,7 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
 
     const companyResult = await upsertCompany(token, {
       name: co.name, domain: co.canonical_domain, industry: co.industry, employeeCount: co.employee_count,
+      knownId: await mappedId(scope, "company", co.id),
     });
     await linkExternal(scope, "company", co.id, companyResult.id);
 
@@ -144,6 +146,7 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
     if (person) {
       const contactResult = await upsertContact(token, {
         email, firstName: person.first_name, lastName: person.last_name, title: person.title,
+        knownId: await mappedId(scope, "person", person.id),
       });
       contactHubspotId = contactResult.id;
       await linkExternal(scope, "person", person.id, contactHubspotId);
@@ -157,27 +160,31 @@ export async function syncHubspot(ctx: JobContext): Promise<JobOutcome> {
       evidenceUrl,
     };
 
-    const { data: existingDeal } = await scope
-      .select("external_ids", "provider_id")
-      .eq("entity_type", "opportunity")
-      .eq("entity_id", opportunityId)
-      .eq("provider", PROVIDER)
-      .limit(1);
+    const knownDeal = await mappedId(scope, "opportunity", opportunityId);
 
-    let dealId: string;
-    let created: boolean;
-    if (Array.isArray(existingDeal) && existingDeal.length) {
-      dealId = String((existingDeal[0] as { provider_id: string }).provider_id);
-      await updateDealHuntloopFields(token, dealId, dealInput);
-      created = false;
-    } else {
+    let dealId: string | null = null;
+    let created = false;
+    if (knownDeal) {
+      try {
+        await updateDealHuntloopFields(token, knownDeal, dealInput);
+        dealId = knownDeal;
+      } catch (e) {
+        /* CRM-003: deleted in HubSpot, or a different portal is connected
+           now. The mapping is stale; forget it and create a new deal. */
+        if (!isNotFound(e)) throw e;
+        await unlinkExternal(scope, "opportunity", opportunityId);
+      }
+    }
+    if (!dealId) {
       const dealResult = await createDeal(token, dealInput);
       dealId = dealResult.id;
       created = true;
       await linkExternal(scope, "opportunity", opportunityId, dealId);
-      await associate(token, "deals", dealId, "companies", companyResult.id);
-      if (contactHubspotId) await associate(token, "deals", dealId, "contacts", contactHubspotId);
     }
+    /* CRM-001: on both branches. The v4 default-association PUT is
+       idempotent, so a retry after a failed association repairs it. */
+    await associate(token, "deals", dealId, "companies", companyResult.id);
+    if (contactHubspotId) await associate(token, "deals", dealId, "contacts", contactHubspotId);
 
     /* Read back the stage HubSpot has it in, and record it as evidence — see
        the file header for why this is a record, not a status overwrite. */
@@ -263,10 +270,46 @@ async function loadEmail(scope: OrgScope, personId: string): Promise<string | nu
   return best ? String(best.value) : null;
 }
 
+/** The HubSpot id this entity was last pushed as. A failed read throws (retryable). */
+async function mappedId(scope: OrgScope, entityType: string, entityId: string): Promise<string | null> {
+  const { data, error } = await scope
+    .select("external_ids", "provider_id")
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .eq("provider", PROVIDER)
+    .order("last_seen_at", { ascending: false })
+    .limit(1);
+  if (error) throw new CrmError(`external_ids read failed: ${error.message}`, { reason: "failed", retryable: true });
+  const row = (Array.isArray(data) ? data[0] : null) as { provider_id: string } | null;
+  return row ? String(row.provider_id) : null;
+}
+
+async function unlinkExternal(scope: OrgScope, entityType: string, entityId: string): Promise<void> {
+  const { error } = await scope
+    .delete("external_ids")
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .eq("provider", PROVIDER);
+  if (error) throw new CrmError(`external_ids delete failed: ${error.message}`, { reason: "failed", retryable: true });
+}
+
+/**
+ * Record the mapping, replacing any older one for the same entity. A failed
+ * write throws before any further remote call (CRM-001): carrying on would
+ * let the retry create a second deal.
+ */
 async function linkExternal(scope: OrgScope, entityType: string, entityId: string, providerId: string): Promise<void> {
-  await scope.upsert(
+  const { error } = await scope.upsert(
     "external_ids",
     { entity_type: entityType, entity_id: entityId, provider: PROVIDER, provider_id: providerId, last_seen_at: new Date().toISOString() },
     { onConflict: "org_id,provider,provider_id" },
   );
+  if (error) throw new CrmError(`external_ids write failed: ${error.message}`, { reason: "failed", retryable: true });
+  const { error: staleError } = await scope
+    .delete("external_ids")
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .eq("provider", PROVIDER)
+    .neq("provider_id", providerId);
+  if (staleError) throw new CrmError(`external_ids cleanup failed: ${staleError.message}`, { reason: "failed", retryable: true });
 }

@@ -88,10 +88,21 @@ export function zerobounceAdapter(apiKey: string): ProviderAdapter {
     },
 
     async verifyEmail(email: string): Promise<RawCall<VerificationStatus>> {
-      const { body, status: httpStatus } = await get<{ status?: string; sub_status?: string }>(
+      const { body, status: httpStatus } = await get<{ status?: string; sub_status?: string; error?: string }>(
         "/validate",
         { email },
       );
+
+      /* PRV-001: ZeroBounce answers a bad key or an empty balance with HTTP
+         200 and an `error` field. Read as "unknown", every address went
+         unverifiable while the ledger charged for it and the breaker never
+         saw a failure. */
+      if (body.error || typeof body.status !== "string") {
+        throw new ProviderError(NAME, `ZeroBounce returned no verdict: ${String(body.error ?? "no status").slice(0, 200)}`, {
+          httpStatus,
+          retryable: false,
+        });
+      }
 
       return {
         data: mapStatus(body.status),

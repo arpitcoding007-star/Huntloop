@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
+import { consumeRateLimit } from "../../../../lib/rate-limit";
 import {
   documentKind,
   extractDocumentText,
@@ -49,6 +50,12 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File)) return refuse("Choose a file.");
   if (file.size > MAX_DOCUMENT_BYTES) {
     return refuse("That file is over 4 MB. Save a shorter version, or paste the part that matters.", 413);
+  }
+
+  /* SEC-002: parsing is bounded per person and per workspace. */
+  if (viewer.kind === "member") {
+    const gate = await consumeRateLimit(viewer.orgId, "memory_extract");
+    if (!gate.allowed) return refuse("Too many files read in the last hour. Try again later.", 429);
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());

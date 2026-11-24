@@ -11,7 +11,7 @@
  *     *possible*. This is the seam. It is ~40 lines, not a provider framework.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { aiRequestTimeoutMs, anthropicApiKey } from "./env.ts";
+import { aiRequestTimeoutMs, anthropicApiKey, requestTimeoutMs } from "./env.ts";
 import { capabilities, type Effort, type ModelId, type TokenUsage } from "./models.ts";
 
 export interface ModelRequest {
@@ -156,7 +156,7 @@ export function createAnthropicClient(): ModelClient {
             },
             ...(tools ? { tools } : {}),
             messages,
-          });
+          }, { timeout: requestTimeoutMs() });
 
           message = await stream.finalMessage();
           accumulate(usage, message.usage);

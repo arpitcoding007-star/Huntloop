@@ -179,13 +179,17 @@ export async function deleteCampaignAction(
        deleted while still `active` is a campaign a scheduler would go on
        sending from — the row being invisible to the UI is not the same as it
        being stopped. */
-    const { error } = await db
+    const { data: removed, error } = await db
       .from("campaigns")
       .update({ deleted_at: new Date().toISOString(), status: "archived" })
       .eq("id", parsed.data)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`That campaign could not be removed: ${error.message}`);
+    if (!removed) return fail("That campaign was already removed."); // FLOW-002
 
     revalidatePath(`/${org}/outreach`);
     return ok(undefined, "Campaign archived and removed from the list.");
@@ -262,13 +266,16 @@ export async function saveStepAction(
     };
 
     if (value.id) {
-      const { error } = await db
+      const { data: saved, error } = await db
         .from("sequence_steps")
         .update(row)
         .eq("id", value.id)
         .eq("org_id", orgId)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
       if (error) return fail(stepError(error, "saved"));
+      if (!saved) return fail("That step no longer exists."); // FLOW-002
 
       revalidatePath(`/${org}/outreach`);
       return ok({ id: value.id }, "Step saved.");
@@ -307,13 +314,17 @@ export async function deleteStepAction(
     const parsed = uuidSchema.safeParse(id);
     if (!parsed.success) return fail("That step reference isn't valid.");
 
-    const { error } = await db
+    const { data: removed, error } = await db
       .from("sequence_steps")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", parsed.data)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`That step could not be removed: ${error.message}`);
+    if (!removed) return fail("That step was already removed."); // FLOW-002
 
     revalidatePath(`/${org}/outreach`);
     return ok(undefined, "Step removed.");
@@ -351,7 +362,6 @@ export async function disconnectMailboxAction(
       .select("email")
       .maybeSingle();
     if (error) return fail(`That mailbox could not be disconnected: ${error.message}`);
-    await recordAudit(db, orgId, { action: "mailbox.disconnected", targetType: "mailbox", targetId: id.data });
     if (!data) return fail("That mailbox is no longer connected.");
 
     await recordAudit(db, orgId, {

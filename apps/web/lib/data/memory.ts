@@ -92,7 +92,9 @@ export async function listMemories(orgSlug: string): Promise<Loaded<Memory[]>> {
         /* Personal memories are listed on Settings → You (K2), not here. */
         .neq("scope", "user")
         .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        /* PERF-002: each row carries up to 8k characters of content. */
+        .limit(500);
 
       if (error) throw new Error(`listMemories: ${error.message}`);
       return (data ?? []).map(mapMemory);

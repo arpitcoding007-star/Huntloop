@@ -51,14 +51,13 @@ export default async function OrgLayout({
      just the dashboard, and a user who lands on Opportunities wondering why it
      is empty needs the same explanation as one who lands on the Command
      Center. It returns null once there is nothing left to finish. */
-  const onboarding = await getOnboardingState(org);
-
   /* The workspace name, the plan, the opportunity count and the signed-in
      person — everything the sidebar's header and footer state as fact.
      Loaded here rather than inside OrgShell because OrgShell is a Client
      Component (it owns the collapse and drawer state and builds the icon
-     list, which cannot cross the boundary as props). */
-  const chrome = await getShellChrome(org);
+     list, which cannot cross the boundary as props). Independent of the
+     setup state, so the two load together (PERF-001). */
+  const [onboarding, chrome] = await Promise.all([getOnboardingState(org), getShellChrome(org)]);
 
   return (
     <OrgShell org={org} chrome={chrome}>

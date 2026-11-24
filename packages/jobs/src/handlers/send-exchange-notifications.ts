@@ -115,8 +115,8 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
   ]);
   if (instantRes.error) return { ok: false, error: `send_exchange_notifications: ${instantRes.error.message}` };
   if (digestRes.error) return { ok: false, error: `send_exchange_notifications: ${digestRes.error.message}` };
-  const instant = (instantRes.data ?? []) as Row[];
-  const digest = (digestRes.data ?? []) as Row[];
+  let instant = (instantRes.data ?? []) as Row[];
+  let digest = (digestRes.data ?? []) as Row[];
 
   const userIds = [...new Set([...instant, ...digest].map((r) => r.user_id))];
   if (!userIds.length) return { ok: true, result: { queued, instant: 0, digests: 0 } };
@@ -130,7 +130,8 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
         .select("org_id, user_id, exchange_alerts, exchange_emails, digest_hour, timezone, quiet_start_hour, quiet_end_hour, last_exchange_digest_on")
         .in("user_id", c),
     ),
-    inChunks<{ id: string; name: string; slug: string }>(orgIds, (c) => db.from("organizations").select("id, name, slug").in("id", c)),
+    /* DB-009: a deleted workspace mails nobody. */
+    inChunks<{ id: string; name: string; slug: string }>(orgIds, (c) => db.from("organizations").select("id, name, slug").in("id", c).is("deleted_at", null)),
     inChunks<{ user_id: string }>(userIds, (c) =>
       db
         .from("exchange_notifications")
@@ -147,6 +148,21 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
   const emails = new Map(((profilesRes.data ?? []) as { id: string; email: string | null }[]).map((p) => [p.id, p.email]));
   const prefs = new Map(((prefsRes.data ?? []) as (Pref & { org_id: string; user_id: string })[]).map((p) => [`${p.org_id}:${p.user_id}`, p]));
   const orgs = new Map(((orgsRes.data ?? []) as { id: string; name: string; slug: string }[]).map((o) => [o.id, o]));
+  /* DB-009: only people still in the workspace the notice is about. A
+     member removed since it was written, or a deleted workspace, gets none. */
+  const membersRes = await inChunks<{ org_id: string; user_id: string }>(userIds, (c) =>
+    db.from("memberships").select("org_id, user_id").in("user_id", c).is("deleted_at", null),
+  );
+  if (membersRes.error) return { ok: false, error: `send_exchange_notifications: ${membersRes.error.message}` };
+  const members = new Set(((membersRes.data ?? []) as { org_id: string; user_id: string }[]).map((m) => `${m.org_id}:${m.user_id}`));
+  const entitled = (r: Row) => orgs.has(r.org_id) && members.has(`${r.org_id}:${r.user_id}`);
+  const orphaned = [...instant, ...digest].filter((r) => !entitled(r)).map((r) => r.id);
+  for (let i = 0; i < orphaned.length; i += 100) {
+    await db.from("exchange_notifications").update({ channel: "none" }).in("id", orphaned.slice(i, i + 100));
+  }
+  instant = instant.filter(entitled);
+  digest = digest.filter(entitled);
+
   const sentToday = new Map<string, number>();
   for (const r of (sentTodayRes.data ?? []) as { user_id: string }[]) sentToday.set(r.user_id, (sentToday.get(r.user_id) ?? 0) + 1);
 

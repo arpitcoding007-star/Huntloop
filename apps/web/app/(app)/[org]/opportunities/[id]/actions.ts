@@ -1,5 +1,6 @@
 "use server";
 
+import { conversationTurns } from "../../../../../lib/data/conversation-turns";
 import { revalidatePath } from "next/cache";
 import type { QualificationEvidence } from "@huntloop/ai";
 import { ask } from "../../../../../lib/ai/agent";
@@ -190,23 +191,14 @@ export async function askAgentAction(
     /* Both turns in one statement, so a question can never be stored without
        its answer — the state that would replay to the model as though it had
        been answered. */
-    const { error: writeError } = await db.from("conversation_messages").insert([
-      {
-        org_id: orgId,
-        conversation_id: conversationId,
-        role: "user",
-        content: parsed.data,
-      },
-      {
-        org_id: orgId,
-        conversation_id: conversationId,
-        role: "assistant",
+    const { error: writeError } = await db.from("conversation_messages").insert(
+      conversationTurns({ orgId, conversationId: String(conversationId) }, parsed.data, {
         content: answer.answer,
         cited_evidence_ids: answer.citedClaims
           .map((claim) => idByClaim.get(claim))
           .filter((value): value is string => Boolean(value)),
-      },
-    ]);
+      }),
+    );
 
     if (writeError) {
       /* The answer is in hand and is what the user asked for, so it is

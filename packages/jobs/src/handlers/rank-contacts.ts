@@ -345,6 +345,8 @@ async function discoverPeople(
     .select("external_ids", "provider_id")
     .eq("entity_type", "company")
     .eq("entity_id", input.companyId)
+    /* Apollo's own id only, never a HubSpot one. */
+    .eq("provider", "apollo")
     .limit(1);
 
   const companyProviderId =

@@ -274,6 +274,21 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
       visibility: v.visibility as 0 | 1 | 2 | 3,
     });
 
+    /* FLOW-004: back-and-resubmit filed a second request, matched and
+       notified twice. A finished questionnaire answers with what it filed. */
+    if (v.sessionId) {
+      const { data: session, error: sessionError } = await db
+        .from("exchange_intake_sessions")
+        .select("status, need_id")
+        .eq("id", v.sessionId)
+        .maybeSingle();
+      if (sessionError) return fail(`The questionnaire could not be read: ${sessionError.message}`);
+      const done = session as { status: string; need_id: string | null } | null;
+      if (done?.status === "completed" && done.need_id) {
+        return ok({ needId: String(done.need_id) }, "This request was already saved.");
+      }
+    }
+
     const { data, error } = await db
       .from("exchange_needs")
       .insert({
@@ -291,10 +306,11 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
     const needId = String(data.id);
 
     if (v.sessionId) {
-      await db
+      const { error: closeError } = await db
         .from("exchange_intake_sessions")
         .update({ status: "completed", need_id: needId, requirement })
         .eq("id", v.sessionId);
+      if (closeError) console.error("[exchange] questionnaire not closed", closeError.message);
     }
     revalidate(org);
     const when = category?.matchingEnabled
@@ -368,12 +384,16 @@ export async function deleteNeedAction(org: string, needId: string): Promise<Act
   if (!id.success) return fail("That request reference isn't valid.");
 
   return mutate(org, "deleteNeed", async ({ db, orgId }) => {
-    const { error } = await db
+    const { data: removed, error } = await db
       .from("exchange_needs")
       .update({ deleted_at: new Date().toISOString(), status: "withdrawn", visibility: 0 })
       .eq("id", id.data)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) return fail(`That request could not be removed: ${error.message}`);
+    if (!removed) return fail("That request was already removed.");
     revalidate(org);
     return ok(undefined, "Request removed.");
   });
@@ -434,12 +454,17 @@ export async function saveProviderProfileAction(org: string, form: FormData): Pr
     "saveProviderProfile",
     async ({ db, orgId }) => {
       if (profileId) {
-        const { error } = await db
+        if (!uuidSchema.safeParse(profileId).success) return fail("That profile reference isn't valid.");
+        const { data: saved, error } = await db
           .from("exchange_provider_profiles")
           .update(parsed.data)
           .eq("id", profileId)
-          .eq("org_id", orgId);
-        if (error) return fail(`The profile could not be saved: ${error.message}`);
+          .eq("org_id", orgId)
+          .is("deleted_at", null)
+          .select("id")
+          .maybeSingle();
+        if (error) return fail(profileError("saved", error));
+        if (!saved) return fail("That profile no longer exists.");
       } else {
         const { error } = await db.from("exchange_provider_profiles").insert({
           ...parsed.data,
@@ -447,7 +472,7 @@ export async function saveProviderProfileAction(org: string, form: FormData): Pr
           source: "claimed",
           claimed_at: new Date().toISOString(),
         });
-        if (error) return fail(`The profile could not be created: ${error.message}`);
+        if (error) return fail(profileError("created", error));
       }
       await recordAudit(db, orgId, { action: "exchange.profile_updated", targetType: "exchange_provider_profile", targetId: profileId });
       revalidate(org);
@@ -455,6 +480,13 @@ export async function saveProviderProfileAction(org: string, form: FormData): Pr
     },
     { minRole: "admin" },
   );
+}
+
+/** TRUST-001: the two refusals a person can act on, in words. */
+function profileError(verb: string, error: { code?: string; message: string }): string {
+  if (error.code === "23505") return "Another supplier profile already uses that domain.";
+  if (error.code === "42501") return error.message;
+  return `The profile could not be ${verb}: ${error.message}`;
 }
 
 const AVAILABILITY = ["in_stock", "made_to_order", "available", "limited", "unavailable"] as const;
@@ -538,8 +570,33 @@ export async function saveOfferingAction(org: string, form: FormData): Promise<A
     if (!profile) return fail("Create the supplier profile first; every offering belongs to one.");
 
     if (offeringId) {
-      const { error } = await db.from("exchange_offerings").update(row).eq("id", offeringId).eq("org_id", orgId);
+      if (!uuidSchema.safeParse(offeringId).success) return fail("That offering reference isn't valid.");
+      const { data: current, error: readError } = await db
+        .from("exchange_offerings")
+        .select("availability, availability_as_of")
+        .eq("id", offeringId)
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (readError) return fail(`The offering could not be read: ${readError.message}`);
+      if (!current) return fail("That offering no longer exists.");
+      /* TRUST-003: an edit that leaves availability alone keeps the date it
+         was stated, or month-old stock reads as current after a title fix. */
+      const prior = current as { availability: string | null; availability_as_of: string | null };
+      const patch =
+        row.availability && row.availability === prior.availability && prior.availability_as_of
+          ? { ...row, availability_as_of: prior.availability_as_of }
+          : row;
+      const { data: saved, error } = await db
+        .from("exchange_offerings")
+        .update(patch)
+        .eq("id", offeringId)
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
       if (error) return fail(`The offering could not be saved: ${error.message}`);
+      if (!saved) return fail("That offering no longer exists.");
     } else {
       const { error } = await db.from("exchange_offerings").insert({ ...row, provider_id: profile.id });
       if (error) return fail(`The offering could not be created: ${error.message}`);
@@ -555,12 +612,16 @@ export async function deleteOfferingAction(org: string, offeringId: string): Pro
   const id = uuidSchema.safeParse(offeringId);
   if (!id.success) return fail("That offering reference isn't valid.");
   return mutate(org, "deleteOffering", async ({ db, orgId }) => {
-    const { error } = await db
+    const { data: removed, error } = await db
       .from("exchange_offerings")
       .update({ deleted_at: new Date().toISOString(), status: "paused" })
       .eq("id", id.data)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) return fail(`The offering could not be removed: ${error.message}`);
+    if (!removed) return fail("That offering was already removed.");
     revalidate(org);
     return ok(undefined, "Offering removed.");
   });
@@ -647,8 +708,15 @@ export async function deleteEvidenceAction(org: string, evidenceId: string): Pro
   const id = uuidSchema.safeParse(evidenceId);
   if (!id.success) return fail("That evidence reference isn't valid.");
   return mutate(org, "deleteEvidence", async ({ db, orgId }) => {
-    const { error } = await db.from("exchange_offering_evidence").delete().eq("id", id.data).eq("org_id", orgId);
+    const { data: removed, error } = await db
+      .from("exchange_offering_evidence")
+      .delete()
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .select("id")
+      .maybeSingle();
     if (error) return fail(`The evidence could not be removed: ${error.message}`);
+    if (!removed) return fail("That evidence was already removed.");
     revalidate(org);
     return ok(undefined, "Evidence removed.");
   });

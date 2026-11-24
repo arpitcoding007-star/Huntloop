@@ -87,7 +87,9 @@ export async function isSchemaApplied(db: TenantClient): Promise<boolean> {
       error.code === "42P01" ||
       /schema cache|does not exist/i.test(error.message);
     if (missing) {
-      schemaReady = false;
+      /* API-001: only "applied" is cached. A "not applied" seen while a
+         migration ran stayed true for the life of a warm instance, serving
+         demo data and refusing writes until it restarted. */
       return false;
     }
     throw new Error(`Database unreachable: ${error.message}`);

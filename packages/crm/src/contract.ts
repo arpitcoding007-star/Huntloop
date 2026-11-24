@@ -26,6 +26,8 @@ export interface CrmCompanyInput {
   domain: string | null;
   industry: string | null;
   employeeCount: number | null;
+  /** The HubSpot id this company was last pushed as, if any (CRM-002). */
+  knownId?: string | null;
 }
 
 export interface CrmContactInput {
@@ -33,6 +35,8 @@ export interface CrmContactInput {
   firstName: string | null;
   lastName: string | null;
   title: string | null;
+  /** The HubSpot id this contact was last pushed as, if any (CRM-002). */
+  knownId?: string | null;
 }
 
 export interface CrmDealInput {

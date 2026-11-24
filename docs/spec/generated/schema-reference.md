@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 69 migrations
-> (`0001_identity.sql` … `0069_exchange_quotas.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 70 migrations
+> (`0001_identity.sql` … `0070_pass21_integrity.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 97 tables · 10 views · 210 public functions · 10 enum types · 169 RLS policies · 337 indexes · 165 triggers.
+**Totals:** 97 tables · 10 views · 211 public functions · 10 enum types · 171 RLS policies · 337 indexes · 165 triggers.
 
 **RLS enabled on:** 97 of 97 tables.
 
@@ -311,6 +311,7 @@ RLS: **enabled**
 | `research_requested_at` | timestamp with time zone | null |  |
 | `research_asked_at` | timestamp with time zone | null |  |
 | `origin` | text | NOT NULL | `'engine'::text` |
+| `enrich_requested_at` | timestamp with time zone | null |  |
 
 **Constraints**
 
@@ -2011,7 +2012,7 @@ RLS: **enabled**
 - CHECK `exchange_provider_profiles_kind_check` — `CHECK ((kind = ANY (ARRAY['company'::text, 'individual'::text])))`
 - CHECK `exchange_provider_profiles_name_check` — `CHECK (((length(name) >= 1) AND (length(name) <= 200)))`
 - CHECK `exchange_provider_profiles_source_check` — `CHECK ((source = ANY (ARRAY['claimed'::text, 'public'::text])))`
-- FK `exchange_provider_profiles_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE SET NULL`
+- FK `exchange_provider_profiles_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - PK `exchange_provider_profiles_pkey` — `PRIMARY KEY (id)`
 
 **Indexes**
@@ -2620,6 +2621,7 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `mailboxes_daily_limit_range` — `CHECK (((daily_limit >= 1) AND (daily_limit <= 500)))`
 - CHECK `mailboxes_domain_status_check` — `CHECK ((domain_status = ANY (ARRAY['pass'::text, 'warn'::text, 'fail'::text])))`
 - CHECK `mailboxes_health_score_check` — `CHECK (((health_score >= 0) AND (health_score <= 100)))`
 - CHECK `mailboxes_provider_check` — `CHECK ((provider = ANY (ARRAY['gmail'::text, 'outlook'::text, 'smtp'::text])))`
@@ -2630,8 +2632,10 @@ RLS: **enabled**
 
 **Policies**
 
+- `mailboxes_delete` — DELETE USING `has_org_role(org_id, 'admin'::org_role)`
+- `mailboxes_insert` — INSERT WITH CHECK `has_org_role(org_id, 'member'::org_role)`
+- `mailboxes_update` — UPDATE USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 - `tenant_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
-- `tenant_write` — ALL USING `has_org_role(org_id, 'member'::org_role)` WITH CHECK `has_org_role(org_id, 'member'::org_role)`
 
 **Triggers**
 
@@ -4357,7 +4361,7 @@ RLS: **enabled**
 | `exchange_needs_due` | `p_limit integer` | TABLE(need_id uuid, org_id uuid, key text) | yes |
 | `exchange_offering_follows_provider` |  | trigger | yes |
 | `exchange_origin_is_permanent` |  | trigger |  |
-| `exchange_profile_verification_is_platform_only` |  | trigger |  |
+| `exchange_profile_verification_is_platform_only` |  | trigger | yes |
 | `exchange_prune` |  | jsonb | yes |
 | `exchange_prune_notifications` |  | integer | yes |
 | `exchange_queue_notifications` |  | jsonb | yes |
@@ -4454,6 +4458,7 @@ RLS: **enabled**
 | `migration_0067_applied` |  | boolean |  |
 | `migration_0068_applied` |  | boolean |  |
 | `migration_0069_applied` |  | boolean |  |
+| `migration_0070_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |

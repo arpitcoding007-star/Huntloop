@@ -23,6 +23,10 @@ concurrency:
   group: migrate-production
   cancel-in-progress: false
 
+# SEC-003: least privilege. Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   migrate:
     runs-on: ubuntu-latest

@@ -1053,6 +1053,66 @@ function check(phase, id, title, ok, sev, detail) {
     }
   }
 
+  /* C11 (pass 22, V-05). The same for filters: `.eq("source_id", …)` on a
+     table without that column fails at runtime as surely as a bad select.
+     Only calls chained onto the query are read, so a callback's filters on
+     another table are not. */
+  const unknownFilters = [];
+  let filters = 0;
+  const FILTER = /^\.(eq|neq|gt|gte|lt|lte|in|is|like|ilike|contains|not|order)\s*\(\s*["']([^"']+)["']/;
+  for (const f of files) {
+    const src = stripComments(read(f) ?? "");
+    const heads = [
+      ...src.matchAll(/\.from\(\s*["']([a-z_][a-z0-9_]*)["']\s*\)/g),
+      ...src.matchAll(/\bscope\s*\.(?:select|update)\(\s*["']([a-z_][a-z0-9_]*)["']/g),
+    ];
+    for (const m of heads) {
+      const known = columns.get(m[1]);
+      if (!known) continue;
+      let i = m.index + (m[0].startsWith(".from") ? m[0].length : m[0].indexOf("("));
+      for (;;) {
+        while (/\s/.test(src[i] ?? "")) i++;
+        if (src[i] === ".") {
+          const hit = FILTER.exec(src.slice(i, i + 160));
+          if (hit) {
+            filters++;
+            const [head, inner] = hit[2].replace(/->>?.*$/, "").split(".");
+            const ok = inner ? !columns.has(head) || columns.get(head).has(inner) : known.has(head) || hit[1] === "order";
+            if (!ok) unknownFilters.push(`${f}:${src.slice(0, i).split("\n").length}: ${m[1]}.${hit[2]}`);
+          }
+          i++;
+          while (/[\w$]/.test(src[i] ?? "")) i++;
+          while (/\s/.test(src[i] ?? "")) i++;
+        }
+        if (src[i] !== "(") break;
+        let depth = 0, quote = "";
+        for (; i < src.length; i++) {
+          const c = src[i];
+          if (quote) { if (c === "\\") i++; else if (c === quote) quote = ""; continue; }
+          if (c === '"' || c === "'" || c === "`") quote = c;
+          else if (c === "(") depth++;
+          else if (c === ")" && --depth === 0) { i++; break; }
+        }
+      }
+    }
+  }
+  check(
+    6,
+    "DATA-C11",
+    "Every chained filter names a column that exists in the migrated schema",
+    unknownFilters.length === 0,
+    "fail",
+    unknownFilters.length ? unknownFilters.slice(0, 12).join("; ") : `${filters} filters checked`,
+  );
+
+  /* C12 (pass 22, V-01, V-02). Both rows of a stored turn need the same keys:
+     an array insert sends null for the ones a row lacks. */
+  const turns = files.filter((f) => {
+    const src = stripComments(read(f) ?? "");
+    return /"conversation_messages"\)\s*\.insert\(/.test(src) && !/conversationTurns\(/.test(src);
+  });
+  check(6, "AI-TURNS", "Every stored conversation turn is built by conversationTurns()", turns.length === 0, "fail", turns.join("; "));
+
   check(
     6,
     "DATA-C1",

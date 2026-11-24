@@ -55,6 +55,7 @@ export {
   type SendResult,
 } from "./email/resend.ts";
 export {
+  assignedEmail,
   digestEmail,
   escapeHtml,
   invitationEmail,

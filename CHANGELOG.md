@@ -11,6 +11,14 @@ ship from.
 Needs database migrations **0046** and **0047** (0040–0045 are already in
 production).
 
+### Pass 22 fixes
+- The opportunity agent and Ask Huntloop save their conversations again: a
+  question's row now carries the same columns as its answer's.
+- Rescoring works after a person has set the priority; their priority stays.
+- Learning credits sources with what they found; a failed read fails the run.
+- The new owner of an opportunity is emailed. No migration is needed.
+- Audit checks DATA-C11 (filter columns) and AI-TURNS.
+
 ### Outreach safety
 - An opt-out ("remove me", "stop emailing me", a bare "STOP") or a bounce from
   `mailer-daemon`/`postmaster` is recognised by rule before any model call, so

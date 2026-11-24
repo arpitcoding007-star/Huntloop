@@ -177,6 +177,24 @@ test("the questionnaire asks, stops at its cap, and records what it spent", asyn
   await clean("the questionnaire");
 });
 
+test("both chats store the question with its answer", async ({ page, context }) => {
+  await signIn(context, owner);
+  await sql(`insert into icps (org_id, name, is_active, criteria) select id, 'Profile', true, '{"segments":["Software"]}' from organizations where slug = $1`, [ACME]);
+  await sql(`insert into evidence (org_id, subject_type, subject_id, claim, kind, confidence, source_url) select o.org_id, 'opportunity', o.id, 'Raised a round', 'fact', 'high', 'https://news.test/a' from opportunities o join organizations g on g.id = o.org_id where g.slug = $1`, [ACME]);
+  const [opp] = await sql<{ id: string }>(`select o.id from opportunities o join organizations g on g.id = o.org_id where g.slug = $1 limit 1`, [ACME]);
+  const roles = async (where: string) => (await sql<{ role: string }>(`select m.role::text as role from conversation_messages m join conversations c on c.id = m.conversation_id join organizations g on g.id = c.org_id where g.slug = $1 and ${where} order by 1`, [ACME])).map((r) => r.role);
+  await page.goto(`/${ACME}/opportunities/${opp!.id}`);
+  await page.getByLabel(/^Ask about/).fill("What do we know?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => roles("c.opportunity_id is not null")).toEqual(["assistant", "user"]);
+  await clean("the opportunity agent");
+  await page.goto(`/${ACME}/assistant?c=new`);
+  await page.getByLabel("Your question").fill("What should I do today?");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect.poll(() => roles("c.opportunity_id is null")).toEqual(["assistant", "user"]);
+  await clean("Ask Huntloop");
+});
+
 test("a plan limit is shown, and refused in words at the limit", async ({ page, context }) => {
   await signIn(context, owner);
   await sql(`update plans set limits = limits || jsonb_build_object('needs_open', 1)`);

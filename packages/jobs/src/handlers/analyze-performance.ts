@@ -83,11 +83,23 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
   const windowEnd = ctx.now;
   const windowStart = new Date(windowEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-  const [outcomes, decisions, sources, existingRules, existingGuidance, competitors, demand] =
+  const requestedRunId = payload.runId ? String(payload.runId) : null;
+
+  /* A source read that fails is a failed run, not "every source found
+     nothing". A run somebody asked for says so; the retry overwrites it. */
+  let sources: SourcePerformance[];
+  try {
+    sources = await loadSourcePerformance(ctx);
+  } catch (e) {
+    const error = `analyze_performance: ${e instanceof Error ? e.message : String(e)}`;
+    if (requestedRunId) await scope.update("learning_runs", { status: "failed", error }).eq("id", requestedRunId);
+    return { ok: false, error };
+  }
+
+  const [outcomes, decisions, existingRules, existingGuidance, competitors, demand] =
     await Promise.all([
       loadOutcomes(ctx, windowStart, windowEnd),
       loadDecisions(ctx, windowStart, windowEnd),
-      loadSourcePerformance(ctx),
       loadExistingRules(ctx),
       loadGuidance(ctx),
       loadCompetitors(ctx, windowStart, windowEnd),
@@ -100,8 +112,6 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
     decisions_considered: decisions.filter((d) => d.overridden).length,
     ratings_considered: decisions.filter((d) => d.rating !== null).length,
   };
-
-  const requestedRunId = payload.runId ? String(payload.runId) : null;
 
   if (signals < MIN_LEARNING_SIGNALS) {
     const reason =
@@ -529,10 +539,11 @@ async function loadDecisions(
  * only returned sources with outcomes would make the second invisible — which
  * is the more common and more fixable failure.
  */
-async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance[]> {
-  const { data: sources } = await ctx.scope.select("sources", "id, name, kind")
+export async function loadSourcePerformance(ctx: Pick<JobContext, "scope">): Promise<SourcePerformance[]> {
+  const { data: sources, error: sourcesError } = await ctx.scope.select("sources", "id, name, kind")
     .is("deleted_at", null)
     .limit(100);
+  if (sourcesError) throw new Error(`sources: ${sourcesError.message}`);
 
   const rows = (sources ?? []) as Record<string, unknown>[];
   if (!rows.length) return [];
@@ -542,10 +553,17 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
   for (const source of rows) {
     const sourceId = String(source.id);
 
-    const { data: events } = await ctx.scope.select("source_events", "company_id")
-      .eq("source_id", sourceId)
+    /* An event points at its document, and the document at its source (0002).
+       `source_events.source_id` does not exist; filtering on it failed unread
+       and every source reported zero (pass 22, V-05). */
+    const { data: events, error: eventsError } = await ctx.scope.select(
+      "source_events",
+      "company_id, source_documents!inner(source_id)",
+    )
+      .eq("source_documents.source_id", sourceId)
       .not("company_id", "is", null)
       .limit(1000);
+    if (eventsError) throw new Error(`source events: ${eventsError.message}`);
 
     const companyIds = [
       ...new Set(((events ?? []) as Record<string, unknown>[]).map((e) => String(e.company_id))),

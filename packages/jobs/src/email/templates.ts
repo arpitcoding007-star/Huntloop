@@ -191,6 +191,25 @@ export function joinApprovedEmail(input: { orgName: string; url: string }): Rend
   };
 }
 
+/* ── Assignment ──────────────────────────────────────────────────────────── */
+
+export function assignedEmail(input: {
+  orgName: string;
+  companyName: string;
+  assignerName: string | null;
+  url: string;
+}): RenderedEmail {
+  return {
+    subject: `${input.companyName} is assigned to you in ${input.orgName}`,
+    ...render({
+      heading: `${input.companyName} is yours`,
+      paragraphs: [`${input.assignerName ?? "A teammate"} assigned ${input.companyName} to you in ${input.orgName}.`],
+      cta: { label: "Open the opportunity", href: input.url },
+      footer: ["You receive this because you are a member of this workspace."],
+    }),
+  };
+}
+
 /* ── The daily digest ────────────────────────────────────────────────────── */
 
 export interface DigestItem {

@@ -62,6 +62,25 @@ export async function connectHubspotAction(org: string, token: string): Promise<
 
       const hubId = await getHubId(trimmed);
       const userId = await currentUserId(db);
+
+      /* CRM-003: a different portal than before means every saved HubSpot id
+         points into the old portal. Forget them, or the next sync PATCHes
+         ids this portal has never seen. */
+      const { data: previous } = await db
+        .from("hubspot_connections")
+        .select("hub_id")
+        .eq("org_id", orgId)
+        .maybeSingle();
+      const previousHub = (previous as { hub_id: string | number | null } | null)?.hub_id ?? null;
+      if (previousHub !== null && hubId !== null && String(previousHub) !== String(hubId)) {
+        const { error: unmapError } = await db
+          .from("external_ids")
+          .delete()
+          .eq("org_id", orgId)
+          .eq("provider", "hubspot");
+        if (unmapError) return fail(`The old HubSpot links could not be cleared: ${unmapError.message}`);
+      }
+
       const { error } = await db.from("hubspot_connections").upsert(
         {
           org_id: orgId,

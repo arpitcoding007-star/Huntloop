@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { FetchRefused, UnreadableContent, extract, fetchPage } from "@huntloop/jobs";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
+import { consumeRateLimit } from "../../../../lib/rate-limit";
 import {
   memoryIngestSchema,
   memorySchema,
@@ -227,6 +228,11 @@ export async function ingestMemoryAction(
       if (!value.url) {
         return fail("Which page should Huntloop read?", { url: "Paste a link." });
       }
+
+      /* SEC-002: each one is a request from our addresses to a page the
+         caller picked. Bounded like `read_supply_page`. */
+      const gate = await consumeRateLimit(orgId, "memory_ingest_url");
+      if (!gate.allowed) return fail("Too many pages read in the last hour. Try again later.");
 
       try {
         const page = await fetchPage(value.url);

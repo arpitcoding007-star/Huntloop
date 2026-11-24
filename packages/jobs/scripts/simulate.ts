@@ -21,11 +21,24 @@ process.env.HUNTLOOP_EXCHANGE = "on";
 process.env.NEXT_PUBLIC_SITE_URL = "https://huntloop.example";
 process.env.RESEND_API_KEY = "re_synthetic";
 process.env.EMAIL_FROM = "Huntloop <mail@huntloop.example>";
-process.env.UNSUBSCRIBE_SECRET = "synthetic-unsubscribe-secret-0123456789";
 process.env.MAILBOX_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 
 const mail: { to: string; subject: string; text: string }[] = [];
 const escaped: string[] = [];
+/** Set only while a check needs a model; everything else runs without one. */
+let modelAnswer: unknown = null;
+const modelReply = (answer: unknown) => {
+  const message = { id: "msg_sim", type: "message", role: "assistant", model: "claude-opus-5-5", stop_reason: null, stop_sequence: null, content: [], usage: { input_tokens: 10, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
+  const events: [string, object][] = [
+    ["message_start", { message }],
+    ["content_block_start", { index: 0, content_block: { type: "text", text: "" } }],
+    ["content_block_delta", { index: 0, delta: { type: "text_delta", text: JSON.stringify(answer) } }],
+    ["content_block_stop", { index: 0 }],
+    ["message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 10 } }],
+    ["message_stop", {}],
+  ];
+  return new Response(events.map(([type, data]) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`).join(""), { status: 200, headers: { "content-type": "text/event-stream" } });
+};
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const to = String(input instanceof Request ? input.url : input);
   if (to.startsWith(url)) return realFetch(input, init);
@@ -34,6 +47,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     mail.push({ to: String(Array.isArray(body.to) ? body.to[0] : body.to), subject: String(body.subject), text: JSON.stringify(body) });
     return new Response(JSON.stringify({ id: `synthetic-${mail.length}` }), { status: 200, headers: { "content-type": "application/json" } });
   }
+  if (to.startsWith("https://api.anthropic.com/") && modelAnswer) return modelReply(modelAnswer);
   escaped.push(to);
   throw new TypeError("fetch failed (simulation: no network)");
 }) as typeof fetch;
@@ -42,6 +56,8 @@ const { sweep, tick } = await import("../src/runner.ts");
 const { OrgScope } = await import("../src/scope.ts");
 const { bounceHealth, repliedSinceLastSend } = await import("../src/handlers/send-message.ts");
 const { HANDLERS } = await import("../src/registry.ts");
+const { loadSourcePerformance } = await import("../src/handlers/analyze-performance.ts");
+const { SCORE_DIMENSIONS } = await import("@huntloop/ai");
 
 let failures = 0;
 let checks = 0;
@@ -198,6 +214,44 @@ const scope = new OrgScope(rival.orgId);
 eq("a busy mailbox that bounces half its mail is paused", await bounceHealth({ scope } as never, box), { paused: true, sends: 120, bounces: 60 });
 eq("a reply is seen", await repliedSinceLastSend({ scope } as never, "p400@prospect.test"), true);
 eq("silence is silence", await repliedSinceLastSend({ scope } as never, "quiet@prospect.test"), false);
+
+console.log("\nScoring and learning against the real schema (pass 22, V-04 and V-05)");
+{
+  const org = rival.orgId;
+  const icpId = (await backend.sql<{ id: string }>(`insert into icps (org_id, name, is_active, criteria) values ($1, 'Profile', true, '{"segments":["Software"]}') returning id`, [org]))[0]!.id;
+  const verdict = (priority: string, score: number) => ({
+    companyName: "Prospect", priority, priorityReason: `Read as ${priority}.`, score, scoreConfidence: "medium",
+    explanation: "Fits.", summary: `Summary ${score}.`, recommendation: "Write to them.", evidence: [{ claim: "Sells software", kind: "inference", confidence: "medium", sourceUrl: null, excerpt: null }],
+    dimensions: SCORE_DIMENSIONS.map((label) => ({ label, value: 80, note: null })),
+  });
+  process.env.ANTHROPIC_API_KEY = "synthetic";
+  const score = async (priority: string, n: number) => {
+    modelAnswer = verdict(priority, n);
+    return HANDLERS.score_opportunity!({ scope: new OrgScope(org), payload: { companyId: C, icpId }, job: {} as never, now: new Date() } as never);
+  };
+  const row = async () => (await backend.sql<{ id: string; priority: string; priority_reason: string; why: string; via: string }>(`select id, priority, priority_reason, why_this_company as why, discovered_via as via from opportunities where org_id = $1 and company_id = $2`, [org, C]));
+  const first = await score("warm", 60);
+  check("a new opportunity is scored", first.ok && (await row())[0]?.priority === "warm", [first, await row()]);
+  await backend.sql(`update opportunities set discovered_via = 'import' where org_id = $1 and company_id = $2`, [org, C]);
+  check("a rescore moves a priority the model set", (await score("hot", 80)).ok && (await row())[0]?.priority === "hot", await row());
+  await backend.sql(`update opportunities set priority = 'watch', priority_reason = 'Too small', priority_set_by = 'user' where org_id = $1 and company_id = $2`, [org, C]);
+  const kept = await score("hot", 91);
+  check("a rescore succeeds after a person set the priority", kept.ok, kept);
+  const [after, ...extra] = await row();
+  eq("their priority and reason stay, the new read is stored, the origin is kept, and nothing is duplicated", [after?.priority, after?.priority_reason, after?.why, after?.via, extra.length], ["watch", "Too small", "Summary 91.", "import", 0]);
+  eq("and every score is in the history", (await backend.sql<{ n: number }>(`select count(*)::int as n from opportunity_scores where opportunity_id = $1`, [after!.id]))[0]!.n, 3);
+  modelAnswer = null;
+  delete process.env.ANTHROPIC_API_KEY;
+
+  const [src] = await backend.sql<{ id: string }>(`insert into sources (org_id, name, kind) values ($1, 'A feed', 'news') returning id`, [org]);
+  await backend.sql(`insert into sources (org_id, name, kind) values ($1, 'A quiet feed', 'news')`, [org]);
+  const [doc] = await backend.sql<{ id: string }>(`insert into source_documents (org_id, source_id, url, url_hash, content_hash) values ($1, $2, 'https://feed.test/a', 'h-sim', 'c-sim') returning id`, [org, src!.id]);
+  await backend.sql(`insert into source_events (org_id, source_document_id, company_id, event_type, description) values ($1, $2, $3, 'funding', 'Raised')`, [org, doc!.id, C]);
+  await backend.sql(`insert into outcomes (org_id, opportunity_id, kind, occurred_at) values ($1, $2, 'won', now())`, [org, after!.id]);
+  const perf = await loadSourcePerformance({ scope: new OrgScope(org) });
+  eq("a source is credited with what it found and won", perf.filter((p) => p.name === "A feed").map((p) => [p.companiesFound, p.opportunitiesCreated, p.outcomes, p.wins]), [[1, 1, 1, 1]]);
+  eq("and a quiet one with nothing", perf.filter((p) => p.name === "A quiet feed").map((p) => [p.companiesFound, p.wins]), [[0, 0]]);
+}
 
 console.log("\nNothing unexpected happened on the way");
 eq("no request left the machine", escaped, []);

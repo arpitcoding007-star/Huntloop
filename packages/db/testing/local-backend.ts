@@ -91,7 +91,10 @@ function condition(alias: string, col: string, expr: string): string {
 
 /** `(a.eq.1,and(b.is.null,c.gt.2))` */
 function logic(alias: string, body: string, joiner: "or" | "and"): string {
-  const parts = split(body.replace(/^\(|\)$/g, "")).map((p) => {
+  /* Unwrap only a wrapped body: a nested `and(or(a),or(b))` arrives as
+     `or(a),or(b)`, whose last `)` belongs to the inner group. */
+  const inner = body.startsWith("(") && body.endsWith(")") ? body.slice(1, -1) : body;
+  const parts = split(inner).map((p) => {
     const m = p.match(/^(not\.)?(and|or)\((.*)\)$/s);
     if (m) return `${m[1] ? "not " : ""}${logic(alias, m[3]!, m[2] as "and" | "or")}`;
     const i = p.indexOf(".");

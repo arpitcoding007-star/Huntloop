@@ -3,6 +3,7 @@ import { recordAudit } from "./audit";
 import { resolveDataSource } from "./source";
 import { hasOnboardingSchema } from "./onboarding-schema";
 import { fail, mutate, ok, type ActionResult } from "./org";
+import { uuidSchema } from "../validation";
 
 /**
  * Workspaces at the caller's own company, and asking to join one.
@@ -204,6 +205,7 @@ export async function approveJoinRequest(
   orgSlug: string,
   requestId: string,
 ): Promise<ActionResult<undefined>> {
+  if (!uuidSchema.safeParse(requestId).success) return fail("That request reference isn't valid.");
   /* `minRole: "admin"` because letting somebody into the workspace is an
      administrative act, and `0027`'s policy agrees — a member's update finds
      no row. Asking here turns that into a sentence rather than a silent
@@ -225,6 +227,7 @@ export async function declineJoinRequest(
   orgSlug: string,
   requestId: string,
 ): Promise<ActionResult<undefined>> {
+  if (!uuidSchema.safeParse(requestId).success) return fail("That request reference isn't valid.");
   return mutate(
     orgSlug,
     "declineJoinRequest",
@@ -233,14 +236,17 @@ export async function declineJoinRequest(
          `pending`, so the person can ask again if circumstances change — and
          an admin can see that a decision was made rather than wondering
          whether the request was ever received. */
-      const { error } = await db
+      const { data: declined, error } = await db
         .from("join_requests")
         .update({ status: "declined", decided_at: new Date().toISOString() })
         .eq("id", requestId)
         .eq("org_id", orgId)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
 
       if (error) return fail(`That request could not be declined: ${error.message}`);
+      if (!declined) return fail("That request was already decided."); // FLOW-002
       await recordAudit(db, orgId, { action: "member.join_declined", targetType: "join_request", targetId: requestId });
       return ok(undefined);
     },

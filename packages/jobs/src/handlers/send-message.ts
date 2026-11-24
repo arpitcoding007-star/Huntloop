@@ -78,14 +78,12 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
   if (message.send_attempted_at) {
     /* OUT-001. An earlier run claimed this send and did not finish recording
        it: it may have reached the inbox. Sending again on that guess is the
-       one mistake outreach cannot undo, so this stops and asks a person. */
-    return {
-      ok: false,
-      permanent: true,
-      error:
-        "Delivery unknown: an earlier attempt to send this message did not finish. " +
-        "Check the mailbox's Sent folder before sending it again.",
-    };
+       one mistake outreach cannot undo, so this stops and asks a person.
+       OUT-201: the reason is written on the message, which is what takes it
+       out of `due_sends_fair` (it reads `error is null`) and shows it in the
+       inbox; without it the sweep re-queued this every tick. */
+    await markDeliveryUnknown(ctx, messageId);
+    return { ok: false, permanent: true, error: DELIVERY_UNKNOWN };
   }
 
   if (message.direction !== "outbound") {
@@ -342,12 +340,17 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
 
   const mailboxId = message.mailbox_id ?? (await pickMailbox(scope));
   if (!mailboxId) {
-    return {
-      ok: false,
-      error:
-        "No connected mailbox has any send allowance left today. This message " +
-        "stays queued and is sent when the daily limit resets.",
-    };
+    /* OUT-205: a wait, not a failure. As a retryable error it used its three
+       attempts in minutes and the sweep re-queued it every tick. Re-checked
+       hourly, so a newly connected mailbox is picked up the same day. */
+    return defer(
+      ctx,
+      messageId,
+      new Date(Date.now() + SETUP_RECHECK_MS),
+      "no_mailbox_allowance",
+      "No connected mailbox has any send allowance left today. This message " +
+        "stays queued and is sent when a mailbox has allowance again.",
+    );
   }
 
   let mailbox;
@@ -555,6 +558,9 @@ export async function sendMessage(ctx: JobContext): Promise<JobOutcome> {
         provider_message_id: sent.providerMessageId,
         record_error: recordError.message.slice(0, 500),
       });
+      /* OUT-201: best effort. If the database is refusing writes this fails
+         too, and the claim still stops a resend. */
+      await scope.update("messages", { error: `Sent, but not recorded: ${recordError.message}`.slice(0, 500) }).eq("id", messageId);
       return {
         ok: false,
         permanent: true,
@@ -701,6 +707,18 @@ const WAIT_COPY: Record<string, string> = {
   inbox_not_fresh: "Waiting for the mailbox's inbox to be read, so a reply is not missed.",
   outside_business_hours: "Waiting for business hours in the recipient's country.",
 };
+
+const DELIVERY_UNKNOWN =
+  "Delivery unknown: an earlier attempt to send this message did not finish. " +
+  "Check the mailbox's Sent folder before sending it again.";
+
+async function markDeliveryUnknown(ctx: JobContext, messageId: string): Promise<void> {
+  await ctx.scope
+    .update("messages", { error: DELIVERY_UNKNOWN })
+    .eq("id", messageId)
+    .is("sent_at", null)
+    .is("error", null);
+}
 
 async function defer(
   ctx: JobContext,

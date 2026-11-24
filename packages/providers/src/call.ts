@@ -276,7 +276,11 @@ async function spend<T>(
       const providerError = e instanceof ProviderError ? e : null;
       const retryable = providerError?.retryable ?? isTransport(e);
 
-      if (!retryable || attempt >= MAX_ATTEMPTS) break;
+      /* PRV-002: a rate limit is not retried inside the call. Vendor limits
+         are per minute and the backoff here is under two seconds, so all
+         three attempts were refused and billed as calls. The job queue
+         retries minutes later, which is what "slow down" asks for. */
+      if (!retryable || providerError?.rateLimited || attempt >= MAX_ATTEMPTS) break;
       await sleep(backoffMs(attempt));
     }
   }

@@ -7,7 +7,7 @@
  * to it is a screen that says so, not a fabricated result.
  */
 
-export { isAiConfigured } from "./env.ts";
+export { AiDeadlineError, isAiConfigured, withAiDeadline } from "./env.ts";
 
 export {
   MODELS,

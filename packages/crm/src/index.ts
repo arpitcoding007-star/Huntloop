@@ -18,6 +18,7 @@ export {
   associate,
   getDealStage,
   getStageLabels,
+  isNotFound,
 } from "./hubspot.ts";
 
 export {

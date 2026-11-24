@@ -10,7 +10,9 @@ export type LimitedAction =
   | TaskName
   | "lookup_example_companies"
   | "estimate_reach"
-  | "first_run_stage";
+  | "first_run_stage"
+  | "memory_ingest_url"
+  | "memory_extract";
 import { resolveDataSource } from "./data/source";
 
 /**
@@ -158,6 +160,10 @@ const LIMITS: Partial<Record<LimitedAction, Limit>> = {
   analyze_performance: { perUser: 6, perOrg: 12, windowSeconds: 3600 },
   /* A summary of figures that change slowly; a handful an hour is plenty. */
   explain_performance: { perUser: 10, perOrg: 30, windowSeconds: 3600 },
+  /* SEC-002. No model, but an outbound fetch from our addresses, or up to
+     30s of document parsing. A person files a few sources an hour. */
+  memory_ingest_url: { perUser: 20, perOrg: 60, windowSeconds: 3600 },
+  memory_extract: { perUser: 20, perOrg: 60, windowSeconds: 3600 },
   /* Conversational: generous per person, bounded per org. */
   workspace_assistant: { perUser: 60, perOrg: 300, windowSeconds: 3600 },
 };

@@ -1,0 +1,3 @@
+/* eslint-disable */
+import { chromium } from "playwright"; import fs from "node:fs"; const [t, a, z] = process.argv.slice(2); const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1700, height: 900 } }); const f = fs.readdirSync("brochure/pages-" + t).slice(+a - 1, +z);
+await p.setContent('<body style="margin:0;background:#888;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + f.map((x) => `<img style="width:100%" src="data:image/png;base64,${fs.readFileSync("brochure/pages-" + t + "/" + x).toString("base64")}">`).join("")); await p.waitForTimeout(500); await p.screenshot({ path: process.env.TEMP + `/pg-${t}-${a}.png`, fullPage: true }); await b.close();

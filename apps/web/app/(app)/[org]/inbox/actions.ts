@@ -357,7 +357,7 @@ export async function approveMessageAction(
       );
     }
 
-    const { error } = await db
+    const { data: approved, error } = await db
       .from("messages")
       .update({
         scheduled_at: new Date().toISOString(),
@@ -376,9 +376,14 @@ export async function approveMessageAction(
       /* Only while still unapproved. Two people reading the same queue can
          press approve at the same moment, and the second write would move the
          approval time of a message already on its way out. */
-      .is("scheduled_at", null);
+      .is("scheduled_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`That message could not be approved: ${error.message}`);
+    /* FLOW-002: already approved by someone else, or gone. Saying "Approved"
+       for a write that changed nothing told the second person a lie. */
+    if (!approved) return fail("That message was already approved, or is no longer in the queue.");
 
     revalidatePath(`/${org}/inbox`);
     revalidatePath(`/${org}/needs-you`);

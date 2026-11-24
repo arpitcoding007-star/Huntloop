@@ -452,6 +452,14 @@ export function apolloAdapter(apiKey: string): ProviderAdapter {
         pagination?: { total_entries?: number; total_pages?: number; page?: number };
       }>("/mixed_companies/search", body);
 
+      /* PRV-001: a body with none of these is not "no companies" — caching
+         it as an empty market for a day is the wrong answer to a shape change. */
+      if (!response.organizations && !response.accounts && !response.pagination) {
+        throw new ProviderError(NAME, "Apollo's company search returned an unrecognised response.", {
+          httpStatus: status,
+          retryable: false,
+        });
+      }
       const rows = [...(response.organizations ?? []), ...(response.accounts ?? [])];
       const items = rows
         .map(toCompany)

@@ -183,11 +183,39 @@ async function searchOne(
   return result.results?.[0]?.id ?? null;
 }
 
+/** A 404 from HubSpot: the object is gone, or belongs to another portal. */
+export function isNotFound(e: unknown): boolean {
+  return e instanceof CrmError && e.httpStatus === 404;
+}
+
+/**
+ * PATCH an object pushed before (CRM-002). False when HubSpot no longer has
+ * it, so the caller falls back to search-then-create.
+ */
+async function patchKnown(
+  token: string,
+  objectType: "companies" | "contacts",
+  id: string,
+  properties: Record<string, string>,
+): Promise<boolean> {
+  try {
+    await request(token, "PATCH", `/crm/v3/objects/${objectType}/${id}`, { properties });
+    return true;
+  } catch (e) {
+    if (isNotFound(e)) return false;
+    throw e;
+  }
+}
+
 export async function upsertCompany(token: string, input: CrmCompanyInput): Promise<CrmUpsertResult> {
   const properties: Record<string, string> = { name: input.name };
   if (input.domain) properties.domain = input.domain;
   if (input.industry) properties.industry = input.industry;
   if (input.employeeCount !== null) properties.numberofemployees = String(input.employeeCount);
+
+  if (input.knownId && (await patchKnown(token, "companies", input.knownId, properties))) {
+    return { id: input.knownId, created: false };
+  }
 
   const existingId = input.domain ? await searchOne(token, "companies", "domain", input.domain) : null;
 
@@ -206,6 +234,10 @@ export async function upsertContact(token: string, input: CrmContactInput): Prom
   if (input.firstName) properties.firstname = input.firstName;
   if (input.lastName) properties.lastname = input.lastName;
   if (input.title) properties.jobtitle = input.title;
+
+  if (input.knownId && (await patchKnown(token, "contacts", input.knownId, properties))) {
+    return { id: input.knownId, created: false };
+  }
 
   const existingId = input.email ? await searchOne(token, "contacts", "email", input.email) : null;
 
