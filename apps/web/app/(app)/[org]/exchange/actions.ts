@@ -645,7 +645,7 @@ export async function exportExchangeDataAction(org: string): Promise<ActionResul
     org,
     "exportExchangeData",
     async ({ db, orgId }) => {
-      const [needs, matches, sessions, reveals] = await Promise.all([
+      const [needs, matches, sessions, reveals, intros] = await Promise.all([
         db
           .from("exchange_needs")
           .select(
@@ -656,8 +656,12 @@ export async function exportExchangeDataAction(org: string): Promise<ActionResul
         db.from("exchange_matches").select("need_id, score, dimensions, explanation, buyer_state, computed_at").eq("org_id", orgId),
         db.from("exchange_intake_sessions").select("id, direction, requirement, transcript, turns, status, created_at, updated_at").eq("org_id", orgId),
         db.from("exchange_reveal_log").select("need_id, viewer_name, level, what, day, views, first_seen_at, last_seen_at").eq("org_id", orgId),
+        db
+          .from("exchange_intros")
+          .select("id, need_id, direction, state, message, contact_shared_at, created_at, decided_at, exchange_messages(sender_side, body, created_at), exchange_outcomes(side, outcome, reason)")
+          .eq("buyer_org_id", orgId),
       ]);
-      const failed = [needs, matches, sessions, reveals].find((r) => r.error);
+      const failed = [needs, matches, sessions, reveals, intros].find((r) => r.error);
       if (failed?.error) return fail(`The export could not be read: ${failed.error.message}`);
       const json = JSON.stringify(
         {
@@ -666,11 +670,139 @@ export async function exportExchangeDataAction(org: string): Promise<ActionResul
           matches: matches.data ?? [],
           questionnaireTranscripts: sessions.data ?? [],
           whoHasSeenYourRequests: reveals.data ?? [],
+          introductions: intros.data ?? [],
         },
         null,
         2,
       );
       return ok({ json }, "Export ready.");
+    },
+    { minRole: "viewer" },
+  );
+}
+
+/* ── Introductions (0063). Every rule lives in the database functions. ── */
+
+function revalidateIntros(org: string, introId?: string) {
+  revalidate(org);
+  if (introId) revalidatePath(`/${org}/exchange/intros/${introId}`);
+  revalidatePath(`/${org}/opportunities`);
+}
+
+const introMessageSchema = z.string().trim().max(1_000, "An introduction message is at most 1,000 characters.");
+
+/**
+ * Ask for an introduction from a match. From the buyer it is their own
+ * choice, so it is accepted at once and reveals who they are; from a supplier
+ * it waits for the buyer to accept.
+ */
+export async function requestIntroAction(
+  org: string,
+  matchId: string,
+  message?: string,
+): Promise<ActionResult<{ introId: string }>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(matchId);
+  if (!id.success) return fail("That match reference isn't valid.");
+  const text = introMessageSchema.safeParse(message ?? "");
+  if (!text.success) return fail(text.error.issues[0]?.message ?? "That message could not be read.");
+  return mutate(org, "requestIntro", async ({ db }) => {
+    const { data, error } = await db.rpc("exchange_request_intro", { p_match: id.data, p_message: text.data || null });
+    if (error) return fail(error.message);
+    revalidateIntros(org);
+    return ok({ introId: String(data) }, "Introduction requested.");
+  });
+}
+
+/** The buyer accepts or declines a supplier's request. */
+export async function decideIntroAction(org: string, introId: string, accept: boolean): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  return mutate(org, "decideIntro", async ({ db }) => {
+    const { error } = await db.rpc("exchange_decide_intro", { p_intro: id.data, p_accept: accept });
+    if (error) return fail(error.message);
+    revalidateIntros(org, id.data);
+    return ok(undefined, accept ? "Accepted. The supplier now sees who you are, and you can message each other." : "Declined. The supplier is told, without a reason.");
+  });
+}
+
+export async function withdrawIntroAction(org: string, introId: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  return mutate(org, "withdrawIntro", async ({ db }) => {
+    const { error } = await db.rpc("exchange_withdraw_intro", { p_intro: id.data });
+    if (error) return fail(error.message);
+    revalidateIntros(org, id.data);
+    return ok(undefined, "Request withdrawn.");
+  });
+}
+
+const bodySchema = z.string().trim().min(1, "Write a message first.").max(4_000, "A message is at most 4,000 characters.");
+
+export async function sendIntroMessageAction(org: string, introId: string, body: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  const text = bodySchema.safeParse(body);
+  if (!text.success) return fail(text.error.issues[0]?.message ?? "That message could not be read.");
+  return mutate(org, "sendIntroMessage", async ({ db }) => {
+    const { error } = await db.rpc("exchange_send_message", { p_intro: id.data, p_body: text.data });
+    if (error) return fail(error.message);
+    revalidatePath(`/${org}/exchange/intros/${id.data}`);
+    return ok(undefined);
+  });
+}
+
+/** The buyer shares their name and email with this supplier. Never automatic. */
+export async function shareContactAction(org: string, introId: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  return mutate(org, "shareContact", async ({ db }) => {
+    const { error } = await db.rpc("exchange_share_contact", { p_intro: id.data });
+    if (error) return fail(error.message);
+    revalidateIntros(org, id.data);
+    return ok(undefined, "Your name and email are now visible to this supplier, and only to them.");
+  });
+}
+
+const OUTCOMES = ["won", "lost", "no_decision", "not_a_fit"] as const;
+
+export async function reportOutcomeAction(
+  org: string,
+  introId: string,
+  outcome: string,
+  reason?: string,
+): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  const o = OUTCOMES.find((x) => x === outcome);
+  if (!o) return fail("Choose how it ended.");
+  const r = z.string().trim().max(500).safeParse(reason ?? "");
+  if (!r.success) return fail("A reason is at most 500 characters.");
+  return mutate(org, "reportOutcome", async ({ db }) => {
+    const { error } = await db.rpc("exchange_report_outcome", { p_intro: id.data, p_outcome: o, p_reason: r.data || null });
+    if (error) return fail(error.message);
+    revalidateIntros(org, id.data);
+    return ok(undefined, "Outcome recorded. Thank you — it is how matching learns.");
+  });
+}
+
+/** Marks the thread read for this workspace's side. Called when the page is opened. */
+export async function markIntroReadAction(org: string, introId: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(introId);
+  if (!id.success) return fail("That introduction reference isn't valid.");
+  return mutate(
+    org,
+    "markIntroRead",
+    async ({ db }) => {
+      const { error } = await db.rpc("exchange_mark_intro_read", { p_intro: id.data });
+      if (error) return fail(error.message);
+      return ok(undefined);
     },
     { minRole: "viewer" },
   );

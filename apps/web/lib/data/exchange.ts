@@ -57,6 +57,7 @@ export interface MatchView {
   computedAt: string;
   state: "new" | "shortlisted" | "dismissed";
   offering: {
+    id: string;
     title: string;
     description: string | null;
     priceFrom: number | null;
@@ -239,7 +240,7 @@ export async function getNeed(orgSlug: string, needId: string): Promise<Loaded<N
           .from("exchange_needs")
           .select(
             `${NEED_COLUMNS}, exchange_matches(id, score, dimensions, explanation, cited, computed_at, buyer_state, ` +
-              "exchange_offerings(title, description, price_from, price_to, currency, moq, availability, " +
+              "exchange_offerings(id, title, description, price_from, price_to, currency, moq, availability, " +
               "serves_global, serves_countries, exchange_provider_profiles(name, country, verified_at, claimed_at), " +
               "exchange_offering_evidence(id, kind, claim, source_url, source_title, observed_at)))",
           )
@@ -270,6 +271,7 @@ export async function getNeed(orgSlug: string, needId: string): Promise<Loaded<N
             state: (str(m.buyer_state) ?? "new") as MatchView["state"],
             offering: o
               ? {
+                  id: String(o.id),
                   title: String(o.title),
                   description: str(o.description),
                   priceFrom: num(o.price_from),
@@ -478,6 +480,206 @@ export async function getRevealLog(orgSlug: string): Promise<Loaded<RevealEntry[
         views: Number(r.views ?? 1),
         lastSeenAt: String(r.last_seen_at),
       }));
+    },
+    () => [],
+  );
+}
+
+/* ── Introductions (0063) ─────────────────────────────────────────────── */
+
+export type IntroState = "requested" | "accepted" | "declined" | "withdrawn" | "closed" | "stale";
+
+export interface IntroListItem {
+  id: string;
+  side: "buyer" | "provider";
+  direction: "buyer" | "provider";
+  state: IntroState;
+  needId: string;
+  offeringTitle: string;
+  providerName: string | null;
+  /** Null for the supplier until the buyer accepts. */
+  buyerName: string | null;
+  needSummary: string | null;
+  categoryPath: string | null;
+  message: string | null;
+  unread: boolean;
+  lastActivityAt: string;
+  createdAt: string;
+}
+
+/** Every introduction this workspace is party to, on either side, through `exchange_intro_list`. */
+export async function getIntroList(orgSlug: string): Promise<Loaded<IntroListItem[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getIntroList");
+      const [{ data, error }, cats] = await Promise.all([db.rpc("exchange_intro_list", { p_org: orgId }), listExchangeCategories()]);
+      if (error) throw new Error(`getIntroList: ${error.message}`);
+      const byId = new Map(cats.data.map((c) => [c.id, c.path]));
+      return ((data ?? []) as Row[]).map((r) => ({
+        id: String(r.id),
+        side: r.side === "provider" ? ("provider" as const) : ("buyer" as const),
+        direction: r.direction === "provider" ? ("provider" as const) : ("buyer" as const),
+        state: String(r.state) as IntroState,
+        needId: String(r.need_id),
+        offeringTitle: String(r.offering_title ?? ""),
+        providerName: str(r.provider_name),
+        buyerName: str(r.buyer_name),
+        needSummary: str(r.need_summary),
+        categoryPath: r.category_id ? (byId.get(String(r.category_id)) ?? null) : null,
+        message: str(r.message),
+        unread: r.unread === true,
+        lastActivityAt: String(r.last_activity_at),
+        createdAt: String(r.created_at),
+      }));
+    },
+    () => [],
+  );
+}
+
+export interface IntroMessage {
+  id: string;
+  side: "buyer" | "provider";
+  body: string;
+  createdAt: string;
+}
+
+export interface IntroDetail {
+  id: string;
+  side: "buyer" | "provider";
+  direction: "buyer" | "provider";
+  state: IntroState;
+  message: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  opportunityId: string | null;
+  contact: { name: string | null; email: string | null } | null;
+  contactSharedAt: string | null;
+  buyerName: string | null;
+  providerName: string | null;
+  offering: { id: string; title: string; description: string | null };
+  need: {
+    id: string;
+    categoryPath: string | null;
+    summary: string | null;
+    requirement: Record<string, { value: string | null; kind: string } | undefined> | null;
+    attributes: IntakeAttribute[];
+    quantity: number | null;
+    unit: string | null;
+    budgetMax: number | null;
+    currency: string | null;
+    country: string | null;
+    deliverTo: string | null;
+    timeline: Timeline | null;
+    quantityBand: string | null;
+    budgetBand: string | null;
+  };
+  outcomes: { side: "buyer" | "provider"; outcome: string; reason: string | null; at: string }[];
+  messages: IntroMessage[];
+}
+
+/** One introduction as this workspace may see it (`exchange_intro_detail`), with its messages. */
+export async function getIntroDetail(orgSlug: string, introId: string): Promise<Loaded<IntroDetail | null>> {
+  return load(
+    async (db) => {
+      await requireOrgId(orgSlug, "getIntroDetail");
+      const [{ data, error }, msgs, cats] = await Promise.all([
+        db.rpc("exchange_intro_detail", { p_intro: introId }),
+        db.from("exchange_messages").select("id, sender_side, body, created_at").eq("intro_id", introId).order("created_at").limit(500),
+        listExchangeCategories(),
+      ]);
+      if (error) throw new Error(`getIntroDetail: ${error.message}`);
+      if (!data) return null;
+      const d = data as Row;
+      const need = (d.need ?? {}) as Row;
+      const offering = (d.offering ?? {}) as Row;
+      const cat = need.categoryId ? cats.data.find((c) => c.id === String(need.categoryId)) : undefined;
+      const contact = d.contact as Row | null;
+      return {
+        id: String(d.id),
+        side: d.side === "provider" ? "provider" : "buyer",
+        direction: d.direction === "provider" ? "provider" : "buyer",
+        state: String(d.state) as IntroState,
+        message: str(d.message),
+        createdAt: String(d.createdAt),
+        decidedAt: str(d.decidedAt),
+        opportunityId: str(d.opportunityId),
+        contact: contact ? { name: str(contact.name), email: str(contact.email) } : null,
+        contactSharedAt: str(d.contactSharedAt),
+        buyerName: str(d.buyerName),
+        providerName: str(d.providerName),
+        offering: { id: String(offering.id ?? ""), title: String(offering.title ?? ""), description: str(offering.description) },
+        need: {
+          id: String(need.id ?? ""),
+          categoryPath: cat?.path ?? null,
+          summary: str(need.summary),
+          requirement: (need.requirement ?? null) as IntroDetail["need"]["requirement"],
+          attributes: cat?.attributes ?? [],
+          quantity: num(need.quantity),
+          unit: str(need.unit),
+          budgetMax: num(need.budgetMax),
+          currency: str(need.currency),
+          country: str(need.country),
+          deliverTo: str(need.deliverTo),
+          timeline: (str(need.timeline) as Timeline | null) ?? null,
+          quantityBand: str(need.quantityBand),
+          budgetBand: str(need.budgetBand),
+        },
+        outcomes: ((Array.isArray(d.outcomes) ? d.outcomes : []) as Row[]).map((o) => ({
+          side: o.side === "provider" ? ("provider" as const) : ("buyer" as const),
+          outcome: String(o.outcome),
+          reason: str(o.reason),
+          at: String(o.at),
+        })),
+        messages: ((msgs.data ?? []) as Row[]).map((m) => ({
+          id: String(m.id),
+          side: m.sender_side === "provider" ? ("provider" as const) : ("buyer" as const),
+          body: String(m.body),
+          createdAt: String(m.created_at),
+        })),
+      };
+    },
+    () => null,
+  );
+}
+
+export interface NeedIntro {
+  id: string;
+  offeringId: string;
+  direction: "buyer" | "provider";
+  state: IntroState;
+  message: string | null;
+  providerName: string | null;
+  offeringTitle: string | null;
+  createdAt: string;
+}
+
+/** The introductions on one of this workspace's requests, for its request page. */
+export async function getNeedIntros(orgSlug: string, needId: string): Promise<Loaded<NeedIntro[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getNeedIntros");
+      const { data, error } = await db
+        .from("exchange_intros")
+        .select("id, offering_id, direction, state, message, created_at, exchange_offerings(title, exchange_provider_profiles(name))")
+        .eq("need_id", needId)
+        .eq("buyer_org_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw new Error(`getNeedIntros: ${error.message}`);
+      return ((data ?? []) as unknown as Row[]).map((r) => {
+        const o = one(r.exchange_offerings);
+        const p = o ? one(o.exchange_provider_profiles) : null;
+        return {
+          id: String(r.id),
+          offeringId: String(r.offering_id),
+          direction: r.direction === "provider" ? ("provider" as const) : ("buyer" as const),
+          state: String(r.state) as IntroState,
+          message: str(r.message),
+          providerName: str(p?.name),
+          offeringTitle: str(o?.title),
+          createdAt: String(r.created_at),
+        };
+      });
     },
     () => [],
   );

@@ -58,7 +58,13 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
      or 90 (finished) days, reveal-log rows after a year (0062). Not a
      customer policy: it is what the privacy page promises. */
   const { data: exchangePruned, error: exchangeError } = await db.rpc("exchange_prune", {});
-  const exchange = exchangeError ? `failed: ${exchangeError.message}` : (exchangePruned ?? null);
+  /* DN-53: unanswered introduction requests and quiet introductions go
+     stale; requests past their decide-by date lapse (0063). */
+  const { data: exchangeExpired, error: expireError } = await db.rpc("exchange_expire", {});
+  const exchange = {
+    pruned: exchangeError ? `failed: ${exchangeError.message}` : (exchangePruned ?? null),
+    expired: expireError ? `failed: ${expireError.message}` : (exchangeExpired ?? null),
+  };
 
   const { data: orgs, error } = await db
     .from("organizations")

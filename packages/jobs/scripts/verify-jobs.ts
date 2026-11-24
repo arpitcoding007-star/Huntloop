@@ -19,6 +19,7 @@ import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { enrichPerson } from "../src/handlers/enrich-person.ts";
 import { matchNeeds } from "../src/handlers/match-needs.ts";
 import { enforceRetention } from "../src/handlers/enforce-retention.ts";
+import { createIntroOpportunities, placeholderDomain } from "../src/handlers/create-intro-opportunities.ts";
 import { applyExplanations, eligible, scoreMatch, splitMustHaves, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
 import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
@@ -757,6 +758,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
     enqueued.map((row) => row.job_name).sort(),
     [
       "advance_enrollments",
+      /* 0063: accepted introductions become opportunities. */
+      "create_intro_opportunities",
       /* Retention, added with the compliance jobs. Keyed daily rather than
          per-tick — see `DAILY` in the runner. */
       "enforce_retention",
@@ -4882,7 +4885,59 @@ console.log("\nenforce_retention — the Exchange's own schedule runs for everyo
   try {
     const out = await enforceRetention({ scope: new OrgScope(ORG_A, client), payload: {}, job: { id: "j-r", org_id: ORG_A, job_name: "enforce_retention" } as never, now: new Date() });
     expect("Exchange data is pruned even when no workspace set a retention policy", calls.some((c) => c.verb === "rpc" && c.table === "exchange_prune"), calls.map((c) => c.verb + ":" + c.table));
-    expectEqual("and what it removed is reported", out.ok ? (out.result as { exchange?: unknown }).exchange : null, { needs: 2, intake_sessions: 1, reveal_log: 0 });
+    expectEqual("and what it removed is reported", out.ok ? (out.result as { exchange?: { pruned?: unknown } }).exchange?.pruned : null, { needs: 2, intake_sessions: 1, reveal_log: 0 });
+    expect("stale introductions and lapsed requests are expired the same day", calls.some((c) => c.verb === "rpc" && c.table === "exchange_expire"), calls.map((c) => c.verb + ":" + c.table));
+  } finally {
+    setAdminClientForTests(null);
+  }
+}
+
+
+console.log("\ncreate_intro_opportunities — an accepted introduction becomes a stated-need opportunity (DN-58)");
+{
+  const INTRO = "64646464-0064-0064-0064-0000000000a1";
+  const base = {
+    "select:exchange_intros": {
+      data: [{ id: INTRO, need_id: "need-1", buyer_org_id: ORG_A, provider_org_id: ORG_B, decided_at: "2026-11-24T10:00:00Z" }],
+      error: null,
+    },
+    "select:exchange_needs": { data: { summary: "200 H200 cards for Munich", created_at: "2026-11-20T09:00:00Z" }, error: null },
+    "select:organizations": (r: { filters: [string, unknown][] }) =>
+      r.filters.some(([k, v]) => k === "eq:id" && v === ORG_A)
+        ? { data: { name: "Acme GmbH", primary_domain: null, slug: "acme" }, error: null }
+        : { data: { name: "Northwind", primary_domain: "northwind.co", slug: "northwind" }, error: null },
+    "insert:companies": { data: { id: "co-new" }, error: null },
+    "insert:opportunities": { data: { id: "opp-new" }, error: null },
+    "insert:evidence": { data: null, error: null },
+    "update:exchange_intros": { data: null, error: null },
+  };
+
+  const fresh = fakeClient({ ...base, "select:companies": { data: null, error: null }, "select:opportunities": { data: null, error: null } });
+  setAdminClientForTests(fresh.client);
+  try {
+    const out = await createIntroOpportunities({ scope: new OrgScope(ORG_B, fresh.client), payload: {}, job: { id: "j-io", org_id: null, job_name: "create_intro_opportunities" } as never, now: new Date() });
+    expect("a new buyer is created as a company and an opportunity", out.ok && (out.result as { created?: number }).created === 1, out);
+    const company = [fresh.calls.find((c) => c.verb === "insert" && c.table === "companies")?.payload].flat()[0] as Record<string, unknown>;
+    expectEqual("in the supplier's workspace, never the buyer's", company?.org_id, ORG_B);
+    expectEqual("a buyer with no domain gets a reserved placeholder, not an invented one", company?.canonical_domain, placeholderDomain(INTRO));
+    const opp = [fresh.calls.find((c) => c.verb === "insert" && c.table === "opportunities")?.payload].flat()[0] as Record<string, unknown>;
+    expect("the opportunity is an Exchange opportunity, hot, with the buyer's stated need as its reason", opp?.origin === "exchange" && opp?.priority === "hot" && String(opp?.priority_reason).includes("200 H200 cards"), opp);
+    const ev = [fresh.calls.find((c) => c.verb === "insert" && c.table === "evidence")?.payload].flat()[0] as Record<string, unknown>;
+    expect("its evidence is a fact whose source is the introduction", ev?.kind === "fact" && ev?.source_url === `/northwind/exchange/intros/${INTRO}`, ev);
+    const link = fresh.calls.find((c) => c.verb === "update" && c.table === "exchange_intros");
+    expectEqual("and the introduction is linked to it", (link?.payload as { opportunity_id?: string })?.opportunity_id, "opp-new");
+    expect("no person is created from the buyer", !fresh.calls.some((c) => ["people", "contact_points", "enrichment_records", "enrollments"].includes(c.table)), fresh.calls.map((c) => c.table));
+  } finally {
+    setAdminClientForTests(null);
+  }
+
+  const known = fakeClient({ ...base, "select:companies": { data: { id: "co-known" }, error: null }, "select:opportunities": { data: { id: "opp-engine" }, error: null }, "update:opportunities": { data: null, error: null } });
+  setAdminClientForTests(known.client);
+  try {
+    const out = await createIntroOpportunities({ scope: new OrgScope(ORG_B, known.client), payload: {}, job: { id: "j-io2", org_id: null, job_name: "create_intro_opportunities" } as never, now: new Date() });
+    expect("a buyer the supplier already had is reused, not duplicated", out.ok && (out.result as { reused?: number }).reused === 1 && !known.calls.some((c) => c.verb === "insert" && c.table === "opportunities"), out);
+    const upd = known.calls.find((c) => c.verb === "update" && c.table === "opportunities");
+    expectEqual("and becomes an Exchange opportunity, which stops any cold sequence at them", (upd?.payload as { origin?: string })?.origin, "exchange");
   } finally {
     setAdminClientForTests(null);
   }

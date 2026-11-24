@@ -1,5 +1,6 @@
 import { Badge, Card, CardHeader, Note } from "@huntloop/ui";
-import type { MatchedCard } from "../../../../../lib/data/exchange";
+import type { IntroListItem, MatchedCard } from "../../../../../lib/data/exchange";
+import { AskIntro, IntroLink } from "../intros/IntroControls";
 import { countryName } from "../../../../../lib/exchange/requirement";
 import { timelineLabel } from "../../../../../lib/exchange/format";
 
@@ -9,7 +10,17 @@ import { timelineLabel } from "../../../../../lib/exchange/format";
  * until ten requests share it; the buyer's own words only at level 3. Reading
  * this list is logged for each buyer — the copy says so, because it is true.
  */
-export function MatchedRequests({ cards }: { cards: MatchedCard[] }) {
+export function MatchedRequests({
+  org,
+  cards,
+  intros,
+  canWrite,
+}: {
+  org: string;
+  cards: MatchedCard[];
+  intros: IntroListItem[];
+  canWrite: boolean;
+}) {
   return (
     <Card>
       <CardHeader
@@ -53,11 +64,17 @@ export function MatchedRequests({ cards }: { cards: MatchedCard[] }) {
                 </dl>
                 {c.summary && <p className="mt-3 text-[13px] text-fg">“{c.summary}”</p>}
                 {c.mustHaves && <p className="mt-1 text-[12px] text-fg-muted">Must-haves: {c.mustHaves}</p>}
+                <div className="mt-3">
+                  {(() => {
+                    const intro = intros.find((i) => i.side === "provider" && i.needId === c.needId && i.offeringTitle === c.offeringTitle);
+                    if (intro) return <IntroLink org={org} introId={intro.id} state={intro.state} side="provider" />;
+                    return canWrite ? <AskIntro org={org} matchId={c.matchId} side="provider" /> : null;
+                  })()}
+                </div>
               </div>
             );
           })
         )}
-        <p className="text-[11px] text-fg-muted">Asking for an introduction opens in a later release.</p>
       </div>
     </Card>
   );
