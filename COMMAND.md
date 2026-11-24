@@ -156,9 +156,9 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 - **Endpoint:** chosen page rendered, drawer closed.
 
 #### 1.1.5 Jump-to palette (`packages/ui JumpTo`, opened by top-bar search or ⌘K/Ctrl K)
-- **Element:** modal "Jump to" with a combobox "Search pages" and a listbox of every nav destination (deduped by href; group = section label).
+- **Element:** modal "Jump to" with a combobox "Search pages and records" and a listbox of every nav destination (deduped by href; group = section label), then, from two characters, matching opportunities, companies and people (SA `searchRecordsAction`, the reader's own permissions).
 - **Actions:** type → ranked filter (prefix > word-prefix > substring > group match) · ↑/↓ move highlight (wraps) · Enter or click → close + `router.push(href)` (also closes mobile drawer) · hover moves highlight · `Esc`/backdrop/✕ closes · ⌘K again toggles closed.
-- **Empty state:** "No page matches "{query}"."
+- **Empty state:** "Nothing matches "{query}"."
 - **Endpoint:** target workspace page, or palette closed with no navigation.
 - Only pages are searchable — **no records** (companies, opportunities) are indexed.
 

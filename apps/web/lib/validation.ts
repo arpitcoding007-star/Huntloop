@@ -739,6 +739,14 @@ export const qualificationSchema = z.object({
   /* Bounded, because every entry becomes a row. A verdict with two hundred
      claims is not a verdict a model produced. */
   evidence: z.array(qualificationEvidenceSchema).max(40),
+  brief: z
+    .object({
+      identifiedProblem: z.string().max(600).nullable(),
+      currentApproach: z.string().max(600).nullable(),
+      potentialGap: z.string().max(600).nullable(),
+      potentialUseCase: z.string().max(600).nullable(),
+    })
+    .optional(),
 });
 
 /**
@@ -774,6 +782,9 @@ export const agentQuestionSchema = z
  */
 
 export const onboardingStepSchema = z.enum(ONBOARDING_STEPS);
+
+/** What a person types into the jump-to palette. */
+export const recordSearchSchema = z.string().trim().max(80, "That search is too long.");
 
 export const youStepSchema = z.object({
   /* 120 rather than the 160 `name` uses: this is a person's name, it is

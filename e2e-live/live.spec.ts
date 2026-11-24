@@ -195,6 +195,46 @@ test("both chats store the question with its answer", async ({ page, context }) 
   await clean("Ask Huntloop");
 });
 
+test("the palette finds records in this workspace only", async ({ page, context }) => {
+  await signIn(context, owner);
+  const [c] = await sql<{ id: string }>(`select c.id from companies c join organizations o on o.id = c.org_id where o.slug = $1 and c.name = 'Prospect 17'`, [ACME]);
+  await sql(`insert into people (org_id, company_id, first_name, last_name, title) select org_id, id, 'Zelda', 'Quark', 'CFO' from companies where id = $1`, [c!.id]);
+  const find = async (text: string) => {
+    await page.goto(`/${ACME}/dashboard`);
+    await page.waitForLoadState("networkidle");
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search pages and records" }).fill(text);
+  };
+  await find("Prospect 17");
+  await expect(page.getByRole("option", { name: /Prospect 17.*Opportunity/ })).toBeVisible();
+  await find("quark");
+  await page.getByRole("option", { name: /Zelda Quark, CFO/ }).click();
+  await page.waitForURL(`**/companies/${c!.id}**`);
+  await find("100%");
+  await expect(page.getByText("Nothing matches “100%”.")).toBeVisible();
+  await signIn(context, seller);
+  await page.goto(`/${SELLERS}/dashboard`);
+  await page.waitForLoadState("networkidle");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search pages and records" }).fill("Quark");
+  await expect(page.getByText("Nothing matches “Quark”.")).toBeVisible();
+  await clean("search");
+});
+
+test("a person edits their name and turns assignment email off", async ({ page, context }) => {
+  await signIn(context, viewer);
+  await page.goto(`/${ACME}/settings/you`);
+  await page.getByLabel("Your name").fill("Vic Viewer");
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+  expect((await sql<{ full_name: string }>(`select full_name from profiles where id = $1`, [viewer.id]))[0]!.full_name).toBe("Vic Viewer");
+  await page.goto(`/${ACME}/settings`);
+  await page.getByRole("checkbox", { name: /Work assigned to you/ }).uncheck();
+  await page.locator("#notifications").getByRole("button", { name: "Save" }).click();
+  await expect.poll(async () => (await sql<{ a: boolean }>(`select assignment_emails as a from notification_preferences where user_id = $1`, [viewer.id]))[0]?.a).toBe(false);
+  await clean("profile");
+});
+
 test("a plan limit is shown, and refused in words at the limit", async ({ page, context }) => {
   await signIn(context, owner);
   await sql(`update plans set limits = limits || jsonb_build_object('needs_open', 1)`);

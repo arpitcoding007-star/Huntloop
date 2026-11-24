@@ -29,22 +29,22 @@ Sizes: S up to 2 days, M up to 1 week, L up to 3 weeks. Every fix needs a test t
 
 | # | Work | Finding | Size |
 |---|---|---|---|
-| 14 | Assignment email: done. A per-person preference is still to do | V-16 | S |
-| 15 | Record search in Jump-to | V-17 | M |
-| 16 | Decide and build retention scope and workspace purge | V-11, V-19 | M |
-| 17 | Offer discovered feeds as one-click sources | V-07 | S |
-| 18 | Write or remove company gaps | V-06 | S |
+| 14 | Assignment email, with a preference: **done** | V-16 | — |
+| 15 | Record search: **done** | V-17 | — |
+| 16 | Workspace purge: **built, off**. Set `WORKSPACE_PURGE_DAYS` once the recovery period is decided. Retention scope is still a decision | V-11, V-19 | — |
+| 17 | Discovered feeds: already there; the finding was wrong | V-07 | — |
+| 18 | The brief's four sections: **done**. The `company_gaps` table stays unused | V-06 | — |
 | 19 | Enforce the content security policy after a quiet week | V-12, 10 | S |
-| 20 | Profile editing | V-18 | S |
+| 20 | Profile editing: **done**, except a picture | V-18 | — |
 
 ## P3 — Open Exchange
 
 | # | Work | Depends on | Size |
 |---|---|---|---|
 | 21 | Decide EX-1, EX-3, EX-4, EX-6 to EX-10 | Owner, counsel | — |
-| 22 | Enforce verified domain for level 3 | EX-4 | M |
-| 23 | Enforce regulated-category rules | EX-10 | S |
-| 24 | Moderation screen | — | M |
+| 22 | Confirmed company address for level 3: **built, off** | EX-4 | — |
+| 23 | Regulated-category rule: **built, off**. Review the seeded list first | EX-10 | — |
+| 24 | Moderation screen: not built. `docs/operations/exchange-moderation.md` keeps it out of the app on purpose, so no account can moderate. Changing that is the owner's call | Decision | M |
 | 25 | Individual supplier verification | EX-7 | M |
 | 26 | Switch on; enable categories with five active suppliers | 11, 13, 22–24 | S |
 | 27 | Supplier invitations and claim pages | EX-8, counsel | L |

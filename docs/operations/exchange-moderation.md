@@ -12,6 +12,17 @@ Migrations `0065_exchange_trust.sql` and `0066_exchange_audit_fixes.sql`. People
 
 Each reporter can have one open report per subject, and each person can file 10 reports a day. A workspace reads back what it filed through `exchange_my_reports`; the table itself is closed to sessions, because it names the workspace behind an anonymous request. A reporter never learns what was decided, and the reported workspace is never told who reported it.
 
+## Policy switches
+
+Two rules are built and off, because their decisions are open (EX-4, EX-10). Review `exchange_categories.regulated` first: the seeded list includes GPUs and accounting.
+
+```sql
+-- Opening a request to introductions needs a confirmed company address.
+update exchange_policy set require_company_address = true;
+-- A regulated category shows no anonymous card; existing ones become counted only.
+update exchange_policy set regulated_hides_anonymous_cards = true;
+```
+
 ## Read the queue
 
 ```sql

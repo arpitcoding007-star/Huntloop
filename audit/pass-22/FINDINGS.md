@@ -7,6 +7,13 @@
 | V-01, V-02 | **Fixed** | Both rows of a turn get the same columns (`lib/data/conversation-turns.ts`) | `opp.agent`, `asst.ask`; unit test; live browser test; audit check AI-TURNS |
 | V-04 | **Fixed** | A known opportunity is updated, not upserted. A failed lookup stops the job instead of overwriting a person's priority | `prio.override-rescore`; simulation, 5 checks |
 | V-05 | **Fixed** | Events are read through their document. A failed read fails the run | `learn.full` with no refused query; simulation, 2 checks; audit check DATA-C11 |
+| V-06 | **Fixed** | Nothing wrote the brief's four sections. Scoring and Analyze now store the problem, current approach, gap and use case, each only when established. Prompt quality is untested | `brief`; simulation; task test |
+| V-07 | **Not a gap** | Corrected: the Sources page already offers "Use this feed" (`adoptFeedAction`). The first pass missed it | `src.adopt` |
+| V-08, EX-4 | **Built, off** | `exchange_policy` switches. Off because the decisions are open, and because the seeded `regulated` list includes GPUs and accounting, which would remove the anonymous cards the product is described with | `ex.unverified`; 0071 migration checks |
+| V-17 | **Fixed** | Jump-to searches companies, opportunities and people under the reader's own permissions | `search.records`; live browser test across two workspaces |
+| V-18 | **Fixed (part)** | Name and kind of work; a typed name survives sign-in. Email change goes through Auth confirmation (not tested live). No picture upload: there is no image storage | `prof.name`; 0071 checks |
+| V-19 | **Built, off** | `purge_deleted_organizations`; runs only when WORKSPACE_PURGE_DAYS is 30 or more | 0071 checks; simulation |
+| New | **Fixed** | A session could set its own `profiles.email`, where product email is sent | 0071 checks |
 | V-16 | **Fixed** | The new owner is emailed, unless they assigned it to themselves. Assigning an opportunity that no longer exists is now refused | `email.assign`; template test |
 
 The simulation and audit checks were also run against the old code and failed there. `results-before-fixes.json` holds the failing `opp.agent`, `asst.ask`, `prio.override-rescore` and `email.assign` checks. Everything below is as found.

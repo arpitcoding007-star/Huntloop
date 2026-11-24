@@ -99,9 +99,11 @@ export {
 export {
   PRIORITIES,
   SCORE_DIMENSIONS,
+  briefColumns,
   qualifyOpportunity,
   type Priority,
   type Qualification,
+  type QualificationBrief,
   type QualificationEvidence,
   type ObservedEvidence,
   type QualifyInput,

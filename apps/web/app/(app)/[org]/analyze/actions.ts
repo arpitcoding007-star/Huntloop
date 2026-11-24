@@ -7,7 +7,7 @@ import type { WhyNowRequest, WhyNowResult } from "../../../../lib/ai/why-now";
 import { toFailureState } from "../../../../lib/ai/outcome";
 import { sealVerdict, verifyVerdict } from "../../../../lib/ai/seal";
 import { revalidatePath } from "next/cache";
-import type { Qualification } from "@huntloop/ai";
+import { briefColumns, type Qualification } from "@huntloop/ai";
 import { resolveOrInsertCompany } from "../../../../lib/data/company-resolve";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import {
@@ -211,6 +211,7 @@ export async function saveQualificationAction(
        person set it (`priority_set_by = 'user'`): a human verdict outranks a
        re-run of the model. Provenance stays with whoever found it first. */
     const scored = {
+      ...briefColumns(q.brief),
       why_this_company: q.summary,
       outreach_angle: q.recommendation,
       confidence: q.scoreConfidence,

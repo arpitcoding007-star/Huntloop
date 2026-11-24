@@ -920,6 +920,7 @@ const HOT_VERDICT = {
   dimensions: dims({ "Buying likelihood": "unknown" }),
   summary: "Autonomous trading agents for crypto desks.",
   recommendation: "Worth contacting this week. Lead with the blocker.",
+  brief: { identifiedProblem: "  Custody permissioning is unsolved. ", currentApproach: "", potentialGap: 7, potentialUseCase: null },
   evidence: [
     {
       claim: "They describe custody permissioning as an open problem.",
@@ -979,6 +980,7 @@ console.log("\nqualify_opportunity — the happy path");
   );
   expectEqual("the verdict survives", result.output.priority, "hot");
   expectEqual("with its confidence as a word", result.output.scoreConfidence, "medium");
+  expectEqual("the brief is trimmed, and anything blank or malformed is not established", result.output.brief, { identifiedProblem: "Custody permissioning is unsolved.", currentApproach: null, potentialGap: null, potentialUseCase: null });
 
   const request = seen[0]!;
   expectEqual(

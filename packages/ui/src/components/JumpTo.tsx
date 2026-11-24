@@ -29,28 +29,32 @@ export interface JumpToProps {
    * is a client-side transition rather than a full document load.
    */
   onNavigate: (href: string) => void;
+  /**
+   * Finds records for a query. Called a moment after typing stops, from two
+   * characters; an answer to an older query is dropped.
+   */
+  onSearch?: (query: string) => Promise<JumpToItem[]>;
 }
 
 /**
  * "Search or jump to" — a filter over the destinations the sidebar already
- * lists, and nothing more.
+ * lists, followed by the records that match.
  *
  * ── Why it is this small ────────────────────────────────────────────────
  *
  * The Meridian sidebar draws a ⌘K search row, and for most of this app's life
  * the answer to "should the row exist" was no: a search box for a palette
  * that does not exist teaches a habit and then breaks it (audit UX-02, and
- * NAV-03 fails the build on a control with no behaviour). This is the version
- * that makes the row honest without promising more than is here — it finds
- * pages, not records. Searching companies or opportunities from here is a
- * real feature that needs a real index, and it should arrive as one.
+ * NAV-03 fails the build on a control with no behaviour). Pages are filtered
+ * here; records come from `onSearch`, which the app answers from the database
+ * under the reader's own permissions. Without it the palette finds pages only.
  *
  * Built on `Modal`, so focus trapping, Escape, inertness behind it and the
  * top layer all come from the native `<dialog>` rather than being rewritten.
  * The list is the ARIA combobox pattern: focus stays in the input, and the
  * highlighted option is announced through `aria-activedescendant`.
  */
-export function JumpTo({ open, onClose, items, onNavigate }: JumpToProps) {
+export function JumpTo({ open, onClose, items, onNavigate, onSearch }: JumpToProps) {
   const id = useId();
   const listId = `${id}-list`;
   const input = useRef<HTMLInputElement>(null);
@@ -69,7 +73,40 @@ export function JumpTo({ open, onClose, items, onNavigate }: JumpToProps) {
     input.current?.focus();
   }, [open]);
 
-  const results = useMemo(() => rank(items, query), [items, query]);
+  const [records, setRecords] = useState<JumpToItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    setRecords([]);
+    setFailed(false);
+    if (!open || !onSearch || q.length < 2) {
+      setSearching(false);
+      return;
+    }
+    let stale = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      onSearch(q)
+        .then((found) => {
+          if (!stale) setRecords(found);
+        })
+        .catch(() => {
+          if (!stale) setFailed(true);
+        })
+        .finally(() => {
+          if (!stale) setSearching(false);
+        });
+    }, 200);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [open, query, onSearch]);
+
+  const results = useMemo(() => [...rank(items, query), ...records], [items, query, records]);
+  const what = onSearch ? "Search pages and records" : "Search pages";
 
   useEffect(() => {
     setActive((i) => Math.min(i, Math.max(results.length - 1, 0)));
@@ -108,8 +145,8 @@ export function JumpTo({ open, onClose, items, onNavigate }: JumpToProps) {
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={results.length ? optionId(active) : undefined}
-            aria-label="Search pages"
-            placeholder="Search pages"
+            aria-label={what}
+            placeholder={what}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -121,7 +158,7 @@ export function JumpTo({ open, onClose, items, onNavigate }: JumpToProps) {
         </label>
 
         {results.length ? (
-          <ul id={listId} role="listbox" aria-label="Pages" className="overflow-y-auto p-2">
+          <ul id={listId} role="listbox" aria-label={onSearch ? "Pages and records" : "Pages"} className="overflow-y-auto p-2">
             {results.map((item, i) => {
               const Icon = item.icon;
               const on = i === active;
@@ -161,7 +198,7 @@ export function JumpTo({ open, onClose, items, onNavigate }: JumpToProps) {
           </ul>
         ) : (
           <p id={listId} role="status" className="px-5 py-8 text-center text-[13px] text-fg-muted">
-            No page matches “{query}”.
+            {searching ? "Searching…" : failed ? "Records could not be searched. Try again." : onSearch ? `Nothing matches “${query}”.` : `No page matches “${query}”.`}
           </p>
         )}
       </div>

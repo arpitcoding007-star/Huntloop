@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 70 migrations
-> (`0001_identity.sql` … `0070_pass21_integrity.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 71 migrations
+> (`0001_identity.sql` … `0071_pass22_gaps.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 97 tables · 10 views · 211 public functions · 10 enum types · 171 RLS policies · 337 indexes · 165 triggers.
+**Totals:** 98 tables · 10 views · 218 public functions · 10 enum types · 172 RLS policies · 338 indexes · 169 triggers.
 
-**RLS enabled on:** 97 of 97 tables.
+**RLS enabled on:** 98 of 98 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_notifications`](#exchange_notifications) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reports`](#exchange_reports) · [`exchange_reveal_log`](#exchange_reveal_log) · [`exchange_suspensions`](#exchange_suspensions) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_notifications`](#exchange_notifications) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_policy`](#exchange_policy) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reports`](#exchange_reports) · [`exchange_reveal_log`](#exchange_reveal_log) · [`exchange_suspensions`](#exchange_suspensions) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -1487,6 +1487,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `exchange_categories_regulated`
 - `exchange_categories_touch`
 
 ## exchange_intake_sessions
@@ -1774,6 +1775,7 @@ RLS: **enabled**
 - `exchange_needs_purpose`
 - `exchange_needs_quota`
 - `exchange_needs_touch`
+- `exchange_needs_visibility`
 
 ## exchange_notifications
 
@@ -1983,6 +1985,30 @@ RLS: **enabled**
 **Policies**
 
 - `exchange_outcomes_read` — SELECT USING `exchange_is_intro_party(intro_id)`
+
+## exchange_policy
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | boolean | NOT NULL | `true` |
+| `require_company_address` | boolean | NOT NULL | `false` |
+| `regulated_hides_anonymous_cards` | boolean | NOT NULL | `false` |
+| `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_policy_id_check` — `CHECK (id)`
+- PK `exchange_policy_pkey` — `PRIMARY KEY (id)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
+
+**Triggers**
+
+- `exchange_policy_applies`
 
 ## exchange_provider_profiles
 
@@ -2990,6 +3016,7 @@ RLS: **enabled**
 | `quiet_start_hour` | smallint | null |  |
 | `quiet_end_hour` | smallint | null |  |
 | `last_exchange_digest_on` | date | null |  |
+| `assignment_emails` | boolean | NOT NULL | `true` |
 
 **Constraints**
 
@@ -3547,6 +3574,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `profiles_guard_email`
 - `profiles_touch`
 
 ## provider_accounts
@@ -4295,6 +4323,7 @@ RLS: **enabled**
 | `advance_onboarding` | `p_org uuid, p_step text, p_goals text[]` | text | yes |
 | `advance_recompute` | `p_request uuid, p_cursor text, p_seen integer, p_enqueued integer, p_done boolean` | text | yes |
 | `approve_join_request` | `p_request uuid` | uuid |  |
+| `assignment_email_wanted` | `p_org uuid, p_user uuid` | boolean | yes |
 | `backfill_activities` | `p_org uuid` | jsonb | yes |
 | `backlog_cap` | `p_org uuid` | bigint | yes |
 | `backlog_state` | `p_org uuid` | TABLE(open_count bigint, cap bigint, saturated boolean) | yes |
@@ -4330,9 +4359,11 @@ RLS: **enabled**
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
 | `erase_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
+| `exchange_apply_regulated` |  | trigger | yes |
 | `exchange_attention` | `p_org uuid` | TABLE(kind text, intro_id uuid, title text, subject text, at timestamp with time zone) | yes |
 | `exchange_audit_intro` | `p_intro exchange_intros, p_action text, p_meta jsonb` | void | yes |
 | `exchange_budget_band` | `p_amount numeric, p_currency text` | text |  |
+| `exchange_buyer_verified` | `p_org uuid` | boolean | yes |
 | `exchange_card_k` |  | integer |  |
 | `exchange_compact` | `p numeric` | text |  |
 | `exchange_confirm_need` | `p_need uuid` | boolean | yes |
@@ -4358,6 +4389,7 @@ RLS: **enabled**
 | `exchange_need_declared` |  | trigger | yes |
 | `exchange_need_limits` |  | trigger | yes |
 | `exchange_need_recipients` | `p_need exchange_needs` | SETOF uuid | yes |
+| `exchange_need_visibility` |  | trigger | yes |
 | `exchange_needs_due` | `p_limit integer` | TABLE(need_id uuid, org_id uuid, key text) | yes |
 | `exchange_offering_follows_provider` |  | trigger | yes |
 | `exchange_origin_is_permanent` |  | trigger |  |
@@ -4404,6 +4436,7 @@ RLS: **enabled**
 | `guard_membership_owner` |  | trigger | yes |
 | `guard_message_integrity` |  | trigger |  |
 | `guard_organization_reserved` |  | trigger |  |
+| `guard_profile_email` |  | trigger |  |
 | `handle_new_user` |  | trigger | yes |
 | `has_org_role` | `target_org uuid, min_role org_role` | boolean | yes |
 | `hubspot_status` | `p_org uuid` | TABLE(hub_id text, connected_at timestamp with time zone, last_synced_at timestamp with time zone, last_sync_error text, is_enabled boolean) | yes |
@@ -4459,6 +4492,7 @@ RLS: **enabled**
 | `migration_0068_applied` |  | boolean |  |
 | `migration_0069_applied` |  | boolean |  |
 | `migration_0070_applied` |  | boolean |  |
+| `migration_0071_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
@@ -4475,6 +4509,7 @@ RLS: **enabled**
 | `prune_provider_cache` |  | integer | yes |
 | `prune_rate_limits` | `p_older_than interval` | integer | yes |
 | `prune_stale_contacts` | `p_org uuid` | integer | yes |
+| `purge_deleted_organizations` | `p_days integer, p_limit integer` | integer | yes |
 | `purge_expired_research` |  | integer | yes |
 | `record_contact_reply` | `p_org uuid, p_email text` | void | yes |
 | `record_contact_send` | `p_org uuid, p_email text` | void | yes |

@@ -3734,6 +3734,99 @@ console.log("\n0070 — pass 21 integrity");
   await db.exec("rollback");
 }
 
+console.log("\n0071 — pass 22 gaps");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  const refusal = async (sql: string, args: unknown[] = []) => {
+    await db.exec("savepoint r71");
+    const said = await db.query(sql, args).then(() => "", (e: Error) => e.message);
+    await db.exec("rollback to savepoint r71");
+    return said;
+  };
+  const scalar = async <T>(sql: string, params: unknown[] = []) =>
+    ((await db.query<{ v: T }>(sql, params)).rows[0]?.v ?? null) as T | null;
+  const is = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}`);
+  await db.exec("begin");
+  await engine();
+
+  await as(OWNER_A);
+  is("assignment email is on by default", await scalar(`select public.assignment_email_wanted($1, $2) as v`, [A, OWNER_A]), true);
+  await engine();
+  await db.query(`insert into notification_preferences (org_id, user_id, assignment_emails) values ($1, $2, false) on conflict (org_id, user_id) do update set assignment_emails = false`, [A, OWNER_A]);
+  await as(OWNER_A);
+  is("and off when they say so", await scalar(`select public.assignment_email_wanted($1, $2) as v`, [A, OWNER_A]), false);
+  is("never for somebody outside the workspace", await scalar(`select public.assignment_email_wanted($1, $2) as v`, [A, OWNER_B]), false);
+  await engine();
+  await as(OWNER_B);
+  is("and another workspace cannot ask", /not a member/.test(await refusal(`select public.assignment_email_wanted($1, $2)`, [A, OWNER_A])), true);
+
+  await engine();
+  await as(OWNER_A);
+  is("a session cannot rewrite its profile email", /changed through sign-in/.test(await refusal(`update profiles set email = 'x@evil.test' where id = $1`, [OWNER_A])), true);
+  is("but may change its name", await refusal(`update profiles set full_name = 'Typed Name' where id = $1`, [OWNER_A]), "");
+  await db.query(`update profiles set full_name = 'Typed Name' where id = $1`, [OWNER_A]);
+  await engine();
+  await db.query(`update auth.users set email = 'owner-71@acme.test', email_confirmed_at = now() where id = $1`, [OWNER_A]);
+  is("Auth changes the email, and a typed name survives", (await db.query(`select email, full_name from profiles where id = $1`, [OWNER_A])).rows[0], { email: "owner-71@acme.test", full_name: "Typed Name" });
+
+  const leaf = await scalar<string>(`select c.id as v from exchange_categories c left join exchange_categories p on p.id = c.parent_id where c.parent_id is not null and not c.regulated and not coalesce(p.regulated, false) limit 1`);
+  const regulated = await scalar<string>(`select id as v from exchange_categories where parent_id is not null and regulated limit 1`);
+  await as(OWNER_A);
+  const insert = `insert into exchange_needs (org_id, created_by, category_id, summary, visibility) values ($1, $2, $3, 'n', $4)`;
+  is("with both rules off, nothing changes", [await refusal(insert, [A, OWNER_A, regulated, 2]), await refusal(insert, [A, OWNER_A, leaf, 3])], ["", ""]);
+  is("a session cannot switch them", /permission denied/.test(await refusal(`update exchange_policy set require_company_address = true`)) || (await scalar(`select count(*)::int as v from exchange_policy`)) === 0, true);
+  await engine();
+  await db.query(`update exchange_policy set require_company_address = true, regulated_hides_anonymous_cards = true`);
+  await as(OWNER_A);
+  is("a workspace with a confirmed company address may open a request", await refusal(insert, [A, OWNER_A, leaf, 3]), "");
+  is("a regulated category has no anonymous card", /regulated category/.test(await refusal(insert, [A, OWNER_A, regulated, 2])), true);
+  is("but may be counted, or opened by a verified buyer", [await refusal(insert, [A, OWNER_A, regulated, 1]), await refusal(insert, [A, OWNER_A, regulated, 3])], ["", ""]);
+  await engine();
+  await db.query(`update auth.users set email = 'someone@gmail.com' where id in (select user_id from memberships where org_id = $1)`, [A]).catch(() => undefined);
+  await db.exec("rollback");
+
+  await db.exec("begin");
+  await engine();
+  let n = 0;
+  for (const r of (await db.query<{ user_id: string }>(`select user_id from memberships where org_id = $1 and deleted_at is null`, [A])).rows)
+    await db.query(`update auth.users set email = $2, email_confirmed_at = now() where id = $1`, [r.user_id, `free${n++}@gmail.com`]);
+  await db.query(`update exchange_policy set require_company_address = true, regulated_hides_anonymous_cards = true`);
+  await as(OWNER_A);
+  is("free mail may file an anonymous card", await refusal(insert, [A, OWNER_A, leaf, 2]), "");
+  is("but not open a request", /confirmed company email/.test(await refusal(insert, [A, OWNER_A, leaf, 3])), true);
+  const id = (await db.query<{ id: string }>(`${insert} returning id`, [A, OWNER_A, leaf, 2])).rows[0]!.id;
+  is("nor raise one later", /confirmed company email/.test(await refusal(`update exchange_needs set visibility = 3 where id = $1`, [id])), true);
+  is("nor move an anonymous card into a regulated category", /regulated category/.test(await refusal(`update exchange_needs set category_id = $2 where id = $1`, [id, regulated])), true);
+  is("an unrelated edit is allowed", await refusal(`update exchange_needs set summary = 'edited' where id = $1`, [id]), "");
+  await engine();
+  await db.query(`update exchange_categories set regulated = true where id = $1`, [leaf]);
+  is("a category that becomes regulated takes its anonymous cards down", await scalar(`select visibility::int as v from exchange_needs where id = $1`, [id]), 1);
+
+  is("a purge under 30 days is refused", /at least 30/.test(await refusal(`select public.purge_deleted_organizations(7)`)), true);
+  await db.query(`update organizations set deleted_at = now() - interval '29 days' where id = $1`, [A]);
+  is("a workspace inside its recovery period stays", await scalar(`select public.purge_deleted_organizations(30) as v`), 0);
+  await db.query(`update organizations set deleted_at = now() - interval '31 days' where id = $1`, [A]);
+  const others = await scalar<number>(`select count(*)::int as v from organizations where deleted_at is null`);
+  is("past it, a full workspace is removed with everything in it", [await scalar(`select public.purge_deleted_organizations(30) as v`), await scalar(`select count(*)::int as v from companies where org_id = $1`, [A])], [1, 0]);
+  is("and no live workspace is", await scalar(`select count(*)::int as v from organizations where deleted_at is null`), others);
+  await as(OWNER_B);
+  is("a session cannot purge", /permission denied|for the engine/.test(await refusal(`select public.purge_deleted_organizations(30)`)), true);
+  await engine();
+  is("migration_0071_applied() exists for db:doctor", await scalar(`select public.migration_0071_applied() as v`), true);
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");
