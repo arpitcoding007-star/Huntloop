@@ -14,6 +14,7 @@ import { parseForm } from "../../../../lib/validation";
 
 const schema = z.object({
   dailyDigest: z.boolean(),
+  assignmentEmails: z.boolean().optional(),
   digestHour: z.number().int().min(0).max(23),
   timezone: z
     .string()
@@ -43,6 +44,7 @@ export async function saveNotificationPreferencesAction(
           daily_digest: parsed.value.dailyDigest,
           digest_hour: parsed.value.digestHour,
           timezone: parsed.value.timezone,
+          ...(parsed.value.assignmentEmails === undefined ? {} : { assignment_emails: parsed.value.assignmentEmails }),
         },
         { onConflict: "org_id,user_id" },
       );

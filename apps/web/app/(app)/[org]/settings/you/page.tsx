@@ -1,3 +1,5 @@
+import { getMyProfile } from "../../../../../lib/data/profile";
+import { ProfileForm } from "./ProfileForm";
 import { notFound } from "next/navigation";
 import { currentViewer } from "../../../../../lib/data/membership";
 import { getLearningTrend, getMyLearning } from "../../../../../lib/data/personal-learning";
@@ -19,13 +21,14 @@ export default async function YouPage({ params }: { params: Promise<{ org: strin
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data, source }, trend] = await Promise.all([getMyLearning(org), getLearningTrend(org)]);
+  const [{ data, source }, trend, profile] = await Promise.all([getMyLearning(org), getLearningTrend(org), getMyProfile()]);
 
   return (
     <div className="space-y-6">
       {source !== "live" && (
         <DemoFigures what="These are example preferences. With a database connected this page shows what Huntloop knows about how you work." />
       )}
+      <ProfileForm org={org} profile={profile} live={source === "live"} />
       <YouManager org={org} learning={data} trend={trend} live={source === "live"} />
     </div>
   );

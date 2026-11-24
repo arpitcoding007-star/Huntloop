@@ -25,6 +25,7 @@ export function NotificationsForm({
   demo: boolean;
 }) {
   const [daily, setDaily] = useState(preferences.dailyDigest);
+  const [assigned, setAssigned] = useState(preferences.assignmentEmails);
   const [hour, setHour] = useState(preferences.digestHour);
   const [zone, setZone] = useState(preferences.timezone);
   const [result, setResult] = useState<{ ok: true; message?: string } | { ok: false; error: string } | null>(null);
@@ -68,6 +69,24 @@ export function NotificationsForm({
             </span>
           </span>
         </label>
+
+        {assigned !== null && (
+          <label className="flex items-start gap-2.5 text-[13px] text-fg">
+            <input
+              type="checkbox"
+              checked={assigned}
+              disabled={pending || demo}
+              onChange={(e) => setAssigned(e.target.checked)}
+              className="mt-0.5 size-4 accent-[var(--color-brand)]"
+            />
+            <span>
+              Work assigned to you
+              <span className="mt-0.5 block text-[12px] text-fg-muted">
+                One email when somebody else makes you an opportunity&rsquo;s owner.
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Send after" error={errors.digestHour}>
@@ -123,6 +142,7 @@ export function NotificationsForm({
               setErrors({});
               const res = await saveNotificationPreferencesAction(org, {
                 dailyDigest: daily,
+                ...(assigned === null ? {} : { assignmentEmails: assigned }),
                 digestHour: hour,
                 timezone: zone,
               });

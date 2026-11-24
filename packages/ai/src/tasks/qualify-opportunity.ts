@@ -97,6 +97,15 @@ export interface Qualification {
   /** What to do. For IGNORE this says not to contact them, and why. */
   recommendation: string;
   evidence: QualificationEvidence[];
+  /** The brief's four sections. Inferences, each null when not established. */
+  brief: QualificationBrief;
+}
+
+export interface QualificationBrief {
+  identifiedProblem: string | null;
+  currentApproach: string | null;
+  potentialGap: string | null;
+  potentialUseCase: string | null;
 }
 
 export interface QualifyInput {
@@ -264,12 +273,27 @@ List what the verdict rests on, and what it does not.
 Include the unknowns. A verdict that lists only what supports it is an argument,
 not an assessment, and the person reading it is about to spend their time on it.
 
+## The brief
+
+Four short sections a salesperson reads before writing. Each is one or two
+sentences resting on the evidence you list, or null when it is not established.
+Null is expected and better than a guess; do not restate the profile.
+
+  identifiedProblem  The problem this company appears to have that the seller
+                     addresses.
+  currentApproach    How they appear to handle it today.
+  potentialGap       What that approach leaves uncovered.
+  potentialUseCase   Where the seller's product would be used first.
+
 ## Style
 
 Plain sentences a salesperson would say out loud. The recommendation should be
 concrete: who to talk to about what, or the reason not to bother.
 `,
 );
+
+const BRIEF_FIELDS = ["identifiedProblem", "currentApproach", "potentialGap", "potentialUseCase"] as const;
+const MAX_BRIEF_CHARS = 600;
 
 const SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -285,6 +309,7 @@ const SCHEMA: Record<string, unknown> = {
     "summary",
     "recommendation",
     "evidence",
+    "brief",
   ],
   properties: {
     companyName: { type: "string" },
@@ -315,6 +340,12 @@ const SCHEMA: Record<string, unknown> = {
     },
     summary: { type: "string" },
     recommendation: { type: "string" },
+    brief: {
+      type: "object",
+      additionalProperties: false,
+      required: [...BRIEF_FIELDS],
+      properties: Object.fromEntries(BRIEF_FIELDS.map((f) => [f, { anyOf: [{ type: "string" }, { type: "null" }] }])),
+    },
     evidence: {
       type: "array",
       items: {
@@ -334,6 +365,32 @@ const SCHEMA: Record<string, unknown> = {
     },
   },
 };
+
+/* Absent, blank or the wrong type is "not established", never a failed verdict. */
+function readBrief(value: unknown): QualificationBrief {
+  const o = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const field = (key: (typeof BRIEF_FIELDS)[number]) => {
+    const v = o[key];
+    return typeof v === "string" && v.trim() ? v.trim().slice(0, MAX_BRIEF_CHARS) : null;
+  };
+  return {
+    identifiedProblem: field("identifiedProblem"),
+    currentApproach: field("currentApproach"),
+    potentialGap: field("potentialGap"),
+    potentialUseCase: field("potentialUseCase"),
+  };
+}
+
+/** The `opportunities` columns a brief fills. A null leaves what is there. */
+export function briefColumns(brief: QualificationBrief | undefined): Record<string, string> {
+  const columns: [string, string | null | undefined][] = [
+    ["identified_problem", brief?.identifiedProblem],
+    ["current_approach", brief?.currentApproach],
+    ["potential_gap", brief?.potentialGap],
+    ["potential_use_case", brief?.potentialUseCase],
+  ];
+  return Object.fromEntries(columns.filter((c): c is [string, string] => Boolean(c[1])));
+}
 
 export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
   name: "qualify_opportunity",
@@ -630,6 +687,7 @@ export const qualifyOpportunity: LLMTask<QualifyInput, Qualification> = {
       summary,
       recommendation,
       evidence,
+      brief: readBrief(raw.brief),
     };
   },
 };

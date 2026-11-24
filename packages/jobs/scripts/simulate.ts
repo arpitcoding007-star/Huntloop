@@ -222,6 +222,7 @@ console.log("\nScoring and learning against the real schema (pass 22, V-04 and V
   const verdict = (priority: string, score: number) => ({
     companyName: "Prospect", priority, priorityReason: `Read as ${priority}.`, score, scoreConfidence: "medium",
     explanation: "Fits.", summary: `Summary ${score}.`, recommendation: "Write to them.", evidence: [{ claim: "Sells software", kind: "inference", confidence: "medium", sourceUrl: null, excerpt: null }],
+    brief: { identifiedProblem: score > 90 ? null : `Problem ${score}.`, currentApproach: "Spreadsheets.", potentialGap: " ", potentialUseCase: null },
     dimensions: SCORE_DIMENSIONS.map((label) => ({ label, value: 80, note: null })),
   });
   process.env.ANTHROPIC_API_KEY = "synthetic";
@@ -240,6 +241,7 @@ console.log("\nScoring and learning against the real schema (pass 22, V-04 and V
   const [after, ...extra] = await row();
   eq("their priority and reason stay, the new read is stored, the origin is kept, and nothing is duplicated", [after?.priority, after?.priority_reason, after?.why, after?.via, extra.length], ["watch", "Too small", "Summary 91.", "import", 0]);
   eq("and every score is in the history", (await backend.sql<{ n: number }>(`select count(*)::int as n from opportunity_scores where opportunity_id = $1`, [after!.id]))[0]!.n, 3);
+  eq("the brief is stored; null and blank leave what was there", (await backend.sql(`select identified_problem, current_approach, potential_gap, potential_use_case from opportunities where id = $1`, [after!.id]))[0], { identified_problem: "Problem 80.", current_approach: "Spreadsheets.", potential_gap: null, potential_use_case: null });
   modelAnswer = null;
   delete process.env.ANTHROPIC_API_KEY;
 
@@ -251,6 +253,18 @@ console.log("\nScoring and learning against the real schema (pass 22, V-04 and V
   const perf = await loadSourcePerformance({ scope: new OrgScope(org) });
   eq("a source is credited with what it found and won", perf.filter((p) => p.name === "A feed").map((p) => [p.companiesFound, p.opportunitiesCreated, p.outcomes, p.wins]), [[1, 1, 1, 1]]);
   eq("and a quiet one with nothing", perf.filter((p) => p.name === "A quiet feed").map((p) => [p.companiesFound, p.wins]), [[0, 0]]);
+}
+
+console.log("\nDeleted workspaces");
+{
+  await backend.sql(`insert into organizations (name, slug, deleted_at) values ('Gone', 'gone-sim', now() - interval '90 days')`);
+  const run = async () => ((await HANDLERS.enforce_retention!({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now: new Date() } as never)) as unknown as { result: { workspaces_purged: unknown } }).result.workspaces_purged;
+  eq("nothing is purged unless the deployment says so", [await run(), (await backend.sql(`select 1 from organizations where slug = 'gone-sim'`)).length], [null, 1]);
+  process.env.WORKSPACE_PURGE_DAYS = "7";
+  eq("nor for a period under 30 days", [await run(), (await backend.sql(`select 1 from organizations where slug = 'gone-sim'`)).length], [null, 1]);
+  process.env.WORKSPACE_PURGE_DAYS = "60";
+  eq("past the period, it is", [await run(), (await backend.sql(`select 1 from organizations where slug = 'gone-sim'`)).length], [1, 0]);
+  delete process.env.WORKSPACE_PURGE_DAYS;
 }
 
 console.log("\nNothing unexpected happened on the way");

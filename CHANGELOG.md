@@ -11,6 +11,15 @@ ship from.
 Needs database migrations **0046** and **0047** (0040–0045 are already in
 production).
 
+### Pass 22 gaps — needs migration **0071**
+- Jump-to finds companies, opportunities and people.
+- Settings → You edits your name, kind of work and sign-in email.
+- Assignment emails can be turned off per person.
+- Scoring and Analyze fill the problem, approach, gap and use case.
+- Two Exchange rules and workspace purging are built and off
+  (`exchange_policy`, `WORKSPACE_PURGE_DAYS`).
+- Product email goes only to an address Auth confirmed.
+
 ### Pass 22 fixes
 - The opportunity agent and Ask Huntloop save their conversations again: a
   question's row now carries the same columns as its answer's.

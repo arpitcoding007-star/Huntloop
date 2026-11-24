@@ -10,6 +10,8 @@ import { load, type Loaded } from "./source";
 
 export interface NotificationPreferences {
   dailyDigest: boolean;
+  /** Null before 0071: the column does not exist, so it cannot be saved. */
+  assignmentEmails: boolean | null;
   digestHour: number;
   timezone: string;
   lastDigestOn: string | null;
@@ -17,6 +19,7 @@ export interface NotificationPreferences {
 
 export const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
   dailyDigest: true,
+  assignmentEmails: true,
   digestHour: 8,
   timezone: "UTC",
   lastDigestOn: null,
@@ -30,15 +33,25 @@ export async function getNotificationPreferences(
       const orgId = await requireOrgId(orgSlug, "getNotificationPreferences");
       const userId = await currentUserId(db);
       if (!userId) return DEFAULT_NOTIFICATIONS;
-      const { data, error } = await db
+      const read = await db
         .from("notification_preferences")
-        .select("daily_digest, digest_hour, timezone, last_digest_on")
+        .select("daily_digest, digest_hour, timezone, last_digest_on, assignment_emails")
         .eq("org_id", orgId)
         .eq("user_id", userId)
         .maybeSingle();
-      if (error || !data) return DEFAULT_NOTIFICATIONS;
+      const before0071 = read.error?.code === "42703";
+      const { data, error } = before0071
+        ? await db
+            .from("notification_preferences")
+            .select("daily_digest, digest_hour, timezone, last_digest_on")
+            .eq("org_id", orgId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        : read;
+      if (error || !data) return { ...DEFAULT_NOTIFICATIONS, assignmentEmails: before0071 ? null : true };
       return {
         dailyDigest: Boolean(data.daily_digest),
+        assignmentEmails: before0071 ? null : (data as { assignment_emails?: boolean }).assignment_emails !== false,
         digestHour: Number(data.digest_hour ?? 8),
         timezone: String(data.timezone ?? "UTC"),
         lastDigestOn: data.last_digest_on ? String(data.last_digest_on) : null,

@@ -1,5 +1,6 @@
 "use client";
 
+import { searchRecordsAction } from "./search-actions";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -344,10 +345,15 @@ export function OrgShell({
         setNavOpen(false);
         router.push(href);
       },
+      onSearch: async (q: string) => {
+        const res = await searchRecordsAction(org, q);
+        if (!res.ok) throw new Error(res.error);
+        return res.data ?? [];
+      },
       open: jumpOpen,
       onOpenChange: setJumpOpen,
     }),
-    [router, jumpOpen],
+    [router, jumpOpen, org],
   );
 
   /* Longest matching prefix, so a detail route (/opportunities/alphio-ai)

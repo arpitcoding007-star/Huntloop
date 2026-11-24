@@ -42,7 +42,7 @@
  * can actually ask — whether the *model* was right — because a customer's rule
  * being wrong is not evidence about the model.
  */
-import { qualifyOpportunity, type ObservedEvidence } from "@huntloop/ai";
+import { briefColumns, qualifyOpportunity, type ObservedEvidence } from "@huntloop/ai";
 import {
   applyRules,
   validateExpression,
@@ -249,6 +249,7 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
      Postgres checks NOT NULL on the proposed row before it looks for the
      conflict, so every rescore after an override failed (pass 22, V-04). */
   const verdict = {
+    ...briefColumns(qualification.brief),
     why_this_company: qualification.summary,
     outreach_angle: qualification.recommendation,
     confidence: qualification.scoreConfidence,

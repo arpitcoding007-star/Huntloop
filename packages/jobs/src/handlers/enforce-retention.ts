@@ -62,6 +62,15 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
      stale; requests past their decide-by date lapse (0063). */
   const { data: exchangeExpired, error: expireError } = await db.rpc("exchange_expire", {});
   const { data: noticesPruned } = await db.rpc("exchange_prune_notifications", {});
+  /* Off unless the deployment has decided its recovery period (pass 22,
+     V-19). The database refuses fewer than 30 days whatever is set here. */
+  const purgeDays = Number(process.env.WORKSPACE_PURGE_DAYS);
+  let workspacesPurged: number | string | null = null;
+  if (Number.isInteger(purgeDays) && purgeDays >= 30) {
+    const { data: purged, error: purgeError } = await db.rpc("purge_deleted_organizations", { p_days: purgeDays });
+    workspacesPurged = purgeError ? `failed: ${purgeError.message}` : Number(purged ?? 0);
+  }
+
   const exchange = {
     pruned: exchangeError ? `failed: ${exchangeError.message}` : (exchangePruned ?? null),
     notices: noticesPruned ?? null,
@@ -87,7 +96,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
   if (!configured.length) {
     /* The common case on most deployments, and not worth an audit row or a
        failure. Nobody has asked for anything to be deleted. */
-    return { ok: true, result: { orgs: 0, removed: 0, jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0), exchange } };
+    return { ok: true, result: { orgs: 0, removed: 0, jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0), exchange, workspaces_purged: workspacesPurged } };
   }
 
   let removed = 0;
@@ -134,6 +143,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
       removed,
       jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0),
       exchange,
+      workspaces_purged: workspacesPurged,
       ...(failures.length ? { failures } : {}),
     },
   };

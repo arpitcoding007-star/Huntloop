@@ -318,6 +318,11 @@ async function emailAssignment(
 ): Promise<void> {
   if (!isEmailConfigured()) return;
   try {
+    /* Their choice (0071). Before it is applied nobody can have opted out. */
+    const wanted = await db.rpc("assignment_email_wanted", { p_org: orgId, p_user: a.ownerId });
+    if (wanted.error && wanted.error.code !== "PGRST202" && wanted.error.code !== "42883") throw new Error(wanted.error.message);
+    if (!wanted.error && wanted.data !== true) return;
+
     const ids = [a.ownerId, ...(a.assignerId ? [a.assignerId] : [])];
     const [{ data: people, error }, { data: workspace }] = await Promise.all([
       db.from("profiles").select("id, email, full_name").in("id", ids),

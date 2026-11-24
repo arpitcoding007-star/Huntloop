@@ -182,6 +182,7 @@ function example(url: string, domain: string): Qualification {
       ],
       summary:
         "A boutique investment fund. They do not build software, do not run infrastructure, and have no public engineering presence.",
+      brief: { identifiedProblem: null, currentApproach: null, potentialGap: null, potentialUseCase: null },
       recommendation:
         "Don't contact. There is no version of this where the product is relevant, and a good opener cannot be written for a company that does not have the problem.",
       evidence: [
@@ -234,6 +235,7 @@ function example(url: string, domain: string): Qualification {
     ],
     summary:
       "Autonomous trading agents for institutional desks. They have publicly named the blocker this product removes.",
+    brief: { identifiedProblem: "Custody permissioning is named as an unsolved problem.", currentApproach: null, potentialGap: null, potentialUseCase: null },
     recommendation:
       "Worth contacting this week. Lead with the blocker they described, not with the company news.",
     evidence: [

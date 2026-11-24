@@ -48,6 +48,33 @@ describe("rank", () => {
   });
 });
 
+describe("records", () => {
+  it("lists what the search finds, after the pages, and opens it", async () => {
+    const onNavigate = vi.fn();
+    const onSearch = vi.fn(async () => [{ label: "Inbox Ltd", href: "/acme/companies/1", group: "Company" }]);
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={onNavigate} onSearch={onSearch} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "inbox" } });
+    const hit = await screen.findByRole("option", { name: /Inbox Ltd/ });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("Inbox"), expect.stringContaining("Inbox Ltd")]);
+    fireEvent.click(hit);
+    expect(onNavigate).toHaveBeenCalledWith("/acme/companies/1");
+  });
+
+  it("says when records could not be searched", async () => {
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={() => {}} onSearch={async () => { throw new Error("down"); }} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "zzzz" } });
+    expect(await screen.findByText(/could not be searched/)).toBeTruthy();
+  });
+
+  it("does not search for one character", async () => {
+    const onSearch = vi.fn(async () => []);
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={() => {}} onSearch={onSearch} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "i" } });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+});
+
 describe("the palette", () => {
   it("jumps to the highlighted page on Enter, and moves with the arrows", () => {
     const onNavigate = vi.fn();
