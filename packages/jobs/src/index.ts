@@ -64,6 +64,8 @@ export {
 } from "./email/templates.ts";
 export { verifyDigestUnsubscribeToken } from "./email/digest-token.ts";
 export { disableDigest } from "./handlers/send-digests.ts";
+export { verifyExchangeUnsubscribeToken } from "./email/exchange-token.ts";
+export { disableExchangeEmails } from "./handlers/send-exchange-notifications.ts";
 
 export {
   FetchRefused,

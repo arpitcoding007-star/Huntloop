@@ -234,3 +234,74 @@ export function digestEmail(input: {
 function articleFor(word: string): string {
   return /^[aeiou]/i.test(word) ? "an" : "a";
 }
+
+/* ── Exchange (0064) ─────────────────────────────────────────────────── */
+
+export interface ExchangeEmailItem {
+  title: string;
+  body: string | null;
+  href: string;
+}
+
+/** One Exchange notice: an introduction, a message, a re-confirm, or an instant alert. */
+export function exchangeNoticeEmail(input: {
+  item: ExchangeEmailItem;
+  kind: string;
+  preferencesUrl: string;
+  unsubscribeUrl: string;
+}): RenderedEmail {
+  const cta: Record<string, string> = {
+    match_alert: "See the request",
+    intro_requested: "Decide",
+    intro_accepted: "Open the introduction",
+    intro_declined: "See your requests",
+    new_message: "Reply",
+    reconfirm: "Still needed",
+  };
+  return {
+    subject: input.item.title,
+    ...render({
+      preheader: input.item.body ?? input.item.title,
+      heading: input.item.title,
+      paragraphs: input.item.body ? [input.item.body] : [],
+      cta: { label: cta[input.kind] ?? "Open", href: input.item.href },
+      footer: [
+        "You get this because of your Exchange notification settings.",
+        `Change them: ${input.preferencesUrl}`,
+        `Stop all Exchange emails: ${input.unsubscribeUrl}`,
+      ],
+    }),
+  };
+}
+
+/** The Exchange digest: matched requests and anything else that waited. */
+export function exchangeDigestEmail(input: {
+  orgName: string;
+  items: ExchangeEmailItem[];
+  total: number;
+  openUrl: string;
+  preferencesUrl: string;
+  unsubscribeUrl: string;
+}): RenderedEmail {
+  const n = input.total;
+  const subject = `${n} new on the Exchange for ${input.orgName}`;
+  return {
+    subject,
+    ...render({
+      preheader: input.items[0]?.title ?? subject,
+      heading: "New on the Exchange",
+      paragraphs: [
+        n > input.items.length
+          ? `The first ${input.items.length} of ${n} updates for ${input.orgName}. Buyers stay anonymous until they accept an introduction.`
+          : `Updates for ${input.orgName}. Buyers stay anonymous until they accept an introduction.`,
+      ],
+      list: input.items.map((i) => ({ title: i.title, detail: i.body ?? undefined, href: i.href })),
+      cta: { label: "Open the Exchange", href: input.openUrl },
+      footer: [
+        "Sent at most once a day, only when there is something new.",
+        `Change what you get: ${input.preferencesUrl}`,
+        `Stop all Exchange emails: ${input.unsubscribeUrl}`,
+      ],
+    }),
+  };
+}

@@ -684,3 +684,98 @@ export async function getNeedIntros(orgSlug: string, needId: string): Promise<Lo
     () => [],
   );
 }
+
+/* ── Notifications (0064) ─────────────────────────────────────────────── */
+
+export interface ExchangePrefs {
+  alerts: "off" | "digest" | "instant";
+  /** Empty means every category this workspace offers in. */
+  categoryIds: string[];
+  emails: boolean;
+  quietStart: number | null;
+  quietEnd: number | null;
+  digestHour: number;
+  timezone: string;
+  /** Categories this workspace has offerings in, for the picker. */
+  offeredCategoryIds: string[];
+}
+
+const DEFAULT_PREFS: ExchangePrefs = {
+  alerts: "digest",
+  categoryIds: [],
+  emails: true,
+  quietStart: null,
+  quietEnd: null,
+  digestHour: 8,
+  timezone: "UTC",
+  offeredCategoryIds: [],
+};
+
+/** This person's Exchange notification settings in this workspace. */
+export async function getExchangePrefs(orgSlug: string): Promise<Loaded<ExchangePrefs>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getExchangePrefs");
+      const { data: auth } = await db.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) return DEFAULT_PREFS;
+      const [{ data: pref }, { data: offered }] = await Promise.all([
+        db
+          .from("notification_preferences")
+          .select("exchange_alerts, exchange_alert_category_ids, exchange_emails, quiet_start_hour, quiet_end_hour, digest_hour, timezone")
+          .eq("org_id", orgId)
+          .eq("user_id", userId)
+          .maybeSingle(),
+        db.from("exchange_offerings").select("category_id").eq("org_id", orgId).is("deleted_at", null).limit(500),
+      ]);
+      const p = pref as Row | null;
+      return {
+        alerts: (["off", "digest", "instant"].includes(String(p?.exchange_alerts)) ? p!.exchange_alerts : "digest") as ExchangePrefs["alerts"],
+        categoryIds: Array.isArray(p?.exchange_alert_category_ids) ? (p!.exchange_alert_category_ids as unknown[]).map(String) : [],
+        emails: p ? p.exchange_emails !== false : true,
+        quietStart: num(p?.quiet_start_hour),
+        quietEnd: num(p?.quiet_end_hour),
+        digestHour: num(p?.digest_hour) ?? 8,
+        timezone: str(p?.timezone) ?? "UTC",
+        offeredCategoryIds: [...new Set(((offered ?? []) as Row[]).map((o) => str(o.category_id)).filter((x): x is string => !!x))],
+      };
+    },
+    () => DEFAULT_PREFS,
+  );
+}
+
+export interface ExchangeNotice {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  href: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** This person's Exchange updates in this workspace, newest first (DN-78). */
+export async function getExchangeNotices(orgSlug: string): Promise<Loaded<ExchangeNotice[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getExchangeNotices");
+      const { data, error } = await db
+        .from("exchange_notifications")
+        .select("id, kind, title, body, href, read_at, created_at")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw new Error(`getExchangeNotices: ${error.message}`);
+      return ((data ?? []) as Row[]).map((r) => ({
+        id: String(r.id),
+        kind: String(r.kind),
+        title: String(r.title),
+        body: str(r.body),
+        href: String(r.href),
+        readAt: str(r.read_at),
+        createdAt: String(r.created_at),
+      }));
+    },
+    () => [],
+  );
+}

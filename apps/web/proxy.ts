@@ -73,6 +73,8 @@ const PUBLIC_PREFIXES = [
   /* The daily digest's own off switch. A signed token is its authority, and
      the person clicking it from their mail app may not be signed in. */
   "/api/notifications/unsubscribe",
+  /* The Exchange emails' off switch (0064): the same reasoning, its own token. */
+  "/api/notifications/exchange-unsubscribe",
   /* The top of the funnel. A visitor who has typed their domain into the
      landing page has not signed in yet by construction — bouncing them to
      /login here would put the sign-up wall back in front of the value, which

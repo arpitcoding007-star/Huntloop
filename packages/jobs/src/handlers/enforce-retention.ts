@@ -61,8 +61,10 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
   /* DN-53: unanswered introduction requests and quiet introductions go
      stale; requests past their decide-by date lapse (0063). */
   const { data: exchangeExpired, error: expireError } = await db.rpc("exchange_expire", {});
+  const { data: noticesPruned } = await db.rpc("exchange_prune_notifications", {});
   const exchange = {
     pruned: exchangeError ? `failed: ${exchangeError.message}` : (exchangePruned ?? null),
+    notices: noticesPruned ?? null,
     expired: expireError ? `failed: ${expireError.message}` : (exchangeExpired ?? null),
   };
 

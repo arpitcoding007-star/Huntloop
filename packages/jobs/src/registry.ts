@@ -72,6 +72,7 @@ import { clusterDemandJob } from "./handlers/cluster-demand.ts";
 import { matchNeeds } from "./handlers/match-needs.ts";
 import { scheduleMatching } from "./handlers/schedule-matching.ts";
 import { createIntroOpportunities } from "./handlers/create-intro-opportunities.ts";
+import { sendExchangeNotifications } from "./handlers/send-exchange-notifications.ts";
 import { schedulePreferences } from "./handlers/schedule-preferences.ts";
 import { learnPreferencesJob } from "./handlers/learn-preferences.ts";
 import { checkMailboxDomain } from "./handlers/check-mailbox-domain.ts";
@@ -113,6 +114,7 @@ export const HANDLERS: Record<JobName, JobHandler> = {
   schedule_matching: scheduleMatching,
   match_needs: matchNeeds,
   create_intro_opportunities: createIntroOpportunities,
+  send_exchange_notifications: sendExchangeNotifications,
   schedule_preferences: schedulePreferences,
   learn_preferences: learnPreferencesJob,
   check_mailbox_domain: (ctx) => checkMailboxDomain(ctx),
