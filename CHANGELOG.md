@@ -15,6 +15,10 @@ production).
 - Autonomy 2 (“Approve the first”) sent the first message without approval.
   It now waits for a person; follow-ups then send.
 
+### Performance
+- Functions run in Sydney, beside the database.
+- The home page keeps the public plans for five minutes.
+
 ### Pass 22 gaps — needs migration **0071**
 - Jump-to finds companies, opportunities and people.
 - Settings → You edits your name, kind of work and sign-in email.

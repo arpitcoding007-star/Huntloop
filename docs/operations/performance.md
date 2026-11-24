@@ -56,6 +56,12 @@ mattering again. That is the house style: record the measurement, not the
 belief.
 {% endhint %}
 
+## The home page (25 Nov 2026)
+
+Measured from India before the change: home 0.7 to 1.2 s to first byte, 2.7 s and more when cold; pages with no query 0.4 s. The page asked for the plans on every visit, from Virginia, of a database in Sydney that answered in about 2 ms.
+
+Two changes: functions moved to `syd1`, and the public plans are read without a session and kept for five minutes (`listPublicPlans`). Locally, six visits against a database slowed to 0.8 s made one query: 1.18 s, then about 0.05 s. A pricing change reaches the home page within five minutes; signed-in screens read it at once.
+
 ## Server-side
 
 | Technique | Where |
