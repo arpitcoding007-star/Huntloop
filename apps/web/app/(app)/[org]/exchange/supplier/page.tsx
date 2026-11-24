@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { exchangeMetadata, isExchangeEnabled } from "../../../../../lib/exchange/flag";
 import { Note } from "@huntloop/ui";
-import { getMatchedCards, getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
+import { getIntroList, getMatchedCards, getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
 import { canAdmin, canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { OfferingsEditor, ProfileForm } from "./SupplierForms";
 import { MatchedRequests } from "./MatchedRequests";
@@ -15,10 +15,11 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
   const { org } = await params;
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
-  const [{ data: supplier }, { data: categories }, { data: cards }] = await Promise.all([
+  const [{ data: supplier }, { data: categories }, { data: cards }, { data: intros }] = await Promise.all([
     getSupplier(org),
     listExchangeCategories(),
     getMatchedCards(org),
+    getIntroList(org),
   ]);
 
   return (
@@ -44,7 +45,7 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
         ) : (
           <Note tone="info">Create the profile first. Offerings are listed under it.</Note>
         )}
-        {supplier.profile && <MatchedRequests cards={cards} />}
+        {supplier.profile && <MatchedRequests org={org} cards={cards} intros={intros} canWrite={canWrite(viewer)} />}
       </div>
     </div>
   );

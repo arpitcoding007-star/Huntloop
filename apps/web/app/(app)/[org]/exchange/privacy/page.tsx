@@ -105,7 +105,7 @@ export default async function ExchangePrivacyPage({ params }: { params: Promise<
         </Card>
 
         <Card>
-          <CardHeader title="Your data" description="Your requests, their matches, your questionnaire transcripts and this log, as one JSON file." />
+          <CardHeader title="Your data" description="Your requests, their matches, your questionnaire transcripts, your introductions and their messages, and this log, as one JSON file." />
           <div className="mt-3">
             <ExportButton org={org} />
           </div>

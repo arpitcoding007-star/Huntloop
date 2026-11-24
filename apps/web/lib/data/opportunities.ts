@@ -105,7 +105,7 @@ export async function listOpportunities(
       const { data, error } = await db
         .from("opportunities")
         .select(
-          `id, company_id, priority, priority_reason, status, first_seen_at,
+          `id, company_id, priority, priority_reason, origin, status, first_seen_at,
            icps(name, products(id, name, deleted_at)),
            companies!inner(name, canonical_domain, industry,
              company_triggers(trigger_type, event_date, deleted_at)),
@@ -195,7 +195,7 @@ export async function getOpportunity(
       const { data, error } = await db
         .from("opportunities")
         .select(
-          `id, company_id, priority, priority_reason, status, confidence, first_seen_at,
+          `id, company_id, priority, priority_reason, origin, status, confidence, first_seen_at,
            owner_id, why_this_company, identified_problem, potential_gap,
            why_now, why_now_written_at, current_approach, potential_use_case, outreach_angle,
            next_step, next_step_due_at, estimated_value_cents,
@@ -257,6 +257,7 @@ export async function getOpportunity(
       return {
         ...fixture,
         companyId: null,
+        statedNeed: false,
         /* Fixture prose has no write date; the page shows none rather than an invented one. */
         whyNowWrittenAt: null,
         estimatedValueCents: null,
@@ -417,6 +418,7 @@ function toRow(o: (typeof OPPORTUNITIES)[number]): OpportunityRow {
     domain: o.domain,
     priority: o.priority,
     priorityReason: o.priorityReason,
+    statedNeed: false,
     score: o.score,
     scoreExplanation: o.scoreExplanation,
     confidence: o.confidence,

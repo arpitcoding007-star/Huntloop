@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exchangeMetadata, isExchangeEnabled } from "../../../../../../lib/exchange/flag";
 import { Badge, Card, Note } from "@huntloop/ui";
-import { getNeed } from "../../../../../../lib/data/exchange";
+import { getNeed, getNeedIntros } from "../../../../../../lib/data/exchange";
+import { IntroDecision } from "../../intros/IntroControls";
 import { canWrite, currentViewer } from "../../../../../../lib/data/membership";
 import { formatMoney, placeLabel, STATUS_LABEL, timelineLabel } from "../../../../../../lib/exchange/format";
 import { uuidSchema } from "../../../../../../lib/validation";
@@ -20,8 +21,9 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
   if (!uuidSchema.safeParse(id).success) notFound();
-  const { data: need } = await getNeed(org, id);
+  const [{ data: need }, { data: intros }] = await Promise.all([getNeed(org, id), getNeedIntros(org, id)]);
   if (!need) notFound();
+  const asking = intros.filter((i) => i.state === "requested" && i.direction === "provider");
   const writable = canWrite(viewer);
 
   const facts: [string, string | null][] = [
@@ -60,6 +62,25 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-6">
+          {asking.length > 0 && (
+            <section aria-labelledby="asking" className="space-y-3">
+              <h2 id="asking" className="text-[15px] font-semibold text-fg">
+                Suppliers asking to talk
+              </h2>
+              {asking.map((i) => (
+                <Card key={i.id}>
+                  <p className="text-[14px] font-semibold text-fg">{i.providerName ?? "A supplier"} would like to talk about this request</p>
+                  <p className="mt-0.5 text-[12px] text-fg-muted">About their offering “{i.offeringTitle ?? ""}”. They do not know who you are.</p>
+                  {i.message && <p className="mt-2 text-[13px] text-fg">“{i.message}”</p>}
+                  {writable && (
+                    <div className="mt-3">
+                      <IntroDecision org={org} introId={i.id} />
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </section>
+          )}
           <section aria-labelledby="matches">
             <h2 id="matches" className="text-[15px] font-semibold text-fg">
               Matched suppliers
@@ -76,7 +97,7 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
                   No supplier matches yet. Open requests are matched every hour, and again whenever new suppliers list in this category.
                 </Note>
               ) : (
-                <MatchList org={org} matches={need.matchList} canWrite={writable} />
+                <MatchList org={org} matches={need.matchList} canWrite={writable} intros={intros} open={need.status === "open"} />
               )}
             </div>
           </section>

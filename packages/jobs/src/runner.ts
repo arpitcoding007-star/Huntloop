@@ -269,6 +269,10 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
   /* 0060: Exchange matching. No model call and no provider spend; does
      nothing until a category has matching switched on. */
   "schedule_matching",
+  /* 0063: accepted Exchange introductions become opportunities in the
+     supplier's workspace. Every tick, so the supplier sees the stated need
+     within a minute of the buyer accepting; bounded per tick, no spend. */
+  "create_intro_opportunities",
 ]);
 
 /**

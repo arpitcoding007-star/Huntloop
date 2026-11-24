@@ -95,7 +95,9 @@ export type JobName =
   | "profile_company"
   /* 0060: Exchange — match open needs against offerings, and keep them current. */
   | "schedule_matching"
-  | "match_needs";
+  | "match_needs"
+  /* 0063: an accepted introduction becomes a "Stated need" opportunity. */
+  | "create_intro_opportunities";
 
 export interface JobRow {
   id: string;

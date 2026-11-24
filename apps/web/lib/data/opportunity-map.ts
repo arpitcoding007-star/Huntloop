@@ -50,6 +50,8 @@ export interface OpportunityRow {
   domain: string;
   priority: Priority;
   priorityReason: string;
+  /** A buyer stated this need on the Exchange and accepted an introduction (0063). Outreach is off for it. */
+  statedNeed: boolean;
   /** Null until the opportunity is scored — never shown as 0 (TRUST-008). */
   score: number | null;
   scoreExplanation: string;
@@ -96,6 +98,8 @@ export interface OpportunityDetail {
   employees: string;
   priority: Priority;
   priorityReason: string;
+  /** A buyer stated this need on the Exchange and accepted an introduction (0063). Outreach is off for it. */
+  statedNeed: boolean;
   /** Null until the opportunity is scored — never shown as 0 (TRUST-008). */
   score: number | null;
   scoreExplanation: string;
@@ -207,6 +211,7 @@ export interface ListQueryRow {
   company_id?: string;
   priority: Priority;
   priority_reason: string;
+  origin?: string | null;
   status: string;
   first_seen_at: string;
   /** The profile, and through it the product (P5). Null when unbound. */
@@ -243,6 +248,7 @@ export interface DetailQueryRow {
   estimated_value_cents?: number | null;
   priority: Priority;
   priority_reason: string;
+  origin?: string | null;
   status: string;
   confidence: "high" | "medium" | "low" | null;
   first_seen_at: string;
@@ -522,6 +528,7 @@ export function mapListRow(
     industry: r.companies.industry ?? "—",
     priority: r.priority,
     priorityReason: r.priority_reason,
+    statedNeed: r.origin === "exchange",
     score: score?.score ?? null,
     scoreExplanation: score?.explanation ?? "Not scored yet.",
     confidence: score?.confidence ?? "low",
@@ -683,6 +690,7 @@ export function mapDetail(
       r.companies.employee_count === null ? "—" : String(r.companies.employee_count),
     priority: r.priority,
     priorityReason: r.priority_reason,
+    statedNeed: r.origin === "exchange",
     score: score?.score ?? null,
     scoreExplanation: score?.explanation ?? "Not scored yet.",
     confidence: score?.confidence ?? r.confidence ?? "low",

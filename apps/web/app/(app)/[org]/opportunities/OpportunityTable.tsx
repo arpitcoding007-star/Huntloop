@@ -273,7 +273,12 @@ export function OpportunityTable({
       header: "Priority",
       width: "104px",
       sortable: true,
-      render: (o) => <PriorityBadge priority={o.priority} reason={o.priorityReason} />,
+      render: (o) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <PriorityBadge priority={o.priority} reason={o.priorityReason} />
+          {o.statedNeed && <Badge variant="brand">Stated need</Badge>}
+        </span>
+      ),
     },
     {
       key: "score",

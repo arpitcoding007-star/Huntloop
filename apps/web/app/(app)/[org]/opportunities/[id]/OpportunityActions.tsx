@@ -52,6 +52,7 @@ export function OpportunityActions({
   canWrite,
   crmConnected = false,
   closed = false,
+  statedNeed = false,
 }: {
   org: string;
   opportunityId: string;
@@ -67,6 +68,12 @@ export function OpportunityActions({
   crmConnected?: boolean;
   /** Won, lost or archived: nothing left to rule out. */
   closed?: boolean;
+  /**
+   * An Exchange opportunity (DN-72): the buyer asked to talk, in an
+   * introduction. Cold outreach is off for it — the database refuses the
+   * enrolment too (0059) — and the conversation happens in the introduction.
+   */
+  statedNeed?: boolean;
 }) {
   const [pushing, startPush] = useTransition();
   /* One open panel at a time, as one value. M-17 was two booleans that could
@@ -101,9 +108,11 @@ export function OpportunityActions({
         icon={Send}
         onClick={() => toggle("enrol")}
         pending={
-          campaigns.length === 0
-            ? "There are no campaigns to add this to yet. Create one under Outreach."
-            : undefined
+          statedNeed
+            ? "This buyer came through the Exchange. Reply in the introduction instead — they never go into a campaign."
+            : campaigns.length === 0
+              ? "There are no campaigns to add this to yet. Create one under Outreach."
+              : undefined
         }
       >
         Add to campaign

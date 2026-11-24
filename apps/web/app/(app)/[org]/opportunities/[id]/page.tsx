@@ -139,6 +139,7 @@ export default async function OpportunityPage({
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="hl-heading text-fg">{o.company}</h1>
             <PriorityBadge priority={o.priority} size="md" reason={o.priorityReason} />
+            {o.statedNeed && <Badge variant="brand">Stated need</Badge>}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-muted">
             <a
@@ -180,6 +181,7 @@ export default async function OpportunityPage({
             canWrite={canWrite(viewer)}
             crmConnected={crmConnected}
             closed={["won", "lost", "archived"].includes(o.stage)}
+            statedNeed={o.statedNeed}
           />
         </div>
       </header>

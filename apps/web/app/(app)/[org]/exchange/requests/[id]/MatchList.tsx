@@ -6,6 +6,8 @@ import { Star, Undo2, X } from "lucide-react";
 import type { DimensionKey, MatchView } from "../../../../../../lib/data/exchange";
 import { AVAILABILITY_LABEL, formatPriceRange, placeLabel } from "../../../../../../lib/exchange/format";
 import { setMatchStateAction } from "../../actions";
+import { AskIntro, IntroLink } from "../../intros/IntroControls";
+import type { NeedIntro } from "../../../../../../lib/data/exchange";
 
 const DIMENSIONS: { key: DimensionKey; label: string }[] = [
   { key: "geography", label: "Location" },
@@ -23,7 +25,22 @@ type Result = { ok: true; message?: string } | { ok: false; error: string } | nu
  * measured reads "unknown", never a low number. Dismissed matches fold away
  * but are kept, so a dismissal can be undone.
  */
-export function MatchList({ org, matches, canWrite }: { org: string; matches: MatchView[]; canWrite: boolean }) {
+export function MatchList({
+  org,
+  matches,
+  canWrite,
+  intros,
+  open,
+}: {
+  org: string;
+  matches: MatchView[];
+  canWrite: boolean;
+  intros: NeedIntro[];
+  /** The request is open, so introductions may be asked for. */
+  open: boolean;
+}) {
+  const introFor = (m: MatchView) =>
+    m.offering ? (intros.find((i) => i.offeringId === m.offering!.id && (i.state === "requested" || i.state === "accepted")) ?? intros.find((i) => i.offeringId === m.offering!.id) ?? null) : null;
   const [result, setResult] = useState<Result>(null);
   const [showDismissed, setShowDismissed] = useState(false);
   const live = matches.filter((m) => m.state !== "dismissed");
@@ -33,14 +50,14 @@ export function MatchList({ org, matches, canWrite }: { org: string; matches: Ma
     <div className="space-y-3">
       <FormMessage result={result} />
       {live.map((m) => (
-        <MatchCard key={m.id} org={org} match={m} canWrite={canWrite} onResult={setResult} />
+        <MatchCard key={m.id} org={org} match={m} canWrite={canWrite} onResult={setResult} intro={introFor(m)} open={open} />
       ))}
       {dismissed.length > 0 && (
         <Button variant="ghost" size="sm" onClick={() => setShowDismissed((v) => !v)}>
           {showDismissed ? "Hide" : "Show"} {dismissed.length} dismissed
         </Button>
       )}
-      {showDismissed && dismissed.map((m) => <MatchCard key={m.id} org={org} match={m} canWrite={canWrite} onResult={setResult} />)}
+      {showDismissed && dismissed.map((m) => <MatchCard key={m.id} org={org} match={m} canWrite={canWrite} onResult={setResult} intro={introFor(m)} open={open} />)}
     </div>
   );
 }
@@ -50,11 +67,15 @@ function MatchCard({
   match: m,
   canWrite,
   onResult,
+  intro,
+  open,
 }: {
   org: string;
   match: MatchView;
   canWrite: boolean;
   onResult: (r: Result) => void;
+  intro: NeedIntro | null;
+  open: boolean;
 }) {
   const [pending, start] = useTransition();
   const act = (state: "new" | "shortlisted" | "dismissed") =>
@@ -162,9 +183,13 @@ function MatchCard({
           )}
         </div>
       )}
-      <p className="mt-2 text-[11px] text-fg-muted">
-        Introductions are not open yet. Shortlisting tells us who you would want to hear from when they are.
-      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {intro ? (
+          <IntroLink org={org} introId={intro.id} state={intro.state} side="buyer" />
+        ) : canWrite && open && m.offering && m.state !== "dismissed" ? (
+          <AskIntro org={org} matchId={m.id} side="buyer" supplierName={m.provider?.name ?? null} />
+        ) : null}
+      </div>
     </Card>
   );
 }
