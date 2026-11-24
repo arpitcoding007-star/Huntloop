@@ -7,6 +7,7 @@ import type { DimensionKey, MatchView } from "../../../../../../lib/data/exchang
 import { AVAILABILITY_LABEL, formatPriceRange, placeLabel } from "../../../../../../lib/exchange/format";
 import { setMatchStateAction } from "../../actions";
 import { AskIntro, IntroLink } from "../../intros/IntroControls";
+import { ReportButton } from "../../ReportButton";
 import type { NeedIntro } from "../../../../../../lib/data/exchange";
 
 const DIMENSIONS: { key: DimensionKey; label: string }[] = [
@@ -189,6 +190,7 @@ function MatchCard({
         ) : canWrite && open && m.offering && m.state !== "dismissed" ? (
           <AskIntro org={org} matchId={m.id} side="buyer" supplierName={m.provider?.name ?? null} />
         ) : null}
+        {canWrite && m.offering && <ReportButton org={org} subject="offering" subjectId={m.offering.id} label="Report this offering" />}
       </div>
     </Card>
   );

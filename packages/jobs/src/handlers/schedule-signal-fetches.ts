@@ -24,6 +24,7 @@
  * package has no precedent for and no way to test without a live project.
  */
 import { enqueue } from "../queue.ts";
+import { EXCHANGE_ORIGIN } from "../firewall.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -52,6 +53,9 @@ export async function scheduleSignalFetches(_ctx: JobContext): Promise<JobOutcom
        fetch every 48 hours. P2-5: no Apollo id is required any more, since
        the company's own job board is read without one. */
     .select("id, org_id, opportunities!inner(status)")
+    /* Exchange firewall (0066): never fetched, and never stamped as checked,
+       so without this filter it would head every batch forever. */
+    .neq("origin", EXCHANGE_ORIGIN)
     .is("deleted_at", null)
     .is("opportunities.deleted_at", null)
     .not("opportunities.status", "in", "(won,lost,archived)")

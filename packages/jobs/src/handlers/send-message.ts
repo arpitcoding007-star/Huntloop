@@ -40,6 +40,7 @@ import { pauseState } from "@huntloop/db/pause";
 import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../mailbox/index.ts";
 import { bareDomain, checkContent } from "../gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../business-hours.ts";
+import { isExchangeOrigin } from "../firewall.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SendPayload {
@@ -853,7 +854,7 @@ export async function withdrawnOrHeld(ctx: JobContext, enrollmentId: string | nu
       "enrollments",
       `status, parked_reason, deleted_at,
        campaigns(status, deleted_at),
-       opportunities(status, deleted_at)`,
+       opportunities(status, deleted_at, origin, companies(origin))`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -872,6 +873,13 @@ export async function withdrawnOrHeld(ctx: JobContext, enrollmentId: string | nu
   }
   if (!opportunity || opportunity.deleted_at) {
     return { kind: "withdrawn", why: "the opportunity was removed." };
+  }
+  /* Exchange firewall (0066): an approved email waiting to leave when the
+     company was met through the Exchange must not go out. The database stops
+     the sequence; this is the backstop before the send. */
+  const company = Array.isArray(opportunity.companies) ? opportunity.companies[0] : opportunity.companies;
+  if (isExchangeOrigin(opportunity) || isExchangeOrigin(company)) {
+    return { kind: "withdrawn", why: "you met this company through the Exchange." };
   }
   if (CLOSED_STAGES.has(String(opportunity.status))) {
     return { kind: "withdrawn", why: `the opportunity is ${opportunity.status}.` };

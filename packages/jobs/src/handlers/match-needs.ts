@@ -17,19 +17,28 @@
  *      evidence (the `requirement` dimension) and one reason each. Charged to
  *      the buyer's workspace. With no model, a pause or no budget, the
  *      deterministic result stands — the model adds a dimension, it is never
- *      required for a match.
+ *      required for a match. When the request, the candidates and their
+ *      evidence are what they were last time, the stored answer is reused
+ *      (0066): an open request is re-matched daily, and a buyer should not pay
+ *      daily for the same question.
+ *   4. Matches whose offering is paused, removed or no longer fits are deleted.
+ *      One that was merely not recalled (a suspended supplier, a category
+ *      over the limit) is left as it was.
  */
+import { createHash } from "node:crypto";
 import { explainMatch, MAX_EXPLAIN_CANDIDATES, type ExplainMatchInput } from "@huntloop/ai";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import {
   applyExplanations,
   eligible,
   rankMatches,
+  reusableExplanations,
   scoreMatch,
   splitMustHaves,
   type MatchNeed,
   type MatchOffering,
   type MatchResult,
+  type StoredExplanation,
 } from "../exchange-match.ts";
 import { OrgScope, embedded } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
@@ -77,15 +86,27 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
     typeof r === "string" ? r : String((r as Record<string, unknown>).exchange_recall_offerings ?? (r as Record<string, unknown>).id),
   );
 
+  const { data: existingRows, error: existingError } = await db
+    .from("exchange_matches")
+    .select("id, offering_id, explained")
+    .eq("need_id", row.id)
+    .limit(1000);
+  if (existingError) return { ok: false, error: `match_needs: ${existingError.message}` };
+  const existing = (existingRows ?? []) as { id: string; offering_id: string; explained: StoredExplanation | null }[];
+
+  /* Read beside the candidates, so a match left over from an earlier run is
+     judged by the same rules. */
+  const recalledIds = new Set(ids);
+  const readIds = [...new Set([...ids, ...existing.map((m) => m.offering_id)])];
   let offerings: unknown[] = [];
-  if (ids.length) {
+  if (readIds.length) {
     const { data, error: offeringsError } = await db
       .from("exchange_offerings")
       .select(
         "id, org_id, category_id, title, description, price_from, price_to, currency, moq, availability, availability_as_of, " +
           "serves_global, serves_countries, exchange_provider_profiles(name, claimed_at, verified_at, deleted_at)",
       )
-      .in("id", ids)
+      .in("id", readIds)
       .eq("status", "active")
       .is("deleted_at", null);
     if (offeringsError) return { ok: false, error: `match_needs: ${offeringsError.message}` };
@@ -100,6 +121,7 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
   };
 
   let results: MatchResult[] = [];
+  const fits = new Set<string>();
   const text = new Map<string, { title: string; description: string | null; provider: string }>();
   for (const raw of offerings as (Omit<MatchOffering, "provider"> & {
     title: string;
@@ -119,13 +141,15 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
       provider,
     };
     if (!eligible(n, offering)) continue;
+    fits.add(raw.id);
+    if (!recalledIds.has(raw.id)) continue;
     results.push(scoreMatch(n, offering, ctx.now));
     text.set(raw.id, { title: String(raw.title ?? ""), description: raw.description ?? null, provider: String(provider.name ?? "") });
   }
 
   results = rankMatches(results);
-  const explained = await explain(row, category, results, text);
-  if (explained) results = rankMatches(explained);
+  const explained = await explain(row, category, results, text, new Map(existing.map((m) => [m.offering_id, m.explained])));
+  if (explained) results = rankMatches(explained.results);
 
   if (results.length) {
     const { error: writeError } = await db.from("exchange_matches").upsert(
@@ -137,6 +161,7 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
         dimensions: r.dimensions,
         explanation: r.explanation,
         cited: r.cited,
+        explained: explained?.stored.get(r.offeringId) ?? null,
         computed_at: ctx.now.toISOString(),
       })),
       { onConflict: "need_id,offering_id" },
@@ -144,10 +169,34 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
     if (writeError) return { ok: false, error: `match_needs: ${writeError.message}` };
   }
 
+  const stale = existing.filter((m) => !fits.has(m.offering_id)).map((m) => m.id);
+  if (stale.length) {
+    const { error: staleError } = await db.from("exchange_matches").delete().in("id", stale);
+    if (staleError) return { ok: false, error: `match_needs: ${staleError.message}` };
+  }
+
   return {
     ok: true,
-    result: { candidates: offerings.length, matched: results.length, explained: explained ? "yes" : "no" },
+    result: {
+      candidates: recalledIds.size,
+      matched: results.length,
+      removed: stale.length,
+      explained: explained ? (explained.reused ? "unchanged" : "yes") : "no",
+    },
   };
+}
+
+/**
+ * A key of everything the model would read, and the prompt it would read it
+ * with. Candidates are sorted: a different order is the same question.
+ */
+export function explainKey(input: ExplainMatchInput): string {
+  const candidates = [...input.candidates]
+    .sort((a, b) => a.offeringId.localeCompare(b.offeringId))
+    .map((c) => ({ ...c, evidence: [...c.evidence].sort((a, b) => a.id.localeCompare(b.id)) }));
+  return createHash("sha256")
+    .update(JSON.stringify({ prompt: explainMatch.prompt.version, need: input.need, candidates }))
+    .digest("hex");
 }
 
 /**
@@ -160,12 +209,13 @@ async function explain(
   category: { name: string; attributes: unknown },
   ranked: MatchResult[],
   text: Map<string, { title: string; description: string | null; provider: string }>,
-): Promise<MatchResult[] | null> {
+  previous: Map<string, StoredExplanation | null>,
+): Promise<{ results: MatchResult[]; stored: Map<string, StoredExplanation>; reused: boolean } | null> {
   const top = ranked.filter((r) => r.score !== null).slice(0, MAX_EXPLAIN_CANDIDATES);
   if (!top.length) return null;
 
   const db = OrgScope.global();
-  const { data: evidenceRows } = await db
+  const { data: evidenceRows, error: evidenceError } = await db
     .from("exchange_offering_evidence")
     .select("id, offering_id, kind, claim, source_url")
     .in(
@@ -173,7 +223,11 @@ async function explain(
       top.map((r) => r.offeringId),
     )
     .order("observed_at", { ascending: false })
+    /* A second key, so ties read in one order and the cap keeps the same rows. */
+    .order("id", { ascending: true })
     .limit(MAX_EXPLAIN_CANDIDATES * 8);
+  /* An unread evidence table must not be judged, or remembered, as no evidence. */
+  if (evidenceError) return null;
   const evidence = new Map<string, ExplainMatchInput["candidates"][number]["evidence"]>();
   for (const e of (evidenceRows ?? []) as { id: string; offering_id: string; kind: "fact" | "inference" | "unknown"; claim: string; source_url: string | null }[]) {
     const list = evidence.get(e.offering_id) ?? [];
@@ -203,10 +257,26 @@ async function explain(
     })),
   };
 
+  const key = explainKey(input);
+  const counts = new Map(input.candidates.map((c) => [c.offeringId, c.evidence.length]));
+  const topIds = top.map((r) => r.offeringId);
+  const before = reusableExplanations(key, topIds, previous);
+  if (before) {
+    return {
+      results: applyExplanations(ranked, before, mustHaves.length, counts),
+      stored: new Map(topIds.map((id) => [id, previous.get(id)!])),
+      reused: true,
+    };
+  }
+
   try {
     const run = await runForOrg(new OrgScope(need.org_id), explainMatch, input);
-    const counts = new Map(input.candidates.map((c) => [c.offeringId, c.evidence.length]));
-    return applyExplanations(ranked, run.output.candidates, mustHaves.length, counts);
+    const answers = new Map(run.output.candidates.map((c) => [c.offeringId, c]));
+    return {
+      results: applyExplanations(ranked, run.output.candidates, mustHaves.length, counts),
+      stored: new Map(topIds.map((id) => [id, { key, candidate: answers.get(id) ?? null }])),
+      reused: false,
+    };
   } catch (e) {
     if (!(e instanceof AiUnavailable)) {
       console.error(`match_needs ${need.id}: explain_match failed, keeping measured dimensions: ${e instanceof Error ? e.message : String(e)}`);

@@ -7,7 +7,11 @@ description: >-
 # The heartbeat
 
 {% hint style="info" %}
-**Current state (re-checked 19 Nov 2026).** The committed driver is
+**Current state (audited 24 Nov 2026): the engine does not run in production.**
+`CRON_SECRET` is not a GitHub secret, so every "Engine tick" run fails, and
+GitHub starts this 5-minute schedule only every 4 to 8 hours. **Move to Inngest
+(B) or a paid Vercel cron (C); treat GitHub Actions as a stopgap.** The steps are
+in [Switching to Inngest](#switching-to-inngest). The committed driver is
 `.github/workflows/tick.yml`: GitHub Actions calls `/api/jobs/tick` every five
 minutes. It does nothing until the repository has the secret `CRON_SECRET` and
 the variable `HUNTLOOP_URL`. `apps/web/vercel.json` has no `crons` block
@@ -63,7 +67,7 @@ members who may spend. Everything else in the table waits for the clock.
 
 Pick one.
 
-### A — GitHub Actions (committed, the default)
+### A — GitHub Actions (committed; a stopgap)
 
 `.github/workflows/tick.yml` runs every five minutes and calls the tick the way
 Vercel Cron did: `GET /api/jobs/tick` with `Authorization: Bearer $CRON_SECRET`.
@@ -73,13 +77,14 @@ Needs, under the repository's **Settings → Secrets and variables → Actions**
 * Secret **`CRON_SECRET`**: the same value as on the Vercel project.
 * Variable **`HUNTLOOP_URL`**: the production origin.
 
-GitHub may delay scheduled runs under load, and pauses schedules on a
-repository with no activity for 60 days. Each tick catches up, so that is
-acceptable for a heartbeat; a paused schedule is not, so check the workflow's
-run history if the engine goes quiet. It can also be run by hand
+GitHub delays scheduled runs under load: observed on this repository in
+November 2026, one run every 4 to 8 hours instead of every 5 minutes. It also
+pauses schedules on a repository with no activity for 60 days. At that rate the
+queue cannot keep up (see [Why a daily tick is not a slow engine](#why-a-daily-tick-is-not-a-slow-engine)),
+so use this only until Inngest or Vercel Cron is set up. It can also be run by hand
 (`workflow_dispatch`).
 
-### B — Inngest (free; keeps a run history)
+### B — Inngest (recommended; free; keeps a run history)
 
 Set **both** `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`, and
 `NEXT_PUBLIC_SITE_URL`. Then sync the app in the Inngest dashboard at
@@ -98,9 +103,21 @@ output is the tick report (jobs claimed, completed, failed).
 Inngest keeps a run history, retries the invocation itself, and can be paused —
 worth having once the engine is spending money on a customer's behalf. A plain
 cron is one timer with no memory: a dropped invocation simply did not happen,
-and nothing anywhere records that it did not. If you switch to Inngest, disable
-`tick.yml` so the engine is not driven twice (harmless, since claiming is
-`skip locked`, but it doubles the invocations).
+and nothing anywhere records that it did not.
+
+#### Switching to Inngest
+
+No code changes. In this order:
+
+1. Create an Inngest app and copy its event key and signing key.
+2. On the Vercel project (Production), set `INNGEST_EVENT_KEY`,
+   `INNGEST_SIGNING_KEY` and `NEXT_PUBLIC_SITE_URL`, then redeploy.
+3. Sync the app in Inngest at `https://<your domain>/api/inngest`.
+4. Wait five minutes and confirm a run whose output is the tick report, and that
+   `/api/health` no longer reports the queue as stalled.
+5. On GitHub, set the repository **variable** `ENGINE_DRIVER` to `inngest`.
+   `tick.yml` then skips its scheduled run instead of failing or driving the
+   engine twice. It can still be started by hand.
 
 One without the other is a half-wired integration that fails at the first
 invocation, so the app treats either-alone as **not configured** and the route

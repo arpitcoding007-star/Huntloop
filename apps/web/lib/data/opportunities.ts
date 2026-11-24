@@ -199,7 +199,7 @@ export async function getOpportunity(
            owner_id, why_this_company, identified_problem, potential_gap,
            why_now, why_now_written_at, current_approach, potential_use_case, outreach_angle,
            next_step, next_step_due_at, estimated_value_cents,
-           companies!inner(name, canonical_domain, industry, region,
+           companies!inner(name, origin, canonical_domain, industry, region,
              employee_count, description,
              company_triggers(trigger_type, event_date, strength, deleted_at),
              people(id, first_name, last_name, title, is_decision_maker,
@@ -258,6 +258,7 @@ export async function getOpportunity(
         ...fixture,
         companyId: null,
         statedNeed: false,
+        metOnExchange: false,
         /* Fixture prose has no write date; the page shows none rather than an invented one. */
         whyNowWrittenAt: null,
         estimatedValueCents: null,

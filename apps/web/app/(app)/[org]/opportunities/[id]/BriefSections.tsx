@@ -235,7 +235,7 @@ export function RaiseConfidenceCard({
             ))}
           </ul>
         )}
-        {canSpend && (
+        {canSpend && !intel.fromExchange && (
           <ResearchThisButton
             org={org}
             opportunityId={opportunityId}

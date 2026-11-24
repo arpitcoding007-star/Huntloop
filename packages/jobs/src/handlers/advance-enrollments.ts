@@ -133,7 +133,7 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
       "enrollments",
       `id, campaign_id, opportunity_id, current_step, mailbox_id,
        campaigns!inner(id, name, status, autonomy_level, product_id),
-       opportunities!inner(id, origin, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at)`,
+       opportunities!inner(id, origin, company_id, primary_person_id, outreach_angle, status, owner_id, deleted_at, companies(origin))`,
     )
     .eq("id", enrollmentId)
     .maybeSingle();
@@ -149,8 +149,12 @@ export async function advanceOne(scope: OrgScope, enrollmentId: string): Promise
   /* Firewall (0059). The trigger refuses the enrollment row itself; this is
      the backstop for a database without 0059, and it stops before a draft is
      written. An Exchange buyer is talked to inside their intro thread only. */
-  if (refusesExchange("advance_enrollments", opportunity, "opportunity")) {
-    await stop(scope, enrollmentId, "This opportunity came from Exchange, so it is never put in a sequence.");
+  if (
+    refusesExchange("advance_enrollments", opportunity, "opportunity") ||
+    /* 0066: the same buyer, met through another opportunity of their company. */
+    refusesExchange("advance_enrollments", one(opportunity?.companies), "company")
+  ) {
+    await stop(scope, enrollmentId, "You met this company through the Exchange, so it is never put in a sequence.");
     return "stopped";
   }
 

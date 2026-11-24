@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Field, FormMessage, Note, Select, Textarea } from "@huntloop/ui";
 import { Check, Handshake, Send, Share2, Undo2, X } from "lucide-react";
 import type { IntroMessage, IntroState } from "../../../../../lib/data/exchange";
+import { ReportButton } from "../ReportButton";
 import {
   decideIntroAction,
   markIntroReadAction,
@@ -257,6 +258,7 @@ export function Thread({
                   {m.side === side ? "You" : m.side === "buyer" ? "Buyer" : "Supplier"} ·{" "}
                   {new Date(m.createdAt).toLocaleString("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC
                 </p>
+                {m.side !== side && <ReportButton org={org} subject="message" subjectId={m.id} label="Report" />}
               </div>
             </li>
           ))}

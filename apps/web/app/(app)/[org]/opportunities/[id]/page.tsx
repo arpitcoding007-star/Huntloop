@@ -181,7 +181,7 @@ export default async function OpportunityPage({
             canWrite={canWrite(viewer)}
             crmConnected={crmConnected}
             closed={["won", "lost", "archived"].includes(o.stage)}
-            statedNeed={o.statedNeed}
+            statedNeed={o.statedNeed || Boolean(o.metOnExchange)}
           />
         </div>
       </header>

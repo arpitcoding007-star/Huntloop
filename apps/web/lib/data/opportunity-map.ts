@@ -98,6 +98,8 @@ export interface OpportunityDetail {
   employees: string;
   priority: Priority;
   priorityReason: string;
+  /** The company was met through the Exchange, on this opportunity or another (0066). Outreach is off. */
+  metOnExchange: boolean;
   /** A buyer stated this need on the Exchange and accepted an introduction (0063). Outreach is off for it. */
   statedNeed: boolean;
   /** Null until the opportunity is scored — never shown as 0 (TRUST-008). */
@@ -267,6 +269,8 @@ export interface DetailQueryRow {
   next_step_due_at?: string | null;
   companies: {
     name: string;
+    /** 0066 */
+    origin?: string | null;
     canonical_domain: string;
     industry: string | null;
     region: string | null;
@@ -691,6 +695,7 @@ export function mapDetail(
     priority: r.priority,
     priorityReason: r.priority_reason,
     statedNeed: r.origin === "exchange",
+    metOnExchange: r.origin === "exchange" || r.companies.origin === "exchange",
     score: score?.score ?? null,
     scoreExplanation: score?.explanation ?? "Not scored yet.",
     confidence: score?.confidence ?? r.confidence ?? "low",

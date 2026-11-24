@@ -42,7 +42,7 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, permanent: true, error: "enrich_person: no personId in payload." };
   }
 
-  const { data: person, error } = await scope.select("people", "id, origin, first_name, last_name, title, company_id, companies!inner(canonical_domain, name)")
+  const { data: person, error } = await scope.select("people", "id, origin, first_name, last_name, title, company_id, companies!inner(origin, canonical_domain, name)")
     .eq("id", personId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -55,6 +55,8 @@ export async function enrichPerson(ctx: JobContext): Promise<JobOutcome> {
   if (refused) return refused;
 
   const company = embedded(person.companies);
+  const companyRefused = refusesExchange("enrich_person", company, "company");
+  if (companyRefused) return companyRefused;
   const domain = String(company?.canonical_domain ?? "");
   if (!domain) {
     return { ok: false, permanent: true, error: "enrich_person: the company has no domain." };

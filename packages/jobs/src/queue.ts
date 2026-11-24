@@ -126,7 +126,7 @@ export interface EnqueueOptions {
 
 export interface Enqueued {
   id: string | null;
-  /** False when an identical job was already queued or running. */
+  /** False when an identical job was already queued or running, or the firewall refused it. */
   created: boolean;
 }
 
@@ -158,7 +158,9 @@ export async function enqueue(
     throw new Error(`enqueue(${options.name}): ${error.message}`);
   }
 
-  return { id: data ? String(data.id) : null, created: true };
+  /* No row back and no error: 0066's firewall dropped a job about an Exchange
+     company. Nothing was queued, so nothing is reported as queued. */
+  return { id: data ? String(data.id) : null, created: Boolean(data) };
 }
 
 /** Claims up to `limit` due jobs for this worker. Atomic — see `0008`. */

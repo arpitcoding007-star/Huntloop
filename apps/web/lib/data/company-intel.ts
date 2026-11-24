@@ -49,6 +49,8 @@ export interface CompanyIntel {
   lastResearchedAt: string | null;
   /** A person asked for research and it has not run yet. */
   researchAskedAt: string | null;
+  /** Met through the Exchange: never researched or enriched (0066 firewall). */
+  fromExchange: boolean;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- untyped PostgREST rows (DB-03). */
@@ -64,7 +66,7 @@ export async function getCompanyIntel(
         db
           .from("companies")
           .select(
-            "id, name, industry, employee_count, region, country, tech_stack, business_model, " +
+            "id, origin, name, industry, employee_count, region, country, tech_stack, business_model, " +
               "description, funding, leadership, last_researched_at, research_asked_at",
           )
           .eq("org_id", orgId)
@@ -218,6 +220,7 @@ export async function getCompanyIntel(
           .slice(0, 8),
         lastResearchedAt: c.last_researched_at ?? null,
         researchAskedAt: c.research_asked_at ?? null,
+        fromExchange: c.origin === "exchange",
       };
     },
     () => null,

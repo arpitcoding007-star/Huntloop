@@ -17,12 +17,12 @@
  */
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { enrichPerson } from "../src/handlers/enrich-person.ts";
-import { matchNeeds } from "../src/handlers/match-needs.ts";
+import { explainKey, matchNeeds } from "../src/handlers/match-needs.ts";
 import { enforceRetention } from "../src/handlers/enforce-retention.ts";
 import { createIntroOpportunities, placeholderDomain } from "../src/handlers/create-intro-opportunities.ts";
 import { allowedNow, inQuietHours, sendExchangeNotifications } from "../src/handlers/send-exchange-notifications.ts";
 import { verifyExchangeUnsubscribeToken } from "../src/email/exchange-token.ts";
-import { applyExplanations, eligible, scoreMatch, splitMustHaves, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
+import { reusableExplanations, applyExplanations, eligible, scoreMatch, splitMustHaves, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
 import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
 import { fetch as undiciFetch } from "undici";
@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
+import { enqueue } from "../src/queue.ts";
 import { contactAllowedAfter, sendMessage } from "../src/handlers/send-message.ts";
 import { preclassify } from "../src/mailbox/preclassify.ts";
 import { bareDomain, checkContent } from "../src/gate.ts";
@@ -1433,6 +1434,8 @@ console.log("\nsend_message — OUT-201: a withdrawn sequence's approved mail do
     ["a lost deal", liveEnrollment({ opportunity: { status: "lost" } }), "lost"],
     ["an opportunity closed as not a fit", liveEnrollment({ opportunity: { status: "archived" } }), "archived"],
     ["a removed opportunity", liveEnrollment({ opportunity: { deleted_at: "2026-11-14T09:00:00Z" } }), "removed"],
+    ["a company met through the Exchange", liveEnrollment({ opportunity: { origin: "engine", companies: { origin: "exchange" } } as never }), "Exchange"],
+    ["an Exchange opportunity", liveEnrollment({ opportunity: { origin: "exchange" } as never }), "Exchange"],
     ["a sequence that no longer exists", { data: null, error: null } as never, "no longer exists"],
   ];
   for (const [label, enrollment, says] of withdrawn) {
@@ -4407,6 +4410,7 @@ console.log("\nschedule_signal_fetches — Phase 4.3: only companies someone is 
   expect("it reads companies joined to their opportunities", String(read?.payload).includes("opportunities!inner"));
   expect("closed opportunities are excluded", has("not:opportunities.status", "in"));
   expect("an Apollo id is no longer required", !has("eq:external_ids.provider"));
+  expect("companies met through the Exchange are never due (0066)", has("neq:origin", "exchange"));
   expect("and the due company is queued", outcome.ok && calls.some((c) => c.table === "job_executions" && c.verb === "insert"));
   setAdminClientForTests(null);
 }
@@ -4836,6 +4840,150 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
   } finally {
     setAdminClientForTests(null);
   }
+}
+
+
+console.log("\nfirewall (0066) — a cold sequence on another opportunity of an introduced company");
+{
+  const { client, calls } = fakeClient({
+    "select:enrollments": {
+      data: {
+        id: "enr-s", campaign_id: "camp-1", opportunity_id: "opp-icp", current_step: 0, mailbox_id: null,
+        campaigns: { id: "camp-1", name: "C", status: "active", autonomy_level: 3, product_id: null },
+        opportunities: { id: "opp-icp", origin: "engine", company_id: "c-x", primary_person_id: null, outreach_angle: null, status: "qualified", companies: { origin: "exchange" } },
+      },
+      error: null,
+    },
+  });
+  expectEqual("it is stopped", await advanceOne(new OrgScope(ORG_A, client), "enr-s"), "stopped");
+  expectEqual("as stopped, with nothing else written", calls.filter((c) => c.verb !== "select").map((c) => [c.verb, c.table, (c.payload as { status?: string }).status]), [["update", "enrollments", "stopped"]]);
+
+  const ranked = fakeClient({ "select:opportunities": { data: { id: "opp-icp", origin: "engine", company_id: "c-x", icp_id: "i", companies: { id: "c-x", origin: "exchange", name: "Buyer", canonical_domain: "buyer.test" } }, error: null } });
+  const rank = await rankContactsJob({ scope: new OrgScope(ORG_A, ranked.client), payload: { opportunityId: "opp-icp", discover: true }, job: { id: "j", org_id: ORG_A, job_name: "rank_contacts" } as never, now: new Date() });
+  expect("no new contacts are sought there", rank.ok && (rank.result as { firewall?: boolean }).firewall === true && ranked.calls.length === 1, JSON.stringify(rank));
+  const person = fakeClient({ "select:people": { data: { id: "p", origin: "engine", company_id: "c-x", companies: { origin: "exchange", canonical_domain: "buyer.test", name: "Buyer" } }, error: null } });
+  const enriched = await enrichPerson({ scope: new OrgScope(ORG_A, person.client), payload: { personId: "p" }, job: { id: "j", org_id: ORG_A, job_name: "enrich_person" } as never, now: new Date() });
+  expect("nor the people already on file enriched", enriched.ok && (enriched.result as { firewall?: boolean }).firewall === true && person.calls.length === 1, JSON.stringify(enriched));
+}
+
+
+console.log("\nfirewall (0066) — the company behind an Exchange opportunity");
+{
+  const hosts: string[] = [];
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL) => {
+    hosts.push(new URL(String(url)).host);
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  try {
+    for (const job of ["enrich_company", "research_company", "fetch_company_signals", "profile_company"] as const) {
+      const { client, calls } = fakeClient({
+        "select:companies": { data: { id: "c-x", origin: "exchange", canonical_domain: "buyer.test", name: "Buyer" }, error: null },
+      });
+      setAdminClientForTests(client);
+      const out = await HANDLERS[job]({
+        scope: new OrgScope(ORG_A, client),
+        payload: { companyId: "c-x", force: true, refresh: true },
+        job: { id: "j-fw66", org_id: ORG_A, job_name: job } as never,
+        now: new Date(),
+      });
+      expect(`${job} refuses, as a success so it is not retried`, out.ok && (out.result as { firewall?: boolean }).firewall === true, JSON.stringify(out));
+      expect(
+        `${job} reads nothing else and writes nothing`,
+        calls.length === 1 && String(calls[0]!.payload).includes("origin"),
+        calls.map((c) => `${c.verb}:${c.table}`),
+      );
+    }
+    expectEqual("and no host is contacted", hosts, []);
+  } finally {
+    globalThis.fetch = savedFetch;
+    setAdminClientForTests(null);
+  }
+
+  const sweep = fakeClient({});
+  setAdminClientForTests(sweep.client);
+  try {
+    await HANDLERS.schedule_followups({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now: new Date() });
+    const reads = sweep.calls.filter((c) => c.verb === "select" && c.table === "companies");
+    expect("schedule_followups never picks one for research", reads.length === 2 && reads.every((c) => c.filters.some(([k, v]) => k === "neq:origin" && v === "exchange")), reads.map((c) => c.filters));
+    const enrich = sweep.calls.find((c) => c.table === "opportunities" && String(c.payload).includes("companies!inner"));
+    expect("nor for enrichment", !!enrich?.filters.some(([k, v]) => k === "neq:companies.origin" && v === "exchange"), enrich?.filters);
+  } finally {
+    setAdminClientForTests(null);
+  }
+
+  const dropped = fakeClient({ "insert:job_executions": { data: null, error: null } });
+  const queued = await enqueue({ orgId: ORG_A, name: "enrich_company", payload: { companyId: "c-x" } }, dropped.client);
+  expectEqual("a job the database refused is not reported as queued", queued, { id: null, created: false });
+}
+
+
+console.log("\nmatch_needs — paused offerings are cleared, unchanged explanations are not paid for twice (0066)");
+{
+  const provider = { name: "NW", claimed_at: "2026-11-01T00:00:00Z", verified_at: null, deleted_at: null };
+  const offering = (id: string, over: Record<string, unknown> = {}) => ({
+    id, org_id: "seller", category_id: "gpu", title: "Cards " + id, description: null, price_from: null, price_to: null, currency: null, moq: 10,
+    availability: null, availability_as_of: null, serves_global: false, serves_countries: ["DE"], exchange_provider_profiles: provider, ...over,
+  });
+  const base = {
+    "select:exchange_needs": {
+      data: { id: "n1", org_id: "buyer", category_id: "gpu", quantity: 200, budget_min: null, budget_max: null, currency: null, country: "DE", status: "open", deleted_at: null, summary: "Cards", requirement: { must_haves: { value: "authorised partner", kind: "fact" } }, exchange_categories: { name: "GPUs", matching_enabled: true, active: true, attributes: [] } },
+      error: null,
+    },
+    "rpc:exchange_recall_offerings": { data: ["o1"], error: null },
+    "upsert:exchange_matches": { data: null, error: null },
+    "select:exchange_offering_evidence": { data: [{ id: "e1", offering_id: "o1", kind: "fact", claim: "Authorised partner", source_url: "https://x.test" }], error: null },
+  };
+  const run = async (over: Record<string, unknown>) => {
+    const { client, calls } = fakeClient({ ...base, ...over });
+    setAdminClientForTests(client);
+    try {
+      const out = await matchNeeds({ scope: new OrgScope(ORG_A, client), payload: { needId: "n1" }, job: { id: "j-m3", org_id: ORG_A, job_name: "match_needs" } as never, now: new Date("2026-11-24T00:00:00Z") });
+      return { out, calls, written: calls.find((c) => c.verb === "upsert" && c.table === "exchange_matches")?.payload as Record<string, unknown>[] | undefined };
+    } finally {
+      setAdminClientForTests(null);
+    }
+  };
+
+  /* o1 recalled; o2 paused, so the active-only read does not return it; o3
+     moved to a country it no longer serves; o4 active and fitting but not
+     recalled (a suspended supplier). */
+  const cleared = await run({
+    "select:exchange_matches": { data: [{ id: "m1", offering_id: "o1", explained: null }, { id: "m2", offering_id: "o2", explained: null }, { id: "m3", offering_id: "o3", explained: null }, { id: "m4", offering_id: "o4", explained: null }], error: null },
+    "select:exchange_offerings": { data: [offering("o1"), offering("o3", { serves_countries: ["US"] }), offering("o4")], error: null },
+  });
+  const del = cleared.calls.find((c) => c.verb === "delete" && c.table === "exchange_matches");
+  expectEqual("matches for a paused or no-longer-fitting offering are deleted, one merely not recalled is kept", del?.filters.find(([k]) => k === "in:id")?.[1], ["m2", "m3"]);
+  expectEqual("and only recalled offerings are written", cleared.written?.map((w) => w.offering_id), ["o1"]);
+  const emptied = await run({
+    "rpc:exchange_recall_offerings": { data: [], error: null },
+    "select:exchange_matches": { data: [{ id: "m2", offering_id: "o2", explained: null }], error: null },
+    "select:exchange_offerings": { data: [], error: null },
+  });
+  expectEqual("also when no offering is left in the category", emptied.calls.find((c) => c.verb === "delete")?.filters.find(([k]) => k === "in:id")?.[1], ["m2"]);
+  const unread = await run({ "select:exchange_offerings": { data: null, error: { message: "boom" } }, "select:exchange_matches": { data: [{ id: "m2", offering_id: "o2", explained: null }], error: null } });
+  expect("a failed read deletes nothing", !unread.out.ok && !unread.calls.some((c) => c.verb === "delete"), unread.out);
+
+  /* No model is configured here, so an answer can only come from what was stored. */
+  const input = {
+    needId: "n1",
+    need: { summary: "Cards", categoryPath: "GPUs", facts: [], mustHaves: ["authorised partner"] },
+    candidates: [{ offeringId: "o1", title: "Cards o1", description: null, provider: "NW", evidence: [{ id: "e1", claim: "Authorised partner", kind: "fact" as const, sourceUrl: "https://x.test" }] }],
+  };
+  const key = explainKey(input);
+  const candidate = { offeringId: "o1", reason: "Authorised.", backing: [{ mustHave: "authorised partner", evidenceId: "e1" }] };
+  const stored = (k: string) => ({ "select:exchange_matches": { data: [{ id: "m1", offering_id: "o1", explained: { key: k, candidate } }], error: null }, "select:exchange_offerings": { data: [offering("o1")], error: null } });
+  const same = await run(stored(key));
+  expectEqual("an unchanged match reuses the stored answer", same.out.ok ? (same.out.result as { explained?: string }).explained : same.out, "unchanged");
+  expectEqual("with the same requirement dimension", (same.written?.[0]?.dimensions as { requirement?: number }).requirement, 100);
+  expectEqual("the same citations", same.written?.[0]?.cited, ["e1"]);
+  expectEqual("and keeps it for the next day", same.written?.[0]?.explained, { key, candidate });
+  expect("no quota is read and no model run recorded", !same.calls.some((c) => /quota|ai_runs|usage|rate/.test(c.table)), same.calls.map((c) => c.verb + ":" + c.table));
+  const changed = await run({ ...stored(key), "select:exchange_offering_evidence": { data: [{ id: "e1", offering_id: "o1", kind: "fact", claim: "Partner status ended", source_url: "https://x.test" }], error: null } });
+  expectEqual("changed evidence is asked about again (here, with no model, left unjudged)", changed.out.ok ? (changed.out.result as { explained?: string }).explained : changed.out, "no");
+  expect("the key ignores order and follows content", key === explainKey({ ...input, candidates: [...input.candidates].reverse() }) && key !== explainKey({ ...input, need: { ...input.need, summary: "Other" } }));
+  expectEqual("one candidate without a stored answer asks for all of them", reusableExplanations("k", ["a", "b"], new Map([["a", { key: "k", candidate: null }]])), null);
+  expectEqual("a stored 'nothing to say' is an answer", reusableExplanations("k", ["a"], new Map([["a", { key: "k", candidate: null }]])), []);
 }
 
 

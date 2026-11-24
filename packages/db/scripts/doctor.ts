@@ -132,6 +132,8 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0062_exchange_phase2.sql", probe: "migration_0062_applied", kind: "rpc" },
   { file: "0063_exchange_intros.sql", probe: "migration_0063_applied", kind: "rpc" },
   { file: "0064_exchange_notifications.sql", probe: "migration_0064_applied", kind: "rpc" },
+  { file: "0065_exchange_trust.sql", probe: "migration_0065_applied", kind: "rpc" },
+  { file: "0066_exchange_audit_fixes.sql", probe: "migration_0066_applied", kind: "rpc" },
 ];
 
 /**
@@ -193,6 +195,31 @@ for (const m of [...MIGRATIONS].sort((a, b) => a.file.localeCompare(b.file))) {
     `  [${(applied ? "ok" : "MISSING").padEnd(7)}] ${m.file.padEnd(34)} ` +
       `${m.kind === "rpc" ? "function" : "table"} ${m.probe}`,
   );
+}
+
+/*
+ * Engine-only functions a session role can execute (0066). Asked of the live
+ * database because the revokes run only where Supabase's roles exist, so no
+ * test against a fresh Postgres can answer it.
+ */
+if (exposed.has("engine_only_exposed")) {
+  const answer = await fetch(`${url}/rest/v1/rpc/engine_only_exposed`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: "{}",
+  });
+  const rows = answer.ok ? ((await answer.json()) as { function_name: string; role_name: string }[]) : null;
+  if (rows === null) {
+    console.log(`\n✗ Could not read function permissions: HTTP ${answer.status}\n`);
+    process.exitCode = 1;
+  } else if (rows.length) {
+    console.log(`\n✗ Engine-only functions a session can execute:`);
+    for (const r of rows) console.log(`    ${r.function_name}  →  ${r.role_name}`);
+    console.log("");
+    process.exitCode = 1;
+  } else {
+    console.log(`\n  [ok     ] no engine-only function is executable by anon or authenticated`);
+  }
 }
 
 /*

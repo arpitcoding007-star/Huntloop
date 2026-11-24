@@ -494,7 +494,9 @@ export interface IntroListItem {
   side: "buyer" | "provider";
   direction: "buyer" | "provider";
   state: IntroState;
-  needId: string;
+  matchId: string | null;
+  /** Null for the supplier until the buyer accepts (0066). */
+  needId: string | null;
   offeringTitle: string;
   providerName: string | null;
   /** Null for the supplier until the buyer accepts. */
@@ -520,7 +522,8 @@ export async function getIntroList(orgSlug: string): Promise<Loaded<IntroListIte
         side: r.side === "provider" ? ("provider" as const) : ("buyer" as const),
         direction: r.direction === "provider" ? ("provider" as const) : ("buyer" as const),
         state: String(r.state) as IntroState,
-        needId: String(r.need_id),
+        matchId: str(r.match_id),
+        needId: str(r.need_id),
         offeringTitle: String(r.offering_title ?? ""),
         providerName: str(r.provider_name),
         buyerName: str(r.buyer_name),
@@ -558,6 +561,7 @@ export interface IntroDetail {
   providerName: string | null;
   offering: { id: string; title: string; description: string | null };
   need: {
+    /** Empty for the supplier until the buyer accepts (0066). */
     id: string;
     categoryPath: string | null;
     summary: string | null;
@@ -777,5 +781,62 @@ export async function getExchangeNotices(orgSlug: string): Promise<Loaded<Exchan
       }));
     },
     () => [],
+  );
+}
+
+/* ── Trust and safety, and market demand (0065) ───────────────────────── */
+
+/** Why this workspace is out of the Exchange, or null when it is not. */
+export async function getMySuspension(orgSlug: string): Promise<Loaded<string | null>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getMySuspension");
+      const { data, error } = await db.rpc("exchange_my_suspension", { p_org: orgId });
+      if (error) throw new Error(`getMySuspension: ${error.message}`);
+      return typeof data === "string" && data ? data : null;
+    },
+    () => null,
+  );
+}
+
+export interface DemandRow {
+  categoryId: string;
+  categoryPath: string;
+  region: string;
+  openRequests: number;
+  new30d: number;
+  hot: number;
+}
+
+/**
+ * Open, counted requests by category and region (DN-55, DN-67). The database
+ * returns a group only when at least ten requests from confirmed, un-suspended
+ * buyers share it, so there is nothing here to filter: an absent row means
+ * "fewer than ten", never zero.
+ */
+export async function getMarketDemand(orgSlug: string): Promise<Loaded<{ rows: DemandRow[]; hasProfile: boolean }>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getMarketDemand");
+      const [{ data, error }, cats, profile] = await Promise.all([
+        db.rpc("exchange_market_demand", { p_org: orgId }),
+        listExchangeCategories(),
+        db.from("exchange_provider_profiles").select("id").eq("org_id", orgId).is("deleted_at", null).limit(1).maybeSingle(),
+      ]);
+      if (error) throw new Error(`getMarketDemand: ${error.message}`);
+      const byId = new Map(cats.data.map((c) => [c.id, c.path]));
+      return {
+        hasProfile: !!profile.data,
+        rows: ((data ?? []) as Row[]).map((r) => ({
+          categoryId: String(r.category_id),
+          categoryPath: byId.get(String(r.category_id)) ?? "Other",
+          region: String(r.region),
+          openRequests: Number(r.open_requests),
+          new30d: Number(r.new_30d),
+          hot: Number(r.hot),
+        })),
+      };
+    },
+    () => ({ rows: [], hasProfile: false }),
   );
 }

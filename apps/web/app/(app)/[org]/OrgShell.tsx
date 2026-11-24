@@ -16,6 +16,7 @@ import { AccountMenu } from "./AccountMenu";
 import {
   Activity,
   ArrowLeftRight,
+  BarChart2,
   Bell,
   Handshake,
   BarChart3,
@@ -256,6 +257,7 @@ export function OrgShell({
               { label: "Introductions", href: `/${org}/exchange/intros`, icon: Handshake },
               { label: "Updates", href: `/${org}/exchange/updates`, icon: Bell },
               { label: "Supplier profile", href: `/${org}/exchange/supplier`, icon: Store },
+              { label: "Market demand", href: `/${org}/exchange/market`, icon: BarChart2 },
               { label: "Exchange privacy", href: `/${org}/exchange/privacy`, icon: Lock },
               { label: "Exchange notifications", href: `/${org}/exchange/notifications`, icon: Settings },
             ],
