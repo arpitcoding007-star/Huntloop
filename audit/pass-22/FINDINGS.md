@@ -73,7 +73,6 @@ The simulation and audit checks were also run against the old code and failed th
 | `HUNTLOOP_EXCHANGE` | Exchange |
 | `PUBLIC_RESEARCH_ENABLED` | Public company reader |
 | Sentry and PostHog keys | Monitoring |
-| Deployment of `dab37db` and the pass-21 branch; migrations 0069 and 0070 | Exchange quotas, offering page reader, pass-21 fixes |
 
 ## Mock data
 

@@ -2,7 +2,7 @@
 
 - **Date:** 24 November 2026
 - **Tree tested:** `dab37db` plus the uncommitted `feat/pass-21-loop` work (migrations to 0071 after the fixes)
-- **Production:** `www.huntloop.pro`, commit `1a59f5a`, schema 0068
+- **Production:** at the time of the audit, `www.huntloop.pro` ran commit `1a59f5a`, schema 0068. After pull requests 19 and 20 merged, it was rechecked: commit `d8c272c`, schema 0071 complete, still `ok:false` because no production services are configured
 - **Product code changed:** V-01, V-02, V-04, V-05, V-06, V-16, V-17 and V-18 fixed (others built and off) after the audit, in the same session. The results from before the fixes are in [RESULTS-before-fixes.md](RESULTS-before-fixes.md) and `results-before-fixes.json`
 
 | File | Contents |
