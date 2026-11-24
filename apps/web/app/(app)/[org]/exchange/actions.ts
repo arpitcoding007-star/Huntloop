@@ -12,7 +12,7 @@ import {
 } from "@huntloop/ai";
 import { classify, turn } from "../../../../lib/ai/intake";
 import { listExchangeCategories, type ExchangeCategory } from "../../../../lib/data/exchange";
-import { fail, mutate, ok, type ActionResult, type TenantClient } from "../../../../lib/data/org";
+import { currentUserId, fail, mutate, ok, type ActionResult, type TenantClient } from "../../../../lib/data/org";
 import { isExchangeEnabled } from "../../../../lib/exchange/flag";
 import type { IntakeState, NeedSubmission } from "../../../../lib/exchange/intake-state";
 import {
@@ -801,6 +801,67 @@ export async function markIntroReadAction(org: string, introId: string): Promise
     "markIntroRead",
     async ({ db }) => {
       const { error } = await db.rpc("exchange_mark_intro_read", { p_intro: id.data });
+      if (error) return fail(error.message);
+      return ok(undefined);
+    },
+    { minRole: "viewer" },
+  );
+}
+
+/* ── Notifications (0064) ─────────────────────────────────────────────── */
+
+const prefsSchema = z.object({
+  alerts: z.enum(["off", "digest", "instant"]),
+  categoryIds: z.array(uuidSchema).max(200),
+  emails: z.boolean(),
+  quietStart: z.number().int().min(0).max(23).nullable(),
+  quietEnd: z.number().int().min(0).max(23).nullable(),
+});
+
+/** Save this person's Exchange notification settings (DN-36, DN-79). Their own row only (0040 RLS). */
+export async function saveExchangeNotificationsAction(
+  org: string,
+  input: { alerts: string; categoryIds: string[]; emails: boolean; quietStart: number | null; quietEnd: number | null },
+): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const parsed = prefsSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Those settings could not be read.");
+  const v = parsed.data;
+  if ((v.quietStart === null) !== (v.quietEnd === null)) return fail("Set both ends of the quiet hours, or neither.");
+  return mutate(
+    org,
+    "saveExchangeNotifications",
+    async ({ db, orgId }) => {
+      const userId = await currentUserId(db);
+      if (!userId) return fail("You are not signed in.");
+      const { error } = await db.from("notification_preferences").upsert(
+        {
+          org_id: orgId,
+          user_id: userId,
+          exchange_alerts: v.alerts,
+          exchange_alert_category_ids: v.categoryIds,
+          exchange_emails: v.emails,
+          quiet_start_hour: v.quietStart,
+          quiet_end_hour: v.quietEnd,
+        },
+        { onConflict: "org_id,user_id" },
+      );
+      if (error) return fail(`Your settings could not be saved: ${error.message}`);
+      revalidatePath(`/${org}/exchange/notifications`);
+      return ok(undefined, "Saved.");
+    },
+    { minRole: "viewer" },
+  );
+}
+
+/** Mark this person's Exchange updates read. Called when the feed is opened. */
+export async function markExchangeNoticesReadAction(org: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  return mutate(
+    org,
+    "markExchangeNoticesRead",
+    async ({ db, orgId }) => {
+      const { error } = await db.rpc("exchange_mark_notifications_read", { p_org: orgId });
       if (error) return fail(error.message);
       return ok(undefined);
     },

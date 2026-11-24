@@ -20,6 +20,8 @@ export type SendResult =
   | { ok: false; reason: "unconfigured" | "rejected" | "unreachable"; detail?: string };
 
 export interface EmailMessage {
+  /** Overrides EMAIL_FROM, e.g. the Exchange's own sender (EXCHANGE_EMAIL_FROM). */
+  from?: string;
   to: string | string[];
   subject: string;
   html: string;
@@ -53,7 +55,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
   if (!config) return { ok: false, reason: "unconfigured" };
 
   const body = {
-    from: config.from,
+    from: message.from ?? config.from,
     to: Array.isArray(message.to) ? message.to : [message.to],
     subject: message.subject,
     html: message.html,

@@ -273,6 +273,10 @@ const SWEEPERS: ReadonlySet<JobName> = new Set<JobName>([
      supplier's workspace. Every tick, so the supplier sees the stated need
      within a minute of the buyer accepting; bounded per tick, no spend. */
   "create_intro_opportunities",
+  /* 0064: queues Exchange notices (one SQL call, deduplicated) and emails
+     the due ones. Every tick so an introduction request reaches the buyer
+     within a minute; alerts honour quiet hours, a daily cap and the digest. */
+  "send_exchange_notifications",
 ]);
 
 /**

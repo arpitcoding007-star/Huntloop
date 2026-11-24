@@ -97,7 +97,9 @@ export type JobName =
   | "schedule_matching"
   | "match_needs"
   /* 0063: an accepted introduction becomes a "Stated need" opportunity. */
-  | "create_intro_opportunities";
+  | "create_intro_opportunities"
+  /* 0064: Exchange alerts, introduction and message emails, re-confirm reminders. */
+  | "send_exchange_notifications";
 
 export interface JobRow {
   id: string;

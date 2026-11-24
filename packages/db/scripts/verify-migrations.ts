@@ -2855,6 +2855,135 @@ console.log("\n0063 — Exchange introductions: only the buyer accepts; identity
   await db.exec("rollback");
 }
 
+console.log("\n0064 — Exchange notifications: alerts say no more than the card, and only to who asked for them");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // buyer workspace
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // supplier workspace
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const NEED = "64646464-0064-0064-0064-0000000000a1";
+  const NEED_HIDDEN = "64646464-0064-0064-0064-0000000000a2";
+  const NEED_OLD = "64646464-0064-0064-0064-0000000000a3";
+  const PROV = "64646464-0064-0064-0064-0000000000b1";
+  const OFFER = "64646464-0064-0064-0064-0000000000c1";
+  const INTRO = "64646464-0064-0064-0064-0000000000e1";
+
+  await db.exec("begin");
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  await db.query(
+    `insert into exchange_needs (id, org_id, created_by, category_id, summary, quantity, currency, budget_max, country, visibility, intent_band)
+     values ($1, $3, $4, $5, 'Acme GmbH needs 200 H200 cards, call Jan', 200, 'EUR', 6000000, 'DE', 2, 'hot'),
+            ($2, $3, $4, $5, 'A private request', 50, null, null, 'DE', 1, 'hot')`,
+    [NEED, NEED_HIDDEN, A, OWNER_A, leaf],
+  );
+  await db.query(`insert into exchange_provider_profiles (id, org_id, name, claimed_at) values ($1, $2, 'Northwind Compute', now())`, [PROV, B]);
+  await db.query(`insert into exchange_offerings (id, provider_id, category_id, title, status) values ($1, $2, $3, 'H200 NVL cards', 'active')`, [OFFER, PROV, leaf]);
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $3, 80), ($2, $3, 75)`, [NEED, NEED_HIDDEN, OFFER]);
+
+  const queue = async () => (await db.query<{ r: Record<string, number> }>(`select public.exchange_queue_notifications() as r`)).rows[0]!.r;
+  const alertsFor = async (user: string) =>
+    (await db.query<{ title: string; body: string; channel: string; need_id: string }>(
+      `select title, body, channel, need_id from exchange_notifications where user_id = $1 and kind = 'match_alert'`,
+      [user],
+    )).rows;
+
+  const first = await queue();
+  const alerts = await alertsFor(OWNER_B);
+  if (first.alerts === 1 && alerts.length === 1 && alerts[0]!.need_id === NEED) ok("a supplier is alerted to a matched request it may see, and not to a level-1 one");
+  else fail("one alert, level 2 only", JSON.stringify({ first, alerts }));
+  const words = JSON.stringify(alerts);
+  if (alerts[0]?.title.includes("100–1K") && !words.includes("Acme") && !words.includes("Jan") && !words.includes("DE") && !words.includes("6,000,000")) {
+    ok("the alert says what a card says — bands, no buyer words, no place");
+  } else fail("alert wording", words);
+  if (alerts[0]?.channel === "digest") ok("by default it waits for the digest, never instant");
+  else fail("digest by default", JSON.stringify(alerts));
+  const again = await queue();
+  if (again.alerts === 0) ok("queueing again adds nothing (deduplicated)");
+  else fail("dedupe", JSON.stringify(again));
+
+  await db.query(`delete from exchange_notifications`);
+  await db.query(`insert into notification_preferences (org_id, user_id, exchange_alerts) values ($1, $2, 'instant')`, [B, OWNER_B]);
+  await queue();
+  if ((await alertsFor(OWNER_B))[0]?.channel === "instant") ok("someone who chose instant gets a hot request at once");
+  else fail("instant for hot", JSON.stringify(await alertsFor(OWNER_B)));
+  await db.query(`update exchange_needs set intent_band = 'warm' where id = $1`, [NEED]);
+  await db.query(`delete from exchange_notifications`);
+  await queue();
+  if ((await alertsFor(OWNER_B))[0]?.channel === "digest") ok("but a request that is not hot still waits for the digest (EX-9)");
+  else fail("warm waits", JSON.stringify(await alertsFor(OWNER_B)));
+  await db.query(`update notification_preferences set exchange_alert_category_ids = array[gen_random_uuid()] where user_id = $1`, [OWNER_B]);
+  await db.query(`delete from exchange_notifications`);
+  await queue();
+  if ((await alertsFor(OWNER_B)).length === 0) ok("a category the supplier did not pick sends nothing");
+  else fail("category filter", JSON.stringify(await alertsFor(OWNER_B)));
+  await db.query(`update notification_preferences set exchange_alerts = 'off', exchange_alert_category_ids = '{}' where user_id = $1`, [OWNER_B]);
+  await queue();
+  if ((await alertsFor(OWNER_B)).length === 0) ok("alerts off means none at all");
+  else fail("alerts off", JSON.stringify(await alertsFor(OWNER_B)));
+
+  // Introductions and messages.
+  await db.query(
+    `insert into exchange_intros (id, need_id, offering_id, buyer_org_id, provider_org_id, direction, state)
+     values ($1, $2, $3, $4, $5, 'provider', 'requested')`,
+    [INTRO, NEED, OFFER, A, B],
+  );
+  await queue();
+  const asked = await db.query<{ title: string; body: string; channel: string }>(`select title, body, channel from exchange_notifications where user_id = $1 and kind = 'intro_requested'`, [OWNER_A]);
+  if (asked.rows[0]?.title.startsWith("Northwind Compute would like to talk") && asked.rows[0].channel === "instant") ok("the buyer hears at once who asked to talk");
+  else fail("buyer told of request", JSON.stringify(asked.rows));
+  const supplierSees = await db.query(`select id from exchange_notifications where user_id = $1 and title like '%Org A%'`, [OWNER_B]);
+  if (supplierSees.rows.length === 0) ok("and the supplier is told nothing that names the buyer yet");
+  else fail("no early name", JSON.stringify(supplierSees.rows));
+
+  await db.query(`update exchange_intros set state = 'accepted', decided_at = now() where id = $1`, [INTRO]);
+  await db.query(`insert into exchange_messages (intro_id, sender_side, body) values ($1, 'provider', 'Can deliver in two weeks.')`, [INTRO]);
+  const counts = await queue();
+  const accepted = await db.query<{ title: string }>(`select title from exchange_notifications where user_id = $1 and kind = 'intro_accepted'`, [OWNER_B]);
+  if (accepted.rows[0]?.title.startsWith("Org A accepted")) ok("on acceptance the supplier is told, and may now see the buyer's name");
+  else fail("accepted notice", JSON.stringify(accepted.rows));
+  const msg = await db.query<{ title: string }>(`select title from exchange_notifications where user_id = $1 and kind = 'new_message'`, [OWNER_A]);
+  if (counts.messages === 1 && msg.rows[0]?.title === "New message from Northwind Compute") ok("a new message reaches the other side");
+  else fail("message notice", JSON.stringify({ counts, rows: msg.rows }));
+  await db.query(`insert into exchange_messages (intro_id, sender_side, body) values ($1, 'provider', 'And a second one.')`, [INTRO]);
+  if ((await queue()).messages === 0) ok("and a burst of messages is one notice an hour, not one each");
+  else fail("message throttle", "more than one");
+
+  // Re-confirm, and the owner fallback when the filer has gone.
+  await db.query(
+    `insert into exchange_needs (id, org_id, created_by, summary, visibility, decide_by, created_at, last_confirmed_at)
+     values ($1, $2, null, 'An older request', 1, current_date + 10, now() - interval '20 days', now() - interval '20 days')`,
+    [NEED_OLD, A],
+  );
+  await queue();
+  const remind = await db.query<{ user_id: string }>(`select user_id from exchange_notifications where need_id = $1 and kind = 'reconfirm'`, [NEED_OLD]);
+  if (remind.rows.length === 1 && remind.rows[0]!.user_id === OWNER_A) ok("halfway to its decide-by date, a request asks to be re-confirmed — to an owner if its filer is gone");
+  else fail("reconfirm", JSON.stringify(remind.rows));
+
+  // Who reads what.
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const others = await db.query(`select id from exchange_notifications where user_id <> $1`, [OWNER_B]);
+  if (others.rows.length === 0) ok("each person reads only their own notifications");
+  else fail("own notifications only", JSON.stringify(others.rows));
+  await expectRejectTx(
+    db,
+    "a session cannot write a notification",
+    `insert into exchange_notifications (org_id, user_id, kind, title, href, channel, dedupe_key) values ($1, $2, 'reconfirm', 'x', '/x', 'none', 'fake')`,
+    [B, OWNER_B],
+  );
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
+  const marked = await db.query<{ n: number }>(`select public.exchange_mark_notifications_read($1) as n`, [A]);
+  if (Number(marked.rows[0]?.n) >= 2) ok("a person marks their own feed read");
+  else fail("mark read", JSON.stringify(marked.rows));
+  await expectRejectTx(db, "a session cannot queue notifications", `select public.exchange_queue_notifications()`);
+  await db.exec("reset role");
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0064_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0064_applied() exists for db:doctor");
+  else fail("migration_0064_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 63 migrations
-> (`0001_identity.sql` … `0063_exchange_intros.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 64 migrations
+> (`0001_identity.sql` … `0064_exchange_notifications.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 94 tables · 10 views · 166 public functions · 10 enum types · 166 RLS policies · 319 indexes · 148 triggers.
+**Totals:** 95 tables · 10 views · 171 public functions · 10 enum types · 167 RLS policies · 327 indexes · 148 triggers.
 
-**RLS enabled on:** 94 of 94 tables.
+**RLS enabled on:** 95 of 95 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reveal_log`](#exchange_reveal_log) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_notifications`](#exchange_notifications) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reveal_log`](#exchange_reveal_log) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -1756,6 +1756,57 @@ RLS: **enabled**
 
 - `exchange_needs_touch`
 
+## exchange_notifications
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `org_id` | uuid | NOT NULL |  |
+| `user_id` | uuid | NOT NULL |  |
+| `kind` | text | NOT NULL |  |
+| `need_id` | uuid | null |  |
+| `intro_id` | uuid | null |  |
+| `match_id` | uuid | null |  |
+| `title` | text | NOT NULL |  |
+| `body` | text | null |  |
+| `href` | text | NOT NULL |  |
+| `channel` | text | NOT NULL |  |
+| `hot` | boolean | NOT NULL | `false` |
+| `dedupe_key` | text | NOT NULL |  |
+| `email_sent_at` | timestamp with time zone | null |  |
+| `read_at` | timestamp with time zone | null |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_notifications_body_check` — `CHECK (((body IS NULL) OR (length(body) <= 600)))`
+- CHECK `exchange_notifications_channel_check` — `CHECK ((channel = ANY (ARRAY['instant'::text, 'digest'::text, 'none'::text])))`
+- CHECK `exchange_notifications_href_check` — `CHECK ((href ~ '^/'::text))`
+- CHECK `exchange_notifications_kind_check` — `CHECK ((kind = ANY (ARRAY['match_alert'::text, 'intro_requested'::text, 'intro_accepted'::text, 'intro_declined'::text, 'new_message'::text, 'reconfirm'::text])))`
+- CHECK `exchange_notifications_title_check` — `CHECK (((length(title) >= 1) AND (length(title) <= 300)))`
+- FK `exchange_notifications_intro_id_fkey` — `FOREIGN KEY (intro_id) REFERENCES exchange_intros(id) ON DELETE CASCADE`
+- FK `exchange_notifications_match_id_fkey` — `FOREIGN KEY (match_id) REFERENCES exchange_matches(id) ON DELETE CASCADE`
+- FK `exchange_notifications_need_id_fkey` — `FOREIGN KEY (need_id) REFERENCES exchange_needs(id) ON DELETE CASCADE`
+- FK `exchange_notifications_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_notifications_user_id_fkey` — `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`
+- PK `exchange_notifications_pkey` — `PRIMARY KEY (id)`
+- UNIQUE `exchange_notifications_dedupe_key_key` — `UNIQUE (dedupe_key)`
+
+**Indexes**
+
+- `exchange_notifications_intro_fk_idx` — `exchange_notifications USING btree (intro_id)`
+- `exchange_notifications_match_fk_idx` — `exchange_notifications USING btree (match_id)`
+- `exchange_notifications_need_fk_idx` — `exchange_notifications USING btree (need_id)`
+- `exchange_notifications_org_fk_idx` — `exchange_notifications USING btree (org_id)`
+- `exchange_notifications_unsent_idx` — `exchange_notifications USING btree (channel, created_at) WHERE (email_sent_at IS NULL)`
+- `exchange_notifications_user_idx` — `exchange_notifications USING btree (user_id, created_at DESC)`
+
+**Policies**
+
+- `exchange_notifications_own` — SELECT USING `((user_id = auth.uid()) AND (org_id IN ( SELECT user_org_ids() AS user_org_ids)))`
+
 ## exchange_offering_evidence
 
 RLS: **enabled**
@@ -2831,10 +2882,19 @@ RLS: **enabled**
 | `last_digest_on` | date | null |  |
 | `created_at` | timestamp with time zone | NOT NULL | `now()` |
 | `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+| `exchange_alerts` | text | NOT NULL | `'digest'::text` |
+| `exchange_alert_category_ids` | uuid[] | NOT NULL | `'{}'::uuid[]` |
+| `exchange_emails` | boolean | NOT NULL | `true` |
+| `quiet_start_hour` | smallint | null |  |
+| `quiet_end_hour` | smallint | null |  |
+| `last_exchange_digest_on` | date | null |  |
 
 **Constraints**
 
 - CHECK `notification_preferences_digest_hour_check` — `CHECK (((digest_hour >= 0) AND (digest_hour <= 23)))`
+- CHECK `notification_preferences_exchange_alerts_check` — `CHECK ((exchange_alerts = ANY (ARRAY['off'::text, 'digest'::text, 'instant'::text])))`
+- CHECK `notification_preferences_quiet_end_hour_check` — `CHECK (((quiet_end_hour IS NULL) OR ((quiet_end_hour >= 0) AND (quiet_end_hour <= 23))))`
+- CHECK `notification_preferences_quiet_start_hour_check` — `CHECK (((quiet_start_hour IS NULL) OR ((quiet_start_hour >= 0) AND (quiet_start_hour <= 23))))`
 - CHECK `notification_preferences_timezone_check` — `CHECK (((length(timezone) >= 1) AND (length(timezone) <= 64)))`
 - FK `notification_preferences_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
 - FK `notification_preferences_user_id_fkey` — `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`
@@ -4173,12 +4233,16 @@ RLS: **enabled**
 | `exchange_intro_weekly_cap` |  | integer |  |
 | `exchange_magnitude_band` | `p numeric` | text |  |
 | `exchange_mark_intro_read` | `p_intro uuid` | void | yes |
+| `exchange_mark_notifications_read` | `p_org uuid` | integer | yes |
 | `exchange_match_guard` |  | trigger | yes |
 | `exchange_matched_cards` | `p_org uuid` | TABLE(match_id uuid, need_id uuid, offering_id uuid, offering_title text, category_id uuid, level smallint, quantity_band text, budget_band text, place text, timeline text, summary text, must_haves text, unit text, score smallint, computed_at timestamp with time zone) | yes |
+| `exchange_need_recipients` | `p_need exchange_needs` | SETOF uuid | yes |
 | `exchange_offering_follows_provider` |  | trigger | yes |
 | `exchange_origin_is_permanent` |  | trigger |  |
 | `exchange_profile_verification_is_platform_only` |  | trigger |  |
 | `exchange_prune` |  | jsonb | yes |
+| `exchange_prune_notifications` |  | integer | yes |
+| `exchange_queue_notifications` |  | jsonb | yes |
 | `exchange_recall_offerings` | `p_need uuid, p_limit integer` | SETOF uuid |  |
 | `exchange_region` | `p_country text` | text |  |
 | `exchange_report_outcome` | `p_intro uuid, p_outcome text, p_reason text` | void | yes |
@@ -4250,6 +4314,7 @@ RLS: **enabled**
 | `migration_0061_applied` |  | boolean |  |
 | `migration_0062_applied` |  | boolean |  |
 | `migration_0063_applied` |  | boolean |  |
+| `migration_0064_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

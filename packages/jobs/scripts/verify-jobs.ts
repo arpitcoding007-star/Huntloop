@@ -20,6 +20,8 @@ import { enrichPerson } from "../src/handlers/enrich-person.ts";
 import { matchNeeds } from "../src/handlers/match-needs.ts";
 import { enforceRetention } from "../src/handlers/enforce-retention.ts";
 import { createIntroOpportunities, placeholderDomain } from "../src/handlers/create-intro-opportunities.ts";
+import { allowedNow, inQuietHours, sendExchangeNotifications } from "../src/handlers/send-exchange-notifications.ts";
+import { verifyExchangeUnsubscribeToken } from "../src/email/exchange-token.ts";
 import { applyExplanations, eligible, scoreMatch, splitMustHaves, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
 import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
@@ -790,6 +792,8 @@ console.log("\nsweep — the heartbeat that puts periodic work into the queue");
       /* 0040: product email. Listed by hand like every other sweeper; both
          send nothing without RESEND_API_KEY. */
       "send_digests",
+      /* 0064: Exchange notices; queues in SQL, emails only with a provider. */
+      "send_exchange_notifications",
       "send_notifications",
     ],
   );
@@ -4940,6 +4944,82 @@ console.log("\ncreate_intro_opportunities — an accepted introduction becomes a
     expectEqual("and becomes an Exchange opportunity, which stops any cold sequence at them", (upd?.payload as { origin?: string })?.origin, "exchange");
   } finally {
     setAdminClientForTests(null);
+  }
+}
+
+
+console.log("\nsend_exchange_notifications — quiet hours, the daily cap, current preferences, one-click unsubscribe");
+{
+  expect("quiet hours inside a day", inQuietHours(13, 12, 14) && !inQuietHours(14, 12, 14));
+  expect("quiet hours across midnight", inQuietHours(23, 22, 7) && inQuietHours(3, 22, 7) && !inQuietHours(12, 22, 7));
+  expect("no quiet hours when unset or empty", !inQuietHours(3, null, 7) && !inQuietHours(3, 5, 5));
+  expect("alerts off stops alerts but not introduction emails", !allowedNow("match_alert", { exchange_alerts: "off", exchange_emails: true }) && allowedNow("intro_requested", { exchange_alerts: "off", exchange_emails: true }));
+  expect("emails off stops conversation emails but not chosen alerts", allowedNow("match_alert", { exchange_alerts: "digest", exchange_emails: false }) && !allowedNow("new_message", { exchange_alerts: "digest", exchange_emails: false }));
+
+  const U1 = "71717171-0071-0071-0071-000000000001";
+  const U2 = "71717171-0071-0071-0071-000000000002";
+  const U3 = "71717171-0071-0071-0071-000000000003";
+  const savedEnv = { k: process.env.RESEND_API_KEY, f: process.env.EMAIL_FROM, s: process.env.NEXT_PUBLIC_SITE_URL, x: process.env.EXCHANGE_EMAIL_FROM, secret: process.env.SUPABASE_SECRET_KEY };
+  const savedFetch = globalThis.fetch;
+  try {
+    // No email provider: queued for the feed, nothing emailed.
+    delete process.env.RESEND_API_KEY;
+    const quiet = fakeClient({ "rpc:exchange_queue_notifications": { data: { alerts: 1 }, error: null } });
+    setAdminClientForTests(quiet.client);
+    const out = await sendExchangeNotifications({ scope: new OrgScope(ORG_A, quiet.client), payload: {}, job: { id: "j-x1", org_id: null, job_name: "send_exchange_notifications" } as never, now: new Date() });
+    expect("without an email provider, notices are queued for the in-app feed only", out.ok && quiet.calls.some((c) => c.verb === "rpc" && c.table === "exchange_queue_notifications") && !quiet.calls.some((c) => c.table === "profiles"), quiet.calls.map((c) => c.verb + ":" + c.table));
+    setAdminClientForTests(null);
+
+    // With one: an instant notice goes out with a one-click unsubscribe from the Exchange sender.
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.EMAIL_FROM = "Huntloop <hello@example.test>";
+    process.env.EXCHANGE_EMAIL_FROM = "Huntloop Exchange <exchange@example.test>";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://app.example.test";
+    process.env.SUPABASE_SECRET_KEY = "test-secret";
+    const sentBodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      sentBodies.push(JSON.parse(String(init?.body ?? "{}")));
+      return new Response(JSON.stringify({ id: "em_1" }), { status: 200 });
+    }) as typeof fetch;
+    const now = new Date("2026-11-24T10:00:00Z");
+    const rows = [
+      { id: "n1", org_id: ORG_A, user_id: U1, kind: "intro_requested", title: "Northwind would like to talk about your request", body: "x", href: "/acme/exchange/intros/i1", hot: false, created_at: now.toISOString() },
+      { id: "n2", org_id: ORG_B, user_id: U2, kind: "match_alert", title: "A buyer is looking for GPUs — 100–1K", body: null, href: "/nw/exchange/supplier", hot: true, created_at: now.toISOString() },
+      { id: "n3", org_id: ORG_B, user_id: U3, kind: "match_alert", title: "A buyer is looking for GPUs", body: null, href: "/nw/exchange/supplier", hot: true, created_at: now.toISOString() },
+    ];
+    const live = fakeClient({
+      "rpc:exchange_queue_notifications": { data: { alerts: 2 }, error: null },
+      "select:exchange_notifications": (r: { filters: [string, unknown][] }) =>
+        r.filters.some(([k]) => k === "gte:email_sent_at")
+          ? { data: Array.from({ length: 5 }, () => ({ user_id: U3 })), error: null }
+          : r.filters.some(([k, v]) => k === "eq:channel" && v === "instant")
+            ? { data: rows, error: null }
+            : { data: [], error: null },
+      "select:profiles": { data: [{ id: U1, email: "buyer@a.test" }, { id: U2, email: "night@b.test" }, { id: U3, email: "busy@b.test" }], error: null },
+      "select:notification_preferences": { data: [{ org_id: ORG_B, user_id: U2, exchange_alerts: "instant", exchange_emails: true, digest_hour: 8, timezone: "UTC", quiet_start_hour: 9, quiet_end_hour: 11, last_exchange_digest_on: null }], error: null },
+      "select:organizations": { data: [{ id: ORG_A, name: "Acme", slug: "acme" }, { id: ORG_B, name: "Northwind", slug: "nw" }], error: null },
+      "update:exchange_notifications": { data: [{ id: "n1" }], error: null },
+    });
+    setAdminClientForTests(live.client);
+    const res = await sendExchangeNotifications({ scope: new OrgScope(ORG_A, live.client), payload: {}, job: { id: "j-x2", org_id: null, job_name: "send_exchange_notifications" } as never, now });
+    const result = res.ok ? (res.result as { instant: number; deferred: number; movedToDigest: number }) : null;
+    expectEqual("the buyer's introduction email goes out at once", result?.instant, 1);
+    expectEqual("a supplier in quiet hours waits", result?.deferred, 1);
+    expectEqual("a supplier past five instant alerts today gets the rest in the digest", result?.movedToDigest, 1);
+    const mail = sentBodies[0] as { from?: string; to?: string[]; headers?: Record<string, string>; html?: string } | undefined;
+    expectEqual("from the Exchange's own sender", mail?.from, "Huntloop Exchange <exchange@example.test>");
+    expect("with a one-click unsubscribe header", String(mail?.headers?.["List-Unsubscribe"] ?? "").includes("/api/notifications/exchange-unsubscribe?token=") && mail?.headers?.["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click", mail?.headers);
+    expect("and the link is absolute, into the app", String(mail?.html ?? "").includes("https://app.example.test/acme/exchange/intros/i1"));
+    const token = decodeURIComponent(String(mail?.headers?.["List-Unsubscribe"]).split("token=")[1]!.replace(/>$/, ""));
+    expectEqual("the unsubscribe token verifies for that person and workspace", verifyExchangeUnsubscribeToken(token), { orgId: ORG_A, userId: U1 });
+    expectEqual("and a digest token is not accepted as one", verifyExchangeUnsubscribeToken(token.replace(/\.[^.]+$/, ".forged")), null);
+  } finally {
+    setAdminClientForTests(null);
+    globalThis.fetch = savedFetch;
+    for (const [k, v] of Object.entries({ RESEND_API_KEY: savedEnv.k, EMAIL_FROM: savedEnv.f, NEXT_PUBLIC_SITE_URL: savedEnv.s, EXCHANGE_EMAIL_FROM: savedEnv.x, SUPABASE_SECRET_KEY: savedEnv.secret })) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 }
 
