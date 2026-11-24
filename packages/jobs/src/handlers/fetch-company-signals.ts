@@ -27,6 +27,7 @@ import { ProviderRefused, searchCompanySignals } from "@huntloop/providers";
 import { OrgScope } from "../scope.ts";
 import { atsApiUrl, careersPages, findAtsBoards, parseAtsPostings, type AtsBoard } from "../ats.ts";
 import { fetchPage } from "../fetch.ts";
+import { refusesExchange } from "../firewall.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface FetchCompanySignalsPayload {
@@ -41,13 +42,17 @@ export async function fetchCompanySignals(ctx: JobContext): Promise<JobOutcome> 
   }
 
   const { data: company, error } = await scope
-    .select("companies", "id, canonical_domain, name")
+    .select("companies", "id, origin, canonical_domain, name")
     .eq("id", companyId)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (error) return { ok: false, error: `fetch_company_signals: ${error.message}` };
   if (!company) return { ok: true, result: { skipped: "the company no longer exists" } };
+
+  /* Exchange firewall (0066): refused before a vendor, a model or the company's own site is read. */
+  const refused = refusesExchange("fetch_company_signals", company, "company");
+  if (refused) return refused;
 
   /* P2-5: the company's own job board first. Free, needs no provider key,
      and cites the board itself. Apollo below still runs when an id exists. */

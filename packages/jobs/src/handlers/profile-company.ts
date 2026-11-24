@@ -14,6 +14,7 @@
  */
 import { fetchPage } from "../fetch.ts";
 import { bareDomain } from "../gate.ts";
+import { refusesExchange } from "../firewall.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SiteFact {
@@ -60,12 +61,16 @@ export async function profileCompany(
   if (!companyId) return { ok: false, permanent: true, error: "profile_company: no companyId in payload." };
 
   const { data: company, error } = await scope
-    .select("companies", "id, canonical_domain")
+    .select("companies", "id, origin, canonical_domain")
     .eq("id", companyId)
     .is("deleted_at", null)
     .maybeSingle();
   if (error) return { ok: false, error: `profile_company: ${error.message}` };
   if (!company?.canonical_domain) return { ok: true, result: { skipped: "no company or no domain" } };
+
+  /* Exchange firewall (0066): refused before a vendor, a model or the company's own site is read. */
+  const refused = refusesExchange("profile_company", company, "company");
+  if (refused) return refused;
 
   let page;
   try {

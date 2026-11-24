@@ -23,6 +23,7 @@
  */
 import { enqueue } from "../queue.ts";
 import { OrgScope } from "../scope.ts";
+import { EXCHANGE_ORIGIN } from "../firewall.ts";
 import { staleBefore } from "./enrich-company.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -90,6 +91,8 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     .is("deleted_at", null)
     .in("priority", ["hot", "warm"])
     .is("companies.deleted_at", null)
+    /* Exchange firewall (0066): not enriched, and not allowed to fill the batch. */
+    .neq("companies.origin", EXCHANGE_ORIGIN)
     .or(`last_enriched_at.is.null,last_enriched_at.lt.${staleBefore(ctx.now)}`, {
       referencedTable: "companies",
     })
@@ -115,6 +118,7 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     .from("companies")
     .select("id, org_id, opportunities(id)")
     .is("last_researched_at", null)
+    .neq("origin", EXCHANGE_ORIGIN)
     .is("deleted_at", null)
     .or(`research_requested_at.is.null,research_requested_at.lt.${retryBefore}`)
     .order("research_requested_at", { ascending: true, nullsFirst: true })
@@ -145,6 +149,7 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     .from("companies")
     .select("id, org_id")
     .not("research_asked_at", "is", null)
+    .neq("origin", EXCHANGE_ORIGIN)
     .is("deleted_at", null)
     .order("research_asked_at", { ascending: true })
     .limit(MAX_RESEARCH_PER_TICK);

@@ -23,6 +23,7 @@
 import { FIELD_LABELS, researchCompany, type ResearchFinding } from "@huntloop/ai";
 import { AiUnavailable, runForOrg } from "../ai.ts";
 import { enqueue } from "../queue.ts";
+import { refusesExchange } from "../firewall.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface ResearchPayload {
@@ -48,13 +49,17 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     return { ok: false, permanent: true, error: "research_company: no companyId in payload." };
   }
 
-  const { data: company, error } = await scope.select("companies", "id, name, canonical_domain, website, last_researched_at, description, business_model")
+  const { data: company, error } = await scope.select("companies", "id, origin, name, canonical_domain, website, last_researched_at, description, business_model")
     .eq("id", companyId)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (error) return { ok: false, error: `research_company: ${error.message}` };
   if (!company) return { ok: true, result: { skipped: "the company no longer exists" } };
+
+  /* Exchange firewall (0066): refused before a vendor, a model or the company's own site is read. */
+  const refused = refusesExchange("research_company", company, "company");
+  if (refused) return refused;
 
   if (!payload.force && company.last_researched_at) {
     const age = now.getTime() - new Date(String(company.last_researched_at)).getTime();

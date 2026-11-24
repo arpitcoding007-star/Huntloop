@@ -168,6 +168,24 @@ export async function enrollOpportunitiesAction(
       );
     }
 
+    /* Exchange firewall (0066). The database refuses the whole statement, so
+       this is asked first, to say which one and leave the rest enrollable. */
+    const { data: chosen, error: chosenError } = await db
+      .from("opportunities")
+      .select("id, origin, companies!inner(name, origin)")
+      .eq("org_id", orgId)
+      .in("id", fresh);
+    if (chosenError) return fail(`Those opportunities could not be read: ${chosenError.message}`);
+    const met = (chosen ?? [])
+      .map((o) => ({ origin: o.origin, company: (Array.isArray(o.companies) ? o.companies[0] : o.companies) as { name: string; origin: string } }))
+      .filter((o) => o.origin === "exchange" || o.company?.origin === "exchange")
+      .map((o) => o.company?.name ?? "one of them");
+    if (met.length) {
+      return fail(
+        `Nothing was enrolled. You met ${[...new Set(met)].slice(0, 5).join(", ")} through the Exchange, and those companies never go into a campaign. Take them out of the selection and try again.`,
+      );
+    }
+
     const now = new Date().toISOString();
     const { data: inserted, error } = await db
       .from("enrollments")

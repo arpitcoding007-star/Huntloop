@@ -78,7 +78,7 @@ export async function rankContactsJob(ctx: JobContext): Promise<JobOutcome> {
     .select(
       "opportunities",
       "id, origin, company_id, icp_id, primary_person_id, contact_selected_by, " +
-        "companies!inner(id, name, canonical_domain)",
+        "companies!inner(id, origin, name, canonical_domain)",
     )
     .eq("id", opportunityId)
     .is("deleted_at", null)
@@ -92,6 +92,9 @@ export async function rankContactsJob(ctx: JobContext): Promise<JobOutcome> {
      their company and queue them for enrichment. */
   const refused = refusesExchange("rank_contacts", opportunity, "opportunity");
   if (refused) return refused;
+
+  const companyRefused = refusesExchange("rank_contacts", embeddedOne((opportunity as Record<string, unknown>).companies), "company");
+  if (companyRefused) return companyRefused;
 
   const company = embeddedOne<{ id: string; name: string; canonical_domain: string }>(
     (opportunity as Record<string, unknown>).companies,

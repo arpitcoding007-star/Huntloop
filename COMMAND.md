@@ -30,6 +30,7 @@ Simple link lists use tables (`Element | Where | Goes to | Notes`).
 9. [Learn: Performance (and its share report), Intelligence, What we've learned, Memory, Ask Huntloop](#9-learn)
 10. [Company & Settings](#10-company--settings)
 11. [Team & Operate](#11-team--operate)
+    11B. [Exchange](#11b-exchange)
 12. [Public token pages & external integrations](#12-public-token-pages--external-integrations)
 13. [Errors, empty states & edge cases](#13-errors-empty-states--edge-cases)
 14. [Unresolved or broken flows (⚠️ FLOW MISMATCH register)](#14-unresolved-or-broken-flows)
@@ -137,6 +138,7 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 | **Hunt** | Yes — "Find and qualify the accounts worth pursuing." | Opportunities → `/{org}/opportunities` · Companies → `/{org}/companies` · Analyze a URL → `/{org}/analyze` · Imports → `/{org}/imports` |
 | **Engage** | Yes — "Reach out, follow up and move deals forward." | **Needs you** (count) → `/{org}/needs-you` · Outreach → `/{org}/outreach` · Outreach log → `/{org}/outreach/log` (§8.1b) · Inbox → `/{org}/inbox` · Pipeline → `/{org}/pipeline` |
 | **Learn** | Yes — "What the loop is teaching you." | Performance → `/{org}/performance` · Ask Huntloop [AI] → `/{org}/assistant` · Intelligence [AI] → `/{org}/intelligence` · What we've learned [AI] → `/{org}/learn` · Memory → `/{org}/memory` · Prospect demand → `/{org}/demand` |
+| **Exchange** (only with `HUNTLOOP_EXCHANGE=on`) | Yes — "Say what you need, and see who can supply it." | My requests → `/{org}/exchange` · New request → `/exchange/new` · Introductions → `/exchange/intros` · Updates → `/exchange/updates` · Supplier profile → `/exchange/supplier` · Market demand → `/exchange/market` · Exchange privacy → `/exchange/privacy` · Exchange notifications → `/exchange/notifications` (§11B) |
 | **Company** | Yes — "What you sell, and who you sell it to." | Product → `/{org}/settings/product` · ICP [AI] → `/{org}/settings/icp` · Sources → `/{org}/sources` · Competitors → `/{org}/competitors` |
 | **Team** | Yes | Members → `/{org}/team` · Assignments → `/{org}/team/assignments` |
 | **Operate** | Yes — "Is the engine running, and what is it costing?" | Engine → `/{org}/ops` · AI spend → `/{org}/analytics` |
@@ -738,15 +740,17 @@ On success the panel closes and the "{n} enrolled" confirmation shows under the 
 | Element | Action → Result |
 |---|---|
 | ← All opportunities | → `/{org}/opportunities` |
+| **Stated need** badge (also on list rows) | `origin = 'exchange'`: created from an accepted introduction (§11B.4). Not interactive |
 | Company domain link | External `https://{domain}` (new tab) |
 | PriorityBadge / ScorePill / status badge | Hover explanations |
 | **Assign / Owned by {name}** (`canWrite`) | Toggles Assign panel: Owner `<select>` (Unassigned + members; "You") → on change SA `assignOpportunityAction` (`team/actions.ts`) → message, panel closes |
-| **Add to campaign** (`canWrite`) | Toggles Enrol panel: campaign select + **Add** (SA `enrollOpportunitiesAction(org, id, [id])`) + **Cancel**. No campaigns → tooltip explainer |
+| **Add to campaign** (`canWrite`) | Toggles Enrol panel: campaign select + **Add** (SA `enrollOpportunitiesAction(org, id, [id])`) + **Cancel**. No campaigns → tooltip explainer. **Off when the company was met through the Exchange**, on this opportunity or another of its opportunities (0066), with a tooltip. A list selection holding one is refused, naming the company; running sequences at it stop when the introduction is accepted |
 | **Disagree** (`canWrite`) | Toggles panel: Priority select (Hot/Warm/Watch/Ignore) + "Why (optional)" + **Record my correction** (disabled until band changes; SA `overridePriorityAction` — updates priority and stores the correction for learning; with a reason it is also the person's `score_override` signal (K3 — raw material for a *proposed* targeting preference); "already {band}" no-op message) + **Cancel** |
 | **Not a fit** (`canWrite`, not won/lost/archived) | Toggles panel: **Why** select (Not our customer profile / No need / No budget / Already uses a competitor / Needs something we do not offer / Wrong time / Something else) + detail ("What do they need?" for missing capability) + **Mark not a fit** (danger) / **Cancel** → SA `disqualifyAction` (`activity-actions.ts`): `outcomes` kind `disqualified` with reason + recorded_by; band → Ignore via `record_override`; status → `archived`; next step cleared. Active sequences stop on their next run ("closed as not a fit") |
 | **Push to HubSpot** (`canWrite` and HubSpot connected) | SA `requestCrmPushAction` → queues a push job ("Queuing…"); error "HubSpot isn't connected. An admin can connect it under Settings → Integrations." |
 | Read-only viewers | See a badge "Owned by X / Unassigned" instead of all controls |
 | LearningNudge (rejection-streak only) | Same as dashboard §6.4 (shared dismissal key) |
+| **Research this** ("What would raise confidence" card, `canSpend`) | SA `askResearchAction` → research requested on the engine's next run. Hidden, and refused by the SA and the database, when the company was met through the Exchange (0066) |
 | Evidence list items | Source links (external) |
 | Decision makers: email chip | `mailto:` (only verified addresses shown); LinkedIn icon → external profile |
 | Decision makers empty | "Buyer identification incomplete" |
@@ -1252,6 +1256,79 @@ Figures Unassigned · Assigned · Yours. Two lists: **Nobody is working on these
 
 ---
 
+## 11B. Exchange
+
+Behind `HUNTLOOP_EXCHANGE=on`. **Off (the default, and production today):** every `/{org}/exchange*` page is a 404, every Exchange SA answers "The Exchange is not switched on for this deployment.", and the rail section is absent. All server actions are in `app/(app)/[org]/exchange/actions.ts`; they write through the session client or a database function, and none enqueues a job. Matching, alerts and introduction opportunities run when the engine does, so no copy promises a time.
+
+**Every Exchange page:** a suspended workspace (0065) sees a red note with the reason; its data stays readable and the database refuses new introductions and messages. Viewers see controls removed.
+
+**ReportButton** (`ReportButton.tsx`; on matched offerings, supplier cards, introductions and messages, `canWrite`): **Report** → inline form: reason select + detail (≤ 1,000) → **Send report** / **Cancel** → SA `reportAction`. The answer is the same for something that does not exist and something never shown. 10 a day per person; the reporter is not told the outcome. Worked by the operator in SQL ([runbook](docs/operations/exchange-moderation.md)).
+
+### 11B.1 My requests `/{org}/exchange`
+**Reached from:** Exchange rail, Remove on a request. **New request** → `/exchange/new`. Request title → `/exchange/requests/{id}`. Badges: "Matching not open yet", intent ("Ready to buy" / "Actively looking" / "Early stage"; absent when unknown; computed by the database, not written by the app).
+
+### 11B.2 New request `/{org}/exchange/new`
+| Element | Action → Result |
+|---|---|
+| Description + **Continue** | SA `startIntakeAction` (≥ 3 characters). A buying need → questionnaire; "sell" → card with **Go to supplier profile** and a plain-form escape; no model, refusal, budget or outage → the form below with a note saying why |
+| **Use a plain form instead** | Straight to the summary card |
+| Category choice + **Continue** | SA `answerIntakeAction` with the category |
+| Answer + **Send**, quick replies, skip, **Review now** | SA `answerIntakeAction`; "Review now" opens the summary card with what is known |
+| Summary card "Check your request" | Each field marked You said / suggested / Unknown; "Who may see this request" (levels 0–3); "What a matched supplier sees" preview; **Save request** → SA `submitNeedAction` → `/exchange/requests/{id}` |
+
+Refusals shown as messages: unconfirmed email, 10 requests a day per workspace, a budget without a currency.
+
+### 11B.3 Request `/{org}/exchange/requests/{id}`
+**Reached from:** My requests, saving a request, re-confirm reminders. Unknown id → 404.
+| Element | Action → Result |
+|---|---|
+| ← My requests | → `/exchange` |
+| **Suppliers asking to talk** (pending requests) | **Accept** / **Decline** → SA `decideIntroAction` |
+| **Compare shortlisted** (when any) | → `/exchange/requests/{id}/compare` |
+| Match card | Score, each named dimension (Unknown shown as Unknown), cited evidence links. **Shortlist** / **Dismiss** / restore → SA `setMatchStateAction`; show/hide dismissed (client); **Introduce me** → optional message → SA `requestIntroAction` → accepted at once → `/exchange/intros/{id}`; a live introduction shows **Open** instead; Report |
+| No matches | "Matching is not open for this category yet…" / "This request is not open…" / "No supplier matches yet. Open requests are checked again each time matching runs…" |
+| Visibility select | SA `updateNeedAction` |
+| **Pause** / **Reopen** / **Mark fulfilled** | SA `updateNeedAction`. Reopening counts as a confirmation (dated by a database trigger) |
+| **Still needed** | SA `reconfirmNeedAction` → `exchange_confirm_need` |
+| Remove (ConfirmButton) | SA `deleteNeedAction` → `/exchange` |
+
+A match whose offering is paused, removed or no longer fits is deleted the next time the request is matched.
+
+**Compare** `/{org}/exchange/requests/{id}/compare`: read-only table, one column per shortlisted supplier. ← back to the request.
+
+### 11B.4 Introductions `/{org}/exchange/intros` and `/intros/{id}`
+**Reached from:** Exchange rail, match and supplier cards, Updates, introduction emails, the evidence on a Stated need opportunity. List rows → thread. Not a party → 404.
+| Element (thread) | Action → Result |
+|---|---|
+| **Accept** / **Decline** (buyer, requested) | SA `decideIntroAction` |
+| **Withdraw request** (the side that asked, requested) | SA `withdrawIntroAction` |
+| Message + **Send** (accepted) | SA `sendIntroMessageAction`; opening the thread runs SA `markIntroReadAction` |
+| **Share my contact details** (buyer, accepted; confirm step) | SA `shareContactAction` → the supplier sees name and email (`mailto:`) |
+| Outcome select (We did business / It went elsewhere / Not a fit / No decision) + reason | SA `reportOutcomeAction` → closes the thread; both sides report separately |
+| **Open the opportunity** (supplier) | → `/{org}/opportunities/{id}` |
+| Report | On the introduction and on each message from the other side |
+
+**What the supplier sees:** bands only, until the buyer accepts. Buyer name, request id, exact values and decider are withheld by `exchange_intro_list` / `exchange_intro_detail`; a supplier cannot read `exchange_intros` at all (0066). A request that lapses or is closed unanswered reveals nothing.
+
+### 11B.5 Supplier profile `/{org}/exchange/supplier`
+| Element | Action → Result |
+|---|---|
+| Profile form (admins) | SA `saveProviderProfileAction` |
+| **Add offering** / **Edit** → form → Save / **Cancel** (members) | SA `saveOfferingAction`; status Draft / Active / Paused; availability needs a date. A paused offering shows no cards and cannot be introduced |
+| Remove offering (ConfirmButton) | SA `deleteOfferingAction` |
+| **Add evidence** → **Save evidence** / remove | SA `addEvidenceAction` ("Published on a page" needs a URL) / `deleteEvidenceAction` |
+| Matched requests card | Anonymous: bands, place, timeline; the buyer's words only at level 3. Every view is logged for the buyer. **Ask for an introduction** → SA `requestIntroAction` (20 a week; paused when most are declined) or **Open**; **Report this request** |
+
+### 11B.6 Other pages
+| Page | Elements |
+|---|---|
+| Updates `/{org}/exchange/updates` | Feed rows → their href; opening marks read (SA `markExchangeNoticesReadAction`); **Notification settings** → notifications |
+| Market demand `/{org}/exchange/market` | Counts by category and region, k ≥ 10. No supplier profile → **Create a supplier profile** → supplier |
+| Exchange privacy `/{org}/exchange/privacy` | Visibility select per request (SA `updateNeedAction`); who has seen each request; export (SA `exportExchangeDataAction`, JSON download); delete questionnaire transcripts (ConfirmButton, SA `deleteMyIntakeSessionsAction`); link → Data & privacy |
+| Exchange notifications `/{org}/exchange/notifications` | Alerts off / digest / instant, categories, emails, quiet hours + **Save** (SA `saveExchangeNotificationsAction`) |
+
+---
+
 ## 12. Public token pages & external integrations
 
 ### 12.1 Invitation `/invite/{token}`
@@ -1282,6 +1359,7 @@ flowchart TD
 | `GET /api/health` | Monitors | JSON booleans about configuration (never values) |
 | `GET\|POST /api/jobs/tick` | Scheduler with `Authorization: Bearer $CRON_SECRET` | 503 when secret unset; 404 on wrong secret; runs the job engine and returns a report |
 | `POST /api/inngest` | Inngest (HMAC signed) | 404 when not configured; 401 bad signature; drives the engine. `GET` → 404 or status JSON |
+| `GET\|POST /api/notifications/exchange-unsubscribe?token=` | Link and one-click header in Exchange emails | GET shows **Stop Exchange emails**; POST turns them off for that person and workspace. Own token: it cannot switch off the digest, nor the digest link this |
 | `POST /api/csp-report` | Browsers | Always 204 |
 | `GET /api/mailboxes/{provider}/start` · `/callback` | Outreach Connect buttons | OAuth dance, §8.1 |
 
@@ -1384,6 +1462,7 @@ Closed since the last sync (verified in code): "Check your email" has **Resend**
 | `/{org}/competitors` · `/competitors/{id}` | Company rail | Detail, back to list |
 | `/{org}/team` · `/team/assignments` | Team rail, review "Invite a teammate" | Detail (assignments) |
 | `/{org}/ops` | Operate rail | — |
+| `/{org}/exchange` and `/exchange/*` (§11B, flag) | Exchange rail, Exchange emails, Stated need evidence | Requests, introductions, supplier profile, opportunity detail |
 | `/invite/{token}` | Out-of-band link | `/signup?next=`, `/{slug}/dashboard`, `/welcome` |
 | `/unsubscribe/{token}` | Email footer / one-click API GET | Terminal confirmation |
 
@@ -1903,6 +1982,7 @@ Design language: existing tokens; the `Card`, `Badge`, `ClaimBadge`, `Freshness`
 
 | Date | Change |
 |---|---|
+| 2026-11-24 | **Exchange documented** (§11B, 0059–0066; behind `HUNTLOOP_EXCHANGE`). Opportunities: **Stated need** badge, Add to campaign off for it, and **Research this** hidden when the company was met through the Exchange (the SA and the database refuse it too, 0066). Submit and empty-match copy no longer promise hourly matching. |
 | 2026-10-12 | **Security audit fixes** (run-1 of 2026-10-11, all thirteen leads), migration **`0047_security_leads.sql`**: organisation plan/trial/deletion columns guarded; session metering limited to one AI run; same-workspace check on 90 tenant references; join approval and owner un-delete; provider ceiling clamped to the plan; unsubscribe tokens moved to `message_unsubscribe_tokens`; activity authorship frozen; `/discover` reads only the cached domain's front page and reserves each lookup; invitations need a confirmed address. In code: one-line mail headers, reference material kept out of house style, bounded PDF reading. The schema gate now probes `message_unsubscribe_tokens`. User-visible changes recorded in §2.3, §7.4, the Inbox edit row, Memory's **Add a document**, the join-request row and §12.1. Production needs `0046`–`0047`. |
 | 2026-10-08 | **Release 0.1.0** to `main` (P3–P6, K0–K6, L1–L12); migrations `0040`–`0045` applied to production; the schema gate now probes `user_questions` (0044). [CHANGELOG.md](CHANGELOG.md) started. |
 | 2026-10-07 | **L5–L12 shipped on `feat/personal-learning`** with migration **`0045_assistant_conversations.sql`** (drops 0041's one-conversation-per-person index, adds `conversations.product_id`): product cards and draft-from-website, What it can see, saved and product-focused assistant conversations, Performance Me/Everyone + product split + pipeline value, share report with print styles for the shell, pipeline card facts and column values, Stale view with bulk archive, review backlog by profile on Sources. Production needs `0040`–`0045` before this deploys. |

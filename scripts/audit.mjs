@@ -1081,6 +1081,11 @@ function check(phase, id, title, ok, sev, detail) {
     "packages/jobs/src/handlers/rank-contacts.ts",
     "packages/jobs/src/handlers/advance-enrollments.ts",
     "packages/jobs/src/handlers/sync-hubspot.ts",
+    /* 0066: the company behind an Exchange opportunity. */
+    "packages/jobs/src/handlers/enrich-company.ts",
+    "packages/jobs/src/handlers/research-company.ts",
+    "packages/jobs/src/handlers/fetch-company-signals.ts",
+    "packages/jobs/src/handlers/profile-company.ts",
   ];
   const handlers = walk("packages/jobs/src/handlers").filter((f) => f.endsWith(".ts"));
   const paysForPeople = handlers.filter((f) => {
@@ -1088,18 +1093,36 @@ function check(phase, id, title, ok, sev, detail) {
     return /@huntloop\/providers/.test(src) && /["']people["']/.test(src);
   });
   const missing = [...new Set([...required, ...paysForPeople])].filter((f) => !guard.test(read(f) ?? ""));
-  const migration = has("packages/db/migrations/0059_exchange_firewall.sql");
+  /* The sweepers must filter too: an unfiltered batch fills with companies
+     the handlers then refuse. One filter per company query they run. */
+  const sweepers = [
+    ["packages/jobs/src/handlers/schedule-followups.ts", 3],
+    ["packages/jobs/src/handlers/schedule-signal-fetches.ts", 1],
+  ];
+  const unfiltered = sweepers
+    .filter(([f, n]) => ((read(f) ?? "").match(/\.neq\("(?:companies\.)?origin", EXCHANGE_ORIGIN\)/g) ?? []).length < n)
+    .map(([f]) => f);
+  /* The last check before an email leaves. Not `refusesExchange`: it answers
+     "withdrawn", so the message says why it was not sent. */
+  const sendGuarded = /isExchangeOrigin\(opportunity\) \|\| isExchangeOrigin\(company\)/.test(
+    read("packages/jobs/src/handlers/send-message.ts") ?? "",
+  );
+  const migration =
+    has("packages/db/migrations/0059_exchange_firewall.sql") &&
+    /job_executions_firewall/.test(read("packages/db/migrations/0066_exchange_audit_fixes.sql") ?? "");
   const tested = /firewall \(0059\)/.test(read("packages/jobs/scripts/verify-jobs.ts") ?? "");
 
   check(
     5,
     "FW-01",
-    "Every job that could enrich, rank, sequence or sync a person refuses Exchange rows",
-    missing.length === 0 && migration && tested,
+    "Every job that could enrich, rank, sequence, research or sync refuses Exchange rows",
+    missing.length === 0 && unfiltered.length === 0 && sendGuarded && migration && tested,
     "fail",
     [
       missing.length ? `no refusesExchange(): ${missing.join(", ")}` : `${new Set([...required, ...paysForPeople]).size} guarded handlers`,
-      migration ? null : "0059_exchange_firewall.sql missing",
+      unfiltered.length ? `sweeper does not filter Exchange companies: ${unfiltered.join(", ")}` : null,
+      sendGuarded ? null : "send_message does not withdraw sequence mail to Exchange companies",
+      migration ? null : "0059 or 0066 firewall migration missing",
       tested ? null : "verify-jobs.ts has no firewall block",
     ]
       .filter(Boolean)

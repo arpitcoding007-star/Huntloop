@@ -7,6 +7,7 @@ import { canWrite, currentViewer } from "../../../../../../lib/data/membership";
 import { formatMoney, placeLabel, timelineLabel } from "../../../../../../lib/exchange/format";
 import { uuidSchema } from "../../../../../../lib/validation";
 import { IntroDecision, IntroStateBadge, OutcomeForm, ShareContact, Thread, WithdrawIntro } from "../IntroControls";
+import { ReportButton } from "../../ReportButton";
 
 const OUTCOME_LABEL: Record<string, string> = {
   won: "Did business",
@@ -70,7 +71,10 @@ export default async function IntroPage({ params }: { params: Promise<{ org: str
             {buyer ? "Supplying you" : "Buying from you"} · {intro.offering.title}
           </p>
         </div>
-        <IntroStateBadge state={intro.state} side={intro.side} />
+        <div className="flex flex-wrap items-center gap-2">
+          <IntroStateBadge state={intro.state} side={intro.side} />
+          {writable && <ReportButton org={org} subject="intro" subjectId={intro.id} label="Report this conversation" />}
+        </div>
       </header>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">

@@ -22,7 +22,7 @@ import {
   NEED_STATUSES,
 } from "../../../../lib/exchange/requirement";
 import { uuidSchema } from "../../../../lib/validation";
-import { scoreIntent } from "../../../../lib/exchange/intent";
+import { REPORT_REASONS } from "../../../../lib/exchange/report";
 
 /**
  * Exchange writes (0060), all through the session client — RLS decides who
@@ -31,8 +31,9 @@ import { scoreIntent } from "../../../../lib/exchange/intent";
  *
  * Nothing here enqueues a job. `enqueue()` writes with the service role, and a
  * Server Action is a public POST endpoint (see `lib/data/engine.ts`). A new
- * need is picked up by the hourly `schedule_matching` sweeper, which matches
- * every open need that has never been matched.
+ * need is picked up by the `schedule_matching` sweeper, which matches every
+ * open need that has never been matched. How soon depends on how often the
+ * engine is driven, so no message here promises a time.
  */
 
 const CLOSED = "The Exchange is not switched on for this deployment.";
@@ -269,7 +270,6 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
       visibility: v.visibility as 0 | 1 | 2 | 3,
     });
 
-    const intent = scoreIntent(category?.attributes ?? [], requirement, columns);
     const { data, error } = await db
       .from("exchange_needs")
       .insert({
@@ -279,8 +279,6 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
         summary: v.summary,
         requirement,
         ...columns,
-        intent_dimensions: intent.dimensions,
-        intent_band: intent.band,
         status: "open",
       })
       .select("id")
@@ -296,7 +294,7 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
     }
     revalidate(org);
     const when = category?.matchingEnabled
-      ? "Suppliers are matched within the hour."
+      ? "Suppliers are matched the next time matching runs."
       : "Matching is not open for this category yet; the request is saved and counted.";
     return ok({ needId }, `Request saved. ${when}`);
   });
@@ -338,8 +336,8 @@ export async function updateNeedAction(
   if (change.status !== undefined) {
     const s = NEED_STATUSES.find((x) => x === change.status);
     if (!s) return fail("That isn't a status a request can have.");
+    // Reopening is dated by the database (0066), not written from here.
     patch.status = s;
-    if (s === "open") patch.last_confirmed_at = new Date().toISOString();
   }
   if (!Object.keys(patch).length) return fail("Nothing to change.");
 
@@ -568,16 +566,8 @@ export async function reconfirmNeedAction(org: string, needId: string): Promise<
   if (!isExchangeEnabled()) return fail(CLOSED);
   const id = uuidSchema.safeParse(needId);
   if (!id.success) return fail("That request reference isn't valid.");
-  return mutate(org, "reconfirmNeed", async ({ db, orgId }) => {
-    const { data, error } = await db
-      .from("exchange_needs")
-      .update({ status: "open", last_confirmed_at: new Date().toISOString() })
-      .eq("id", id.data)
-      .eq("org_id", orgId)
-      .is("deleted_at", null)
-      .in("status", ["open", "paused", "expired"])
-      .select("id")
-      .maybeSingle();
+  return mutate(org, "reconfirmNeed", async ({ db }) => {
+    const { data, error } = await db.rpc("exchange_confirm_need", { p_need: id.data });
     if (error) return fail(`That could not be confirmed: ${error.message}`);
     if (!data) return fail("That request can no longer be reopened.");
     revalidate(org);
@@ -867,4 +857,43 @@ export async function markExchangeNoticesReadAction(org: string): Promise<Action
     },
     { minRole: "viewer" },
   );
+}
+
+/* ── Trust and safety (0065) ──────────────────────────────────────────── */
+
+const SUBJECTS = ["need", "offering", "provider", "intro", "message"] as const;
+
+/**
+ * Report something the caller was shown. The database decides whether they
+ * may — it answers "cannot be reported from here" for what does not exist and
+ * for what they were never shown alike — and rate-limits it. Nothing is
+ * decided automatically: a person at Huntloop reads the report.
+ */
+export async function reportAction(
+  org: string,
+  subjectType: string,
+  subjectId: string,
+  reason: string,
+  detail?: string,
+): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const type = SUBJECTS.find((s) => s === subjectType);
+  if (!type) return fail("That cannot be reported.");
+  const id = uuidSchema.safeParse(subjectId);
+  if (!id.success) return fail("That reference isn't valid.");
+  const why = REPORT_REASONS.find((r) => r.value === reason);
+  if (!why) return fail("Choose a reason.");
+  const text = z.string().trim().max(1_000, "A report is at most 1,000 characters.").safeParse(detail ?? "");
+  if (!text.success) return fail(text.error.issues[0]?.message ?? "That could not be read.");
+
+  return mutate(org, "report", async ({ db }) => {
+    const { error } = await db.rpc("exchange_report", {
+      p_subject_type: type,
+      p_subject_id: id.data,
+      p_reason: why.value,
+      p_detail: text.data || null,
+    });
+    if (error) return fail(error.message);
+    return ok(undefined, "Reported. A person at Huntloop will read it. You will not be told what is decided, and the other side is not told it was you.");
+  });
 }

@@ -2688,6 +2688,7 @@ console.log("\n0062 — Exchange: anonymous cards, reveal log, evidence, recall,
     [A, OWNER_A],
   );
   await db.query(`alter table exchange_intake_sessions enable trigger exchange_intake_sessions_touch`);
+  await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
   const pruned = await db.query<{ r: { needs: number; intake_sessions: number } }>(`select public.exchange_prune() as r`);
   const gone = await db.query(`select id from exchange_needs where id = $1`, [NEED]);
   if (gone.rows.length === 0 && pruned.rows[0]!.r.needs >= 1) ok("a request removed more than 30 days ago is deleted, with its matches and log");
@@ -2737,7 +2738,7 @@ console.log("\n0063 — Exchange introductions: only the buyer accepts; identity
   // The supplier asks.
   await as(OWNER_B);
   const intro = (await db.query<{ id: string }>(`select public.exchange_request_intro($1, 'We hold H200 stock in Frankfurt.') as id`, [MATCH])).rows[0]!.id;
-  const first = await db.query<{ state: string; direction: string }>(`select state, direction from exchange_intros where id = $1`, [intro]);
+  const first = await db.query<{ state: string; direction: string }>(`select state, direction from public.exchange_intro_list($2) where id = $1`, [intro, B]);
   if (first.rows[0]?.state === "requested" && first.rows[0].direction === "provider") ok("a supplier's request waits for the buyer");
   else fail("a supplier's request waits", JSON.stringify(first.rows));
   const again = (await db.query<{ id: string }>(`select public.exchange_request_intro($1) as id`, [MATCH])).rows[0]!.id;
@@ -2808,7 +2809,7 @@ console.log("\n0063 — Exchange introductions: only the buyer accepts; identity
   // Outcome.
   await as(OWNER_B);
   await db.query(`select public.exchange_report_outcome($1, 'won', 'Signed for 200 units')`, [intro]);
-  const closed = await db.query<{ state: string }>(`select state from exchange_intros where id = $1`, [intro]);
+  const closed = await db.query<{ state: string }>(`select state from public.exchange_intro_list($2) where id = $1`, [intro, B]);
   if (closed.rows[0]?.state === "closed") ok("reporting an outcome closes the introduction");
   else fail("outcome closes", JSON.stringify(closed.rows));
   await expectRejectTx(db, "and messages close with it", `select public.exchange_send_message($1, 'one more')`, [intro]);
@@ -2838,6 +2839,7 @@ console.log("\n0063 — Exchange introductions: only the buyer accepts; identity
   await db.exec("reset role");
 
   // Expiry.
+  await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
   await db.query(`delete from exchange_intros where need_id = $1 and state = 'withdrawn'`, [NEED]);
   await db.query(
     `insert into exchange_intros (need_id, offering_id, buyer_org_id, provider_org_id, direction, state, created_at)
@@ -2906,6 +2908,7 @@ console.log("\n0064 — Exchange notifications: alerts say no more than the card
   await queue();
   if ((await alertsFor(OWNER_B))[0]?.channel === "instant") ok("someone who chose instant gets a hot request at once");
   else fail("instant for hot", JSON.stringify(await alertsFor(OWNER_B)));
+  await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
   await db.query(`update exchange_needs set intent_band = 'warm' where id = $1`, [NEED]);
   await db.query(`delete from exchange_notifications`);
   await queue();
@@ -2981,6 +2984,411 @@ console.log("\n0064 — Exchange notifications: alerts say no more than the card
   const probe = await db.query<{ v: boolean }>(`select public.migration_0064_applied() as v`);
   if (probe.rows[0]?.v === true) ok("migration_0064_applied() exists for db:doctor");
   else fail("migration_0064_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0065 — Exchange trust and safety: reports, suspensions, spam limits, market demand");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // buyer workspace
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // supplier workspace
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const NEED = "65656565-0065-0065-0065-0000000000a1";
+  const NEED_PRIVATE = "65656565-0065-0065-0065-0000000000a2";
+  const PROV = "65656565-0065-0065-0065-0000000000b1";
+  const OFFER = "65656565-0065-0065-0065-0000000000c1";
+  const INTRO = "65656565-0065-0065-0065-0000000000e1";
+
+  await db.exec("begin");
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  await db.query(
+    `insert into exchange_needs (id, org_id, created_by, category_id, summary, quantity, country, visibility, intent_band)
+     values ($1, $3, $4, $5, 'Acme needs 200 cards', 200, 'DE', 2, 'hot'), ($2, $3, $4, $5, 'A private one', 5, 'DE', 1, null)`,
+    [NEED, NEED_PRIVATE, A, OWNER_A, leaf],
+  );
+  await db.query(`insert into exchange_provider_profiles (id, org_id, name, claimed_at) values ($1, $2, 'Northwind Compute', now())`, [PROV, B]);
+  await db.query(`insert into exchange_offerings (id, provider_id, category_id, title, status) values ($1, $2, $3, 'H200 NVL cards', 'active')`, [OFFER, PROV, leaf]);
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $3, 80), ($2, $3, 70)`, [NEED, NEED_PRIVATE, OFFER]);
+  await db.query(
+    `insert into exchange_intros (id, need_id, offering_id, buyer_org_id, provider_org_id, direction, state, decided_at)
+     values ($1, $2, $3, $4, $5, 'provider', 'accepted', now())`,
+    [INTRO, NEED, OFFER, A, B],
+  );
+  await db.query(`insert into exchange_messages (intro_id, sender_org_id, sender_side, body) values ($1, $2, 'provider', 'Buy from our other site')`, [INTRO, B]);
+  const MSG = (await db.query<{ id: string }>(`select id from exchange_messages where intro_id = $1`, [INTRO])).rows[0]!.id;
+
+  await db.exec("set local role authenticated");
+  const expectEqual = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = (u: string) => db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+
+  // ── Reports ──
+  await as(OWNER_B);
+  const rep = (await db.query<{ id: string }>(`select public.exchange_report('need', $1, 'fake_buyer', 'Looks made up') as id`, [NEED])).rows[0]!.id;
+  await engine();
+  const row = await db.query<{ subject_org_id: string; reporter_org_id: string; state: string }>(`select subject_org_id, reporter_org_id, state from exchange_reports where id = $1`, [rep]);
+  if (row.rows[0]?.subject_org_id === A && row.rows[0].reporter_org_id === B && row.rows[0].state === "open") ok("a supplier reports a request it was shown as a card, and the report names the buyer's workspace");
+  else fail("report a need from a card", JSON.stringify(row.rows));
+  await db.exec("set local role authenticated");
+  await as(OWNER_B);
+  const again = (await db.query<{ id: string }>(`select public.exchange_report('need', $1, 'spam') as id`, [NEED])).rows[0]!.id;
+  if (again === rep) ok("reporting the same thing twice is one open report");
+  else fail("one open report per subject", again);
+  await expectRejectTx(db, "a request the buyer keeps below level 2 cannot be reported — it was never shown", `select public.exchange_report('need', $1, 'spam')`, [NEED_PRIVATE]);
+  await expectRejectTx(db, "a supplier cannot report its own offering", `select public.exchange_report('offering', $1, 'spam')`, [OFFER]);
+  await expectRejectTx(db, "an unknown reason is refused", `select public.exchange_report('message', $1, 'dislike')`, [MSG]);
+  await expectRejectTx(db, "a session cannot write a report directly", `insert into exchange_reports (reporter_org_id, subject_type, subject_id, reason) values ($1, 'need', $2, 'spam')`, [B, NEED]);
+  const mine = await db.query(`select * from public.exchange_my_reports($1)`, [B]);
+  const raw = await db.query(`select * from exchange_reports`);
+  if (raw.rows.length === 0) ok("no session reads the reports table, which names the workspace behind an anonymous request");
+  else fail("reports table unreadable", JSON.stringify(raw.rows));
+  if (mine.rows.length === 1 && !JSON.stringify(mine.rows).includes(A)) ok("the reporter reads their own reports, without who they are about");
+  else fail("reporter reads own", JSON.stringify(mine.rows));
+
+  await as(OWNER_A);
+  const theirs = await db.query(`select id from public.exchange_my_reports($1)`, [A]);
+  if (theirs.rows.length === 0) ok("the reported party cannot read reports about them");
+  else fail("reported party reads nothing", JSON.stringify(theirs.rows));
+  const msgReport = (await db.query<{ id: string }>(`select public.exchange_report('message', $1, 'spam', 'Pushes me off-platform') as id`, [MSG])).rows[0]!.id;
+  await engine();
+  const msgRow = await db.query<{ subject_org_id: string }>(`select subject_org_id from exchange_reports where id = $1`, [msgReport]);
+  await db.exec("set local role authenticated");
+  await as(OWNER_A);
+  if (msgRow.rows[0]?.subject_org_id === B) ok("a buyer reports a supplier's message, and the report is about the sender");
+  else fail("report a message", JSON.stringify(msgRow.rows));
+  const offerReport = (await db.query<{ id: string }>(`select public.exchange_report('offering', $1, 'misrepresentation') as id`, [OFFER])).rows[0]!.id;
+  if (offerReport) ok("a buyer reports an offering it was matched with");
+  else fail("report offering", "none");
+  await expectRejectTx(db, "a session cannot read the operator's queue", `select * from public.exchange_report_queue()`);
+  await expectRejectTx(db, "or decide a report", `select public.exchange_resolve_report($1, 'dismiss')`, [rep]);
+
+  // ── Operator ──
+  await engine();
+  const queue = await db.query<{ report_id: string; subject_org: string; open_reports_on_org: string }>(`select report_id, subject_org, open_reports_on_org from public.exchange_report_queue()`);
+  if (queue.rows.length === 3 && Number(queue.rows[0]!.open_reports_on_org) >= 1) ok("the operator's queue lists open reports, the most-reported workspace first");
+  else fail("queue", JSON.stringify(queue.rows));
+  await expectRejectTx(db, "an unknown action is refused", `select public.exchange_resolve_report($1, 'ban')`, [msgReport]);
+  const removed = await db.query<{ s: string }>(`select public.exchange_resolve_report($1, 'remove', 'Off-platform solicitation') as s`, [msgReport]);
+  const gone = await db.query(`select id from exchange_messages where id = $1`, [MSG]);
+  if (removed.rows[0]?.s === "actioned" && gone.rows.length === 0) ok("removing a reported message deletes it and closes the report");
+  else fail("remove message", JSON.stringify({ removed: removed.rows, gone: gone.rows }));
+  await expectRejectTx(db, "a decided report cannot be decided again", `select public.exchange_resolve_report($1, 'dismiss')`, [msgReport]);
+  await db.query(`select public.exchange_resolve_report($1, 'dismiss', 'Looks genuine')`, [offerReport]);
+  const audit = await db.query<{ action: string }>(`select action from audit_logs where target_id = $1`, [msgReport]);
+  if (audit.rows.some((a) => a.action === "exchange.moderated") && audit.rows.some((a) => a.action === "exchange.report_actioned")) ok("every decision is in the audit log of both workspaces");
+  else fail("audit", JSON.stringify(audit.rows));
+
+  // ── Suspension ──
+  const suspended = await db.query<{ s: string }>(`select public.exchange_resolve_report($1, 'suspend', 'Repeated fake requests') as s`, [rep]);
+  if (suspended.rows[0]?.s === "actioned" && (await db.query<{ v: boolean }>(`select public.exchange_suspended($1) as v`, [A])).rows[0]!.v) ok("suspending puts the reported workspace out of the Exchange");
+  else fail("suspend", JSON.stringify(suspended.rows));
+  await db.exec("set local role authenticated");
+  await as(OWNER_B);
+  const cards = await db.query(`select * from public.exchange_matched_cards($1)`, [B]);
+  if (cards.rows.length === 0) ok("a suspended buyer's requests are no longer shown to suppliers");
+  else fail("suspended buyer hidden", JSON.stringify(cards.rows));
+  await engine();
+  const recall = await db.query<{ id: string }>(`select * from public.exchange_recall_offerings($1, 10) as id`, [NEED]);
+  if (recall.rows.length === 1) ok("a buyer's suspension does not remove suppliers from its own matching");
+  else fail("recall unaffected", JSON.stringify(recall.rows));
+  await db.query(`insert into exchange_suspensions (org_id, reason) values ($1, 'test')`, [B]);
+  const recallB = await db.query(`select * from public.exchange_recall_offerings($1, 10)`, [NEED]);
+  if (recallB.rows.length === 0) ok("a suspended supplier's offerings are not candidates");
+  else fail("suspended supplier excluded", JSON.stringify(recallB.rows));
+  await expectRejectTx(
+    db,
+    "no new introduction from or to a suspended workspace",
+    `insert into exchange_intros (need_id, offering_id, buyer_org_id, provider_org_id, direction) values ($1, $2, $3, $4, 'provider')`,
+    [NEED_PRIVATE, OFFER, A, B],
+  );
+  await expectRejectTx(db, "nor a message in an existing introduction", `insert into exchange_messages (intro_id, sender_side, body) values ($1, 'provider', 'hello')`, [INTRO]);
+  const notice = await db.query(
+    `insert into exchange_notifications (org_id, user_id, kind, title, href, channel, dedupe_key) values ($1, $2, 'reconfirm', 'x', '/x', 'none', 'k65') returning id`,
+    [B, OWNER_B],
+  );
+  if (notice.rows.length === 0) ok("no notification is queued for a suspended workspace");
+  else fail("notice skipped", JSON.stringify(notice.rows));
+  await db.exec("set local role authenticated");
+  await as(OWNER_A);
+  const noFile = await db.query<{ s: string | null }>(`select public.exchange_my_suspension($1) as s`, [A]);
+  if (noFile.rows[0]?.s === "Repeated fake requests") ok("a suspended workspace can read why it is suspended");
+  else fail("my suspension", JSON.stringify(noFile.rows));
+  await engine();
+  await db.query(`update exchange_suspensions set lifted_at = now() where org_id = $1`, [B]);
+  if ((await db.query<{ b: boolean }>(`select public.exchange_lift_suspension($1) as b`, [A])).rows[0]!.b) ok("lifting a suspension restores the workspace; nothing it had was deleted");
+  else fail("lift", "false");
+  await db.exec("set local role authenticated");
+  await as(OWNER_B);
+  if ((await db.query(`select * from public.exchange_matched_cards($1)`, [B])).rows.length === 1) ok("and its request is shown to suppliers again");
+  else fail("restored", "no card");
+  await engine();
+
+  // ── Spam limits ──
+  await engine();
+  await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [OWNER_A]);
+  await db.exec("set local role authenticated");
+  await as(OWNER_A);
+  await expectRejectTx(db, "a request needs a confirmed email address", `insert into exchange_needs (org_id, summary) values ($1, 'From an unconfirmed address')`, [A]);
+  await engine();
+  await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [OWNER_A]);
+  await db.query(`delete from exchange_needs where created_at > now() - interval '1 minute' and id not in ($1, $2)`, [NEED, NEED_PRIVATE]);
+  await db.exec("set local role authenticated");
+  await as(OWNER_A);
+  for (let i = 0; i < 8; i++) await db.query(`insert into exchange_needs (org_id, summary) values ($1, $2)`, [A, `Request ${i}`]);
+  await expectRejectTx(db, "a workspace may file at most 10 requests a day", `insert into exchange_needs (org_id, summary) values ($1, 'The eleventh')`, [A]);
+  await engine();
+  await db.query(`insert into exchange_needs (org_id, summary) values ($1, 'The engine is not limited')`, [A]);
+  ok("the engine itself is not rate-limited");
+
+  // ── Market demand ──
+  await db.query(`delete from exchange_needs where id not in ($1, $2)`, [NEED, NEED_PRIVATE]);
+  await db.query(`update exchange_needs set visibility = 0 where id in ($1, $2)`, [NEED, NEED_PRIVATE]);
+  const seed = (n: number, country: string) =>
+    db.query(
+      `insert into exchange_needs (org_id, created_by, category_id, summary, country, visibility, intent_band)
+       select $1, $2, $3, 'Demand', $4, 1, 'warm' from generate_series(1, $5)`,
+      [A, OWNER_A, leaf, country, n],
+    );
+  const demand = async (user: string, org: string) => {
+    await db.exec("set local role authenticated");
+    await as(user);
+    const r = await db.query<{ region: string; open_requests: string }>(`select region, open_requests from public.exchange_market_demand($1) order by region`, [org]);
+    await engine();
+    return r.rows.map((x) => `${x.region}:${x.open_requests}`);
+  };
+  await seed(9, "DE");
+  expectEqual("nine requests in a region are not enough to show", await demand(OWNER_B, B), []);
+  await seed(1, "FR");
+  expectEqual("ten share Europe, so Europe is shown, as a count of ten", await demand(OWNER_B, B), ["Europe:10"]);
+  await db.query(`delete from exchange_needs where category_id = $1 and summary = 'Demand'`, [leaf]);
+  await seed(6, "DE");
+  await seed(5, "US");
+  expectEqual("two thin regions that together reach ten fold into Worldwide", await demand(OWNER_B, B), ["Worldwide:11"]);
+  await db.query(`delete from exchange_needs where category_id = $1 and summary = 'Demand'`, [leaf]);
+  await seed(10, "DE");
+  await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [OWNER_A]);
+  expectEqual("requests from an unconfirmed address are not counted", await demand(OWNER_B, B), []);
+  await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [OWNER_A]);
+  expectEqual("a confirmed buyer's are", await demand(OWNER_B, B), ["Europe:10"]);
+  await db.query(`insert into exchange_suspensions (org_id, reason) values ($1, 'test')`, [A]);
+  expectEqual("a suspended buyer's are not", await demand(OWNER_B, B), []);
+  await db.query(`update exchange_suspensions set lifted_at = now() where org_id = $1`, [A]);
+  expectEqual("a workspace never sees its own requests in the totals", await demand(OWNER_A, A), []);
+  await db.query(`update exchange_provider_profiles set deleted_at = now() where id = $1`, [PROV]);
+  expectEqual("and a workspace with no supplier profile sees no market data at all", await demand(OWNER_B, B), []);
+  await db.exec("set local role authenticated");
+  await as(OWNER_A);
+  await expectRejectTx(db, "a workspace cannot ask for another's demand view", `select * from public.exchange_market_demand($1)`, [B]);
+  await engine();
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0065_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0065_applied() exists for db:doctor");
+  else fail("migration_0065_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0066 — Exchange audit fixes: company firewall, introduction privacy, derived intent, paused offerings");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // buyer workspace
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // supplier workspace
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const CO = "66666666-0066-0066-0066-0000000000c1";
+  const CO_PLAIN = "66666666-0066-0066-0066-0000000000c2";
+  const NEED = "66666666-0066-0066-0066-0000000000a1";
+  const PROV = "66666666-0066-0066-0066-0000000000b1";
+  const OFFER = "66666666-0066-0066-0066-0000000000d1";
+  const MATCH = "66666666-0066-0066-0066-0000000000e1";
+  const eq = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+
+  await db.exec("begin");
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  await engine();
+
+  // ── The company side of the firewall ──
+  await db.query(
+    `insert into companies (id, org_id, canonical_domain, name) values ($1, $3, 'buyer-66.test', 'Buyer'), ($2, $3, 'plain-66.test', 'Plain')`,
+    [CO, CO_PLAIN, B],
+  );
+  await db.query(`insert into opportunities (org_id, company_id, priority_reason, origin) values ($1, $2, 'Stated need.', 'exchange')`, [B, CO]);
+  const origin = await db.query<{ origin: string }>(`select origin from companies where id = $1`, [CO]);
+  eq("an Exchange opportunity makes its company Exchange", origin.rows[0]?.origin, "exchange");
+  await expectRejectTx(db, "which is permanent", `update companies set origin = 'engine' where id = $1`, [CO]);
+  for (const column of ["last_enriched_at", "last_researched_at", "last_signal_checked_at", "research_asked_at"]) {
+    await expectRejectTx(db, `an Exchange company's ${column} cannot be written`, `update companies set ${column} = now() where id = $1`, [CO]);
+    await expectAccept(db, `an ordinary company's ${column} still is`, `update companies set ${column} = now() where id = $1`, [CO_PLAIN]);
+  }
+  await expectAccept(db, "a person can still edit an Exchange company", `update companies set name = 'Buyer GmbH' where id = $1`, [CO]);
+  const record = `insert into enrichment_records (org_id, entity_type, entity_id, provider, field, value) values ($1, 'company', $2, 'apollo', 'industry', '"x"'::jsonb)`;
+  await expectRejectTx(db, "no enrichment record is written for an Exchange company", record, [B, CO]);
+  await expectAccept(db, "one is for an ordinary company", record, [B, CO_PLAIN]);
+  const queue = async (job: string, company: string) =>
+    (await db.query(`insert into job_executions (org_id, job_name, payload, status) values ($1, $2, $3, 'queued') returning id`, [B, job, JSON.stringify({ companyId: company })])).rows.length;
+  for (const job of ["enrich_company", "research_company", "fetch_company_signals", "profile_company"]) {
+    eq(`${job} cannot be queued for an Exchange company`, await queue(job, CO), 0);
+    eq(`${job} still is for an ordinary one`, await queue(job, CO_PLAIN), 1);
+  }
+  const born = await db.query<{ id: string }>(`insert into companies (org_id, canonical_domain, name, origin) values ($1, 'born-66.test', 'Born', 'exchange') returning id`, [B]);
+  const bornJobs = await db.query<{ job_name: string }>(`select job_name from job_executions where payload ->> 'companyId' = $1`, [born.rows[0]!.id]);
+  eq("a company created from an introduction is never profiled, even at birth", bornJobs.rows, []);
+
+  // ── Sequences on the company's other opportunities ──
+  const enroll = async (tag: string) => {
+    const co = (await db.query<{ id: string }>(`insert into companies (org_id, canonical_domain, name) values ($1, $2, $3) returning id`, [B, `${tag}-66.test`, tag])).rows[0]!.id;
+    const icp = (await db.query<{ id: string }>(`insert into icps (org_id, name) values ($1, $2) returning id`, [B, `ICP ${tag}`])).rows[0]!.id;
+    const opp = (await db.query<{ id: string }>(`insert into opportunities (org_id, company_id, icp_id, priority_reason) values ($1, $2, $3, 'Engine.') returning id`, [B, co, icp])).rows[0]!.id;
+    const camp = (await db.query<{ id: string }>(`insert into campaigns (org_id, name, status) values ($1, $2, 'active') returning id`, [B, tag])).rows[0]!.id;
+    const enr = (await db.query<{ id: string }>(`insert into enrollments (org_id, campaign_id, opportunity_id, status, next_action_at) values ($1, $2, $3, 'active', now()) returning id`, [B, camp, opp])).rows[0]!.id;
+    const msg = (await db.query<{ id: string }>(`insert into messages (org_id, enrollment_id, direction, body_text, to_email, scheduled_at) values ($1, $2, 'outbound', 'Hi', 'a@x.test', now()) returning id`, [B, enr])).rows[0]!.id;
+    return { co, opp, camp, enr, msg };
+  };
+  const state = async (e: { enr: string; msg: string }) => {
+    const r = await db.query<{ status: string; due: boolean; queued: boolean; error: string | null }>(
+      `select e.status, e.next_action_at is not null as due, m.scheduled_at is not null as queued, m.error from enrollments e, messages m where e.id = $1 and m.id = $2`,
+      [e.enr, e.msg],
+    );
+    const x = r.rows[0]!;
+    return [x.status, x.due, x.queued, Boolean(x.error?.includes("Exchange"))];
+  };
+  const seq = await enroll("seq");
+  const other = await enroll("other");
+  const reply = (await db.query<{ id: string }>(`insert into messages (org_id, opportunity_id, direction, body_text, to_email, scheduled_at) values ($1, $2, 'outbound', 'A reply', 'a@x.test', now()) returning id`, [B, seq.opp])).rows[0]!.id;
+  await db.query(`insert into opportunities (org_id, company_id, priority_reason, origin) values ($1, $2, 'Stated need.', 'exchange')`, [B, seq.co]);
+  eq("an introduction stops the sequence on the company's ICP opportunity and withdraws its queued email", await state(seq), ["stopped", false, false, true]);
+  eq("a reply a person wrote is left alone", (await db.query(`select 1 from messages where id = $1 and scheduled_at is not null and error is null`, [reply])).rows.length, 1);
+  eq("another company's sequence goes on", await state(other), ["active", true, true, false]);
+  await expectRejectTx(db, "the stopped sequence cannot be resumed", `update enrollments set status = 'active' where id = $1`, [seq.enr]);
+  await expectAccept(db, "its other fields still can change", `update enrollments set current_step = 1 where id = $1`, [seq.enr]);
+  const camp2 = (await db.query<{ id: string }>(`insert into campaigns (org_id, name, status) values ($1, 'second', 'active') returning id`, [B])).rows[0]!.id;
+  await expectRejectTx(db, "nor a new one started on the ICP opportunity", `insert into enrollments (org_id, campaign_id, opportunity_id, status) values ($1, $2, $3, 'active')`, [B, camp2, seq.opp]);
+  await expectAccept(db, "another company still can be enrolled", `insert into enrollments (org_id, campaign_id, opportunity_id, status) values ($1, $2, $3, 'active')`, [B, camp2, other.opp]);
+  await db.query(`update enrollments set status = 'parked', parked_reason = 'x' where id = $1`, [other.enr]);
+  await db.query(`update opportunities set company_id = $2 where id = $1`, [other.opp, seq.co]);
+  eq("merging a company into an introduced one stops its sequences too, waiting ones included", (await state(other))[0], "stopped");
+
+  // ── Derived intent ──
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  const parent = (await db.query<{ id: string }>(`select parent_id as id from exchange_categories where id = $1`, [leaf])).rows[0]!.id;
+  await db.query(`update exchange_categories set attributes = '[]' where id = $1`, [leaf]);
+  await db.query(
+    `update exchange_categories set attributes = '[{"key":"item","label":"Item","required":true},{"key":"qty","label":"Quantity","required":true},{"key":"x","label":"Extra"}]' where id = $1`,
+    [parent],
+  );
+  await db.query(`delete from exchange_needs where org_id = $1 and created_at > now() - interval '1 day'`, [A]);
+  await as(OWNER_A);
+  const full = `'{"item":{"value":"H200","kind":"fact"},"qty":{"value":"200","kind":"fact"}}'::jsonb`;
+  await expectRejectTx(db, "a session cannot file a request already marked hot", `insert into exchange_needs (org_id, summary, intent_band) values ($1, 'Hot, honest', 'hot')`, [A]);
+  await db.query(
+    `insert into exchange_needs (id, org_id, category_id, summary, requirement, budget_max, currency, timeline, visibility, created_at, last_confirmed_at)
+     values ($1, $2, $3, '200 H200 cards', ${full}, 100, 'EUR', 'this_month', 2, now() - interval '9 days', now() + interval '1 year')`,
+    [NEED, A, leaf],
+  );
+  const filed = await db.query<{ intent_band: string; intent_dimensions: unknown; dated: boolean }>(
+    `select intent_band, intent_dimensions, created_at > now() - interval '1 minute' and last_confirmed_at <= now() as dated from exchange_needs where id = $1`,
+    [NEED],
+  );
+  eq("everything answered, a budget and a near timeline is hot", filed.rows[0]?.intent_band, "hot");
+  eq("with its dimensions, the required fields read from the parent category", filed.rows[0]?.intent_dimensions, { budget: 100, timeline: 100, specificity: 100 });
+  eq("a request cannot be backdated past the daily limit or pre-confirmed", filed.rows[0]?.dated, true);
+  await expectRejectTx(db, "nor its band rewritten", `update exchange_needs set intent_band = 'warm' where id = $1`, [NEED]);
+  await expectRejectTx(db, "nor its dimensions", `update exchange_needs set intent_dimensions = '{"budget":1}' where id = $1`, [NEED]);
+  await expectRejectTx(db, "nor its confirmation date", `update exchange_needs set last_confirmed_at = now() + interval '1 day' where id = $1`, [NEED]);
+  await db.query(`update exchange_needs set timeline = 'exploring', budget_max = null, requirement = '{}' where id = $1`, [NEED]);
+  const cooled = await db.query<{ intent_band: string; intent_dimensions: unknown }>(`select intent_band, intent_dimensions from exchange_needs where id = $1`, [NEED]);
+  eq("changing the answers re-scores the request", [cooled.rows[0]?.intent_band, cooled.rows[0]?.intent_dimensions], ["cool", { budget: null, timeline: 10, specificity: 0 }]);
+  await db.query(`update exchange_needs set category_id = null where id = $1`, [NEED]);
+  const thin = await db.query<{ intent_band: string | null }>(`select intent_band from exchange_needs where id = $1`, [NEED]);
+  eq("with fewer than two measured the band is unknown, not cool", thin.rows[0]?.intent_band, null);
+  await db.query(`update exchange_needs set category_id = $2 where id = $1`, [NEED, leaf]);
+  const confirmed = await db.query<{ v: boolean }>(`select public.exchange_confirm_need($1) as v`, [NEED]);
+  eq("Still needed dates the confirmation through its function", confirmed.rows[0]?.v, true);
+  await expectRejectTx(db, "which does not leave the door open behind it", `update exchange_needs set last_confirmed_at = now() + interval '1 day' where id = $1`, [NEED]);
+  await as(OWNER_B);
+  await expectRejectTx(db, "another workspace cannot confirm it", `select public.exchange_confirm_need($1)`, [NEED]);
+
+  // ── Paused offerings ──
+  await engine();
+  await db.query(`insert into exchange_provider_profiles (id, org_id, name, claimed_at) values ($1, $2, 'Northwind Compute', now())`, [PROV, B]);
+  await db.query(`insert into exchange_offerings (id, provider_id, category_id, title, status) values ($1, $2, $3, 'H200 NVL cards', 'active')`, [OFFER, PROV, leaf]);
+  await db.query(`insert into exchange_matches (id, need_id, offering_id, score) values ($1, $2, $3, 80)`, [MATCH, NEED, OFFER]);
+  await as(OWNER_B);
+  eq("an active offering's card is shown", (await db.query(`select * from public.exchange_matched_cards($1)`, [B])).rows.length, 1);
+  await engine();
+  await db.query(`update exchange_offerings set status = 'paused' where id = $1`, [OFFER]);
+  await as(OWNER_B);
+  eq("a paused offering's is not", (await db.query(`select * from public.exchange_matched_cards($1)`, [B])).rows.length, 0);
+  await expectRejectTx(db, "nor can the supplier ask with it", `select public.exchange_request_intro($1)`, [MATCH]);
+  await as(OWNER_A);
+  await expectRejectTx(db, "or the buyer ask about it", `select public.exchange_request_intro($1)`, [MATCH]);
+  await engine();
+  await db.query(`update exchange_offerings set status = 'active' where id = $1`, [OFFER]);
+
+  // ── Introductions: the supplier never reads the table ──
+  await as(OWNER_B);
+  const intro = (await db.query<{ id: string }>(`select public.exchange_request_intro($1) as id`, [MATCH])).rows[0]!.id;
+  const seen = async () => {
+    await as(OWNER_B);
+    const raw = await db.query(`select * from exchange_intros`);
+    const list = await db.query(`select * from public.exchange_intro_list($1)`, [B]);
+    const detail = await db.query(`select public.exchange_intro_detail($1) as d`, [intro]);
+    return { raw: raw.rows.length, list: list.rows.length, text: JSON.stringify([list.rows, detail.rows]) };
+  };
+  const hidden = (t: string) => ![A, NEED, OWNER_A, "Org A", "200 H200 cards"].some((x) => t.includes(x));
+  const pending = await seen();
+  eq("the supplier reads no row of the introductions table", pending.raw, 0);
+  if (pending.list === 1 && hidden(pending.text)) ok("and its own read functions hold neither buyer, request nor decider before acceptance");
+  else fail("nothing identifying before acceptance", pending.text);
+  await engine();
+  await db.query(`update exchange_intros set created_at = now() - interval '15 days' where id = $1`, [intro]);
+  await db.query(`select public.exchange_expire()`);
+  const stale = await seen();
+  if (hidden(stale.text) && stale.text.includes('"stale"')) ok("a request nobody answered goes stale without revealing the buyer");
+  else fail("stale reveals nothing", stale.text);
+  await expectRejectTx(db, "nor can an outcome be reported on it", `select public.exchange_report_outcome($1, 'won')`, [intro]);
+  await engine();
+  await db.query(`update exchange_intros set state = 'closed' where id = $1`, [intro]);
+  const closed = await seen();
+  if (hidden(closed.text)) ok("nor does one the operator closed before it was answered");
+  else fail("closed reveals nothing", closed.text);
+  await engine();
+  await db.query(`update exchange_intros set state = 'requested', created_at = now() where id = $1`, [intro]);
+  await as(OWNER_A);
+  eq("the buyer reads its own introduction", (await db.query(`select id from exchange_intros`)).rows.length, 1);
+  await db.query(`select public.exchange_decide_intro($1, true)`, [intro]);
+  await db.query(`select public.exchange_send_message($1, 'Hello')`, [intro]);
+  const open = await seen();
+  if (open.text.includes("Org A") && open.text.includes(NEED)) ok("after acceptance the supplier sees who the buyer is");
+  else fail("revealed after acceptance", open.text);
+  eq("still not from the table", open.raw, 0);
+  eq("and reads the messages", (await db.query(`select id from exchange_messages where intro_id = $1`, [intro])).rows.length, 1);
+  await engine();
+  await db.query(`update exchange_intros set state = 'stale' where id = $1`, [intro]);
+  if ((await seen()).text.includes("Org A")) ok("an accepted introduction that goes quiet keeps what was revealed");
+  else fail("accepted then stale", "hidden");
+
+  // ── Engine-only functions ──
+  for (const call of ["exchange_prune()", "exchange_expire()"]) {
+    await db.exec("reset role");
+    await expectRejectTx(db, `a session cannot run ${call}`, `select public.${call}`);
+  }
+  await engine();
+  const exposed = await db.query<{ function_name: string }>(`select * from public.engine_only_exposed()`);
+  if (Array.isArray(exposed.rows)) ok("engine_only_exposed() reports for db:doctor");
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0066_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0066_applied() exists for db:doctor");
+  else fail("migration_0066_applied() exists", JSON.stringify(probe.rows));
   await db.exec("rollback");
 }
 

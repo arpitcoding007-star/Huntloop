@@ -4,18 +4,18 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 64 migrations
-> (`0001_identity.sql` … `0064_exchange_notifications.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 66 migrations
+> (`0001_identity.sql` … `0066_exchange_audit_fixes.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 95 tables · 10 views · 171 public functions · 10 enum types · 167 RLS policies · 327 indexes · 148 triggers.
+**Totals:** 97 tables · 10 views · 196 public functions · 10 enum types · 169 RLS policies · 337 indexes · 159 triggers.
 
-**RLS enabled on:** 95 of 95 tables.
+**RLS enabled on:** 97 of 97 tables.
 
 ## Contents
 
-[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_notifications`](#exchange_notifications) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reveal_log`](#exchange_reveal_log) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
+[`activities`](#activities) · [`ai_decisions`](#ai_decisions) · [`ai_runs`](#ai_runs) · [`attention_snoozes`](#attention_snoozes) · [`audit_logs`](#audit_logs) · [`campaigns`](#campaigns) · [`companies`](#companies) · [`company_competitor_signals`](#company_competitor_signals) · [`company_domains`](#company_domains) · [`company_gaps`](#company_gaps) · [`company_merges`](#company_merges) · [`company_problems`](#company_problems) · [`company_triggers`](#company_triggers) · [`competitor_evidence`](#competitor_evidence) · [`competitor_profiles`](#competitor_profiles) · [`competitors`](#competitors) · [`contact_fit_scores`](#contact_fit_scores) · [`contact_frequency`](#contact_frequency) · [`contact_points`](#contact_points) · [`contact_send_lanes`](#contact_send_lanes) · [`conversation_messages`](#conversation_messages) · [`conversations`](#conversations) · [`demand_signals`](#demand_signals) · [`demand_state`](#demand_state) · [`demand_themes`](#demand_themes) · [`discovery_queries`](#discovery_queries) · [`discovery_results`](#discovery_results) · [`discovery_runs`](#discovery_runs) · [`enrichment_records`](#enrichment_records) · [`enrollments`](#enrollments) · [`events`](#events) · [`evidence`](#evidence) · [`evidence_citations`](#evidence_citations) · [`exchange_categories`](#exchange_categories) · [`exchange_intake_sessions`](#exchange_intake_sessions) · [`exchange_intros`](#exchange_intros) · [`exchange_matches`](#exchange_matches) · [`exchange_messages`](#exchange_messages) · [`exchange_needs`](#exchange_needs) · [`exchange_notifications`](#exchange_notifications) · [`exchange_offering_evidence`](#exchange_offering_evidence) · [`exchange_offerings`](#exchange_offerings) · [`exchange_outcomes`](#exchange_outcomes) · [`exchange_provider_profiles`](#exchange_provider_profiles) · [`exchange_reports`](#exchange_reports) · [`exchange_reveal_log`](#exchange_reveal_log) · [`exchange_suspensions`](#exchange_suspensions) · [`external_ids`](#external_ids) · [`hubspot_connections`](#hubspot_connections) · [`human_overrides`](#human_overrides) · [`icp_versions`](#icp_versions) · [`icps`](#icps) · [`invitations`](#invitations) · [`job_executions`](#job_executions) · [`join_requests`](#join_requests) · [`learning_findings`](#learning_findings) · [`learning_runs`](#learning_runs) · [`mailboxes`](#mailboxes) · [`memberships`](#memberships) · [`memories`](#memories) · [`memory_evidence`](#memory_evidence) · [`merge_candidates`](#merge_candidates) · [`message_events`](#message_events) · [`message_unsubscribe_tokens`](#message_unsubscribe_tokens) · [`messages`](#messages) · [`notification_preferences`](#notification_preferences) · [`opportunities`](#opportunities) · [`opportunity_scores`](#opportunity_scores) · [`organizations`](#organizations) · [`outcomes`](#outcomes) · [`people`](#people) · [`personas`](#personas) · [`plans`](#plans) · [`platform_pauses`](#platform_pauses) · [`preference_signals`](#preference_signals) · [`preference_state`](#preference_state) · [`products`](#products) · [`profiles`](#profiles) · [`provider_accounts`](#provider_accounts) · [`provider_breakers`](#provider_breakers) · [`provider_cache`](#provider_cache) · [`provider_calls`](#provider_calls) · [`public_research`](#public_research) · [`public_research_attempts`](#public_research_attempts) · [`rate_limits`](#rate_limits) · [`score_recompute_requests`](#score_recompute_requests) · [`scoring_rules`](#scoring_rules) · [`sequence_steps`](#sequence_steps) · [`sequences`](#sequences) · [`source_documents`](#source_documents) · [`source_events`](#source_events) · [`sources`](#sources) · [`subscriptions`](#subscriptions) · [`suppressions`](#suppressions) · [`threads`](#threads) · [`usage_counters`](#usage_counters) · [`user_questions`](#user_questions)
 
 ---
 
@@ -310,11 +310,13 @@ RLS: **enabled**
 | `last_enriched_at` | timestamp with time zone | null |  |
 | `research_requested_at` | timestamp with time zone | null |  |
 | `research_asked_at` | timestamp with time zone | null |  |
+| `origin` | text | NOT NULL | `'engine'::text` |
 
 **Constraints**
 
 - CHECK `companies_not_own_merge_target` — `CHECK (((merged_into_id IS NULL) OR (merged_into_id <> id)))`
 - CHECK `companies_not_own_parent` — `CHECK (((parent_company_id IS NULL) OR (parent_company_id <> id)))`
+- CHECK `companies_origin_check` — `CHECK ((origin = ANY (ARRAY['engine'::text, 'import'::text, 'exchange'::text])))`
 - CHECK `companies_relationship_kind_check` — `CHECK (((relationship_kind IS NULL) OR (relationship_kind = ANY (ARRAY['subsidiary'::text, 'division'::text, 'brand'::text, 'acquired'::text]))))`
 - FK `companies_discovery_run_id_fkey` — `FOREIGN KEY (discovery_run_id) REFERENCES discovery_runs(id) ON DELETE SET NULL`
 - FK `companies_merged_into_id_fkey` — `FOREIGN KEY (merged_into_id) REFERENCES companies(id) ON DELETE SET NULL`
@@ -326,6 +328,7 @@ RLS: **enabled**
 **Indexes**
 
 - `companies_discovery_run_idx` — `companies USING btree (org_id, discovery_run_id) WHERE (discovery_run_id IS NOT NULL)`
+- `companies_exchange_origin_idx` — `companies USING btree (org_id) WHERE (origin = 'exchange'::text)`
 - `companies_parent_idx` — `companies USING btree (org_id, parent_company_id) WHERE (parent_company_id IS NOT NULL)`
 - `companies_research_asked_idx` — `companies USING btree (research_asked_at) WHERE ((research_asked_at IS NOT NULL) AND (deleted_at IS NULL))`
 - `companies_signal_stale_idx` — `companies USING btree (last_signal_checked_at) WHERE (deleted_at IS NULL)`
@@ -339,7 +342,10 @@ RLS: **enabled**
 
 **Triggers**
 
+- `companies_became_exchange`
 - `companies_enqueue_followups`
+- `companies_firewall`
+- `companies_origin_permanent`
 - `companies_propagate_removal`
 - `companies_same_org`
 - `companies_touch`
@@ -1592,10 +1598,11 @@ RLS: **enabled**
 
 **Policies**
 
-- `exchange_intros_read` — SELECT USING `((buyer_org_id IN ( SELECT user_org_ids() AS user_org_ids)) OR (provider_org_id IN ( SELECT user_org_ids() AS user_org_ids)))`
+- `exchange_intros_read` — SELECT USING `(buyer_org_id IN ( SELECT user_org_ids() AS user_org_ids))`
 
 **Triggers**
 
+- `exchange_intros_suspended`
 - `exchange_intros_touch`
 
 ## exchange_matches
@@ -1617,12 +1624,14 @@ RLS: **enabled**
 | `buyer_state` | text | NOT NULL | `'new'::text` |
 | `created_at` | timestamp with time zone | NOT NULL | `now()` |
 | `updated_at` | timestamp with time zone | NOT NULL | `now()` |
+| `explained` | jsonb | null |  |
 
 **Constraints**
 
 - CHECK `exchange_matches_buyer_state_check` — `CHECK ((buyer_state = ANY (ARRAY['new'::text, 'shortlisted'::text, 'dismissed'::text])))`
 - CHECK `exchange_matches_cited_check` — `CHECK ((jsonb_typeof(cited) = 'array'::text))`
 - CHECK `exchange_matches_dimensions_check` — `CHECK ((jsonb_typeof(dimensions) = 'object'::text))`
+- CHECK `exchange_matches_explained_check` — `CHECK (((explained IS NULL) OR (jsonb_typeof(explained) = 'object'::text)))`
 - CHECK `exchange_matches_score_check` — `CHECK (((score IS NULL) OR ((score >= 0) AND (score <= 100))))`
 - FK `exchange_matches_need_id_fkey` — `FOREIGN KEY (need_id) REFERENCES exchange_needs(id) ON DELETE CASCADE`
 - FK `exchange_matches_offering_id_fkey` — `FOREIGN KEY (offering_id) REFERENCES exchange_offerings(id) ON DELETE CASCADE`
@@ -1677,7 +1686,11 @@ RLS: **enabled**
 
 **Policies**
 
-- `exchange_messages_read` — SELECT USING `(EXISTS ( SELECT 1    FROM exchange_intros i   WHERE ((i.id = exchange_messages.intro_id) AND ((i.buyer_org_id IN ( SELECT user_org_ids() AS user_org_ids)) OR (i.provider_org_id IN ( SELECT user_org_ids() AS user_org_ids))))))`
+- `exchange_messages_read` — SELECT USING `exchange_is_intro_party(intro_id)`
+
+**Triggers**
+
+- `exchange_messages_suspended`
 
 ## exchange_needs
 
@@ -1754,6 +1767,8 @@ RLS: **enabled**
 
 **Triggers**
 
+- `exchange_needs_declared`
+- `exchange_needs_limits`
 - `exchange_needs_touch`
 
 ## exchange_notifications
@@ -1806,6 +1821,10 @@ RLS: **enabled**
 **Policies**
 
 - `exchange_notifications_own` — SELECT USING `((user_id = auth.uid()) AND (org_id IN ( SELECT user_org_ids() AS user_org_ids)))`
+
+**Triggers**
+
+- `exchange_notifications_suspended`
 
 ## exchange_offering_evidence
 
@@ -1959,7 +1978,7 @@ RLS: **enabled**
 
 **Policies**
 
-- `exchange_outcomes_read` — SELECT USING `(EXISTS ( SELECT 1    FROM exchange_intros i   WHERE ((i.id = exchange_outcomes.intro_id) AND ((i.buyer_org_id IN ( SELECT user_org_ids() AS user_org_ids)) OR (i.provider_org_id IN ( SELECT user_org_ids() AS user_org_ids))))))`
+- `exchange_outcomes_read` — SELECT USING `exchange_is_intro_party(intro_id)`
 
 ## exchange_provider_profiles
 
@@ -2008,6 +2027,49 @@ RLS: **enabled**
 - `exchange_provider_profiles_touch`
 - `exchange_provider_profiles_verification`
 
+## exchange_reports
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `reporter_org_id` | uuid | NOT NULL |  |
+| `reporter_user_id` | uuid | null | `auth.uid()` |
+| `subject_type` | text | NOT NULL |  |
+| `subject_id` | uuid | NOT NULL |  |
+| `subject_org_id` | uuid | null |  |
+| `reason` | text | NOT NULL |  |
+| `detail` | text | null |  |
+| `state` | text | NOT NULL | `'open'::text` |
+| `resolution` | text | null |  |
+| `resolved_at` | timestamp with time zone | null |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+
+**Constraints**
+
+- CHECK `exchange_reports_detail_check` — `CHECK (((detail IS NULL) OR (length(detail) <= 1000)))`
+- CHECK `exchange_reports_reason_check` — `CHECK ((reason = ANY (ARRAY['spam'::text, 'fake_buyer'::text, 'misrepresentation'::text, 'prohibited'::text, 'harassment'::text, 'privacy'::text, 'other'::text])))`
+- CHECK `exchange_reports_resolution_check` — `CHECK (((resolution IS NULL) OR (length(resolution) <= 1000)))`
+- CHECK `exchange_reports_state_check` — `CHECK ((state = ANY (ARRAY['open'::text, 'actioned'::text, 'dismissed'::text])))`
+- CHECK `exchange_reports_subject_type_check` — `CHECK ((subject_type = ANY (ARRAY['need'::text, 'offering'::text, 'provider'::text, 'intro'::text, 'message'::text])))`
+- FK `exchange_reports_reporter_org_id_fkey` — `FOREIGN KEY (reporter_org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_reports_reporter_user_id_fkey` — `FOREIGN KEY (reporter_user_id) REFERENCES auth.users(id) ON DELETE SET NULL`
+- FK `exchange_reports_subject_org_id_fkey` — `FOREIGN KEY (subject_org_id) REFERENCES organizations(id) ON DELETE SET NULL`
+- PK `exchange_reports_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_reports_one_open` — `UNIQUE exchange_reports USING btree (reporter_org_id, subject_type, subject_id) WHERE (state = 'open'::text)`
+- `exchange_reports_queue_idx` — `exchange_reports USING btree (state, created_at)`
+- `exchange_reports_reporter_org_idx` — `exchange_reports USING btree (reporter_org_id, created_at DESC)`
+- `exchange_reports_reporter_user_fk_idx` — `exchange_reports USING btree (reporter_user_id)`
+- `exchange_reports_subject_org_fk_idx` — `exchange_reports USING btree (subject_org_id)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
+
 ## exchange_reveal_log
 
 RLS: **enabled**
@@ -2045,6 +2107,35 @@ RLS: **enabled**
 **Policies**
 
 - `exchange_reveal_log_read` — SELECT USING `(org_id IN ( SELECT user_org_ids() AS user_org_ids))`
+
+## exchange_suspensions
+
+RLS: **enabled**
+
+| Column | Type | Null | Default |
+|---|---|---|---|
+| `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| `org_id` | uuid | NOT NULL |  |
+| `reason` | text | NOT NULL |  |
+| `report_id` | uuid | null |  |
+| `created_at` | timestamp with time zone | NOT NULL | `now()` |
+| `lifted_at` | timestamp with time zone | null |  |
+
+**Constraints**
+
+- CHECK `exchange_suspensions_reason_check` — `CHECK ((length(TRIM(BOTH FROM reason)) > 0))`
+- FK `exchange_suspensions_org_id_fkey` — `FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE`
+- FK `exchange_suspensions_report_id_fkey` — `FOREIGN KEY (report_id) REFERENCES exchange_reports(id) ON DELETE SET NULL`
+- PK `exchange_suspensions_pkey` — `PRIMARY KEY (id)`
+
+**Indexes**
+
+- `exchange_suspensions_one_live` — `UNIQUE exchange_suspensions USING btree (org_id) WHERE (lifted_at IS NULL)`
+- `exchange_suspensions_report_fk_idx` — `exchange_suspensions USING btree (report_id)`
+
+**Policies**
+
+- `no_session_access` — ALL USING `false` WITH CHECK `false`
 
 ## external_ids
 
@@ -2337,6 +2428,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `job_executions_firewall`
 - `job_executions_touch`
 
 ## join_requests
@@ -2987,6 +3079,8 @@ RLS: **enabled**
 
 **Triggers**
 
+- `opportunities_mark_exchange_company`
+- `opportunities_moved_to_exchange`
 - `opportunities_origin_permanent`
 - `opportunities_project_activity`
 - `opportunities_same_org`
@@ -4217,6 +4311,7 @@ RLS: **enabled**
 | `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
 | `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
 | `enforce_same_org_refs` |  | trigger | yes |
+| `engine_only_exposed` |  | TABLE(function_name text, role_name text) |  |
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
 | `erase_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
@@ -4224,18 +4319,27 @@ RLS: **enabled**
 | `exchange_budget_band` | `p_amount numeric, p_currency text` | text |  |
 | `exchange_card_k` |  | integer |  |
 | `exchange_compact` | `p numeric` | text |  |
+| `exchange_confirm_need` | `p_need uuid` | boolean | yes |
 | `exchange_decide_intro` | `p_intro uuid, p_accept boolean` | text | yes |
+| `exchange_demand_k` |  | integer |  |
 | `exchange_evidence_follows_offering` |  | trigger | yes |
 | `exchange_expire` |  | jsonb | yes |
 | `exchange_intro_detail` | `p_intro uuid` | jsonb | yes |
-| `exchange_intro_list` | `p_org uuid` | TABLE(id uuid, side text, direction text, state text, need_id uuid, offering_title text, provider_name text, buyer_name text, need_summary text, category_id uuid, message text, unread boolean, last_activity_at timestamp with time zone, created_at timestamp with time zone) | yes |
+| `exchange_intro_list` | `p_org uuid` | TABLE(id uuid, match_id uuid, side text, direction text, state text, need_id uuid, offering_title text, provider_name text, buyer_name text, need_summary text, category_id uuid, message text, unread boolean, last_activity_at timestamp with time zone, created_at timestamp with time zone) | yes |
 | `exchange_intro_side` | `p_intro exchange_intros` | text | yes |
 | `exchange_intro_weekly_cap` |  | integer |  |
+| `exchange_is_intro_party` | `p_intro uuid` | boolean | yes |
+| `exchange_lift_suspension` | `p_org uuid` | boolean | yes |
 | `exchange_magnitude_band` | `p numeric` | text |  |
 | `exchange_mark_intro_read` | `p_intro uuid` | void | yes |
 | `exchange_mark_notifications_read` | `p_org uuid` | integer | yes |
+| `exchange_market_demand` | `p_org uuid` | TABLE(category_id uuid, region text, open_requests bigint, new_30d bigint, hot bigint) | yes |
 | `exchange_match_guard` |  | trigger | yes |
 | `exchange_matched_cards` | `p_org uuid` | TABLE(match_id uuid, need_id uuid, offering_id uuid, offering_title text, category_id uuid, level smallint, quantity_band text, budget_band text, place text, timeline text, summary text, must_haves text, unit text, score smallint, computed_at timestamp with time zone) | yes |
+| `exchange_my_reports` | `p_org uuid` | TABLE(id uuid, subject_type text, subject_id uuid, reason text, detail text, created_at timestamp with time zone) | yes |
+| `exchange_my_suspension` | `p_org uuid` | text | yes |
+| `exchange_need_declared` |  | trigger | yes |
+| `exchange_need_limits` |  | trigger | yes |
 | `exchange_need_recipients` | `p_need exchange_needs` | SETOF uuid | yes |
 | `exchange_offering_follows_provider` |  | trigger | yes |
 | `exchange_origin_is_permanent` |  | trigger |  |
@@ -4244,12 +4348,19 @@ RLS: **enabled**
 | `exchange_prune_notifications` |  | integer | yes |
 | `exchange_queue_notifications` |  | jsonb | yes |
 | `exchange_recall_offerings` | `p_need uuid, p_limit integer` | SETOF uuid |  |
+| `exchange_refuse_suspended` |  | trigger | yes |
 | `exchange_region` | `p_country text` | text |  |
+| `exchange_report` | `p_subject_type text, p_subject_id uuid, p_reason text, p_detail text` | uuid | yes |
 | `exchange_report_outcome` | `p_intro uuid, p_outcome text, p_reason text` | void | yes |
+| `exchange_report_queue` |  | TABLE(report_id uuid, filed_at timestamp with time zone, reason text, detail text, subject_type text, subject_id uuid, subject_org uuid, subject_org_name text, open_reports_on_org bigint, distinct_reporters_on_org bigint, org_suspended boolean) | yes |
 | `exchange_request_intro` | `p_match uuid, p_message text` | uuid | yes |
+| `exchange_resolve_report` | `p_report uuid, p_action text, p_note text` | text | yes |
+| `exchange_score_intent` | `p_category uuid, p_requirement jsonb, p_budget_max numeric, p_currency text, p_timeline text, OUT dimensions jsonb, OUT band text` | record | yes |
 | `exchange_send_message` | `p_intro uuid, p_body text` | uuid | yes |
 | `exchange_set_match_state` | `p_match uuid, p_state text` | boolean | yes |
 | `exchange_share_contact` | `p_intro uuid` | void | yes |
+| `exchange_skip_suspended_notice` |  | trigger | yes |
+| `exchange_suspended` | `p_org uuid` | boolean | yes |
 | `exchange_withdraw_intro` | `p_intro uuid` | void | yes |
 | `export_contact` | `p_org uuid, p_email text` | jsonb | yes |
 | `export_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
@@ -4257,9 +4368,15 @@ RLS: **enabled**
 | `export_organization` | `p_org uuid` | jsonb | yes |
 | `fail_recompute` | `p_request uuid, p_error text` | void | yes |
 | `finish_discovery_run` | `p_run uuid, p_status text, p_stop_reason text, p_error text, p_cursor text, p_total bigint` | void | yes |
+| `firewall_company_became_exchange` |  | trigger | yes |
+| `firewall_drop_exchange_company_job` |  | trigger | yes |
+| `firewall_mark_exchange_company` |  | trigger | yes |
+| `firewall_opportunity_moved` |  | trigger | yes |
+| `firewall_refuse_exchange_company` |  | trigger | yes |
 | `firewall_refuse_exchange_enrichment` |  | trigger | yes |
 | `firewall_refuse_exchange_enrollment` |  | trigger | yes |
 | `firewall_refuse_exchange_provider_contact` |  | trigger | yes |
+| `firewall_stop_sequences` | `p_company uuid, p_opportunity uuid` | void | yes |
 | `flag_contradictions` | `p_org uuid, p_subject_type text, p_subject uuid` | integer | yes |
 | `guard_activity_authorship` |  | trigger |  |
 | `guard_invitation_owner` |  | trigger | yes |
@@ -4315,6 +4432,8 @@ RLS: **enabled**
 | `migration_0062_applied` |  | boolean |  |
 | `migration_0063_applied` |  | boolean |  |
 | `migration_0064_applied` |  | boolean |  |
+| `migration_0065_applied` |  | boolean |  |
+| `migration_0066_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |

@@ -20,9 +20,11 @@ name: Engine tick
 #     Secret    CRON_SECRET   the same value as on the Vercel project
 #     Variable  HUNTLOOP_URL  the production origin, e.g. https://huntloop.example
 #
-# GitHub may delay scheduled runs under load and pauses them on repositories
-# with no activity for 60 days. Both are acceptable for a heartbeat that each
-# tick catches up on; neither is acceptable for anything time-critical.
+# A stopgap, not a heartbeat: GitHub delays scheduled runs under load (observed
+# here: every 4 to 8 hours, not 5 minutes) and pauses them on repositories with
+# no activity for 60 days. Once Inngest or Vercel Cron drives the engine, set
+# the repository variable ENGINE_DRIVER to `inngest` or `vercel`; the scheduled
+# run then skips. Steps: docs/operations/heartbeat.md.
 
 on:
   schedule:
@@ -35,6 +37,7 @@ concurrency:
 
 jobs:
   tick:
+    if: github.event_name == 'workflow_dispatch' || vars.ENGINE_DRIVER == '' || vars.ENGINE_DRIVER == 'github'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

@@ -1,13 +1,14 @@
 /**
  * The declared/enriched firewall, job side (Exchange spec §6; migration 0059).
  *
- * A person or opportunity with `origin = 'exchange'` came from someone who
+ * A person, opportunity or company with `origin = 'exchange'` came from someone who
  * told us what they need, with consent for one purpose: an introduction they
  * accepted. The seller engine's job is the opposite — enrich people who never
  * signed up and put them in cold sequences — so the two must never meet.
  *
  * 0059's triggers refuse the writes (enrollment, enrichment record,
- * provider-sourced contact point). These guards refuse earlier, before a
+ * provider-sourced contact point), and 0066's the company's: a company behind
+ * an Exchange opportunity is itself Exchange. These guards refuse earlier, before a
  * provider is paid or a draft is written, so a refused row costs nothing.
  * `scripts/audit.mjs` FW-01 fails the build when a guarded handler stops
  * calling `refusesExchange`.
@@ -35,7 +36,7 @@ export function isExchangeOrigin(row: unknown): boolean {
 export function refusesExchange(
   job: string,
   row: unknown,
-  what: "person" | "opportunity",
+  what: "person" | "opportunity" | "company",
 ): JobOutcome | null {
   if (!isExchangeOrigin(row)) return null;
   return {

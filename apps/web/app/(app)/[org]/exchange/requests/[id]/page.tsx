@@ -82,9 +82,16 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
             </section>
           )}
           <section aria-labelledby="matches">
-            <h2 id="matches" className="text-[15px] font-semibold text-fg">
-              Matched suppliers
-            </h2>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 id="matches" className="text-[15px] font-semibold text-fg">
+                Matched suppliers
+              </h2>
+              {need.matchList.filter((m) => m.state === "shortlisted").length >= 2 && (
+                <Link href={`/${org}/exchange/requests/${need.id}/compare`} className="hl-focusable text-[13px] text-brand underline">
+                  Compare shortlisted
+                </Link>
+              )}
+            </div>
             <div className="mt-3">
               {!need.matchingEnabled ? (
                 <Note tone="info">
@@ -94,7 +101,7 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
                 <Note tone="info">This request is not open, so it is not being matched.</Note>
               ) : need.matchList.length === 0 ? (
                 <Note tone="info">
-                  No supplier matches yet. Open requests are matched every hour, and again whenever new suppliers list in this category.
+                  No supplier matches yet. Open requests are checked again each time matching runs, so suppliers who list later are found without you doing anything.
                 </Note>
               ) : (
                 <MatchList org={org} matches={need.matchList} canWrite={writable} intros={intros} open={need.status === "open"} />

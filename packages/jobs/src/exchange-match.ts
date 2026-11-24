@@ -163,6 +163,35 @@ export function rankMatches(results: MatchResult[]): MatchResult[] {
     .slice(0, MAX_MATCHES_PER_NEED);
 }
 
+/**
+ * What `exchange_matches.explained` holds (0066): the model's answer for one
+ * candidate and a key of everything it read. `candidate` is null when the
+ * model returned nothing for it, which is also an answer.
+ */
+export interface StoredExplanation {
+  key: string;
+  candidate: Explained | null;
+}
+
+/**
+ * The stored answers for exactly these candidates, or null when any of them
+ * was judged against something else — then all of them are judged again,
+ * because the model saw them together.
+ */
+export function reusableExplanations(
+  key: string,
+  offeringIds: string[],
+  stored: Map<string, StoredExplanation | null>,
+): Explained[] | null {
+  const out: Explained[] = [];
+  for (const id of offeringIds) {
+    const s = stored.get(id);
+    if (!s || s.key !== key) return null;
+    if (s.candidate) out.push(s.candidate);
+  }
+  return out;
+}
+
 /** The model's judgement for one candidate (shape of `ExplainedCandidate`). */
 export interface Explained {
   offeringId: string;

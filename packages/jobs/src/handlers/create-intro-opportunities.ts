@@ -19,6 +19,9 @@
  * A buyer with no domain gets a reserved `.invalid` placeholder (RFC 2606),
  * which says "no domain known" rather than inventing one.
  *
+ * The company itself becomes `exchange` too (0066), new or reused, so it is
+ * never enriched, researched or signal-fetched.
+ *
  * No people are created. The buyer's contact details, if they chose to share
  * them, stay inside the introduction.
  */
@@ -86,7 +89,7 @@ async function one(intro: Intro, now: Date): Promise<"created" | "reused"> {
   let companyId = (existingCompany as { id?: string } | null)?.id ?? null;
   if (!companyId) {
     const { data: inserted, error } = await scope
-      .insert("companies", { canonical_domain: domain, name, discovered_via: "exchange" })
+      .insert("companies", { canonical_domain: domain, name, origin: "exchange", discovered_via: "exchange" })
       .select("id")
       .single();
     if (error) throw new Error(`company: ${error.message}`);

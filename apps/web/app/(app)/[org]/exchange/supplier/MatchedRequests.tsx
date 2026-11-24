@@ -1,6 +1,7 @@
 import { Badge, Card, CardHeader, Note } from "@huntloop/ui";
 import type { IntroListItem, MatchedCard } from "../../../../../lib/data/exchange";
 import { AskIntro, IntroLink } from "../intros/IntroControls";
+import { ReportButton } from "../ReportButton";
 import { countryName } from "../../../../../lib/exchange/requirement";
 import { timelineLabel } from "../../../../../lib/exchange/format";
 
@@ -64,12 +65,13 @@ export function MatchedRequests({
                 </dl>
                 {c.summary && <p className="mt-3 text-[13px] text-fg">“{c.summary}”</p>}
                 {c.mustHaves && <p className="mt-1 text-[12px] text-fg-muted">Must-haves: {c.mustHaves}</p>}
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-start gap-2">
                   {(() => {
-                    const intro = intros.find((i) => i.side === "provider" && i.needId === c.needId && i.offeringTitle === c.offeringTitle);
+                    const intro = intros.find((i) => i.side === "provider" && i.matchId === c.matchId);
                     if (intro) return <IntroLink org={org} introId={intro.id} state={intro.state} side="provider" />;
                     return canWrite ? <AskIntro org={org} matchId={c.matchId} side="provider" /> : null;
                   })()}
+                  {canWrite && <ReportButton org={org} subject="need" subjectId={c.needId} label="Report this request" />}
                 </div>
               </div>
             );

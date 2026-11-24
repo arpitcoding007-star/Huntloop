@@ -29,12 +29,18 @@ export async function askResearchAction(
   return mutate(org, "askResearch", async ({ db, orgId }) => {
     const { data: opp } = await db
       .from("opportunities")
-      .select("company_id")
+      .select("company_id, companies(origin)")
       .eq("id", id.value)
       .eq("org_id", orgId)
       .is("deleted_at", null)
       .maybeSingle();
     if (!opp) return fail("That opportunity no longer exists.");
+
+    /* Exchange firewall (0066): the database refuses it too; this says why. */
+    const company = (Array.isArray(opp.companies) ? opp.companies[0] : opp.companies) as { origin?: string } | null;
+    if (company?.origin === "exchange") {
+      return fail("You met this company through the Exchange, so Huntloop does not research it. What they told you is in the introduction.");
+    }
 
     if (!(await engineReadiness(db, orgId)).driven) {
       return fail("Nothing is running the engine for this workspace yet, so research would never start.");

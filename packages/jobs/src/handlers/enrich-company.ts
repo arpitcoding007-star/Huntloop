@@ -34,6 +34,7 @@
 import { ProviderRefused, enrichCompany as providerEnrich } from "@huntloop/providers";
 import { canonicalizeDomain } from "@huntloop/db/identity";
 import { OrgScope } from "../scope.ts";
+import { refusesExchange } from "../firewall.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface EnrichCompanyPayload {
@@ -59,7 +60,7 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
   const { data: company, error } = await scope
     .select(
       "companies",
-      "id, canonical_domain, name, industry, employee_count, revenue_band, country, " +
+      "id, origin, canonical_domain, name, industry, employee_count, revenue_band, country, " +
         "region, description, tech_stack, funding, website, last_enriched_at",
     )
     .eq("id", companyId)
@@ -68,6 +69,10 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
 
   if (error) return { ok: false, error: `enrich_company: ${error.message}` };
   if (!company) return { ok: true, result: { skipped: "the company no longer exists" } };
+
+  /* Exchange firewall (0066): refused before a vendor, a model or the company's own site is read. */
+  const refused = refusesExchange("enrich_company", company, "company");
+  if (refused) return refused;
 
   const domain = canonicalizeDomain(String(company.canonical_domain ?? ""));
   if (!domain) {

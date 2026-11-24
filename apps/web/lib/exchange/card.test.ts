@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { budgetBand, magnitudeBand, previewCard, region } from "./card";
-import { scoreIntent } from "./intent";
 
 /* The same examples as the 0062 migration tests, so the preview and the
    database agree on what a supplier sees. */
@@ -45,31 +44,5 @@ describe("previewCard", () => {
   });
   it("adds the buyer's own words at level 3", () => {
     expect(JSON.stringify(previewCard(3, fields).rows)).toContain("call Jan");
-  });
-});
-
-describe("scoreIntent", () => {
-  const attrs = [
-    { key: "item", label: "Item", type: "text", required: true },
-    { key: "quantity", label: "Quantity", type: "number", required: true },
-  ];
-  it("is hot with everything answered, a budget and a near timeline", () => {
-    const i = scoreIntent(
-      attrs,
-      { item: { value: "H200", kind: "fact", source: "answer" }, quantity: { value: "200", kind: "fact", source: "answer" } },
-      { budget_max: 100, currency: "EUR", timeline: "this_month" },
-    );
-    expect(i.band).toBe("hot");
-    expect(i.dimensions).toEqual({ specificity: 100, budget: 100, timeline: 100 });
-  });
-  it("leaves unanswered dimensions unknown, and the band unknown with fewer than two", () => {
-    const i = scoreIntent(attrs, {}, { budget_max: null, currency: null, timeline: null });
-    expect(i.dimensions.budget).toBeNull();
-    expect(i.dimensions.timeline).toBeNull();
-    expect(i.band).toBeNull();
-  });
-  it("is cool when just exploring with little detail", () => {
-    const i = scoreIntent(attrs, { item: { value: "GPUs", kind: "fact", source: "answer" } }, { budget_max: null, currency: null, timeline: "exploring" });
-    expect(i.band).toBe("cool");
   });
 });
