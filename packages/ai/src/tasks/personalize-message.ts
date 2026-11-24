@@ -65,6 +65,23 @@ export interface PersonalizeInput {
    * the caller from the rule in `competitorMayBeNamed`, never by the model.
    */
   competitors?: MessageCompetitor[];
+  /**
+   * Where the opportunity came from (0059). `exchange` means a buyer told the
+   * Exchange what they need; that is declared data, and it never becomes
+   * cold-email copy (DN-48). Optional for older callers: absent is `engine`.
+   */
+  origin?: "engine" | "import" | "exchange";
+}
+
+/** Thrown before any model call when the input carries declared Exchange data (DN-48). */
+export class DeclaredDataRefused extends Error {
+  constructor() {
+    super(
+      "personalize_message: refused. This opportunity came from the Exchange, and what a buyer " +
+        "said there is never turned into outreach copy. Reply in the introduction thread instead.",
+    );
+    this.name = "DeclaredDataRefused";
+  }
 }
 
 export interface MessageCompetitor {
@@ -315,6 +332,11 @@ export const personalizeMessage: LLMTask<PersonalizeInput, PersonalizedMessage> 
   },
 
   renderInput: (input) => {
+    /* The firewall's last line in this task (DN-48): the job refuses an
+       Exchange-origin opportunity before it gets here (0059, FW-01), and this
+       refuses again before a single token is sent, should another caller
+       ever pass one. */
+    if (input.origin === "exchange") throw new DeclaredDataRefused();
     const evidence = input.evidence.length
       ? input.evidence
           .map((e) =>

@@ -29,12 +29,12 @@ export const VISIBILITY = [
   {
     level: 2,
     label: "Anonymous card",
-    detail: "Matched suppliers see the category, quantity, country and timeline — never your name or workspace.",
+    detail: "Matched suppliers see an anonymous card: category, rough quantity and budget, region and timeline. Never your name, workspace or your own words.",
   },
   {
     level: 3,
     label: "Open to introductions",
-    detail: "As an anonymous card, and matched suppliers may ask to be introduced. You approve every introduction.",
+    detail: "The anonymous card plus your own words, and matched suppliers may ask to be introduced. You approve every introduction.",
   },
 ] as const;
 

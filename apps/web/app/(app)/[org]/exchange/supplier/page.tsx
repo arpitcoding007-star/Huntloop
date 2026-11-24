@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { exchangeMetadata, isExchangeEnabled } from "../../../../../lib/exchange/flag";
 import { Note } from "@huntloop/ui";
-import { getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
+import { getMatchedCards, getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
 import { canAdmin, canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { OfferingsEditor, ProfileForm } from "./SupplierForms";
+import { MatchedRequests } from "./MatchedRequests";
 
 /**
  * The supply side: this workspace's supplier profile and what it offers.
@@ -14,7 +15,11 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
   const { org } = await params;
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
-  const [{ data: supplier }, { data: categories }] = await Promise.all([getSupplier(org), listExchangeCategories()]);
+  const [{ data: supplier }, { data: categories }, { data: cards }] = await Promise.all([
+    getSupplier(org),
+    listExchangeCategories(),
+    getMatchedCards(org),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[1100px] px-6 py-8 lg:px-8">
@@ -29,10 +34,17 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
         {supplier.profile?.verified && <Note tone="success">This profile is verified by Huntloop.</Note>}
         <ProfileForm org={org} profile={supplier.profile} canEdit={canAdmin(viewer)} />
         {supplier.profile ? (
-          <OfferingsEditor org={org} offerings={supplier.offerings} categories={categories} canEdit={canWrite(viewer)} />
+          <OfferingsEditor
+            org={org}
+            offerings={supplier.offerings}
+            categories={categories}
+            products={supplier.products}
+            canEdit={canWrite(viewer)}
+          />
         ) : (
           <Note tone="info">Create the profile first. Offerings are listed under it.</Note>
         )}
+        {supplier.profile && <MatchedRequests cards={cards} />}
       </div>
     </div>
   );

@@ -18,7 +18,8 @@
 import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { enrichPerson } from "../src/handlers/enrich-person.ts";
 import { matchNeeds } from "../src/handlers/match-needs.ts";
-import { eligible, scoreMatch, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
+import { enforceRetention } from "../src/handlers/enforce-retention.ts";
+import { applyExplanations, eligible, scoreMatch, splitMustHaves, type MatchNeed, type MatchOffering } from "../src/exchange-match.ts";
 import { resetRegistryForTests } from "@huntloop/providers";
 import { assertFetchable, FetchRefused, guardedAgent, isPrivateAddress } from "../src/fetch.ts";
 import { fetch as undiciFetch } from "undici";
@@ -4810,6 +4811,7 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
       ],
       error: null,
     },
+    "rpc:exchange_recall_offerings": { data: ["o1", "o2"], error: null },
     "upsert:exchange_matches": { data: null, error: null },
   });
   setAdminClientForTests(live.client);
@@ -4819,6 +4821,68 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
     expect("an enabled category is matched", out.ok, out);
     expectEqual("only the other workspace's offering is matched", (written ?? []).map((w) => w.offering_id), ["o1"]);
     expect("matching never touches people, contacts or sequences", !live.calls.some((c) => ["people", "contact_points", "enrollments", "enrichment_records"].includes(c.table)), live.calls.map((c) => c.table));
+    const recall = live.calls.find((c) => c.verb === "rpc" && c.table === "exchange_recall_offerings");
+    expect("candidates come from text recall over the category (0062)", (recall?.payload as { p_need?: string })?.p_need === "n1", recall);
+    const offeringsRead = live.calls.find((c) => c.verb === "select" && c.table === "exchange_offerings");
+    expect("and only the recalled offerings are read", !!offeringsRead?.filters.some(([k]) => k === "in:id"), offeringsRead?.filters);
+    expect("with no model the measured dimensions stand", (out.ok ? (out.result as { explained?: string }).explained : null) === "no", out);
+  } finally {
+    setAdminClientForTests(null);
+  }
+}
+
+
+console.log("\nexplain_match folded in — requirement from citations, unknown without evidence");
+{
+  const now = new Date("2026-11-23T12:00:00Z");
+  const need: MatchNeed = { id: "n1", org_id: "buyer", category_id: "gpu", quantity: 200, budget_min: null, budget_max: null, currency: null, country: "DE" };
+  const base = (id: string): MatchOffering => ({
+    id, org_id: "seller", category_id: "gpu", price_from: null, price_to: null, currency: null, moq: 10,
+    availability: null, availability_as_of: null, serves_global: false, serves_countries: ["DE"],
+    provider: { claimed_at: "2026-11-01T00:00:00Z", verified_at: null },
+  });
+  const results = [scoreMatch(need, base("o1"), now), scoreMatch(need, base("o2"), now), scoreMatch(need, base("o3"), now)];
+  expectEqual("requirement starts unknown, before any model has judged it", results[0]!.dimensions.requirement, null);
+  const merged = applyExplanations(
+    results,
+    [
+      { offeringId: "o1", reason: "Authorised partner with H200 stock.", backing: [{ mustHave: "authorised partner", evidenceId: "e1" }, { mustHave: "warranty", evidenceId: null }] },
+      { offeringId: "o2", reason: "No evidence published.", backing: [{ mustHave: "authorised partner", evidenceId: null }] },
+    ],
+    2,
+    new Map([["o1", 3], ["o2", 0]]),
+  );
+  expectEqual("half the must-haves backed is 50", merged[0]!.dimensions.requirement, 50);
+  expectEqual("and the score is recomputed with it", merged[0]!.score, Math.round((100 + 100 + 100 + 60 + 50) / 5));
+  expectEqual("the cited evidence is kept", merged[0]!.cited, ["e1"]);
+  expect("the reason leads the explanation, the measured reasons follow", merged[0]!.explanation.startsWith("Authorised partner") && merged[0]!.explanation.includes("serves DE"), merged[0]!.explanation);
+  expectEqual("a supplier with no published evidence is unknown, not 0", merged[1]!.dimensions.requirement, null);
+  expectEqual("a candidate the model did not return is unchanged", merged[2], results[2]);
+  expectEqual(
+    "no must-haves stated: requirement stays unknown",
+    applyExplanations(results, [{ offeringId: "o1", reason: "", backing: [] }], 0, new Map([["o1", 3]]))[0]!.dimensions.requirement,
+    null,
+  );
+  expectEqual("must-haves split by line, comma or semicolon", splitMustHaves("authorised partner, warranty;\nCE mark, warranty"), [
+    "authorised partner",
+    "warranty",
+    "CE mark",
+  ]);
+}
+
+
+console.log("\nenforce_retention — the Exchange's own schedule runs for everyone (DN-40)");
+{
+  const { client, calls } = fakeClient({
+    "rpc:prune_job_executions": { data: 0, error: null },
+    "rpc:exchange_prune": { data: { needs: 2, intake_sessions: 1, reveal_log: 0 }, error: null },
+    "select:organizations": { data: [], error: null },
+  });
+  setAdminClientForTests(client);
+  try {
+    const out = await enforceRetention({ scope: new OrgScope(ORG_A, client), payload: {}, job: { id: "j-r", org_id: ORG_A, job_name: "enforce_retention" } as never, now: new Date() });
+    expect("Exchange data is pruned even when no workspace set a retention policy", calls.some((c) => c.verb === "rpc" && c.table === "exchange_prune"), calls.map((c) => c.verb + ":" + c.table));
+    expectEqual("and what it removed is reported", out.ok ? (out.result as { exchange?: unknown }).exchange : null, { needs: 2, intake_sessions: 1, reveal_log: 0 });
   } finally {
     setAdminClientForTests(null);
   }

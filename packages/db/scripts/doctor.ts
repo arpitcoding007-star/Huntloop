@@ -129,6 +129,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0059_exchange_firewall.sql", probe: "migration_0059_applied", kind: "rpc" },
   { file: "0060_exchange_core.sql", probe: "migration_0060_applied", kind: "rpc" },
   { file: "0061_exchange_category_seed.sql", probe: "migration_0061_applied", kind: "rpc" },
+  { file: "0062_exchange_phase2.sql", probe: "migration_0062_applied", kind: "rpc" },
 ];
 
 /**

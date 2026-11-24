@@ -8,7 +8,8 @@ import { ArrowRight, Send, SkipForward, Store } from "lucide-react";
 import type { IntakeAttribute, KnownField } from "@huntloop/ai";
 import type { ExchangeCategory } from "../../../../../lib/data/exchange";
 import type { IntakeState } from "../../../../../lib/exchange/intake-state";
-import { COUNTRY_CODES, countryName, CURRENCIES, parseAmount, parseCurrency, VISIBILITY } from "../../../../../lib/exchange/requirement";
+import { COUNTRY_CODES, countryName, CURRENCIES, parseAmount, parseCurrency, parseTimeline, TIMELINE_LABEL, VISIBILITY } from "../../../../../lib/exchange/requirement";
+import { previewCard } from "../../../../../lib/exchange/card";
 import { answerIntakeAction, startIntakeAction, submitNeedAction } from "../actions";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
@@ -453,6 +454,23 @@ function ReviewCard({ org, categories, state }: { org: string; categories: Excha
           </div>
         </fieldset>
 
+        <SupplierPreview
+          level={visibility}
+          fields={{
+            categoryPath: category?.path ?? null,
+            quantity: parseAmount(fields.quantity ?? fields.seats ?? null),
+            budgetMax: budget.trim() ? Number(budget.replace(/,/g, "")) : null,
+            currency: currency || null,
+            country: country || null,
+            timeline: (() => {
+              const t = parseTimeline(fields.timeline ?? fields.start ?? null);
+              return t ? TIMELINE_LABEL[t] : null;
+            })(),
+            summary,
+            mustHaves: fields.must_haves?.trim() || null,
+          }}
+        />
+
         {missingRequired.length > 0 && (
           <p className="text-[12px] text-fg-muted">
             Still unknown: {missingRequired.map((a) => a.label).join(", ")}. Suppliers match better with these, but you can save without them.
@@ -465,5 +483,29 @@ function ReviewCard({ org, categories, state }: { org: string; categories: Excha
         </Button>
       </form>
     </Card>
+  );
+}
+
+/**
+ * What a matched supplier would see at the chosen level, from the person's own
+ * answers (DN-62). Mirrors the database's banding; the database decides.
+ */
+function SupplierPreview({ level, fields }: { level: number; fields: Parameters<typeof previewCard>[1] }) {
+  const card = previewCard(level, fields);
+  return (
+    <div className="rounded-md border border-dashed border-line-strong p-4">
+      <p className="text-[11px] leading-4 font-semibold tracking-label text-fg-muted uppercase">What a matched supplier sees</p>
+      {card.visible ? (
+        <dl className="mt-2 grid gap-x-4 gap-y-1 text-[13px] sm:grid-cols-[140px_1fr]">
+          {card.rows.map((r) => (
+            <div key={r.label} className="contents">
+              <dt className="text-fg-muted">{r.label}</dt>
+              <dd className="text-fg">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <p className="mt-2 text-[12px] text-fg-muted">{card.note}</p>
+    </div>
   );
 }

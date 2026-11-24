@@ -50,7 +50,8 @@ export type TaskName =
   | "cluster_demand"
   | "infer_preferences"
   | "intake_classify"
-  | "intake_turn";
+  | "intake_turn"
+  | "explain_match";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -114,6 +115,11 @@ export const ROUTES: Record<TaskName, Route> = {
      the code, not the model, decides what is still required and when to
      stop (intake.ts), so the judgement here is phrasing. Mid-tier, low. */
   intake_turn: { model: MODELS.sonnet, effort: "low" },
+  /* Exchange matching (DN-44): judge up to twenty candidates' published
+     evidence against the buyer's must-haves, citing from a closed set, and
+     write one reason each. Reading comprehension over short texts; the
+     number it feeds is computed in code from the citations. */
+  explain_match: { model: MODELS.sonnet, effort: "medium" },
 };
 
 /**

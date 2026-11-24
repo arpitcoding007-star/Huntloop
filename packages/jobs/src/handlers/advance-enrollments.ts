@@ -588,6 +588,7 @@ async function draftMessage(
       guidance: guidance.lines,
       reference: guidance.reference,
       competitors: competitors.list,
+      origin: input.opportunity.origin === "exchange" ? "exchange" : input.opportunity.origin === "import" ? "import" : "engine",
     });
 
     return {
