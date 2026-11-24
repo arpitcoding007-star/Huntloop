@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "db:doctor": "npm run doctor --workspace @huntloop/db --",
     "db:seed": "npm run seed --workspace @huntloop/db --",
+    "test:e2e:live": "playwright test -c playwright.live.config.ts",
     "audit:site": "node scripts/audit.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run audit:site && npm run build && npm run audit:bundle",
     "audit:bundle": "node scripts/bundle-budget.mjs",

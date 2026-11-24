@@ -41,6 +41,7 @@ import {
 } from "@huntloop/ai";
 import { embedded } from "../scope.ts";
 import { AiUnavailable, runForOrg } from "../ai.ts";
+import { inChunks } from "../in-chunks.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface AnalyzePayload {
@@ -82,11 +83,23 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
   const windowEnd = ctx.now;
   const windowStart = new Date(windowEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-  const [outcomes, decisions, sources, existingRules, existingGuidance, competitors, demand] =
+  const requestedRunId = payload.runId ? String(payload.runId) : null;
+
+  /* A source read that fails is a failed run, not "every source found
+     nothing". A run somebody asked for says so; the retry overwrites it. */
+  let sources: SourcePerformance[];
+  try {
+    sources = await loadSourcePerformance(ctx);
+  } catch (e) {
+    const error = `analyze_performance: ${e instanceof Error ? e.message : String(e)}`;
+    if (requestedRunId) await scope.update("learning_runs", { status: "failed", error }).eq("id", requestedRunId);
+    return { ok: false, error };
+  }
+
+  const [outcomes, decisions, existingRules, existingGuidance, competitors, demand] =
     await Promise.all([
       loadOutcomes(ctx, windowStart, windowEnd),
       loadDecisions(ctx, windowStart, windowEnd),
-      loadSourcePerformance(ctx),
       loadExistingRules(ctx),
       loadGuidance(ctx),
       loadCompetitors(ctx, windowStart, windowEnd),
@@ -99,8 +112,6 @@ export async function analyzePerformanceJob(ctx: JobContext): Promise<JobOutcome
     decisions_considered: decisions.filter((d) => d.overridden).length,
     ratings_considered: decisions.filter((d) => d.rating !== null).length,
   };
-
-  const requestedRunId = payload.runId ? String(payload.runId) : null;
 
   if (signals < MIN_LEARNING_SIGNALS) {
     const reason =
@@ -371,12 +382,12 @@ async function loadModelScores(
   const scores = new Map<string, number>();
   if (!opportunityIds.length) return scores;
 
-  const { data } = await ctx.scope.select(
-    "opportunity_scores",
-    "opportunity_id, score, model_score, computed_at",
-  )
-    .in("opportunity_id", opportunityIds)
-    .order("computed_at", { ascending: false });
+  const { data } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+    ctx.scope
+      .select("opportunity_scores", "opportunity_id, score, model_score, computed_at")
+      .in("opportunity_id", c)
+      .order("computed_at", { ascending: false }),
+  );
 
   for (const row of (data ?? []) as Record<string, unknown>[]) {
     const id = String(row.opportunity_id);
@@ -408,8 +419,9 @@ async function loadProvenance(
   const byOpportunity = new Map<string, { id: string | null; name: string | null }>();
   if (!opportunityIds.length) return byOpportunity;
 
-  const { data: opportunities } = await ctx.scope.select("opportunities", "id, company_id")
-    .in("id", opportunityIds);
+  const { data: opportunities } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+    ctx.scope.select("opportunities", "id, company_id").in("id", c),
+  );
 
   const companyToOpportunities = new Map<string, string[]>();
   for (const row of (opportunities ?? []) as Record<string, unknown>[]) {
@@ -422,7 +434,7 @@ async function loadProvenance(
   const companyIds = [...companyToOpportunities.keys()];
   if (!companyIds.length) return byOpportunity;
 
-  const { data: events } = await ctx.scope.select(
+  const { data: events } = await inChunks<Record<string, unknown>>(companyIds, (c) => ctx.scope.select(
     "source_events",
     /* `source_events` has no `source_id` and no foreign key to `sources`: it
        points at the document it was read from, and the document at its
@@ -431,8 +443,8 @@ async function loadProvenance(
        came back empty — found by the select-column check (DATA-C1). */
     "company_id, event_date, created_at, source_documents(source_id, sources(id, name))",
   )
-    .in("company_id", companyIds)
-    .order("created_at", { ascending: true });
+    .in("company_id", c)
+    .order("created_at", { ascending: true }));
 
   const seen = new Set<string>();
   for (const row of (events ?? []) as Record<string, unknown>[]) {
@@ -527,10 +539,11 @@ async function loadDecisions(
  * only returned sources with outcomes would make the second invisible — which
  * is the more common and more fixable failure.
  */
-async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance[]> {
-  const { data: sources } = await ctx.scope.select("sources", "id, name, kind")
+export async function loadSourcePerformance(ctx: Pick<JobContext, "scope">): Promise<SourcePerformance[]> {
+  const { data: sources, error: sourcesError } = await ctx.scope.select("sources", "id, name, kind")
     .is("deleted_at", null)
     .limit(100);
+  if (sourcesError) throw new Error(`sources: ${sourcesError.message}`);
 
   const rows = (sources ?? []) as Record<string, unknown>[];
   if (!rows.length) return [];
@@ -540,10 +553,17 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
   for (const source of rows) {
     const sourceId = String(source.id);
 
-    const { data: events } = await ctx.scope.select("source_events", "company_id")
-      .eq("source_id", sourceId)
+    /* An event points at its document, and the document at its source (0002).
+       `source_events.source_id` does not exist; filtering on it failed unread
+       and every source reported zero (pass 22, V-05). */
+    const { data: events, error: eventsError } = await ctx.scope.select(
+      "source_events",
+      "company_id, source_documents!inner(source_id)",
+    )
+      .eq("source_documents.source_id", sourceId)
       .not("company_id", "is", null)
       .limit(1000);
+    if (eventsError) throw new Error(`source events: ${eventsError.message}`);
 
     const companyIds = [
       ...new Set(((events ?? []) as Record<string, unknown>[]).map((e) => String(e.company_id))),
@@ -554,9 +574,9 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
     let wins = 0;
 
     if (companyIds.length) {
-      const { data: opportunities } = await ctx.scope.select("opportunities", "id")
-        .in("company_id", companyIds)
-        .is("deleted_at", null);
+      const { data: opportunities } = await inChunks<Record<string, unknown>>(companyIds, (c) =>
+        ctx.scope.select("opportunities", "id").in("company_id", c).is("deleted_at", null),
+      );
 
       const opportunityIds = ((opportunities ?? []) as Record<string, unknown>[]).map((o) =>
         String(o.id),
@@ -564,8 +584,9 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
       opportunitiesCreated = opportunityIds.length;
 
       if (opportunityIds.length) {
-        const { data: outcomeRows } = await ctx.scope.select("outcomes", "kind")
-          .in("opportunity_id", opportunityIds);
+        const { data: outcomeRows } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+          ctx.scope.select("outcomes", "kind").in("opportunity_id", c),
+        );
         const list = (outcomeRows ?? []) as Record<string, unknown>[];
         outcomes = list.length;
         wins = list.filter((o) => o.kind === "won").length;
@@ -678,10 +699,9 @@ async function loadDemand(ctx: JobContext): Promise<DemandThemeRecord[]> {
   ];
   const lost = new Set<string>();
   if (opportunityIds.length) {
-    const { data: outcomeRows } = await ctx.scope
-      .select("outcomes", "opportunity_id")
-      .in("opportunity_id", opportunityIds.slice(0, 1000))
-      .in("kind", LOST_KINDS);
+    const { data: outcomeRows } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+      ctx.scope.select("outcomes", "opportunity_id").in("opportunity_id", c).in("kind", LOST_KINDS),
+    );
     for (const o of (outcomeRows ?? []) as Record<string, unknown>[]) lost.add(String(o.opportunity_id));
   }
 

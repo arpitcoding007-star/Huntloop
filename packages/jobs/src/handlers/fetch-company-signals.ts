@@ -24,6 +24,7 @@
  * sentence nobody can verify.
  */
 import { ProviderRefused, searchCompanySignals } from "@huntloop/providers";
+import { inChunks } from "../in-chunks.ts";
 import { OrgScope } from "../scope.ts";
 import { atsApiUrl, careersPages, findAtsBoards, parseAtsPostings, type AtsBoard } from "../ats.ts";
 import { fetchPage } from "../fetch.ts";
@@ -263,7 +264,7 @@ export async function boardSignals(
       .filter((e) => !fields.has(String((e as { field: string }).field)))
       .map((e) => String((e as { id: string }).id));
     if (stale.length) {
-      await ctx.scope.update("evidence", { deleted_at: observedAt }).in("id", stale);
+      await inChunks(stale, (c) => ctx.scope.update("evidence", { deleted_at: observedAt }).in("id", c));
     }
   }
 

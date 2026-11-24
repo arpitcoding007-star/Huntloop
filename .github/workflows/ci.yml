@@ -11,6 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# SEC-003: least privilege. Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -111,6 +115,10 @@ jobs:
       # whole UI is reachable without anyone's login.
       - name: Test — browser
         run: npx playwright test
+
+      # The same app against the real schema with row security on, in memory.
+      - name: Test — browser, signed in, isolated backend
+        run: npm run test:e2e:live
 
       - if: failure()
         uses: actions/upload-artifact@v4

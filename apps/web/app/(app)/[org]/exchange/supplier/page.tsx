@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { exchangeMetadata, isExchangeEnabled } from "../../../../../lib/exchange/flag";
 import { Note } from "@huntloop/ui";
-import { getIntroList, getMatchedCards, getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
+import { getExchangeQuotas, getIntroList, getMatchedCards, getSupplier, listExchangeCategories } from "../../../../../lib/data/exchange";
 import { canAdmin, canWrite, currentViewer } from "../../../../../lib/data/membership";
 import { OfferingsEditor, ProfileForm } from "./SupplierForms";
 import { MatchedRequests } from "./MatchedRequests";
@@ -15,11 +15,12 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
   const { org } = await params;
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
-  const [{ data: supplier }, { data: categories }, { data: cards }, { data: intros }] = await Promise.all([
+  const [{ data: supplier }, { data: categories }, { data: cards }, { data: intros }, { data: quotas }] = await Promise.all([
     getSupplier(org),
     listExchangeCategories(),
     getMatchedCards(org),
     getIntroList(org),
+    getExchangeQuotas(org),
   ]);
 
   return (
@@ -32,6 +33,11 @@ export default async function SupplierPage({ params }: { params: Promise<{ org: 
       </header>
 
       <div className="mt-6 space-y-6">
+        {quotas.filter((q) => q.metric === "intro_requests").map((q) => (
+          <Note key={q.metric} tone={q.used >= q.quota ? "warning" : "info"}>
+            {q.used} of {q.quota} introduction requests used this month. The count starts again on the 1st (UTC).
+          </Note>
+        ))}
         {supplier.profile?.verified && <Note tone="success">This profile is verified by Huntloop.</Note>}
         <ProfileForm org={org} profile={supplier.profile} canEdit={canAdmin(viewer)} />
         {supplier.profile ? (

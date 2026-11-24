@@ -33,6 +33,8 @@ const MAX_ENRICH_PER_TICK = 10;
 const MAX_RESEARCH_PER_TICK = 5;
 const MAX_COMPETITOR_PER_TICK = 5;
 const RESEARCH_RETRY_MS = 24 * 3600_000;
+/** ENG-002: an enrichment asked for and not answered is asked again after this. */
+const ENRICH_RETRY_MS = 24 * 3600_000;
 
 export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
   const db = OrgScope.global();
@@ -85,6 +87,7 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
   }
 
   // 3. Enrichment refresh for companies someone is pursuing.
+  const enrichRetryBefore = new Date(ctx.now.getTime() - ENRICH_RETRY_MS).toISOString();
   const { data: stale, error: enrichError } = await db
     .from("opportunities")
     .select("company_id, org_id, companies!inner(last_enriched_at, deleted_at)")
@@ -93,9 +96,14 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
     .is("companies.deleted_at", null)
     /* Exchange firewall (0066): not enriched, and not allowed to fill the batch. */
     .neq("companies.origin", EXCHANGE_ORIGIN)
-    .or(`last_enriched_at.is.null,last_enriched_at.lt.${staleBefore(ctx.now)}`, {
-      referencedTable: "companies",
-    })
+    /* ENG-002: stale, and not asked about in the last day. Without the
+       second half, ten companies that cannot be enriched (no domain, no
+       credits, no provider) were re-selected every tick, for every tenant. */
+    .or(
+      `and(or(last_enriched_at.is.null,last_enriched_at.lt.${staleBefore(ctx.now)}),` +
+        `or(enrich_requested_at.is.null,enrich_requested_at.lt.${enrichRetryBefore}))`,
+      { referencedTable: "companies" },
+    )
     .limit(MAX_ENRICH_PER_TICK);
   if (enrichError) return { ok: false, error: `schedule_followups: ${enrichError.message}` };
 
@@ -109,6 +117,11 @@ export async function scheduleFollowups(ctx: JobContext): Promise<JobOutcome> {
       payload: { companyId: row.company_id },
       idempotencyKey: `enrich:${row.company_id}`,
     });
+    const { error: markError } = await db
+      .from("companies")
+      .update({ enrich_requested_at: ctx.now.toISOString() })
+      .eq("id", row.company_id);
+    if (markError) return { ok: false, error: `schedule_followups: ${markError.message}` };
     counts.enrich++;
   }
 

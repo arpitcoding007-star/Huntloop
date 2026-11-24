@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { exchangeMetadata, isExchangeEnabled } from "../../../../lib/exchange/flag";
 import { Badge, Button, Card, EmptyState, Note } from "@huntloop/ui";
 import { ClipboardList, MessageSquarePlus } from "lucide-react";
-import { listMyNeeds } from "../../../../lib/data/exchange";
+import { getExchangeQuotas, listMyNeeds } from "../../../../lib/data/exchange";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { formatMoney, placeLabel, STATUS_LABEL, timelineLabel, visibilityLabel } from "../../../../lib/exchange/format";
 
@@ -16,7 +16,7 @@ export default async function ExchangeRequestsPage({ params }: { params: Promise
   const { org } = await params;
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
-  const { data: needs, source } = await listMyNeeds(org);
+  const [{ data: needs, source }, { data: quotas }] = await Promise.all([listMyNeeds(org), getExchangeQuotas(org)]);
   const writable = canWrite(viewer);
 
   return (
@@ -40,6 +40,12 @@ export default async function ExchangeRequestsPage({ params }: { params: Promise
           <Note tone="info">There is no database on this deployment, so there are no requests to show.</Note>
         </div>
       )}
+
+      {quotas.filter((q) => q.metric === "needs_open").map((q) => (
+        <p key={q.metric} className="mt-4 text-[13px] text-fg-muted">
+          {q.used} of {q.quota} open requests in use.
+        </p>
+      ))}
 
       <div className="mt-6 space-y-3">
         {needs.length === 0 ? (

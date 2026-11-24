@@ -68,16 +68,22 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
     expired: expireError ? `failed: ${expireError.message}` : (exchangeExpired ?? null),
   };
 
-  const { data: orgs, error } = await db
-    .from("organizations")
-    .select("id, contact_retention_days")
-    .not("contact_retention_days", "is", null)
-    .is("deleted_at", null)
-    .limit(MAX_PER_TICK);
-
-  if (error) return { ok: false, error: `enforce_retention: ${error.message}` };
-
-  const configured = (orgs ?? []) as { id: string; contact_retention_days: number }[];
+  /* DB-006: every configured org, a page at a time. One unordered page of
+     fifty meant the fifty-first never had anything pruned, ever. */
+  const configured: { id: string; contact_retention_days: number }[] = [];
+  for (let from = 0; ; from += MAX_PER_TICK) {
+    const { data: orgs, error } = await db
+      .from("organizations")
+      .select("id, contact_retention_days")
+      .not("contact_retention_days", "is", null)
+      .is("deleted_at", null)
+      .order("id", { ascending: true })
+      .range(from, from + MAX_PER_TICK - 1);
+    if (error) return { ok: false, error: `enforce_retention: ${error.message}` };
+    const page = (orgs ?? []) as { id: string; contact_retention_days: number }[];
+    configured.push(...page);
+    if (page.length < MAX_PER_TICK) break;
+  }
   if (!configured.length) {
     /* The common case on most deployments, and not worth an audit row or a
        failure. Nobody has asked for anything to be deleted. */

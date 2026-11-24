@@ -19,6 +19,8 @@ import { OrgScope, setAdminClientForTests } from "../src/scope.ts";
 import { enrichPerson } from "../src/handlers/enrich-person.ts";
 import { explainKey, matchNeeds } from "../src/handlers/match-needs.ts";
 import { enforceRetention } from "../src/handlers/enforce-retention.ts";
+import { scheduleDiscovery } from "../src/handlers/schedule-discovery.ts";
+import { scheduleFollowups } from "../src/handlers/schedule-followups.ts";
 import { createIntroOpportunities, placeholderDomain } from "../src/handlers/create-intro-opportunities.ts";
 import { allowedNow, inQuietHours, sendExchangeNotifications } from "../src/handlers/send-exchange-notifications.ts";
 import { verifyExchangeUnsubscribeToken } from "../src/email/exchange-token.ts";
@@ -33,7 +35,7 @@ import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extrac
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
 import { enqueue } from "../src/queue.ts";
-import { contactAllowedAfter, sendMessage } from "../src/handlers/send-message.ts";
+import { bounceHealth, contactAllowedAfter, repliedSinceLastSend, sendMessage } from "../src/handlers/send-message.ts";
 import { preclassify } from "../src/mailbox/preclassify.ts";
 import { bareDomain, checkContent } from "../src/gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../src/business-hours.ts";
@@ -46,7 +48,7 @@ import { balanceObservations, ruleFacts } from "../src/handlers/score-opportunit
 import { normalizeCompanyName, pickMatch } from "../src/handlers/prospect-competitor-customers.ts";
 import { DEFAULT_PREFERENCE, digestDue, digestFilter, localTime } from "../src/handlers/send-digests.ts";
 import { digestUnsubscribeToken, verifyDigestUnsubscribeToken } from "../src/email/digest-token.ts";
-import { digestEmail, escapeHtml, invitationEmail } from "../src/email/templates.ts";
+import { assignedEmail, digestEmail, escapeHtml, invitationEmail } from "../src/email/templates.ts";
 import { detectMentions } from "../src/handlers/resolve-competitor-mentions.ts";
 import { icpOverlap, splitList } from "../src/handlers/research-competitor.ts";
 import { boardBelongsTo, boardSignals, fetchCompanySignals, setBoardFetcherForTests } from "../src/handlers/fetch-company-signals.ts";
@@ -124,7 +126,7 @@ function fakeClient(responses: Record<string, unknown> = {}) {
   const builder = (record: Recorded) => {
     const chain: Record<string, unknown> = {};
     const passthrough = [
-      "eq", "neq", "is", "in", "or", "order", "limit", "lt", "lte", "gt", "gte", "not",
+      "eq", "neq", "is", "in", "or", "order", "limit", "lt", "lte", "gt", "gte", "not", "range",
       /* `contains` is how `matchThread` asks whether a thread's participants
          array holds the sender. Added when that path first got a test. */
       "contains",
@@ -1620,6 +1622,12 @@ console.log("\nsend_message — OUT-001: at most once");
     "and it is left for a person, not retried",
     (stale as { permanent?: boolean }).permanent === true,
   );
+  expect(
+    "and the message says so, which takes it out of the send sweep (OUT-201)",
+    earlier.calls.some(
+      (c) => c.table === "messages" && c.verb === "update" && /Delivery unknown/.test(String((c.payload as { error?: unknown })?.error ?? "")),
+    ),
+  );
   setAdminClientForTests(null);
 
   // Two runs at once: the one that loses the claim does not send.
@@ -2383,6 +2391,11 @@ console.log("\nschedule_learning — an idle org is never enqueued");
   );
 
   setAdminClientForTests(null);
+}
+
+{
+  const m = assignedEmail({ orgName: "Acme", companyName: "<b>North</b>", assignerName: null, url: "https://x.test/acme/opportunities/1" });
+  expect("the assignment email links the opportunity and escapes the company", m.html.includes("https://x.test/acme/opportunities/1") && !m.html.includes("<b>North</b>") && m.text.includes("A teammate assigned"));
 }
 
 /* ── analyze_performance ─────────────────────────────────────────────────── */
@@ -3213,7 +3226,7 @@ console.log("\nfetch_company_signals — refuses to guess a provider id it does 
    one key covers every stored credential, which is the decision recorded in
    `packages/db/src/crypto.ts`. These tests inherit it rather than setting a
    second one, so if that decision is ever reversed they fail here too. */
-function hubspotWorld(options: { existingDealId?: string | null } = {}) {
+function hubspotWorld(options: { existingDealId?: string | null; dealGone?: boolean } = {}) {
   const existing = options.existingDealId ?? null;
 
   const { client, calls } = fakeClient({
@@ -3257,6 +3270,7 @@ function hubspotWorld(options: { existingDealId?: string | null } = {}) {
       new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
     if (u.includes("/properties/deals")) return json({ message: "exists" }, 409);
+    if (options.dealGone && method === "PATCH" && u.includes("/objects/")) return json({ message: "not found" }, 404);
     if (u.includes("/search")) return json({ results: [] });
     if (u.includes("/pipelines/deals")) {
       return json({ results: [{ stages: [{ id: "presentationscheduled", label: "Demo scheduled" }] }] });
@@ -3351,6 +3365,29 @@ console.log("\nsync_hubspot — the second push updates, and never creates a twi
   expect(
     "the existing one is patched instead",
     world.http.some((c) => c.method === "PATCH" && c.url.includes("/objects/deals/hs-deal-1")),
+  );
+  expect(
+    "and associated again, so a first push whose association failed is repaired (CRM-001)",
+    world.http.some((c) => c.method === "PUT" && c.url.includes("/objects/deals/hs-deal-1/associations/")),
+  );
+
+  world.restore();
+}
+
+console.log("\nsync_hubspot — a deal deleted in HubSpot, or another portal, is created afresh (CRM-003)");
+{
+  const world = hubspotWorld({ existingDealId: "hs-deal-old", dealGone: true });
+  const outcome = await syncHubspot(world.ctx);
+
+  expect("the sync succeeds", outcome.ok === true, JSON.stringify(outcome));
+  expect(
+    "a new deal is created",
+    world.http.some((c) => c.method === "POST" && /\/objects\/deals$/.test(c.url)),
+    JSON.stringify(world.http),
+  );
+  expect(
+    "and the stale link is forgotten",
+    world.calls.some((c) => c.table === "external_ids" && c.verb === "delete"),
   );
 
   world.restore();
@@ -4843,6 +4880,36 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
 }
 
 
+console.log("\nan unreadable check stops the send");
+{
+  const { client } = fakeClient({ "select:messages": { data: null, error: { message: "URI too long" } } });
+  const scope = new OrgScope(ORG_A, client);
+  await expectThrows("an unreadable reply is not silence", () => repliedSinceLastSend({ scope } as never, "p@x.test"), /unreadable/);
+  await expectThrows("an unreadable bounce count is not zero bounces", () => bounceHealth({ scope } as never, "box"), /unreadable/);
+
+  const saved = { RESEND_API_KEY: process.env.RESEND_API_KEY, EMAIL_FROM: process.env.EMAIL_FROM, NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL };
+  Object.assign(process.env, { RESEND_API_KEY: "re_synthetic", EMAIL_FROM: "a@x.test", NEXT_PUBLIC_SITE_URL: "https://x.test" });
+  const prefs = fakeClient({
+    "rpc:exchange_queue_notifications": { data: {}, error: null },
+    "select:exchange_notifications": { data: [{ id: "n", org_id: "o", user_id: "u", kind: "match_alert", title: "t", body: null, href: "/x", hot: true, created_at: "2026-11-24T00:00:00Z" }], error: null },
+    "select:profiles": { data: [{ id: "u", email: "u@x.test" }], error: null },
+    "select:organizations": { data: [], error: null },
+    "select:notification_preferences": { data: null, error: { message: "down" } },
+  });
+  setAdminClientForTests(prefs.client);
+  const realFetch = globalThis.fetch;
+  let sent = 0;
+  globalThis.fetch = (async () => ((sent += 1), new Response("{}"))) as typeof fetch;
+  try {
+    const out = await sendExchangeNotifications({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now: new Date() });
+    expect("unread preferences are not the defaults: nobody is emailed", !out.ok && sent === 0, [out, sent]);
+  } finally {
+    globalThis.fetch = realFetch;
+    setAdminClientForTests(null);
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+}
+
 console.log("\nschedule_matching — queues what SQL says is due (0068, DN-59)");
 {
   const run = async (due: { data: unknown; error: unknown }) => {
@@ -5181,6 +5248,7 @@ console.log("\nsend_exchange_notifications — quiet hours, the daily cap, curre
       "select:profiles": { data: [{ id: U1, email: "buyer@a.test" }, { id: U2, email: "night@b.test" }, { id: U3, email: "busy@b.test" }], error: null },
       "select:notification_preferences": { data: [{ org_id: ORG_B, user_id: U2, exchange_alerts: "instant", exchange_emails: true, digest_hour: 8, timezone: "UTC", quiet_start_hour: 9, quiet_end_hour: 11, last_exchange_digest_on: null }], error: null },
       "select:organizations": { data: [{ id: ORG_A, name: "Acme", slug: "acme" }, { id: ORG_B, name: "Northwind", slug: "nw" }], error: null },
+      "select:memberships": { data: [{ org_id: ORG_A, user_id: U1 }, { org_id: ORG_B, user_id: U2 }, { org_id: ORG_B, user_id: U3 }], error: null },
       "update:exchange_notifications": { data: [{ id: "n1" }], error: null },
     });
     setAdminClientForTests(live.client);
@@ -5196,6 +5264,26 @@ console.log("\nsend_exchange_notifications — quiet hours, the daily cap, curre
     const token = decodeURIComponent(String(mail?.headers?.["List-Unsubscribe"]).split("token=")[1]!.replace(/>$/, ""));
     expectEqual("the unsubscribe token verifies for that person and workspace", verifyExchangeUnsubscribeToken(token), { orgId: ORG_A, userId: U1 });
     expectEqual("and a digest token is not accepted as one", verifyExchangeUnsubscribeToken(token.replace(/\.[^.]+$/, ".forged")), null);
+
+    /* DB-009: somebody removed from the workspace since the notice was written gets nothing. */
+    const removed = fakeClient({
+      "rpc:exchange_queue_notifications": { data: {}, error: null },
+      "select:exchange_notifications": (r: { filters: [string, unknown][] }) =>
+        r.filters.some(([k, v]) => k === "eq:channel" && v === "instant") ? { data: [rows[0]], error: null } : { data: [], error: null },
+      "select:profiles": { data: [{ id: U1, email: "buyer@a.test" }], error: null },
+      "select:notification_preferences": { data: [], error: null },
+      "select:organizations": { data: [{ id: ORG_A, name: "Acme", slug: "acme" }], error: null },
+      "select:memberships": { data: [], error: null },
+      "update:exchange_notifications": { data: [{ id: "n1" }], error: null },
+    });
+    setAdminClientForTests(removed.client);
+    const before = sentBodies.length;
+    await sendExchangeNotifications({ scope: new OrgScope(ORG_A, removed.client), payload: {}, job: { id: "j-x3", org_id: null, job_name: "send_exchange_notifications" } as never, now });
+    expect("a person no longer in the workspace is not emailed (DB-009)", sentBodies.length === before);
+    expect(
+      "and the notice is taken off the email queue",
+      removed.calls.some((c) => c.table === "exchange_notifications" && c.verb === "update" && (c.payload as { channel?: string })?.channel === "none"),
+    );
   } finally {
     setAdminClientForTests(null);
     globalThis.fetch = savedFetch;
@@ -5204,6 +5292,47 @@ console.log("\nsend_exchange_notifications — quiet hours, the daily cap, curre
       else process.env[k] = v;
     }
   }
+}
+
+console.log("\nschedule_discovery — a run killed mid-flight no longer blocks its search (ENG-001)");
+{
+  const world = fakeClient({
+    "update:discovery_runs": { data: [{ id: "r1" }], error: null },
+    "rpc:claim_due_discovery_queries": { data: [], error: null },
+  });
+  setAdminClientForTests(world.client);
+  const now = new Date("2026-11-24T12:00:00Z");
+  const out = await scheduleDiscovery({ scope: new OrgScope(ORG_A, world.client), payload: {}, job: { id: "j-d", org_id: null, job_name: "schedule_discovery" } as never, now });
+  const reap = world.calls.find((c) => c.table === "discovery_runs" && c.verb === "update");
+  expect("abandoned runs are closed before claiming", Boolean(reap) && (reap!.payload as { status?: string }).status === "failed");
+  expect("only runs untouched for 15 minutes", reap?.filters.some(([k, v]) => k === "lt:updated_at" && v === "2026-11-24T11:45:00.000Z") ?? false, JSON.stringify(reap?.filters));
+  expectEqual("and the count is reported", out.ok ? (out.result as { abandonedRunsClosed?: number }).abandonedRunsClosed : null, 1);
+  setAdminClientForTests(null);
+}
+
+console.log("\nschedule_followups — an enrichment asked for is not asked again for a day (ENG-002)");
+{
+  const world = fakeClient({
+    "select:opportunities": (r: { payload?: unknown }) =>
+      String(r.payload ?? "").includes("companies!inner(last_enriched_at")
+        ? { data: [{ company_id: "co-x", org_id: ORG_A }], error: null }
+        : { data: [], error: null },
+    "select:companies": { data: [], error: null },
+  });
+  setAdminClientForTests(world.client);
+  const now = new Date("2026-11-24T12:00:00Z");
+  await scheduleFollowups({ scope: new OrgScope(ORG_A, world.client), payload: {}, job: { id: "j-f", org_id: null, job_name: "schedule_followups" } as never, now });
+  const sweepQuery = world.calls.find((c) => c.table === "opportunities" && String(c.payload ?? "").includes("last_enriched_at"));
+  expect(
+    "the sweep skips what was asked about in the last day",
+    sweepQuery?.filters.some(([k]) => k.startsWith("or:") && k.includes("enrich_requested_at.lt.2026-11-23T12:00:00.000Z")) ?? false,
+    JSON.stringify(sweepQuery?.filters),
+  );
+  expect(
+    "and marks what it asks for",
+    world.calls.some((c) => c.table === "companies" && c.verb === "update" && (c.payload as { enrich_requested_at?: string })?.enrich_requested_at === now.toISOString()),
+  );
+  setAdminClientForTests(null);
 }
 
 console.log(

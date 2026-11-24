@@ -198,6 +198,8 @@ async function syncFromHistory(
   const url = new URL(`${API}/history`);
   url.searchParams.set("startHistoryId", cursor);
   url.searchParams.set("historyTypes", "messageAdded");
+  /* OUT-202: replies, not our own sent mail filling the page. */
+  url.searchParams.set("labelId", "INBOX");
   url.searchParams.set("maxResults", "100");
 
   const response = await fetch(url, {
@@ -214,20 +216,42 @@ async function syncFromHistory(
   }
 
   const json = (await response.json()) as {
-    history?: { messagesAdded?: { message?: { id?: string } }[] }[];
+    history?: { id?: string; messagesAdded?: { message?: { id?: string } }[] }[];
     historyId?: string;
+    nextPageToken?: string;
   };
 
-  const ids = new Set<string>();
-  for (const entry of json.history ?? []) {
-    for (const added of entry.messagesAdded ?? []) {
-      if (added.message?.id) ids.add(added.message.id);
-    }
+  /* OUT-202. The cursor used to jump to the mailbox's latest history id
+     whatever was read: past a second page, past the 50-message cap and past
+     a message that failed to load. Each of those was a reply nobody saw, and
+     a "remove me" nobody honoured. Now it advances only past history records
+     whose messages were all read. */
+  const records = (json.history ?? []).map((entry) => ({
+    id: entry.id ?? null,
+    messageIds: [...new Set((entry.messagesAdded ?? []).map((a) => a.message?.id).filter((x): x is string => !!x))],
+  }));
+
+  const messages: IncomingMessage[] = [];
+  const seen = new Set<string>();
+  let budget = HYDRATE_CAP;
+  let lastDone: string | null = null;
+  let complete = true;
+  for (const record of records) {
+    const fresh = record.messageIds.filter((id) => !seen.has(id));
+    if (fresh.length > budget) { complete = false; break; }
+    const read = await hydrate(accessToken, fresh);
+    if (read.failed) { complete = false; messages.push(...read.messages); break; }
+    messages.push(...read.messages);
+    fresh.forEach((id) => seen.add(id));
+    budget -= fresh.length;
+    lastDone = record.id ?? lastDone;
   }
+  if (complete && json.nextPageToken) complete = false;
 
   return {
-    messages: await hydrate(accessToken, [...ids]),
-    cursor: json.historyId ?? cursor,
+    messages,
+    cursor: complete ? json.historyId ?? cursor : lastDone ?? cursor,
+    complete,
   };
 }
 
@@ -249,9 +273,13 @@ async function syncRecent(accessToken: string): Promise<SyncResult> {
   const profile = await call(`${API}/profile`, accessToken);
   const { historyId } = (await profile.json()) as { historyId?: string };
 
+  const read = await hydrate(accessToken, (json.messages ?? []).map((m) => m.id));
   return {
-    messages: await hydrate(accessToken, (json.messages ?? []).map((m) => m.id)),
+    messages: read.messages,
     cursor: historyId ?? null,
+    /* A first sync reads a recent window by design; a failed message is
+       still a gap worth saying so about. */
+    complete: !read.failed,
   };
 }
 
@@ -263,23 +291,27 @@ async function syncRecent(accessToken: string): Promise<SyncResult> {
  * serverless function is the shape that triggers it — at which point the whole
  * sync fails rather than one message being slow.
  */
-async function hydrate(accessToken: string, ids: string[]): Promise<IncomingMessage[]> {
-  const out: IncomingMessage[] = [];
+const HYDRATE_CAP = 50;
 
-  for (const id of ids.slice(0, 50)) {
+async function hydrate(accessToken: string, ids: string[]): Promise<{ messages: IncomingMessage[]; failed: boolean }> {
+  const out: IncomingMessage[] = [];
+  let failed = false;
+
+  for (const id of ids.slice(0, HYDRATE_CAP)) {
     try {
       const response = await call(`${API}/messages/${id}?format=full`, accessToken);
       const json = (await response.json()) as GmailMessage;
       const message = toIncoming(json);
       if (message) out.push(message);
     } catch {
-      // One unreadable message does not fail the sync. The rest are real
-      // replies somebody is waiting on.
-      continue;
+      /* One unreadable message does not fail the sync — the rest are real
+         replies somebody is waiting on — but it is reported, so the cursor
+         stays where the next sync will try it again (OUT-202). */
+      failed = true;
     }
   }
 
-  return out;
+  return { messages: out, failed: failed || ids.length > HYDRATE_CAP };
 }
 
 interface GmailPart {

@@ -206,11 +206,13 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
    * So the quota gates *creation* only. One extra read per scoring run,
    * which is trivial beside the model call that produced `qualification`.
    */
-  const { data: existing } = await scope
+  const { data: existing, error: existingError } = await scope
     .select("opportunities", "id, priority_set_by")
     .eq("company_id", companyId)
     .eq("icp_id", icp.id)
     .maybeSingle();
+  /* Read as "new", a failed lookup would overwrite a priority a person set. */
+  if (existingError) return { ok: false, error: `score_opportunity: ${existingError.message}` };
 
   if (!existing) {
     const { data: quotaData, error: quotaError } = await scope.rpc("check_quota_internal", {
@@ -238,42 +240,54 @@ export async function scoreOpportunity(ctx: JobContext): Promise<JobOutcome> {
     }
   }
 
-  /* §60's unique key is (org_id, company_id, icp_id) with NULLS NOT DISTINCT,
-     so this is an upsert rather than an insert — a company rescanned next week
-     updates its verdict instead of duplicating the row. `priority_reason` is
-     NOT NULL in `0003`, which the qualifier's own parse already guarantees. */
-  const { data: opportunity, error: upsertError } = await scope
-    .upsert(
-      "opportunities",
-      {
-        company_id: companyId,
-        icp_id: icp.id,
-        /* FLOW-004: a priority a person set stays set. The score history is
-           still appended below, so the disagreement remains visible and the
-           learning loop can read it; only the verdict the user overrode is
-           left alone. Omitted keys are untouched by the upsert's update. */
-        ...(existing?.priority_set_by === "user"
-          ? {}
-          : { priority: ruled.priority, priority_reason: priorityReason }),
-        /* FLOW-013: origin is set once, from how the company arrived. It used
-           to be overwritten with "scan" on every rescore, which erased the
-           comparison the learning loop runs by origin. */
-        ...(existing ? {} : { discovered_via: String(company.discovered_via ?? "scan") }),
-        why_this_company: qualification.summary,
-        outreach_angle: qualification.recommendation,
-        confidence: qualification.scoreConfidence,
-        last_scored_at: new Date().toISOString(),
-      },
-      { onConflict: "org_id,company_id,icp_id" },
-    )
-    .select("id, status")
-    .maybeSingle();
+  /* §60's unique key is (org_id, company_id, icp_id) with NULLS NOT DISTINCT:
+     a company rescanned next week updates its verdict instead of duplicating
+     the row.
+
+     A known row is updated, never upserted. An upsert that omitted
+     `priority_reason` to keep a person's priority was refused outright:
+     Postgres checks NOT NULL on the proposed row before it looks for the
+     conflict, so every rescore after an override failed (pass 22, V-04). */
+  const verdict = {
+    why_this_company: qualification.summary,
+    outreach_angle: qualification.recommendation,
+    confidence: qualification.scoreConfidence,
+    last_scored_at: new Date().toISOString(),
+  };
+  const ranked = { priority: ruled.priority, priority_reason: priorityReason };
+
+  const { data: opportunity, error: upsertError } = existing
+    ? await scope
+        .update("opportunities", {
+          ...verdict,
+          /* FLOW-004: a priority a person set stays set. The score history is
+             still appended below, so the disagreement remains visible and the
+             learning loop can read it. FLOW-013: `discovered_via` is set once. */
+          ...(existing.priority_set_by === "user" ? {} : ranked),
+        })
+        .eq("id", existing.id)
+        .select("id, status")
+        .maybeSingle()
+    : await scope
+        .upsert(
+          "opportunities",
+          {
+            ...verdict,
+            ...ranked,
+            company_id: companyId,
+            icp_id: icp.id,
+            discovered_via: String(company.discovered_via ?? "scan"),
+          },
+          { onConflict: "org_id,company_id,icp_id" },
+        )
+        .select("id, status")
+        .maybeSingle();
 
   if (upsertError) {
     return { ok: false, error: `score_opportunity: ${upsertError.message}` };
   }
   if (!opportunity) {
-    return { ok: false, error: "score_opportunity: the opportunity upsert returned no row." };
+    return { ok: false, error: "score_opportunity: the opportunity write returned no row." };
   }
 
   const opportunityId = String(opportunity.id);

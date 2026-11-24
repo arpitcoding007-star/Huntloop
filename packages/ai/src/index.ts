@@ -7,7 +7,7 @@
  * to it is a screen that says so, not a fabricated result.
  */
 
-export { isAiConfigured } from "./env.ts";
+export { AiDeadlineError, isAiConfigured, withAiDeadline } from "./env.ts";
 
 export {
   MODELS,
@@ -276,3 +276,10 @@ export {
   type ExplainMatchOutput,
   type ExplainedCandidate,
 } from "./tasks/explain-match.ts";
+
+export {
+  MAX_SUPPLY_PAGE_CHARS,
+  readSupplyPage,
+  type ReadSupplyPageInput,
+  type ReadSupplyPageOutput,
+} from "./tasks/read-supply-page.ts";

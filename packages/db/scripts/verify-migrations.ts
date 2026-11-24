@@ -3569,6 +3569,171 @@ console.log("\n0068 — workspace purpose, alerts with no band, what to match ne
   await db.exec("rollback");
 }
 
+console.log("\n0069 — Exchange quotas");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const eq = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  await db.exec("begin");
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  await engine();
+  await db.exec(`delete from exchange_needs`);
+  const file = `insert into exchange_needs (org_id, summary, visibility) values ($1, 'Cards', 2)`;
+  await as(OWNER_A);
+  eq("a plan with no limit shows none", (await db.query(`select * from public.exchange_quotas($1)`, [A])).rows, []);
+  await expectAccept(db, "and refuses nothing", file, [A]);
+  await engine();
+  await db.query(`update plans set limits = limits || '{"needs_open": 2}' where id in (select plan_id from organizations where id = $1)`, [A]);
+  await db.query(`insert into usage_counters (org_id, metric, period, used, "limit") values ($1, 'needs_open', date_trunc('month', now())::date, 0, 2) on conflict do nothing`, [A]);
+  await as(OWNER_A);
+  await db.query(file, [A]);
+  eq("used and allowed are shown", (await db.query<{ metric: string; used: string; quota: string }>(`select metric, used, quota from public.exchange_quotas($1)`, [A])).rows.map((r) => [r.metric, Number(r.used), Number(r.quota)]), [["needs_open", 2, 2]]);
+  await expectRejectTx(db, "past the limit is refused", file, [A]);
+  await db.query(`update exchange_needs set status = 'paused' where id = (select id from exchange_needs where org_id = $1 limit 1)`, [A]);
+  await expectAccept(db, "pausing one makes room", file, [A]);
+  await expectRejectTx(db, "and reopening counts", `update exchange_needs set status = 'open' where org_id = $1 and status = 'paused'`, [A]);
+  await expectAccept(db, "an open request can still be edited at the limit", `update exchange_needs set summary = 'Edited' where org_id = $1 and status = 'open'`, [A]);
+  await as(OWNER_B);
+  eq("another workspace's are not readable", (await db.query(`select * from public.exchange_quotas($1)`, [A])).rows, []);
+  await engine();
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0069_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0069_applied() exists for db:doctor");
+  else fail("migration_0069_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0070 — pass 21 integrity");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const SECOND = "22222222-2222-2222-2222-222222222222";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  const scalar = async <T>(sql: string, params: unknown[] = []) =>
+    ((await db.query<{ v: T }>(sql, params)).rows[0]?.v ?? null) as T | null;
+
+  // DB-004: the last live owner stays.
+  await db.exec("begin");
+  await as(OWNER_A);
+  await expectRejectTx(db, "the sole owner cannot leave their workspace", `update memberships set deleted_at = now() where org_id = $1 and user_id = $2`, [A, OWNER_A]);
+  await expectRejectTx(db, "nor demote themselves", `update memberships set role = 'admin' where org_id = $1 and user_id = $2`, [A, OWNER_A]);
+  await engine();
+  await db.query(`update memberships set role = 'admin' where org_id = $1 and user_id = $2`, [A, SECOND]);
+  await as(SECOND);
+  await expectRejectTx(db, "an admin cannot make themselves an owner", `update memberships set role = 'owner' where org_id = $1 and user_id = $2`, [A, SECOND]);
+  await as(OWNER_A);
+  await expectAccept(db, "an owner can make another owner", `update memberships set role = 'owner' where org_id = $1 and user_id = $2`, [A, SECOND]);
+  await expectAccept(db, "and then step down", `update memberships set role = 'admin' where org_id = $1 and user_id = $2`, [A, OWNER_A]);
+  await db.exec("rollback");
+
+  // DB-008 / OUT-204: the mailbox cap.
+  await db.exec("begin");
+  await engine();
+  const mailbox = await scalar<string>(`insert into mailboxes (org_id, provider, email) values ($1, 'gmail', 'send@a.test') returning id as v`, [A]);
+  await expectRejectTx(db, "a daily limit above 500 is refused", `update mailboxes set daily_limit = 100000 where id = $1`, [mailbox]);
+  await db.query(`update memberships set role = 'member' where org_id = $1 and user_id = $2`, [A, SECOND]);
+  await as(SECOND);
+  await expectRejectTx(db, "a member cannot change a mailbox's daily limit", `update mailboxes set daily_limit = 200 where id = $1`, [mailbox]);
+  await expectAccept(db, "a member can still rename it", `update mailboxes set display_name = 'Sales' where id = $1`, [mailbox]);
+  await db.query(`delete from mailboxes where id = $1`, [mailbox]);
+  await engine();
+  if ((await scalar<number>(`select count(*)::int as v from mailboxes where id = $1`, [mailbox])) === 1) ok("a member cannot hard-delete a mailbox");
+  else fail("a member cannot hard-delete a mailbox", "deleted");
+  await db.exec("rollback");
+
+  // DB-005: erasure reaches every identifier.
+  await db.exec("begin");
+  await engine();
+  const person = await scalar<string>(`insert into people (org_id, company_id, first_name, title) values ($1, 'c0000000-0000-0000-0000-00000000000a', 'Pat', 'CFO') returning id as v`, [A]);
+  await db.query(`insert into contact_points (org_id, person_id, kind, value) values ($1, $2, 'email', 'pat@x.test'), ($1, $2, 'phone', '+15550100'), ($1, $2, 'linkedin', 'https://linkedin.com/in/pat')`, [A, person]);
+  const thread = await scalar<string>(`insert into threads (org_id, subject, participants) values ($1, 'Hello Pat', array['pat@x.test', 'me@a.test']) returning id as v`, [A]);
+  await db.query(`select public.erase_contact($1, 'Pat@x.test')`, [A]);
+  if ((await scalar<number>(`select count(*)::int as v from contact_points where person_id = $1`, [person])) === 0) ok("erasure removes the phone and LinkedIn too");
+  else fail("erasure removes every contact point", "some remain");
+  const t = (await db.query<{ subject: string; participants: string[] }>(`select subject, participants from threads where id = $1`, [thread])).rows[0];
+  if (t?.subject === "[erased]" && !t.participants.includes("pat@x.test") && t.participants.includes("me@a.test")) ok("and the address leaves the thread, nobody else does");
+  else fail("thread redacted", JSON.stringify(t));
+  if ((await scalar<string | null>(`select title as v from people where id = $1`, [person])) === null) ok("and the title is cleared");
+  else fail("title cleared", "kept");
+  await db.exec("rollback");
+
+  // TRUST-001 / TRUST-002: a profile's domain.
+  await db.exec("begin");
+  await as(OWNER_B);
+  await expectRejectTx(db, "a workspace cannot claim a domain nobody there has an address at", `insert into exchange_provider_profiles (org_id, name, domain, claimed_at) values ($1, 'B supply', 'a.test', now())`, [B]);
+  await as(OWNER_A);
+  await expectAccept(db, "its own domain can be claimed", `insert into exchange_provider_profiles (org_id, name, domain, claimed_at) values ($1, 'A supply', 'a.test', now())`, [A]);
+  await engine();
+  await db.query(`update exchange_provider_profiles set verified_at = now() where org_id = $1`, [A]);
+  await as(OWNER_A);
+  await db.query(`update exchange_provider_profiles set name = 'Someone else' where org_id = $1`, [A]);
+  if ((await scalar<string | null>(`select verified_at as v from exchange_provider_profiles where org_id = $1`, [A])) === null) ok("renaming a verified profile clears Verified");
+  else fail("renaming a verified profile clears Verified", "kept");
+  await db.exec("rollback");
+
+  // DB-001 / DB-002: a deleted workspace.
+  await db.exec("begin");
+  await engine();
+  const cat = await scalar<string>(`select id as v from exchange_categories limit 1`);
+  const profile = await scalar<string>(`insert into exchange_provider_profiles (org_id, name, claimed_at) values ($1, 'A supply', now()) returning id as v`, [A]);
+  if (cat) await db.query(`insert into exchange_offerings (provider_id, category_id, title, status) values ($1, $2, 'Cards', 'active')`, [profile, cat]);
+  await db.query(`insert into exchange_needs (org_id, summary, visibility) values ($1, 'Cards', 2)`, [A]);
+  await as(OWNER_A);
+  await db.query(`select public.delete_organization($1)`, [A]);
+  if ((await scalar<boolean>(`select public.has_org_role($1, 'owner') as v`, [A])) === false) ok("a deleted workspace confers no role");
+  else fail("a deleted workspace confers no role", "still owner");
+  await expectRejectTx(db, "so its members can no longer file requests", `insert into exchange_needs (org_id, summary, visibility) values ($1, 'More', 2)`, [A]);
+  await engine();
+  if ((await scalar<number>(`select count(*)::int as v from exchange_offerings where org_id = $1 and status = 'active'`, [A])) === 0) ok("its offerings are paused");
+  else fail("its offerings are paused", "still active");
+  if ((await scalar<number>(`select count(*)::int as v from exchange_needs where org_id = $1 and status = 'open'`, [A])) === 0) ok("its open requests are withdrawn");
+  else fail("its open requests are withdrawn", "still open");
+  if ((await scalar<number>(`select count(*)::int as v from exchange_provider_profiles where org_id = $1 and deleted_at is null`, [A])) === 0) ok("its supplier profile leaves the catalogue");
+  else fail("its supplier profile leaves the catalogue", "still listed");
+  await expectAccept(db, "and a workspace that claimed a profile can be removed for good", `delete from organizations where id = $1`, [A]);
+  await db.exec("rollback");
+
+  // DB-011 / DB-010.
+  await db.exec("begin");
+  await engine();
+  const NEWCOMER = "70707070-0070-0070-0070-000000000001";
+  await db.query(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'newcomer-0070@a.test', null)`, [NEWCOMER]);
+  await db.query(`update organizations set primary_domain = 'a.test', is_discoverable = true where id = $1`, [A]);
+  await as(NEWCOMER);
+  if ((await scalar<number>(`select count(*)::int as v from public.discoverable_workspaces()`)) === 0) ok("an unconfirmed address discovers no workspace");
+  else fail("an unconfirmed address discovers no workspace", "listed");
+  await engine();
+  await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [NEWCOMER]);
+  await as(NEWCOMER);
+  if ((await scalar<number>(`select count(*)::int as v from public.discoverable_workspaces()`)) === 1) ok("once confirmed, it does");
+  else fail("once confirmed, it does", "not listed");
+  await as(OWNER_A);
+  const exported = await scalar<Record<string, unknown>>(`select public.export_organization($1) as v`, [A]);
+  if (exported && ["campaigns", "sequences", "sequenceSteps", "exchangeRequests", "exchangeOfferings"].every((k) => Array.isArray(exported[k]))) ok("the export carries campaigns, sequences and Exchange listings");
+  else fail("the export carries campaigns, sequences and Exchange listings", JSON.stringify(Object.keys(exported ?? {})));
+  const probe = await scalar<boolean>(`select public.migration_0070_applied() as v`);
+  if (probe === true) ok("migration_0070_applied() exists for db:doctor");
+  else fail("migration_0070_applied() exists", String(probe));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

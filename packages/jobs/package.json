@@ -11,7 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types scripts/verify-jobs.ts"
+    "test": "node --experimental-strip-types scripts/verify-jobs.ts && npm run test:simulation",
+    "test:simulation": "node --experimental-strip-types scripts/simulate.ts"
   },
   "dependencies": {
     "@huntloop/ai": "*",

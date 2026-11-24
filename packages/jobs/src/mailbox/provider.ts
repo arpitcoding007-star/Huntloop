@@ -70,6 +70,12 @@ export interface SyncResult {
   messages: IncomingMessage[];
   /** Opaque. Stored in `mailboxes.sync_cursor` and handed back next time. */
   cursor: string | null;
+  /**
+   * False when the provider has more than this sync read (a page cap, or a
+   * message that could not be fetched). The cursor then stops before what
+   * was not read, and the mailbox is not reported fresh (OUT-202).
+   */
+  complete?: boolean;
 }
 
 export interface MailboxProvider {

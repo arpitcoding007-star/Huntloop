@@ -1,0 +1,1085 @@
+{
+ "acct.login-page": {
+  "name": "Sign-in and sign-up pages ask for an email link",
+  "pass": true,
+  "evidence": "",
+  "ms": 742
+ },
+ "onb.1-you": {
+  "name": "Onboarding step 1 saves the role",
+  "pass": true,
+  "evidence": "{\"role\":\"founder\",\"full_name\":\"Olive Owner\"}",
+  "ms": 1130
+ },
+ "onb.2-first-job": {
+  "name": "First-job choice routes to company setup",
+  "pass": true,
+  "evidence": "",
+  "ms": 460
+ },
+ "onb.3-company": {
+  "name": "Company research reads a site, creates the workspace and drafts the product",
+  "pass": true,
+  "evidence": "huntloop",
+  "ms": 816
+ },
+ "onb.4-goals": {
+  "name": "Goals are saved",
+  "pass": true,
+  "evidence": "",
+  "ms": 906
+ },
+ "onb.5-icp": {
+  "name": "AI drafts an ideal customer profile from the research",
+  "pass": true,
+  "evidence": "Audit text for values +1",
+  "ms": 2496
+ },
+ "onb.6-sources": {
+  "name": "AI recommends sources",
+  "pass": true,
+  "evidence": "1 sources",
+  "ms": 6154
+ },
+ "onb.7-first-run": {
+  "name": "First run discovers, enriches, researches and scores companies",
+  "pass": true,
+  "evidence": "{\"companies\":5,\"opps\":5,\"scores\":5}",
+  "ms": 25015,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "onb.resume": {
+  "name": "An unfinished setup resumes where it stopped",
+  "pass": true,
+  "evidence": "http://127.0.0.1:3103/welcome/start",
+  "ms": 2518
+ },
+ "team.invite": {
+  "name": "An admin invites a teammate and the invitation email is sent",
+  "pass": true,
+  "evidence": "row created, 1 email sent",
+  "ms": 1576
+ },
+ "team.accept": {
+  "name": "The invitee accepts and becomes a member",
+  "pass": true,
+  "evidence": "",
+  "ms": 1037
+ },
+ "team.role": {
+  "name": "An owner changes a member's role",
+  "pass": true,
+  "evidence": "",
+  "ms": 1368
+ },
+ "team.viewer": {
+  "name": "A viewer can open screens but has no write controls",
+  "pass": true,
+  "evidence": "",
+  "ms": 1385
+ },
+ "team.tenancy": {
+  "name": "A stranger gets not-found for another workspace",
+  "pass": true,
+  "evidence": "status 404",
+  "ms": 179
+ },
+ "team.join": {
+  "name": "A colleague asks to join and an admin approves",
+  "pass": true,
+  "evidence": "",
+  "ms": 1379
+ },
+ "co.add": {
+  "name": "Add a company by hand",
+  "pass": true,
+  "evidence": "",
+  "ms": 1700
+ },
+ "co.edit": {
+  "name": "Edit a company",
+  "pass": true,
+  "evidence": "",
+  "ms": 1789
+ },
+ "co.dup-domain": {
+  "name": "The same domain is refused as a duplicate",
+  "pass": true,
+  "evidence": "",
+  "ms": 3004,
+  "dbRefusals": [
+   "POST /rest/v1/companies?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"companies_org_id_canonical_domain_key\\\"\",\"de"
+  ]
+ },
+ "co.remove": {
+  "name": "Remove a company",
+  "pass": true,
+  "evidence": "",
+  "ms": 1735
+ },
+ "co.page": {
+  "name": "A company page opens with its opportunities and history",
+  "pass": true,
+  "evidence": "",
+  "ms": 1283
+ },
+ "co.merge": {
+  "name": "Duplicate candidates are found and merged",
+  "pass": true,
+  "evidence": "1 candidate(s)",
+  "ms": 10711
+ },
+ "imp.csv": {
+  "name": "CSV import previews and stores companies, people and emails",
+  "pass": true,
+  "evidence": "",
+  "ms": 2016
+ },
+ "an.analyze": {
+  "name": "Analyze a URL returns a verdict and evidence",
+  "pass": true,
+  "evidence": "",
+  "ms": 1475
+ },
+ "an.timing": {
+  "name": "Check timing explains why now",
+  "pass": true,
+  "evidence": "",
+  "ms": 318
+ },
+ "an.save": {
+  "name": "The verdict is saved as an opportunity",
+  "pass": true,
+  "evidence": "",
+  "ms": 351
+ },
+ "onb.8-finish": {
+  "name": "Review finishes onboarding and opens the workspace",
+  "pass": true,
+  "evidence": "http://127.0.0.1:3103/welcome/review?org=huntloop",
+  "ms": 1470
+ },
+ "opp.list": {
+  "name": "Opportunity list filters by priority and search",
+  "pass": true,
+  "evidence": "",
+  "ms": 2011
+ },
+ "opp.score8": {
+  "name": "A score is stored as eight named parts with a reason",
+  "pass": true,
+  "evidence": "icp_fit,problem_severity,evidence_strength,trigger_strength,trigger_freshness,buying_likelihood,product_relevance,decision_maker_accessibility",
+  "ms": 19
+ },
+ "opp.evidence": {
+  "name": "Evidence carries kind, confidence and a source link",
+  "pass": true,
+  "evidence": "[{\"kind\":\"fact\",\"n\":130,\"src\":130},{\"kind\":\"inference\",\"n\":35,\"src\":0}]",
+  "ms": 23
+ },
+ "opp.ats": {
+  "name": "Hiring evidence is read from a company's public job board",
+  "pass": true,
+  "evidence": "Posted a job — Product — Senior / Staff Product Engineer (Europe) — on its own ashby job b <https://jobs.ashbyhq.com/linear/069c4628-88d7-4e4d-b393-c996>",
+  "ms": 5
+ },
+ "opp.why-now": {
+  "name": "Work out why now saves a dated explanation",
+  "pass": true,
+  "evidence": "The team announced a raise and is hiring in finance.",
+  "ms": 1657
+ },
+ "opp.disagree": {
+  "name": "A person overrides the priority and the correction is kept",
+  "pass": true,
+  "evidence": "",
+  "ms": 1745
+ },
+ "opp.next-step": {
+  "name": "Set and complete a next step",
+  "pass": true,
+  "evidence": "",
+  "ms": 1808
+ },
+ "opp.log": {
+  "name": "Log a call in the activity timeline",
+  "pass": true,
+  "evidence": "",
+  "ms": 1721
+ },
+ "opp.value": {
+  "name": "Set a deal value",
+  "pass": true,
+  "evidence": "",
+  "ms": 1416
+ },
+ "opp.assign": {
+  "name": "Assign an owner and email them",
+  "pass": true,
+  "evidence": "1 email",
+  "ms": 2728
+ },
+ "opp.not-fit": {
+  "name": "Mark not a fit with a reason",
+  "pass": true,
+  "evidence": "",
+  "ms": 1594
+ },
+ "opp.research": {
+  "name": "Research this queues and runs new research",
+  "pass": true,
+  "evidence": "",
+  "ms": 10369,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "opp.agent": {
+  "name": "Ask the agent about one opportunity",
+  "pass": true,
+  "evidence": "",
+  "ms": 1625
+ },
+ "opp.bulk-archive": {
+  "name": "Bulk archive",
+  "pass": true,
+  "evidence": "",
+  "ms": 1464
+ },
+ "pipe.move": {
+  "name": "Move a deal between pipeline stages",
+  "pass": true,
+  "evidence": "",
+  "ms": 1606
+ },
+ "pipe.lost": {
+  "name": "Marking lost requires a reason and records the outcome",
+  "pass": true,
+  "evidence": "",
+  "ms": 2011
+ },
+ "pipe.win": {
+  "name": "Won is recorded, and reversed when moved back",
+  "pass": true,
+  "evidence": "",
+  "ms": 3015
+ },
+ "team.assignments": {
+  "name": "Assignments page changes the owner",
+  "pass": true,
+  "evidence": "",
+  "ms": 1528
+ },
+ "needs.list": {
+  "name": "Needs you ranks items with a reason",
+  "pass": true,
+  "evidence": "",
+  "ms": 1278
+ },
+ "needs.snooze": {
+  "name": "Snooze hides an item and it can be brought back",
+  "pass": true,
+  "evidence": "",
+  "ms": 3230
+ },
+ "needs.touch": {
+  "name": "Log a touch made outside Huntloop",
+  "pass": true,
+  "evidence": "",
+  "ms": 1708
+ },
+ "dash.hunt": {
+  "name": "Hunt now queues and runs discovery",
+  "pass": true,
+  "evidence": "3 discovery runs",
+  "ms": 4452
+ },
+ "dash.cards": {
+  "name": "Command Center shows live counts and the loop",
+  "pass": true,
+  "evidence": "",
+  "ms": 1289
+ },
+ "score.rule": {
+  "name": "Write a scoring rule and turn it on",
+  "pass": true,
+  "evidence": "",
+  "ms": 1589
+ },
+ "score.draft": {
+  "name": "Draft rules from the ICP with AI, saved inactive",
+  "pass": true,
+  "evidence": "2 -> [{\"id\":\"5d337673-207a-496d-b065-9181c8055e96\",\"org_id\":\"0acdd791-10d3-4f8f-97d3-e7f28f2b2d41\",\"icp_id\":\"2fa939a3-f7f4-419d-a734-0d1dbe521546\",\"name\":\"Software companies\",\"expression\":{\"op\":\"equals\",\"f",
+  "ms": 5194
+ },
+ "score.rescore": {
+  "name": "Rescore all opportunities runs",
+  "pass": true,
+  "evidence": "",
+  "ms": 4257
+ },
+ "icp.save": {
+  "name": "Edit the ICP; the edit is versioned and requests a rescore",
+  "pass": true,
+  "evidence": "1 versions",
+  "ms": 1525
+ },
+ "icp.second": {
+  "name": "Add a second ICP",
+  "pass": true,
+  "evidence": "",
+  "ms": 1529
+ },
+ "icp.lookalike": {
+  "name": "Look-alike preview",
+  "pass": true,
+  "evidence": "· industries: computer software",
+  "ms": 6229
+ },
+ "icp.persona": {
+  "name": "Add a persona",
+  "pass": true,
+  "evidence": "",
+  "ms": 1602
+ },
+ "prod.add": {
+  "name": "Add a second product",
+  "pass": true,
+  "evidence": "",
+  "ms": 1504
+ },
+ "src.add": {
+  "name": "Add a source",
+  "pass": true,
+  "evidence": "",
+  "ms": 1245
+ },
+ "src.scan": {
+  "name": "Scan now reads a real feed and files dated signals",
+  "pass": true,
+  "evidence": "{\"docs\":29,\"events\":4} {\"due\":2,\"enqueued\":2,\"already_queued\":0,\"skipped_backlog_full\":0,\"backlog_saturated_orgs\":0,\"saturated\":false} | {\"due\":2,\"enqueued\":0,\"already_queued\":2,\"skipped_backlog_full\":0,\"backlog_saturated_o",
+  "ms": 16617,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/source_documents?columns=%22source_id%22%2C%22url%22%2C%22canonical_url%22%2C%22title%22%2C%22published_at%22%2 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"source_documents_org_id_content_hash_key\\\"\",",
+   "POST /rest/v1/source_documents?columns=%22source_id%22%2C%22url%22%2C%22canonical_url%22%2C%22title%22%2C%22published_at%22%2 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"source_documents_org_id_content_hash_key\\\"\","
+  ]
+ },
+ "src.signal": {
+  "name": "A signal becomes a trigger on a company",
+  "pass": true,
+  "evidence": "1 triggers",
+  "ms": 17
+ },
+ "src.suggest": {
+  "name": "AI suggests sources",
+  "pass": true,
+  "evidence": "2",
+  "ms": 5119
+ },
+ "src.pause": {
+  "name": "Pause, remove and restore a source",
+  "pass": true,
+  "evidence": "",
+  "ms": 2836
+ },
+ "comp.add": {
+  "name": "Add a competitor",
+  "pass": true,
+  "evidence": "",
+  "ms": 1419
+ },
+ "comp.research": {
+  "name": "Research a competitor",
+  "pass": true,
+  "evidence": "",
+  "ms": 6744,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/source_documents?columns=%22source_id%22%2C%22url%22%2C%22canonical_url%22%2C%22title%22%2C%22published_at%22%2 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"source_documents_org_id_content_hash_key\\\"\",",
+   "POST /rest/v1/source_documents?columns=%22source_id%22%2C%22url%22%2C%22canonical_url%22%2C%22title%22%2C%22published_at%22%2 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"source_documents_url_idx\\\"\",\"details\":\"Key (",
+   "POST /rest/v1/source_documents?columns=%22source_id%22%2C%22url%22%2C%22canonical_url%22%2C%22title%22%2C%22published_at%22%2 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"source_documents_url_idx\\\"\",\"details\":\"Key ("
+  ]
+ },
+ "comp.customers": {
+  "name": "Competitor customers are prospected",
+  "pass": true,
+  "evidence": "[{\"job_name\":\"prospect_competitor_customers\",\"status\":\"succeeded\",\"error\":null,\"result\":{\"named\":0,\"created\":0,\"matched\":0}}]",
+  "ms": 1236
+ },
+ "mem.add": {
+  "name": "Add a memory",
+  "pass": true,
+  "evidence": "",
+  "ms": 1506
+ },
+ "mem.link": {
+  "name": "Add a document from a link",
+  "pass": true,
+  "evidence": "2 memories",
+  "ms": 7255
+ },
+ "mem.file": {
+  "name": "PDF text is extracted and stored",
+  "pass": true,
+  "evidence": "22398 characters",
+  "ms": 1292
+ },
+ "demand.theme": {
+  "name": "Create a demand theme by hand",
+  "pass": true,
+  "evidence": "",
+  "ms": 1519
+ },
+ "asst.ask": {
+  "name": "Ask Huntloop answers from workspace records",
+  "pass": true,
+  "evidence": "",
+  "ms": 1831
+ },
+ "learn.run": {
+  "name": "Run an analysis of outcomes",
+  "pass": true,
+  "evidence": "[{\"status\":\"insufficient\"}] schedule_learning:true,analyze_performance:true",
+  "ms": 3358
+ },
+ "perf.page": {
+  "name": "Performance shows the funnel and activation",
+  "pass": true,
+  "evidence": "",
+  "ms": 1241
+ },
+ "perf.summary": {
+  "name": "AI summary of the period",
+  "pass": true,
+  "evidence": "",
+  "ms": 6350
+ },
+ "perf.csv": {
+  "name": "CSV export",
+  "pass": true,
+  "evidence": "18 lines",
+  "ms": 111
+ },
+ "perf.report": {
+  "name": "Printable share report",
+  "pass": true,
+  "evidence": "",
+  "ms": 1188
+ },
+ "perf.goals": {
+  "name": "Set team goals",
+  "pass": true,
+  "evidence": "",
+  "ms": 1619
+ },
+ "intel.page": {
+  "name": "Intelligence lists facts, inferences and triggers",
+  "pass": true,
+  "evidence": "",
+  "ms": 1215
+ },
+ "ops.page": {
+  "name": "Engine shows queue and provider health",
+  "pass": true,
+  "evidence": "",
+  "ms": 1038
+ },
+ "ops.retry": {
+  "name": "Retry a failed job",
+  "pass": true,
+  "evidence": "",
+  "ms": 1100
+ },
+ "spend.page": {
+  "name": "AI spend lists runs by task and cost",
+  "pass": true,
+  "evidence": "{\"n\":64}",
+  "ms": 1230
+ },
+ "set.org": {
+  "name": "Organisation name, postal address and voice",
+  "pass": true,
+  "evidence": "",
+  "ms": 1827
+ },
+ "set.notif": {
+  "name": "Daily digest preference",
+  "pass": true,
+  "evidence": "[{\"org_id\":\"0acdd791-10d3-4f8f-97d3-e7f28f2b2d41\",\"user_id\":\"153595d9-4206-4c10-9c2e-5333aeb42bfd\",\"daily_digest\":true,\"digest_hour\":8,\"timezone\":\"UTC\",\"last_digest_on\":\"2026-11-24T00:00:00.000Z\",\"created_at\":\"2026-11-24T15:56:58.366Z\",\"updated_at\":\"2026-11-24T15:56:58.366Z\",\"exchange_alerts\":\"digest\",\"exchange_alert_category_ids\":[],\"exchange_emails\":true,\"quiet_start_hour\":null,\"quiet_end_hour\":null,\"last_exchange_digest_on\":null}]",
+  "ms": 2226
+ },
+ "set.you": {
+  "name": "Add a personal preference",
+  "pass": true,
+  "evidence": "",
+  "ms": 1516
+ },
+ "set.activity": {
+  "name": "Activity log lists audited actions",
+  "pass": true,
+  "evidence": "12 entries",
+  "ms": 1125
+ },
+ "hs.connect": {
+  "name": "Connect HubSpot with a token",
+  "pass": true,
+  "evidence": "token encrypted",
+  "ms": 1449
+ },
+ "hs.push": {
+  "name": "Push to HubSpot creates company, contact, deal and associations",
+  "pass": true,
+  "evidence": "companies 1, contacts 1, deals 1, associations 3",
+  "ms": 3834
+ },
+ "hs.readback": {
+  "name": "The HubSpot deal stage is read back as evidence",
+  "pass": true,
+  "evidence": "HubSpot reports this deal is in stage \"Appointment scheduled\".",
+  "ms": 18
+ },
+ "mb.gmail": {
+  "name": "Connect a Gmail mailbox through OAuth; tokens are encrypted",
+  "pass": true,
+  "evidence": "founder@gmail.com connected",
+  "ms": 310
+ },
+ "mb.domain": {
+  "name": "The sending domain's MX, SPF, DMARC and DKIM are checked by real DNS",
+  "pass": true,
+  "evidence": "founder@gmail.com:\"warn\"",
+  "ms": 2304,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "camp.create": {
+  "name": "Create a campaign as a draft at autonomy 0",
+  "pass": true,
+  "evidence": "",
+  "ms": 1397
+ },
+ "camp.sequence": {
+  "name": "Add a sequence with an email, a wait and a follow-up",
+  "pass": true,
+  "evidence": "",
+  "ms": 4250
+ },
+ "camp.activate": {
+  "name": "Activate the campaign at 'approve each'",
+  "pass": true,
+  "evidence": "",
+  "ms": 1554
+ },
+ "camp.enrol": {
+  "name": "Add an opportunity to the campaign",
+  "pass": true,
+  "evidence": "",
+  "ms": 1711
+ },
+ "camp.draft": {
+  "name": "The engine drafts the first email from evidence and cites it",
+  "pass": true,
+  "evidence": "Your finance hiring -> maria.kovacs@vercel.com cites 1",
+  "ms": 1216
+ },
+ "inbox.edit": {
+  "name": "Edit a draft keeps the AI original",
+  "pass": true,
+  "evidence": "",
+  "ms": 1504
+ },
+ "inbox.no-send-unapproved": {
+  "name": "Nothing is sent before approval",
+  "pass": true,
+  "evidence": "",
+  "ms": 813
+ },
+ "inbox.approve": {
+  "name": "Approve sends from the connected Gmail mailbox with unsubscribe and postal address",
+  "pass": true,
+  "evidence": "sent; List-Unsubscribe and postal address present",
+  "ms": 3220,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "inbox.once": {
+  "name": "The same email is never sent twice",
+  "pass": true,
+  "evidence": "",
+  "ms": 1011
+ },
+ "inbox.reply": {
+  "name": "A reply is synced, classified and attached to its thread",
+  "pass": true,
+  "evidence": "[{\"classification\":\"positive\",\"status\":\"open\"}]",
+  "ms": 1380,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "inbox.reply-effects": {
+  "name": "A reply moves the deal and stops the sequence",
+  "pass": true,
+  "evidence": "{\"o\":{\"status\":\"replied\"},\"e\":{\"status\":\"stopped\"},\"out\":[{\"kind\":\"positive\"}]}",
+  "ms": 21
+ },
+ "needs.reply": {
+  "name": "The reply appears in Needs you",
+  "pass": true,
+  "evidence": "",
+  "ms": 1175
+ },
+ "inbox.answer": {
+  "name": "Reply from the inbox is queued and sent",
+  "pass": true,
+  "evidence": "",
+  "ms": 3080,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "demand.capture": {
+  "name": "A request in a reply becomes a demand statement",
+  "pass": true,
+  "evidence": "[{\"kind\":\"request\",\"statement\":\"Needs multi-entity consolidation.\"}]",
+  "ms": 19
+ },
+ "demand.cluster": {
+  "name": "AI groups statements into a proposed theme",
+  "pass": true,
+  "evidence": "[{\"title\":\"Consolidation\",\"status\":\"open\"},{\"title\":\"Bookkeeping for multi-entity companies\",\"status\":\"proposed\"}]",
+  "ms": 3190
+ },
+ "demand.accept": {
+  "name": "Accept a proposed theme",
+  "pass": true,
+  "evidence": "",
+  "ms": 1127
+ },
+ "inbox.reject": {
+  "name": "Reject a draft removes it and parks the sequence",
+  "pass": true,
+  "evidence": "",
+  "ms": 5849
+ },
+ "inbox.redraft": {
+  "name": "Redraft with a note produces a new draft",
+  "pass": true,
+  "evidence": "",
+  "ms": 6578
+ },
+ "safe.unsub": {
+  "name": "One-click unsubscribe suppresses the address",
+  "pass": true,
+  "evidence": "GET 303 no effect, POST 200 suppressed",
+  "ms": 75
+ },
+ "safe.suppressed": {
+  "name": "A suppressed address cannot be emailed",
+  "pass": true,
+  "evidence": "",
+  "ms": 23
+ },
+ "safe.stop-rule": {
+  "name": "'Please remove me' is suppressed by rule, with the model unavailable",
+  "pass": true,
+  "evidence": "",
+  "ms": 1118,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "safe.autonomy-admin": {
+  "name": "Only an admin can raise autonomy to send without approval",
+  "pass": true,
+  "evidence": "",
+  "ms": 2688
+ },
+ "safe.kill": {
+  "name": "The emergency stop halts sending",
+  "pass": true,
+  "evidence": "",
+  "ms": 2956,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "log.page": {
+  "name": "Outreach log lists every touch with its outcome",
+  "pass": true,
+  "evidence": "",
+  "ms": 1101
+ },
+ "mb.outlook": {
+  "name": "Connect an Outlook mailbox through OAuth",
+  "pass": true,
+  "evidence": "seller@outlook.com",
+  "ms": 340
+ },
+ "mb.outlook-send": {
+  "name": "An approved email is sent through Outlook",
+  "pass": true,
+  "evidence": "",
+  "ms": 6770,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "camp.archive": {
+  "name": "Archiving a campaign withdraws queued mail",
+  "pass": true,
+  "evidence": "",
+  "ms": 2594
+ },
+ "mail.digest": {
+  "name": "The daily digest email is sent",
+  "pass": true,
+  "evidence": "5 things need you in Audit Company",
+  "ms": 871
+ },
+ "learn.full": {
+  "name": "With enough outcomes, an analysis produces findings to review",
+  "pass": true,
+  "evidence": "1 finding(s): Funding signals answer more often",
+  "ms": 11275,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":",
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "learn.decide": {
+  "name": "A finding is accepted or declined one at a time",
+  "pass": true,
+  "evidence": "",
+  "ms": 1433
+ },
+ "priv.export-person": {
+  "name": "Export everything held about a person",
+  "pass": true,
+  "evidence": "huntloop-export-ivy-orbitfoods-example.json",
+  "ms": 1222
+ },
+ "priv.erase": {
+  "name": "Erase a person permanently",
+  "pass": true,
+  "evidence": "",
+  "ms": 1432
+ },
+ "priv.export-org": {
+  "name": "Export the whole workspace",
+  "pass": true,
+  "evidence": "huntloop-workspace-huntloop.json",
+  "ms": 1212
+ },
+ "priv.retention": {
+  "name": "Retention deletes old contact points",
+  "pass": true,
+  "evidence": "22 -> 12",
+  "ms": 3170
+ },
+ "you.export": {
+  "name": "Export personal learning",
+  "pass": true,
+  "evidence": "huntloop-what-it-knows-about-you-huntloop.json",
+  "ms": 1179
+ },
+ "priv.delete-org": {
+  "name": "Delete the workspace (owner only)",
+  "pass": true,
+  "evidence": "",
+  "ms": 1524
+ },
+ "priv.delete-account": {
+  "name": "Delete an account",
+  "pass": true,
+  "evidence": "",
+  "ms": 3632
+ },
+ "ex.profile": {
+  "name": "Create a supplier profile",
+  "pass": true,
+  "evidence": "",
+  "ms": 1862
+ },
+ "ex.domain-claim": {
+  "name": "A supplier cannot claim another company's domain",
+  "pass": true,
+  "evidence": "",
+  "ms": 3018,
+  "dbRefusals": [
+   "POST /rest/v1/exchange_provider_profiles 403 {\"code\":\"42501\",\"message\":\"Only a workspace whose owner or admin has a confirmed address at stripe.com can claim it.\",\"d"
+  ]
+ },
+ "ex.offering": {
+  "name": "Add an offering through the form",
+  "pass": true,
+  "evidence": "",
+  "ms": 1667
+ },
+ "ex.read-page": {
+  "name": "AI reads a product page and suggests offering values",
+  "pass": true,
+  "evidence": "Only active offerings are matched. Stated availability is trusted for 30 days, then reads unknown until you update it. | READ FROM A PAGE ON YOUR SITE | Read the page",
+  "ms": 6491
+ },
+ "ex.intake": {
+  "name": "The guided questionnaire ends on a reviewable request",
+  "pass": true,
+  "evidence": "",
+  "ms": 8188
+ },
+ "ex.submit": {
+  "name": "The buyer sets visibility and saves the request",
+  "pass": true,
+  "evidence": "{\"visibility\":2,\"category_id\":\"c51a8182-42a2-49a9-bc26-68eba09dc757\"}",
+  "ms": 1746
+ },
+ "ex.match": {
+  "name": "The engine matches the request to the offering with named dimensions",
+  "pass": true,
+  "evidence": "[{\"id\":\"60d5abbf-85cc-401e-9734-1e0c034bb143\",\"need_id\":\"180bcf1d-afde-4022-87db-bdbf59b79d05\",\"offering_id\":\"a77e4bef-3bab-4b11-b23d-48906776cfad\",\"org_id\":\"ec282186-ddd7-4911-b791-af6607848b00\",\"provider_org_id\":\"c4c47750-7076-4624-8298-e6f211a0578d\",\"score\"",
+  "ms": 2237
+ },
+ "ex.see-match": {
+  "name": "The buyer sees the match and shortlists it",
+  "pass": true,
+  "evidence": "",
+  "ms": 1532
+ },
+ "ex.compare": {
+  "name": "Compare shortlisted suppliers",
+  "pass": true,
+  "evidence": "",
+  "ms": 1342
+ },
+ "ex.card": {
+  "name": "The supplier sees an anonymous card without the buyer's name or words",
+  "pass": true,
+  "evidence": "",
+  "ms": 1206
+ },
+ "ex.reveal-log": {
+  "name": "The buyer sees who was shown the request",
+  "pass": true,
+  "evidence": "1 entries",
+  "ms": 1246
+ },
+ "ex.request-intro": {
+  "name": "The supplier asks for an introduction and the buyer is emailed",
+  "pass": true,
+  "evidence": "1 email(s)",
+  "ms": 3241
+ },
+ "ex.needs-you": {
+  "name": "The request for an introduction appears in Needs you",
+  "pass": true,
+  "evidence": "",
+  "ms": 1131
+ },
+ "ex.accept": {
+  "name": "The buyer accepts; identity is revealed only then",
+  "pass": true,
+  "evidence": "",
+  "ms": 2848
+ },
+ "ex.message": {
+  "name": "Both sides exchange messages",
+  "pass": true,
+  "evidence": "",
+  "ms": 2965
+ },
+ "ex.contact": {
+  "name": "Contact details appear only after the buyer shares them",
+  "pass": true,
+  "evidence": "",
+  "ms": 4771
+ },
+ "ex.opportunity": {
+  "name": "An accepted introduction becomes a stated-need opportunity",
+  "pass": true,
+  "evidence": "{\"id\":\"44e9991d-54f4-4e59-bc78-afc0d2b047b1\",\"priority\":\"hot\",\"origin\":\"exchange\"}",
+  "ms": 2777
+ },
+ "ex.firewall": {
+  "name": "An Exchange company cannot be enrolled in a campaign",
+  "pass": true,
+  "evidence": "error: A company met through the Exchange cannot be put in a sequence (firewall, 0059).",
+  "ms": 51
+ },
+ "ex.report": {
+  "name": "Report a party",
+  "pass": true,
+  "evidence": "",
+  "ms": 1995
+ },
+ "ex.outcome": {
+  "name": "Both sides report an outcome",
+  "pass": true,
+  "evidence": "",
+  "ms": 1559
+ },
+ "ex.updates": {
+  "name": "Updates feed lists notices and marks them read",
+  "pass": true,
+  "evidence": "1 notices",
+  "ms": 1252
+ },
+ "ex.prefs": {
+  "name": "Notification preferences are saved",
+  "pass": true,
+  "evidence": "",
+  "ms": 1501
+ },
+ "ex.visibility": {
+  "name": "The buyer lowers visibility and the card disappears",
+  "pass": true,
+  "evidence": "matches 2",
+  "ms": 4221
+ },
+ "ex.lifecycle": {
+  "name": "Pause, reopen and mark fulfilled",
+  "pass": true,
+  "evidence": "",
+  "ms": 4619
+ },
+ "ex.export": {
+  "name": "Export Exchange data",
+  "pass": true,
+  "evidence": "exchange-data-buyermwuvzfr2-2026-11-24.json",
+  "ms": 1329
+ },
+ "ex.market": {
+  "name": "Market demand hides groups below ten and shows ten",
+  "pass": true,
+  "evidence": "",
+  "ms": 2994
+ },
+ "ex.unverified": {
+  "name": "Level 3 requires a verified company domain (decision EX-4)",
+  "pass": false,
+  "evidence": "level 3 allowed without domain verification",
+  "ms": 17
+ },
+ "ex.find": {
+  "name": "Buyer front door and buyer domain",
+  "pass": true,
+  "evidence": "",
+  "ms": 28
+ },
+ "ex.evidence": {
+  "name": "Suppliers publish evidence for an offering",
+  "pass": true,
+  "evidence": "",
+  "ms": 3821
+ },
+ "pub.pages": {
+  "name": "Public pages respond",
+  "pass": true,
+  "evidence": "",
+  "ms": 283
+ },
+ "auth.tick": {
+  "name": "The engine endpoint refuses an unauthenticated caller",
+  "pass": true,
+  "evidence": "",
+  "ms": 6
+ },
+ "auth.anon": {
+  "name": "Workspace pages require sign-in",
+  "pass": true,
+  "evidence": "307 /login?next=%2Fhuntloop%2Fcompanies",
+  "ms": 20
+ },
+ "orgs.switch": {
+  "name": "Workspace switcher",
+  "pass": true,
+  "evidence": "",
+  "ms": 1149
+ },
+ "theme": {
+  "name": "Light and dark themes",
+  "pass": true,
+  "evidence": "",
+  "ms": 1318
+ },
+ "jump": {
+  "name": "Jump-to finds pages, not records",
+  "pass": true,
+  "evidence": "pages only",
+  "ms": 12502
+ },
+ "prio.override-rescore": {
+  "name": "Rescoring works after a person sets the priority",
+  "pass": true,
+  "evidence": "50 jobs",
+  "ms": 12153,
+  "dbRefusals": [
+   "POST /rest/v1/job_executions?select=id 409 {\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"job_executions_idempotency_idx\\\"\",\"details\":"
+  ]
+ },
+ "plan.quota": {
+  "name": "Plan limits refuse AI use in words at the limit",
+  "pass": true,
+  "evidence": "",
+  "ms": 3792
+ },
+ "plan.seats": {
+  "name": "The seat limit refuses another member",
+  "pass": true,
+  "evidence": "",
+  "ms": 2679
+ },
+ "learn.prefs": {
+  "name": "Preferences are learned from typed notes",
+  "pass": true,
+  "evidence": "{\"h\":[{\"status\":\"succeeded\",\"error\":null,\"result\":{\"created\":0,\"inferred\":0,\"candidates\":0,\"considered\":3,\"reinforced\":0}}],\"m\":[{\"id\":\"accb5409-a5af-42da-8364-be25a18136f1\",\"org_id\":\"0acdd791-10d3-4f8f-97d3-e7f28f2b2d41\",\"scope\":\"organization\",\"scope_id\":null,\"kind\":\"durable\",\"key\":null,\"content\":\"",
+  "ms": 1458
+ },
+ "pub.discover": {
+  "name": "Anonymous company reading",
+  "pass": true,
+  "evidence": "",
+  "ms": 887
+ },
+ "comp.mentions": {
+  "name": "Competitor mentions become signals on prospects",
+  "pass": true,
+  "evidence": "1",
+  "ms": 880
+ },
+ "email.assign": {
+  "name": "An email tells the new owner about an assignment",
+  "pass": true,
+  "evidence": "",
+  "ms": 3583
+ },
+ "search.records": {
+  "name": "Record search",
+  "pass": false,
+  "evidence": "no record result",
+  "ms": 11940
+ },
+ "bill.checkout": {
+  "name": "Checkout",
+  "pass": false,
+  "evidence": "no checkout code; files mentioning stripe: 11 apps/web/app/(app)/[org]/settings/icp/actions.ts\napps/web/app/(app)/[org]/settings/icp/IcpEditor.tsx\napps/web/app/(onboarding)/welcome/icp/actions.ts\napps/web/a",
+  "ms": 190
+ }
+}

@@ -23,6 +23,7 @@
 import { inferPreferences, MIN_PREFERENCE_SUPPORT, type InferInput } from "@huntloop/ai";
 import { styleCandidates, type StyleSignal } from "@huntloop/db/style";
 import { AiUnavailable, runForOrg } from "../ai.ts";
+import { inChunks } from "../in-chunks.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -192,9 +193,9 @@ export async function learnPreferencesJob(ctx: JobContext): Promise<JobOutcome> 
   }
 
   /* 4 · Considered, and kept no longer than retention. */
-  await scope
-    .update("preference_signals", { learned_at: now.toISOString() })
-    .in("id", [...pendingIds]);
+  await inChunks([...pendingIds], (c) =>
+    scope.update("preference_signals", { learned_at: now.toISOString() }).in("id", c),
+  );
   await scope
     .delete("preference_signals")
     .eq("user_id", userId)

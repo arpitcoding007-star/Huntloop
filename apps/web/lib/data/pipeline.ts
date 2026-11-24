@@ -1,4 +1,5 @@
 import "server-only";
+import { inChunks } from "../in-chunks";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
@@ -100,15 +101,17 @@ export async function getPipelineExtras(orgSlug: string): Promise<Loaded<Record<
             .in("campaign_id", campaignIds)
             .is("deleted_at", null)
             .order("created_at", { ascending: false }),
-          db
-            .from("messages")
-            .select("enrollment_id")
-            .eq("org_id", orgId)
-            .eq("direction", "outbound")
-            .in("enrollment_id", active.map((e) => String(e.id)).slice(0, 500))
-            .not("sent_at", "is", null)
-            .is("deleted_at", null)
-            .limit(BOUND.messages),
+          inChunks<any>(active.map((e) => String(e.id)), (c) =>
+            db
+              .from("messages")
+              .select("enrollment_id")
+              .eq("org_id", orgId)
+              .eq("direction", "outbound")
+              .in("enrollment_id", c)
+              .not("sent_at", "is", null)
+              .is("deleted_at", null)
+              .limit(BOUND.messages),
+          ),
         ]);
 
         /* The newest sequence per campaign is the one enrollments run. */

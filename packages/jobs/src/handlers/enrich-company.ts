@@ -87,6 +87,8 @@ export async function enrichCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     .select("external_ids", "provider, provider_id")
     .eq("entity_type", "company")
     .eq("entity_id", companyId)
+    /* Apollo's own id only: a HubSpot id here was sent to Apollo as Apollo's. */
+    .eq("provider", "apollo")
     .limit(1);
 
   const providerId =

@@ -395,7 +395,8 @@ console.log("\ncall — retried for transport and rate limits, not for a bad key
       }),
     );
   } catch { /* expected */ }
-  expect("a rate limit is retried to the cap", attempts === 3);
+  /* PRV-002: left to the job queue, which retries minutes later. */
+  expect("a rate limit is not retried inside the call", attempts === 1);
   expect(
     "and recorded as rate_limited rather than failed",
     ledger(calls)[0]?.p_outcome === "rate_limited",

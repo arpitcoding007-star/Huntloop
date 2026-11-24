@@ -82,9 +82,10 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
 
     if (!response.ok) {
       // Resend's error body names the problem (unverified domain, bad key);
-      // it goes to the log, never to the person who triggered the send.
+      // it goes to the log, never to the person who triggered the send. Addresses
+      // in it are masked (SEC-007): the log is not a place for recipients.
       const detail = await response.text().catch(() => "");
-      console.error(`[email] Resend refused a send (${response.status}): ${detail.slice(0, 500)}`);
+      console.error(`[email] Resend refused a send (${response.status}): ${detail.replace(/[^\s@"'<>]+@[^\s@"'<>]+/g, "[address]").slice(0, 500)}`);
       return { ok: false, reason: "rejected", detail: `HTTP ${response.status}` };
     }
 

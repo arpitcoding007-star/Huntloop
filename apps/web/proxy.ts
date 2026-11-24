@@ -369,7 +369,9 @@ export async function proxy(request: NextRequest) {
     // Send them back where they were headed after signing in — but only the
     // path, never the full URL, so this cannot be turned into an open redirect.
     // `lib/safe-next.ts` is the other half, where the value is consumed.
-    login.searchParams.set("next", path);
+    /* FLOW-003: the query too (`?url=…&run=1`), still path-relative;
+       `safeNextPath` validates the whole value on the way back. */
+    login.searchParams.set("next", path + request.nextUrl.search);
     return sealCsp(NextResponse.redirect(login), responseHeader, policy);
   }
 

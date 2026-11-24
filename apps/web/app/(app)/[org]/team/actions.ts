@@ -8,7 +8,7 @@ import { checkQuota, quotaMessage } from "../../../../lib/data/usage";
 import { siteUrl } from "../../../../lib/site-url";
 import { inviteSchema, memberRoleSchema, parseForm, parseInput, uuidSchema } from "../../../../lib/validation";
 import { approveJoinRequest, declineJoinRequest } from "../../../../lib/data/directory";
-import { invitationEmail, isEmailConfigured, sendEmail } from "@huntloop/jobs";
+import { assignedEmail, invitationEmail, isEmailConfigured, sendEmail } from "@huntloop/jobs";
 import type { TenantClient } from "@huntloop/db";
 
 /**
@@ -239,14 +239,27 @@ export async function assignOpportunityAction(
       }
     }
 
-    const { error } = await db
+    const { data: before, error: readError } = await db
+      .from("opportunities")
+      .select("id, owner_id, companies(name)")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (readError) return fail(`That assignment could not be saved: ${readError.message}`);
+    if (!before) return fail("That opportunity no longer exists.");
+
+    const { data: saved, error } = await db
       .from("opportunities")
       .update({ owner_id: ownerId })
       .eq("id", id.data)
       .eq("org_id", orgId)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`That assignment could not be saved: ${error.message}`);
+    if (!saved) return fail("That opportunity no longer exists.");
 
     await recordAudit(db, orgId, {
       action: "opportunity.assigned",
@@ -276,12 +289,60 @@ export async function assignOpportunityAction(
         .is("deleted_at", null);
     }
 
+    const { data: auth } = await db.auth.getUser();
+    const assignerId = auth.user?.id ?? null;
+    if (ownerId && ownerId !== before.owner_id && ownerId !== assignerId) {
+      const company = Array.isArray(before.companies) ? before.companies[0] : before.companies;
+      await emailAssignment(db, orgId, org, {
+        opportunityId: id.data,
+        ownerId,
+        assignerId,
+        companyName: String((company as { name?: unknown } | null)?.name ?? "An opportunity"),
+      });
+    }
+
     revalidatePath(`/${org}/team/assignments`);
     revalidatePath(`/${org}/opportunities`);
     revalidatePath(`/${org}/pipeline`);
 
     return ok(undefined, ownerId ? "Assigned." : "Unassigned.");
   });
+}
+
+/** Tells the new owner. Never fails the assignment: that is already saved. */
+async function emailAssignment(
+  db: TenantClient,
+  orgId: string,
+  org: string,
+  a: { opportunityId: string; ownerId: string; assignerId: string | null; companyName: string },
+): Promise<void> {
+  if (!isEmailConfigured()) return;
+  try {
+    const ids = [a.ownerId, ...(a.assignerId ? [a.assignerId] : [])];
+    const [{ data: people, error }, { data: workspace }] = await Promise.all([
+      db.from("profiles").select("id, email, full_name").in("id", ids),
+      db.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+    ]);
+    if (error) throw new Error(error.message);
+    const owner = people?.find((p) => p.id === a.ownerId);
+    if (!owner?.email) return;
+    const assigner = people?.find((p) => p.id === a.assignerId);
+    const result = await sendEmail({
+      to: String(owner.email),
+      ...assignedEmail({
+        orgName: String(workspace?.name ?? "Huntloop"),
+        companyName: a.companyName,
+        assignerName: assigner?.full_name ? String(assigner.full_name) : null,
+        url: new URL(`/${org}/opportunities/${a.opportunityId}`, siteUrl()).toString(),
+      }),
+      /* A double click within a minute is one email. */
+      idempotencyKey: `assigned:${a.opportunityId}:${a.ownerId}:${new Date().toISOString().slice(0, 16)}`,
+      tags: { kind: "assigned" },
+    });
+    if (!result.ok) console.error("[team] assignment email was not sent");
+  } catch (e) {
+    console.error("[team] assignment email was not sent:", e instanceof Error ? e.message : e);
+  }
 }
 
 /* ── Invitations (0007) ──────────────────────────────────────────────────── */

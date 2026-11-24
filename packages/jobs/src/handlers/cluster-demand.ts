@@ -10,6 +10,7 @@
  */
 import { clusterDemand, MAX_CLUSTER_SIGNALS } from "@huntloop/ai";
 import { AiUnavailable, runForOrg } from "../ai.ts";
+import { inChunks } from "../in-chunks.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 /** Fewer than this many new statements is not worth a call. */
@@ -91,9 +92,10 @@ export async function clusterDemandJob(ctx: JobContext): Promise<JobOutcome> {
     proposed++;
   }
 
-  await scope
-    .update("demand_signals", { clustered_at: now.toISOString() })
-    .in("id", rows.map((r) => String(r.id)));
+  await inChunks(
+    rows.map((r) => String(r.id)),
+    (c) => scope.update("demand_signals", { clustered_at: now.toISOString() }).in("id", c),
+  );
   await finish();
 
   return {

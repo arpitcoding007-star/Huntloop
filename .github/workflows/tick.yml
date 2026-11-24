@@ -35,6 +35,10 @@ concurrency:
   group: engine-tick
   cancel-in-progress: false
 
+# SEC-003: least privilege. Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   tick:
     if: github.event_name == 'workflow_dispatch' || vars.ENGINE_DRIVER == '' || vars.ENGINE_DRIVER == 'github'

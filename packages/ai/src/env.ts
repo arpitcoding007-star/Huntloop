@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 /**
  * Environment access for the AI layer, in one place for the same reason
  * packages/db keeps it in one place: a missing key should fail with a sentence,
@@ -42,4 +43,36 @@ export function anthropicApiKey(): string {
 export function aiRequestTimeoutMs(): number {
   const raw = Number(process.env.HUNTLOOP_AI_TIMEOUT_MS);
   return Number.isFinite(raw) && raw >= 5_000 ? raw : 55_000;
+}
+
+/**
+ * JOB-202. The deadline of the function a model call runs inside, when a job
+ * runner knows it. A call started at 34s with a 55s timeout outlived a 60s
+ * function: the platform killed every lane, sends included. Each request now
+ * gets what is left (less a margin), and one that cannot fit is not started.
+ */
+const deadlines = new AsyncLocalStorage<number>();
+
+export function withAiDeadline<T>(deadlineMs: number, run: () => Promise<T>): Promise<T> {
+  return deadlines.run(deadlineMs, run);
+}
+
+/** Too little time left for a model call; the job is retried on a later tick. */
+export class AiDeadlineError extends Error {
+  constructor() {
+    super("Too little time was left in this run for a model call. It is retried on the next run.");
+    this.name = "AiDeadlineError";
+  }
+}
+
+const DEADLINE_MARGIN_MS = 3_000;
+const MIN_REQUEST_MS = 10_000;
+
+export function requestTimeoutMs(): number {
+  const base = aiRequestTimeoutMs();
+  const deadline = deadlines.getStore();
+  if (deadline === undefined) return base;
+  const left = deadline - Date.now() - DEADLINE_MARGIN_MS;
+  if (left < MIN_REQUEST_MS) throw new AiDeadlineError();
+  return Math.min(base, left);
 }

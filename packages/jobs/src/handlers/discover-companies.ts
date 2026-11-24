@@ -365,11 +365,43 @@ async function openRun(scope: OrgScope, queryId: string, runId: string | null): 
     .maybeSingle();
 
   if (error) {
-    if (error.code === "23505") return null;
+    if (error.code === "23505") return adoptAbandonedRun(scope, queryId);
     throw new Error(`discover_companies: could not open a run — ${error.message}`);
   }
 
   return (data as OpenRun) ?? null;
+}
+
+/**
+ * ENG-001 / DB-003. The open run another worker holds — unless that worker
+ * died. A live run writes its cursor after every page, so one untouched for
+ * this long was killed (the tick function's limit is 60s) and, before this,
+ * blocked its search forever: nothing else ever closes a run.
+ */
+const ABANDONED_RUN_MS = 5 * 60_000;
+
+async function adoptAbandonedRun(scope: OrgScope, queryId: string): Promise<OpenRun | null> {
+  const { data: open, error } = await scope
+    .select("discovery_runs", "id, page_cursor, pages_fetched, total_available, updated_at")
+    .eq("query_id", queryId)
+    .in("status", ["queued", "running"])
+    .maybeSingle();
+  if (error) throw new Error(`discover_companies: could not read the open run — ${error.message}`);
+  const row = open as (OpenRun & { updated_at: string }) | null;
+  if (!row || Date.now() - new Date(row.updated_at).getTime() < ABANDONED_RUN_MS) return null;
+
+  /* Compare-and-swap on `updated_at`, so two workers finding the same dead
+     run cannot both resume it and pay for the same page twice. */
+  const { data: claimed, error: claimError } = await scope
+    .update("discovery_runs", { updated_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .eq("updated_at", row.updated_at)
+    .select("id")
+    .maybeSingle();
+  if (claimError) throw new Error(`discover_companies: could not adopt the open run — ${claimError.message}`);
+  if (!claimed) return null;
+  const { updated_at: _stamp, ...run } = row;
+  return run;
 }
 
 type Absorbed = "new" | "matched" | "excluded" | "suppressed" | "invalid";

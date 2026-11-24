@@ -1,5 +1,6 @@
 "use server";
 
+import { conversationTurns } from "../../../../lib/data/conversation-turns";
 import { writtenWith, type WrittenWith } from "../../../../lib/data/written-with";
 import { recordSignal } from "../../../../lib/data/signals";
 import { isCorrection } from "../../../../lib/learning/corrections";
@@ -119,20 +120,15 @@ export async function askAssistantAction(
     /* Both turns in one statement, so a question is never stored without its
        answer. A worked example is not stored: it answered nothing. */
     if (outcome.source === "live") {
-      const turns = (applied: boolean) => [
-        { org_id: orgId, conversation_id: conversationId, role: "user", content: parsed.data },
-        {
-          org_id: orgId,
-          conversation_id: conversationId,
-          role: "assistant",
+      const turns = (applied: boolean) =>
+        conversationTurns({ orgId, conversationId: String(conversationId) }, parsed.data, {
           content: outcome.answer.answer,
           citations,
           actions,
           /* What the answer was written with (K2). Without `0044` the column
              is missing, and the answer is still worth keeping. */
           ...(applied ? { applied_memory_ids: gathered.appliedMemoryIds } : {}),
-        },
-      ];
+        });
       let { data: stored, error } = await db.from("conversation_messages").insert(turns(true)).select("id, role");
       if (error?.code === "42703") {
         ({ data: stored, error } = await db.from("conversation_messages").insert(turns(false)).select("id, role"));

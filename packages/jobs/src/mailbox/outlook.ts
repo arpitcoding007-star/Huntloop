@@ -116,9 +116,14 @@ export const outlook: MailboxProvider = {
     /* The cursor is a whole URL Graph gave us, re-fetched verbatim. Rebuilding
        it from its parts drops the delta token and resyncs the mailbox from the
        beginning — silently, and looking like a burst of new replies. */
+    /* OUT-203: a first sync reads the last seven days, as Gmail's does.
+       Unbounded, it walked the whole inbox fifty at a time, classifying
+       years-old mail with the org's model allowance while new replies waited. */
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const url =
       cursor ??
-      `${GRAPH}/me/mailFolders/inbox/messages/delta?$select=id,conversationId,internetMessageId,` +
+      `${GRAPH}/me/mailFolders/inbox/messages/delta?$filter=receivedDateTime+ge+${since}` +
+        `&$select=id,conversationId,internetMessageId,` +
         `subject,from,toRecipients,receivedDateTime,body&$top=50`;
 
     const response = await call(url, accessToken);
@@ -133,6 +138,8 @@ export const outlook: MailboxProvider = {
       // nextLink means "more pages now"; deltaLink means "nothing more until
       // next time". Storing either works: both resume where this left off.
       cursor: json["@odata.nextLink"] ?? json["@odata.deltaLink"] ?? cursor,
+      /* Only a deltaLink means drained; a nextLink means more now (OUT-203). */
+      complete: Boolean(json["@odata.deltaLink"]),
     };
   },
 };

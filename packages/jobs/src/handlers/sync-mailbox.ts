@@ -158,10 +158,13 @@ export async function syncMailbox(ctx: JobContext): Promise<JobOutcome> {
     }
   }
 
+  /* OUT-202: "fresh" only once the provider had nothing left unread. A
+     partial sync keeps its cursor and leaves the freshness gate closed, so a
+     sequence step waits rather than sending past an unread reply. */
   await scope
     .update("mailboxes", {
       sync_cursor: sync.cursor,
-      last_sync_at: new Date().toISOString(),
+      ...(sync.complete === false ? {} : { last_sync_at: new Date().toISOString() }),
       last_error: null,
     })
     .eq("id", mailboxId);

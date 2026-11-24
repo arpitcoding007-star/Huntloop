@@ -40,6 +40,24 @@ const MAX_BODY_BYTES = 8_192;
 const truncate = (value: unknown, max: number): string =>
   typeof value === "string" ? value.slice(0, max) : "";
 
+/** Every fetch directive a browser reports, plus the navigation ones (CSP3). */
+const CSP_DIRECTIVES = new Set([
+  "default-src", "script-src", "script-src-elem", "script-src-attr", "style-src",
+  "style-src-elem", "style-src-attr", "img-src", "font-src", "connect-src", "media-src",
+  "object-src", "frame-src", "child-src", "worker-src", "manifest-src", "base-uri",
+  "form-action", "frame-ancestors", "require-trusted-types-for", "trusted-types",
+]);
+
+/** `https://cdn.example/x.js?v=1` → `https://cdn.example`; keywords (`inline`, `eval`) as they are. */
+function originOf(uri: string): string {
+  if (!uri.includes(":")) return uri.slice(0, 32);
+  try {
+    return new URL(uri).origin;
+  } catch {
+    return uri.split(":")[0]!.slice(0, 16);
+  }
+}
+
 interface CspReportBody {
   "csp-report"?: Record<string, unknown>;
 }
@@ -84,13 +102,17 @@ export async function POST(request: NextRequest) {
   // A report naming no directive tells us nothing and is the shape a
   // hand-rolled POST takes.
   if (!directive) return done();
+  /* SEC-004: the endpoint is unauthenticated, so what a sender writes must
+     not mint Sentry issues. Only real directives, grouped by the blocked
+     origin — not the full URL, which an attacker can vary without end. */
+  if (!CSP_DIRECTIVES.has(directive)) return done();
 
   Sentry.captureMessage(`CSP violation: ${directive}`, {
     level: "warning",
     // Grouped by what broke and where it tried to load from — the two fields
     // that identify the *policy* problem. Including document-uri would split
     // one bad directive across every page in the app.
-    fingerprint: ["csp", directive, blockedUri],
+    fingerprint: ["csp", directive, originOf(blockedUri)],
     tags: {
       csp_directive: directive,
       // Report-only violations are informational; enforced ones broke

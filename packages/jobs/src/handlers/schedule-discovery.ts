@@ -34,8 +34,25 @@ import type { JobContext, JobOutcome } from "../registry.ts";
  */
 const MAX_PER_TICK = 10;
 
-export async function scheduleDiscovery(_ctx: JobContext): Promise<JobOutcome> {
+/**
+ * ENG-001 / DB-003: a run untouched this long was killed mid-flight. Its open
+ * row made `claim_due_discovery_queries` skip the search forever; closing it
+ * here lets the search be claimed again. A live run writes after every page.
+ */
+const ABANDONED_RUN_MS = 15 * 60_000;
+
+export async function scheduleDiscovery(ctx: JobContext): Promise<JobOutcome> {
   const db = OrgScope.global();
+
+  const abandonedBefore = new Date(ctx.now.getTime() - ABANDONED_RUN_MS).toISOString();
+  const closedAt = ctx.now.toISOString();
+  const { data: reaped, error: reapError } = await db
+    .from("discovery_runs")
+    .update({ status: "failed", stop_reason: "timeout", finished_at: closedAt })
+    .in("status", ["queued", "running"])
+    .lt("updated_at", abandonedBefore)
+    .select("id");
+  if (reapError) return { ok: false, error: `schedule_discovery: ${reapError.message}` };
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
      The same reason `scope.ts` gives: no generated Supabase types. */
@@ -61,5 +78,5 @@ export async function scheduleDiscovery(_ctx: JobContext): Promise<JobOutcome> {
     if (created) enqueued++;
   }
 
-  return { ok: true, result: { due: due.length, enqueued } };
+  return { ok: true, result: { due: due.length, enqueued, abandonedRunsClosed: (reaped ?? []).length } };
 }

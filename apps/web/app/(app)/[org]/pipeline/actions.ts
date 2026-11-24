@@ -48,14 +48,43 @@ export async function setOpportunityStatusAction(
     const id = uuidSchema.safeParse(opportunityId);
     if (!id.success) return fail("That opportunity reference isn't valid.");
 
-    const { error } = await db
+    const { data: moved, error } = await db
       .from("opportunities")
       .update({ status: parsed.data })
       .eq("id", id.data)
       .eq("org_id", orgId)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return fail(`That opportunity could not be moved: ${error.message}`);
+    /* FLOW-002: nothing moved (removed, or another workspace's id), so no
+       outcome, signal or withdrawal follows. */
+    if (!moved) return fail("That opportunity no longer exists.");
+
+    /* FLOW-001: a win or a loss is true only while the card stands there.
+       Moving Won → Lost, or back off Won after a misclick, retracts the old
+       verdict, or Performance, learning and demand count it for good.
+       Meetings and proposals happened whatever came after, so they stay. */
+    const retract = ["won", "lost"].filter((kind) => kind !== parsed.data);
+    const { data: retracted, error: retractError } = await db
+      .from("outcomes")
+      .delete()
+      .eq("org_id", orgId)
+      .eq("opportunity_id", id.data)
+      .in("kind", retract)
+      .select("id");
+    if (retractError) return fail(`The earlier outcome could not be withdrawn: ${retractError.message}`);
+    const retractedIds = ((retracted ?? []) as { id: string }[]).map((r) => r.id);
+    if (retractedIds.length) {
+      const { error: demandError } = await db
+        .from("demand_signals")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("source_type", "outcome")
+        .in("source_id", retractedIds);
+      if (demandError) console.error("[pipeline] demand from a withdrawn outcome kept", demandError.message);
+    }
 
     /* OUT-201: a closed deal's queued sequence mail does not go. `send_message`
        refuses it regardless; this makes the inbox say so at once. */
@@ -87,12 +116,15 @@ export async function setOpportunityStatusAction(
         .eq("kind", parsed.data)
         .limit(1);
       if (!already?.length) {
-        await db.from("outcomes").insert({
+        const { error: outcomeError } = await db.from("outcomes").insert({
           org_id: orgId,
           opportunity_id: id.data,
           kind: parsed.data,
           ...why,
         });
+        /* The move stands either way (see above), but a lost outcome is a
+           wrong figure on Performance: worth a line in the log. */
+        if (outcomeError) console.error("[pipeline] outcome not recorded", outcomeError.message);
       } else if (reason?.ok) {
         /* Moved back and forward again with a reason this time: keep one
            outcome, and let it carry the reason that was finally given. */

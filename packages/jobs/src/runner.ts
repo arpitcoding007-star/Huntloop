@@ -22,6 +22,7 @@
  * is one poisoned payload stopping every other org's work.
  */
 import type { AdminClient } from "@huntloop/db/admin";
+import { withAiDeadline } from "@huntloop/ai";
 import { OrgScope, adminClient } from "./scope.ts";
 import { HANDLERS } from "./registry.ts";
 import {
@@ -135,7 +136,7 @@ async function runBatch(
         continue;
       }
 
-      const outcome = await runOne(job);
+      const outcome = await runOne(job, deadline);
       if (outcome.ok) {
         report.succeeded++;
         report.jobs.push({ id: job.id, name: job.job_name, ok: true, detail: outcome.detail });
@@ -148,7 +149,7 @@ async function runBatch(
   await Promise.all(Array.from({ length: concurrency }, lane));
 }
 
-async function runOne(job: JobRow): Promise<{ ok: boolean; detail: string }> {
+async function runOne(job: JobRow, deadline?: Date): Promise<{ ok: boolean; detail: string }> {
   const handler = HANDLERS[job.job_name];
   if (!handler) {
     /* Unreachable through `enqueue`, whose `JobName` is a closed union — so
@@ -169,12 +170,17 @@ async function runOne(job: JobRow): Promise<{ ok: boolean; detail: string }> {
   }
 
   try {
-    const outcome = await handler({
+    const context = {
       scope: new OrgScope(orgId, adminClient()),
       payload: job.payload ?? {},
       job,
       now: new Date(),
-    });
+    };
+    /* JOB-202: every model call inside this job gets the time the function
+       has left, not a fixed 55s that can outlive it. */
+    const outcome = deadline
+      ? await withAiDeadline(deadline.getTime(), () => handler(context))
+      : await handler(context);
 
     if (outcome.ok) {
       await succeed(job.id, outcome.result);
