@@ -5,16 +5,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@huntloop/ui";
-import { FIRST_JOB_OPTIONS, type FirstJob } from "../../../../lib/onboarding/steps";
+import { EXCHANGE_JOBS, FIRST_JOB_OPTIONS, type FirstJob } from "../../../../lib/onboarding/steps";
 import { startFirstJob } from "../actions";
 
 /**
  * The first-job fork (K1). One choice; `research` also takes the address to
  * read, so the person lands on a result rather than on another form.
  */
-export function StartStep({ prefill, isAgency }: { prefill: string | null; isAgency: boolean }) {
+export function StartStep({
+  prefill,
+  isAgency,
+  exchange,
+  initialJob,
+}: {
+  prefill: string | null;
+  isAgency: boolean;
+  exchange: boolean;
+  initialJob: FirstJob | null;
+}) {
   const router = useRouter();
-  const [job, setJob] = useState<FirstJob | null>(null);
+  const [job, setJob] = useState<FirstJob | null>(initialJob);
   const [url, setUrl] = useState(prefill ?? "");
   const [error, setError] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -48,7 +58,7 @@ export function StartStep({ prefill, isAgency }: { prefill: string | null; isAge
       <fieldset>
         <legend className="sr-only">Your first job</legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          {FIRST_JOB_OPTIONS.map((option) => {
+          {FIRST_JOB_OPTIONS.filter((o) => exchange || !EXCHANGE_JOBS.includes(o.value)).map((option) => {
             const selected = job === option.value;
             const label =
               option.value === "hunt" && isAgency ? "Find new customers for a client" : option.label;

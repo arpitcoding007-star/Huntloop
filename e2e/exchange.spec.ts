@@ -11,6 +11,7 @@ import { expect, test } from "@playwright/test";
  * screen invents a marketplace.
  */
 const SCREENS = [
+  ["/find", "Say what you need. Stay anonymous until you choose."],
   ["/demo/exchange", "My requests"],
   ["/demo/exchange/new", "New request"],
   ["/demo/exchange/intros", "Introductions"],
@@ -39,6 +40,24 @@ test("a request that does not exist is a 404, not an invented one", async ({ pag
      what a person sees is what matters. */
   await page.goto("/demo/exchange/requests/11111111-1111-4111-8111-111111111111");
   await expect(page.getByRole("heading", { level: 1 })).toContainText(/not found|doesn.t exist|can.t find|no page/i);
+});
+
+test("what a visitor says on /find is waiting in the questionnaire, and was never in a URL", async ({ page }) => {
+  const sent: string[] = [];
+  page.on("request", (r) => sent.push(r.url() + (r.postData() ?? "")));
+  await page.goto("/find");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Stay anonymous");
+  await page.getByLabel("What do you need?").fill("Zirconium flanges for Munich");
+  await page.getByRole("button", { name: /Continue/ }).click();
+  await page.waitForURL("**/demo/exchange/new");
+  await expect(page.getByLabel("What do you need?")).toHaveValue("Zirconium flanges for Munich");
+  expect(sent.filter((u) => /Zirconium/i.test(u))).toEqual([]);
+});
+
+test("onboarding offers buying and selling while the Exchange is on", async ({ page }) => {
+  await page.goto("/welcome/start?job=buy");
+  await expect(page.getByRole("radio", { name: /Find a product/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /List what I sell/ })).toBeVisible();
 });
 
 test("the plain form shows who may see the request before it is saved", async ({ page }) => {

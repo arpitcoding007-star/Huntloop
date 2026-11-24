@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 67 migrations
-> (`0001_identity.sql` … `0067_exchange_completion.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 68 migrations
+> (`0001_identity.sql` … `0068_exchange_scale.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 97 tables · 10 views · 202 public functions · 10 enum types · 169 RLS policies · 337 indexes · 160 triggers.
+**Totals:** 97 tables · 10 views · 206 public functions · 10 enum types · 169 RLS policies · 337 indexes · 163 triggers.
 
 **RLS enabled on:** 97 of 97 tables.
 
@@ -1769,6 +1769,7 @@ RLS: **enabled**
 
 - `exchange_needs_declared`
 - `exchange_needs_limits`
+- `exchange_needs_purpose`
 - `exchange_needs_touch`
 
 ## exchange_notifications
@@ -2024,6 +2025,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `exchange_provider_profiles_purpose`
 - `exchange_provider_profiles_touch`
 - `exchange_provider_profiles_verification`
 
@@ -2340,6 +2342,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `icps_purpose`
 - `icps_retire_discovery`
 - `icps_same_org`
 - `icps_touch`
@@ -3180,6 +3183,7 @@ RLS: **enabled**
 | `primary_domain` | text | null |  |
 | `is_discoverable` | boolean | NOT NULL | `true` |
 | `workspace_kind` | text | NOT NULL | `'company'::text` |
+| `purpose` | text | NOT NULL | `'seller'::text` |
 
 **Constraints**
 
@@ -3190,6 +3194,7 @@ RLS: **enabled**
 - CHECK `organizations_max_sends_per_day_check` — `CHECK (((max_sends_per_day IS NULL) OR (max_sends_per_day >= 0)))`
 - CHECK `organizations_min_days_between_contacts_check` — `CHECK ((min_days_between_contacts >= 0))`
 - CHECK `organizations_onboarding_step_check` — `CHECK ((onboarding_step = ANY (ARRAY['you'::text, 'company'::text, 'goals'::text, 'icp'::text, 'sources'::text, 'building'::text, 'review'::text, 'done'::text])))`
+- CHECK `organizations_purpose_check` — `CHECK ((purpose = ANY (ARRAY['seller'::text, 'buyer'::text, 'both'::text])))`
 - CHECK `organizations_workspace_kind_check` — `CHECK ((workspace_kind = ANY (ARRAY['company'::text, 'personal'::text])))`
 - FK `organizations_plan_fk` — `FOREIGN KEY (plan_id) REFERENCES plans(id)`
 - PK `organizations_pkey` — `PRIMARY KEY (id)`
@@ -4308,6 +4313,7 @@ RLS: **enabled**
 | `demand_forget_erased` |  | trigger | yes |
 | `demand_from_activity` |  | trigger | yes |
 | `demand_from_outcome` |  | trigger | yes |
+| `demand_weights` | `p_org uuid` | TABLE(theme_id uuid, signals bigint, opportunities bigint, value_cents numeric, lost bigint) |  |
 | `discoverable_workspaces` |  | TABLE(org_id uuid, org_name text, org_slug text, member_count bigint) | yes |
 | `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
 | `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
@@ -4345,6 +4351,7 @@ RLS: **enabled**
 | `exchange_need_declared` |  | trigger | yes |
 | `exchange_need_limits` |  | trigger | yes |
 | `exchange_need_recipients` | `p_need exchange_needs` | SETOF uuid | yes |
+| `exchange_needs_due` | `p_limit integer` | TABLE(need_id uuid, org_id uuid, key text) | yes |
 | `exchange_offering_follows_provider` |  | trigger | yes |
 | `exchange_origin_is_permanent` |  | trigger |  |
 | `exchange_profile_verification_is_platform_only` |  | trigger |  |
@@ -4440,6 +4447,7 @@ RLS: **enabled**
 | `migration_0065_applied` |  | boolean |  |
 | `migration_0066_applied` |  | boolean |  |
 | `migration_0067_applied` |  | boolean |  |
+| `migration_0068_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
@@ -4479,5 +4487,6 @@ RLS: **enabled**
 | `touch_updated_at` |  | trigger |  |
 | `usage_limit` | `p_org uuid, p_metric text` | bigint | yes |
 | `user_org_ids` |  | SETOF uuid | yes |
+| `widen_workspace_purpose` |  | trigger | yes |
 | `write_audit_log` | `p_org uuid, p_action text, p_target_type text, p_target_id uuid, p_meta jsonb` | uuid | yes |
 | `write_audit_log_internal` | `p_org uuid, p_action text, p_target_type text, p_target_id uuid, p_meta jsonb` | uuid | yes |

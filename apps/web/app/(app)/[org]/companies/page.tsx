@@ -4,6 +4,8 @@ import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
 import { CompanyManager } from "./CompanyManager";
 import { MergeReview } from "./MergeReview";
+import { RecentMerges } from "./RecentMerges";
+import { listRecentMerges } from "../../../../lib/data/merge-history";
 import { listMergeCandidates } from "../../../../lib/data/merge-candidates";
 
 /**
@@ -22,9 +24,10 @@ export default async function CompaniesPage({
   const viewer = await currentViewer(org);
   if (!viewer) notFound();
 
-  const [{ data: companies, source }, { data: duplicates }] = await Promise.all([
+  const [{ data: companies, source }, { data: duplicates }, { data: merges }] = await Promise.all([
     listCompanies(org),
     listMergeCandidates(org),
+    listRecentMerges(org),
   ]);
 
   return (
@@ -40,6 +43,7 @@ export default async function CompaniesPage({
         </div>
       )}
       <MergeReview org={org} candidates={duplicates} canWrite={canWrite(viewer)} />
+      <RecentMerges org={org} merges={merges} />
       <CompanyManager org={org} companies={companies} canWrite={canWrite(viewer)} />
     </>
   );

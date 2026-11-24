@@ -90,8 +90,8 @@ export interface AnalyticsProperties {
   aiConfigured?: boolean;
   /** Why something was refused — our own enum, never a provider message. */
   reason?: "rate_limited" | "unresolvable_org" | "no_icp" | "invalid_input" | "model_refused";
-  /** Which first job someone chose (K1) — one of our own four values. */
-  job?: "research" | "import" | "explore" | "hunt";
+  /** Which first job someone chose (K1) — one of our own six values. */
+  job?: "research" | "import" | "explore" | "hunt" | "buy" | "sell";
   /** Wall-clock duration of a step, in milliseconds. */
   durationMs?: number;
 }

@@ -3496,6 +3496,79 @@ console.log("\n0067 — seats, HubSpot status, Exchange attention and metrics");
   await db.exec("rollback");
 }
 
+console.log("\n0068 — workspace purpose, alerts with no band, what to match next, demand totals");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const eq = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  await db.exec("begin");
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  const purpose = async (org: string) => (await db.query<{ purpose: string }>(`select purpose from organizations where id = $1`, [org])).rows[0]!.purpose;
+  await engine();
+  await db.exec(`update organizations set purpose = 'seller'; delete from exchange_needs`);
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  const file = async () => (await db.query<{ id: string }>(`insert into exchange_needs (org_id, created_by, category_id, summary, visibility) values ($1, $2, $3, 'Cards', 2) returning id`, [A, OWNER_A, leaf])).rows[0]!.id;
+  const need = await file();
+  eq("a seller that files a request is both", await purpose(A), "both");
+  await db.query(`update organizations set purpose = 'buyer' where id in ($1, $2)`, [A, B]);
+  const second = await file();
+  eq("a buyer that files another stays a buyer", await purpose(A), "buyer");
+  const prov = (await db.query<{ id: string }>(`insert into exchange_provider_profiles (org_id, name, claimed_at) values ($1, 'Northwind', now()) returning id`, [B])).rows[0]!.id;
+  eq("a buyer that lists supply is both", await purpose(B), "both");
+  await expectRejectTx(db, "and nothing else is a purpose", `update organizations set purpose = 'broker' where id = $1`, [A]);
+
+  // ── A request with no intent band ──
+  const offer = (await db.query<{ id: string }>(`insert into exchange_offerings (provider_id, category_id, title, status) values ($1, $2, 'H200', 'active') returning id`, [prov, leaf])).rows[0]!.id;
+  await db.query(`update exchange_categories set matching_enabled = true where id = $1`, [leaf]);
+  await db.query(`update exchange_needs set intent_band = null where id = $1`, [need]);
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $2, 70)`, [need, offer]);
+  await expectAccept(db, "a matched request with no intent band does not stop every alert", `select public.exchange_queue_notifications()`, []);
+  eq("its supplier is alerted, as not hot", (await db.query(`select hot from exchange_notifications where need_id = $1 and org_id = $2 and kind = 'match_alert' limit 1`, [need, B])).rows, [{ hot: false }]);
+
+  // ── What to match next ──
+  const due = async () => (await db.query<{ need_id: string; key: string }>(`select need_id, key from public.exchange_needs_due(10)`)).rows;
+  await db.query(`update exchange_matches set computed_at = now() + interval '1 second' where need_id = $1`, [need]);
+  const first = await due();
+  eq("a request never matched is due; one matched since the last supply change is not", first.map((r) => r.need_id), [second]);
+  await db.query(`insert into job_executions (org_id, job_name, idempotency_key) values ($1, 'match_needs', $2)`, [A, first[0]!.key]);
+  eq("one already queued does not hold a place", await due(), []);
+  await db.query(`update exchange_matches set computed_at = now() - interval '30 hours' where need_id = $1`, [need]);
+  eq("a stale match is due again", (await due()).map((r) => r.need_id), [need]);
+  await as(OWNER_A);
+  await expectRejectTx(db, "no session reads the queue", `select * from public.exchange_needs_due(10)`);
+
+  // ── Demand totals ──
+  await engine();
+  await db.query(`delete from demand_signals where org_id in ($1, $2)`, [A, B]);
+  const theme = (await db.query<{ id: string }>(`insert into demand_themes (org_id, title, kind, status, origin) values ($1, 'SSO', 'request', 'open', 'user') returning id`, [A])).rows[0]!.id;
+  await db.query(
+    `insert into demand_signals (org_id, kind, statement, source_type, source_id, theme_id)
+       select $1, 'request', 'Asked ' || i, 'note', gen_random_uuid(), case when i <= 1200 then $2::uuid end from generate_series(1, 1205) i`,
+    [A, theme],
+  );
+  await as(OWNER_A);
+  const w = new Map((await db.query<{ theme_id: string | null; signals: string }>(`select theme_id, signals from public.demand_weights($1)`, [A])).rows.map((r) => [r.theme_id, Number(r.signals)]));
+  eq("totals count past the API's row cap", [w.get(theme), w.get(null)], [1200, 5]);
+  await as(OWNER_B);
+  eq("another workspace's are not readable", (await db.query(`select * from public.demand_weights($1)`, [A])).rows.length, 0);
+
+  await engine();
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0068_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0068_applied() exists for db:doctor");
+  else fail("migration_0068_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

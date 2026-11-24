@@ -1,10 +1,11 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createTenantClient } from "@huntloop/db";
 import { authModeSchema, emailSchema, parseInput } from "../../lib/validation";
 import { safeNextPath } from "../../lib/safe-next";
+import { authOrigin } from "../../lib/buyer-host";
 import { siteUrl } from "../../lib/site-url";
 import type { AuthFormState } from "./auth-state";
 
@@ -77,7 +78,7 @@ export async function sendMagicLink(
   );
 
   const supabase = await client();
-  const callback = new URL("/auth/callback", siteUrl());
+  const callback = new URL("/auth/callback", authOrigin((await headers()).get("host"), siteUrl()));
   callback.searchParams.set("next", next);
 
   const { error } = await supabase.auth.signInWithOtp({
@@ -122,7 +123,7 @@ export async function signInWithGoogle(formData: FormData): Promise<void> {
     typeof formData.get("next") === "string" ? String(formData.get("next")) : null,
   );
 
-  const callback = new URL("/auth/callback", siteUrl());
+  const callback = new URL("/auth/callback", authOrigin((await headers()).get("host"), siteUrl()));
   callback.searchParams.set("next", next);
 
   const supabase = await client();

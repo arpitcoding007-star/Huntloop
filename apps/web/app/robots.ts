@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { legalIsComplete } from "../lib/legal";
+import { isExchangeEnabled } from "../lib/exchange/flag";
 import { siteUrl } from "../lib/site-url";
 
 /**
@@ -72,6 +73,7 @@ export default function robots(): MetadataRoute.Robots {
           "/signup",
           "/for/",
           "/compare/",
+          ...(isExchangeEnabled() ? ["/find"] : []),
           /* The legal pages, once they are actually in force. While any fact
              in `lib/legal.ts` is still PENDING they stay out of the index —
              a draft policy that a search engine has cached and is serving to

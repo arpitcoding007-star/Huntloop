@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ONBOARDING_STEPS, type OnboardingStep } from "./onboarding";
 import { resolveDataSource } from "./source";
 import { DEMO_HOME } from "../demo";
+import { isExchangeEnabled } from "../exchange/flag";
 import { hasOnboardingSchema } from "./onboarding-schema";
 
 /**
@@ -222,9 +223,18 @@ export async function resolveDestination(preferredSlug?: string): Promise<Destin
   if (!chosen) return { kind: "choose", path: "/orgs" };
 
   const finished = Boolean(chosen.completedAt) || chosen.step === "done";
+
+  /* A workspace that only buys opens on its requests (DN-37). A database
+     without the column answers with an error, which means the dashboard. */
+  let home = "dashboard";
+  if (isExchangeEnabled()) {
+    const { data, error } = await db.from("organizations").select("purpose").eq("id", chosen.orgId).maybeSingle();
+    if (error) console.error(`resolveDestination(purpose): ${error.message}`);
+    else if ((data as { purpose?: string } | null)?.purpose === "buyer") home = "exchange";
+  }
   return {
     kind: "workspace",
-    path: `/${chosen.slug}/dashboard`,
+    path: `/${chosen.slug}/${home}`,
     orgSlug: chosen.slug,
     setupStep: finished ? null : chosen.step,
   };

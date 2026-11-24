@@ -212,7 +212,7 @@ export function isGoal(v: unknown): v is Goal {
  * company-first flow, unchanged. Whatever a job did not ask is asked later,
  * at the moment a feature needs it, rather than up front.
  */
-export const FIRST_JOBS = ["research", "import", "explore", "hunt"] as const;
+export const FIRST_JOBS = ["research", "import", "explore", "hunt", "buy", "sell"] as const;
 
 export type FirstJob = (typeof FIRST_JOBS)[number];
 
@@ -241,7 +241,20 @@ export const FIRST_JOB_OPTIONS: readonly {
     label: "Find new customers for my company",
     description: "Tell us what you sell and who buys it, and we search the market.",
   },
+  {
+    value: "buy",
+    label: "Find a product, service, supplier or partner",
+    description: "Describe what you need. You choose who may see it, and suppliers never see your name until you accept.",
+  },
+  {
+    value: "sell",
+    label: "List what I sell for buyers to find",
+    description: "Add your offerings and see anonymous requests that match them.",
+  },
 ];
+
+/** The jobs that lead into the Exchange, offered only while it is switched on (DN-60). */
+export const EXCHANGE_JOBS: readonly FirstJob[] = ["buy", "sell"];
 
 /**
  * What a first job says about the person's goals — the dashboard's ranking.
@@ -252,6 +265,8 @@ export const FIRST_JOB_GOALS: Record<FirstJob, Goal[]> = {
   import: ["qualify"],
   explore: ["learn"],
   hunt: [],
+  buy: [],
+  sell: [],
 };
 
 export function isFirstJob(v: unknown): v is FirstJob {

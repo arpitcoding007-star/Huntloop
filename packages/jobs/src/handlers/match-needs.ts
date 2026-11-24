@@ -44,6 +44,8 @@ import { OrgScope, embedded } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 const MAX_CANDIDATES = 500;
+/* `.in()` puts every id in the URL; 500 UUIDs is past what the gateway accepts. */
+const IN_CHUNK = 100;
 
 type Requirement = Record<string, { value: string | null; kind: string } | undefined>;
 
@@ -98,19 +100,19 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
      judged by the same rules. */
   const recalledIds = new Set(ids);
   const readIds = [...new Set([...ids, ...existing.map((m) => m.offering_id)])];
-  let offerings: unknown[] = [];
-  if (readIds.length) {
+  const offerings: unknown[] = [];
+  for (let i = 0; i < readIds.length; i += IN_CHUNK) {
     const { data, error: offeringsError } = await db
       .from("exchange_offerings")
       .select(
         "id, org_id, category_id, title, description, price_from, price_to, currency, moq, availability, availability_as_of, " +
           "serves_global, serves_countries, exchange_provider_profiles(name, claimed_at, verified_at, deleted_at)",
       )
-      .in("id", readIds)
+      .in("id", readIds.slice(i, i + IN_CHUNK))
       .eq("status", "active")
       .is("deleted_at", null);
     if (offeringsError) return { ok: false, error: `match_needs: ${offeringsError.message}` };
-    offerings = data ?? [];
+    offerings.push(...(data ?? []));
   }
 
   const n: MatchNeed = {
@@ -170,8 +172,8 @@ export async function matchNeeds(ctx: JobContext): Promise<JobOutcome> {
   }
 
   const stale = existing.filter((m) => !fits.has(m.offering_id)).map((m) => m.id);
-  if (stale.length) {
-    const { error: staleError } = await db.from("exchange_matches").delete().in("id", stale);
+  for (let i = 0; i < stale.length; i += IN_CHUNK) {
+    const { error: staleError } = await db.from("exchange_matches").delete().in("id", stale.slice(i, i + IN_CHUNK));
     if (staleError) return { ok: false, error: `match_needs: ${staleError.message}` };
   }
 

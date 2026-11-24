@@ -1,3 +1,4 @@
+import { isExchangeEnabled } from "../../../lib/exchange/flag";
 import { redirect } from "next/navigation";
 import { YouForm } from "./YouForm";
 import { isUserRole, type UserRole } from "../../../lib/onboarding/steps";
@@ -26,9 +27,9 @@ import { canonicalizeDomain } from "@huntloop/db/identity";
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; d?: string; org?: string; edit?: string }>;
+  searchParams: Promise<{ new?: string; d?: string; org?: string; edit?: string; job?: string }>;
 }) {
-  const { new: isNew, d, org, edit } = await searchParams;
+  const { new: isNew, d, org, edit, job } = await searchParams;
   await captureForViewer("onboarding_step_viewed", { step: "you" });
 
   /* Carried from `/discover` via signup, so the company step opens with the
@@ -36,7 +37,9 @@ export default async function WelcomePage({
      through: it ends up in a URL and then in an input, and a value that is not
      a hostname has no business being either. */
   const domain = d ? canonicalizeDomain(d) : null;
-  const carry = domain ? `&d=${encodeURIComponent(domain)}` : "";
+  /* `?job=buy` comes from /find: somebody who has already said what they need. */
+  const buying = job === "buy" && isExchangeEnabled();
+  const carry = (domain ? `&d=${encodeURIComponent(domain)}` : "") + (buying ? "&job=buy" : "");
 
   const { db } = await resolveDataSource();
 
@@ -72,6 +75,7 @@ export default async function WelcomePage({
     if (profile?.role && !isNew && !org && !edit) {
       const memberships = await listMemberships();
       const first = memberships?.[0];
+      if (first && buying) redirect(`/${first.slug}/exchange/new`);
       if (first) {
         /* The workspace's own step, not always step two: somebody whose ICP
            is saved and who types /welcome should not be asked for their
@@ -86,7 +90,7 @@ export default async function WelcomePage({
       }
       /* No workspace yet: ask what they want to do first (K1), rather than
          assuming it is company research. */
-      redirect(domain ? `/welcome/start?d=${encodeURIComponent(domain)}` : "/welcome/start");
+      redirect(carry ? `/welcome/start?${carry.slice(1)}` : "/welcome/start");
     }
   }
 
@@ -106,6 +110,7 @@ export default async function WelcomePage({
           initialRole={initialRole}
           carry={carry}
           isNew={Boolean(isNew)}
+          job={buying ? "buy" : undefined}
         />
       </div>
     </>

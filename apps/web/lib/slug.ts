@@ -60,6 +60,7 @@ export const RESERVED_SLUGS = new Set([
   "for",
   "compare",
   "discover",
+  "find",
   "privacy",
   "terms",
   "acceptable-use",

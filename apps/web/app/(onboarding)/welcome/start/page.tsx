@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { canonicalizeDomain } from "@huntloop/db/identity";
 import { StartStep } from "./StartStep";
+import { isExchangeEnabled } from "../../../../lib/exchange/flag";
 import { captureForViewer } from "../../../../lib/analytics";
 import { resolveDataSource } from "../../../../lib/data/source";
 import { listMemberships, stepPath } from "../../../../lib/data/destination";
@@ -13,7 +14,7 @@ import { listMemberships, stepPath } from "../../../../lib/data/destination";
  * first screen for someone setting up a team to hunt for customers and the
  * wrong one for a person who wants to look into one account, work a list
  * they already have, or just see what Huntloop does. Asking which it is costs
- * one click, and three of the four answers skip company setup entirely.
+ * one click, and every answer but one skips company setup entirely.
  *
  * Reached only from step one. Somebody who already has a workspace and lands
  * here by accident (the back button) is sent where `/welcome` would send them;
@@ -22,12 +23,13 @@ import { listMemberships, stepPath } from "../../../../lib/data/destination";
 export default async function StartPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; d?: string }>;
+  searchParams: Promise<{ new?: string; d?: string; job?: string }>;
 }) {
-  const { new: isNew, d } = await searchParams;
+  const { new: isNew, d, job } = await searchParams;
   await captureForViewer("onboarding_step_viewed", { step: "first_job" });
 
   const domain = d ? canonicalizeDomain(d) : null;
+  const exchange = isExchangeEnabled();
   let isAgency = false;
 
   const { db } = await resolveDataSource();
@@ -66,7 +68,7 @@ export default async function StartPage({
         learns how you like to work as you use it.
       </p>
       <div className="mt-6">
-        <StartStep prefill={domain} isAgency={isAgency} />
+        <StartStep prefill={domain} isAgency={isAgency} exchange={exchange} initialJob={exchange && job === "buy" ? "buy" : null} />
       </div>
     </>
   );
