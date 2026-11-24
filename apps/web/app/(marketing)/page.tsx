@@ -74,7 +74,7 @@ import type { UseCase } from "./for/use-cases";
  *    mock — the same rule the page has always kept: a product whose position
  *    is honesty does not open with a named third party scored as somebody's
  *    prospect.
- *  · Pricing renders from `listPlans()`, not the comp's typed $0 / $99 / $299
+ *  · Pricing renders from `listPublicPlans()`, not the comp's typed $0 / $99 / $299
  *    — see `lib/data/plans.ts` — and keeps the "no checkout yet" notice and
  *    the paid-plan buttons that do not pretend to sell anything.
  *  · The comp's `#` links are real routes or in-page anchors, or they are not
@@ -95,10 +95,8 @@ import type { UseCase } from "./for/use-cases";
  * redirect used to — their workspace, or the setup step it stopped at.
  */
 export default async function LandingPage() {
-  const destination = await resolveVisitorDestination();
+  const [destination, plans] = await Promise.all([resolveVisitorDestination(), listPublicPlans()]);
   const next = continueTarget(destination);
-
-  const plans = await listPublicPlans();
 
   /* Whether the anonymous domain read is switched on. The closing CTA
      promises it in the present tense, so it has to know. */

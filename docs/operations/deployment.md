@@ -40,6 +40,10 @@ that serves a broken app**, which is worse than the honest failure.
 
 Root Directory is the mechanism Vercel provides. Use it.
 
+## Region
+
+Functions run in `syd1` (`apps/web/vercel.json`), because the Supabase project is in `ap-southeast-2`. Until November 2026 they ran in the default, `iad1`, and every query crossed the Pacific. **If the database moves, move this in the same change.**
+
 ## Environment variables
 
 Add **every** variable from `.env.example` under Project → Settings →
