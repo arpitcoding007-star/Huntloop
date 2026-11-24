@@ -10,6 +10,7 @@ import {
 import { AlertTriangle, Coins, Gauge, Timer } from "lucide-react";
 import { currentViewer } from "../../../../lib/data/membership";
 import { getSpend } from "../../../../lib/data/spend";
+import { DemoFigures } from "../DemoFigures";
 import { SpendTable } from "./SpendTable";
 
 /**
@@ -85,7 +86,7 @@ export default async function AnalyticsPage({
    * it is how budgets get blown.
    */
   const orgId = viewer.kind === "member" ? viewer.orgId : org;
-  const { data: spend } = await getSpend(orgId);
+  const { data: spend, source } = await getSpend(orgId);
 
 
   return (
@@ -97,6 +98,12 @@ export default async function AnalyticsPage({
           it cost. Recorded before the call runs, so a crash still shows up here.
         </p>
       </header>
+
+      {source !== "live" && (
+        <div className="mt-6">
+          <DemoFigures what="These are example figures, not this workspace's spend." />
+        </div>
+      )}
 
       <section className="mt-8">
         <SectionLabel>Last 30 days</SectionLabel>

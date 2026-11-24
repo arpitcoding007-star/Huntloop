@@ -41,7 +41,7 @@ export default async function OpsPage({
   const db = orgId ? await getDb() : null;
 
   const snapshot =
-    db && orgId ? await opsSnapshot(db, orgId) : { health: [], dead: [], pressure: null, providers: [] };
+    db && orgId ? await opsSnapshot(db, orgId) : { health: [], dead: [], pressure: null, providers: [], unreadable: [], pauses: [] };
   const lastTick = db && orgId ? await lastTickAt(db, orgId) : null;
 
   return (

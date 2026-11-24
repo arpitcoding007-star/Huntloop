@@ -487,7 +487,7 @@ export default async function DashboardPage({
             <p className="mt-2 text-[15px] text-fg-muted">
               {totalOpportunities === 0
                 ? "No opportunities yet"
-                : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} qualified against your ICP`}
+                : `${totalOpportunities} ${totalOpportunities === 1 ? "opportunity" : "opportunities"} scored against your ICP`}
             </p>
             {/* What this arrangement leads with, said out loud. A dashboard
                 that quietly rearranged itself per user would be disorienting;

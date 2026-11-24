@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Badge, Card, CardBody, CardHeader, EmptyState, PriorityBadge } from "@huntloop/ui";
 import { ArrowLeft, ExternalLink, Linkedin, Target } from "lucide-react";
-import { getCompany } from "../../../../../lib/data/company";
+import { getCompany, mergedInto } from "../../../../../lib/data/company";
 import { getCompanyIntel } from "../../../../../lib/data/company-intel";
 import { getCompanyRelations } from "../../../../../lib/data/company-page";
 import { getTimeline } from "../../../../../lib/data/activity";
@@ -28,7 +28,11 @@ export default async function CompanyPage({
   if (!viewer) notFound();
 
   const { data: company, source } = await getCompany(org, id);
-  if (!company) notFound();
+  if (!company) {
+    const winner = await mergedInto(org, id);
+    if (winner) redirect(`/${org}/companies/${winner}`);
+    notFound();
+  }
 
   const live = source === "live";
   const [{ data: intel }, { data: relations }, { data: timeline }] = await Promise.all([

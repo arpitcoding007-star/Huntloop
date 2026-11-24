@@ -51,6 +51,9 @@ const files = (await readdir(migrationsDir)).filter((f) => /^\d{4}_.+\.sql$/.tes
 for (const f of files) {
   await db.exec(await readFile(path.join(migrationsDir, f), "utf8"));
 }
+/* These leads are about who may join, not how many: the fixtures hold more
+   people than a free plan's seats (0067 has its own tests). */
+await db.exec(`update plans set limits = limits || '{"seats": 1000}'::jsonb where id = 'free'`);
 console.log(`Applied ${files.length} migrations`);
 
 // What PostgREST runs as. Functions keep their default PUBLIC EXECUTE, as on

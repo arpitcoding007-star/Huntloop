@@ -127,15 +127,17 @@ export async function syncMailbox(ctx: JobContext): Promise<JobOutcome> {
 
     /* AI-009: an inbound message nobody could classify is still somebody
        answering. Any classification failure — a timeout, a refusal, no key —
-       stops the sequence on that thread, so the next step never lands on top
-       of a reply nobody read. A person can resume it from the inbox. */
+       parks the sequence on that thread, so the next step never lands on top
+       of a reply nobody read. Parked, not stopped (PANEL-309): a person who
+       reads it and finds a machine answered can resume it under Outreach, and
+       an approved message waits rather than being withdrawn. */
     if (!classification && threadId) {
       const opportunityId = await opportunityFor(ctx, threadId);
       if (opportunityId) {
         await scope
           .update("enrollments", {
-            status: "stopped",
-            parked_reason: "They replied, and the reply could not be classified automatically. Read it in the inbox.",
+            status: "parked",
+            parked_reason: "They replied, and the reply could not be classified automatically. Read it in the inbox, then resume or stop the sequence.",
             next_action_at: null,
           })
           .eq("opportunity_id", opportunityId)

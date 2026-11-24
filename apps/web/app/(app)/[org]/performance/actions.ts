@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../lib/data/audit";
 import { z } from "zod";
 import type { PerformanceFact, PerformanceNarrative } from "@huntloop/ai";
 import { parseOrgProfile, serializeOrgProfile } from "@huntloop/db/org-profile";
@@ -77,6 +78,7 @@ export async function saveGoalsAction(
         .eq("id", orgId)
         .is("deleted_at", null);
       if (error) return fail(`The goals could not be saved: ${error.message}`);
+      await recordAudit(db, orgId, { action: "goals.updated", targetType: "organization", targetId: orgId });
 
       revalidatePath(`/${org}/performance`);
       return ok(undefined, "Goals saved.");

@@ -128,6 +128,10 @@ for (const f of files) {
   }
 }
 
+/* The shared fixtures put more people in a free workspace than its plan sells
+   (0067 enforces that). The 0067 block sets its own limit. */
+await db.query(`update plans set limits = limits || '{"seats": 1000}'::jsonb where id = 'free'`);
+
 /* PERF-302's ratchet (asserted in the 0054 block). Counted here, on the
    migrations alone, because later blocks create test tables of their own. */
 const unindexedFkAfterMigrations = Number(
@@ -3389,6 +3393,106 @@ console.log("\n0066 — Exchange audit fixes: company firewall, introduction pri
   const probe = await db.query<{ v: boolean }>(`select public.migration_0066_applied() as v`);
   if (probe.rows[0]?.v === true) ok("migration_0066_applied() exists for db:doctor");
   else fail("migration_0066_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
+console.log("\n0067 — seats, HubSpot status, Exchange attention and metrics");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const VIEWER_A = "22222222-2222-2222-2222-222222222222";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const JOINER = "67676767-0067-0067-0067-000000000001";
+  const eq = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  await db.exec("begin");
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  await engine();
+
+  // ── Seats ──
+  await db.query(`insert into auth.users (id, email) values ($1, 'joiner@a.test')`, [JOINER]);
+  const members = Number((await db.query<{ n: number }>(`select count(*)::int as n from memberships where org_id = $1 and deleted_at is null`, [A])).rows[0]!.n);
+  const setSeats = async (n: number) => {
+    await engine();
+    await db.query(`update plans set limits = limits || jsonb_build_object('seats', $1::int) where id in (select plan_id from organizations where id = $2)`, [n, A]);
+  };
+  await setSeats(members);
+  await as(OWNER_A);
+  const full = await db.query<{ used: string; quota: string; allowed: boolean }>(`select * from public.org_seats($1)`, [A]);
+  eq("seats are the people in the workspace, not a monthly counter", [full.rows[0]!.allowed, Number(full.rows[0]!.quota)], [false, members]);
+  const join = `insert into memberships (org_id, user_id, role) values ($1, $2, 'member') on conflict (org_id, user_id) do update set deleted_at = null`;
+  await expectRejectTx(db, "nobody is admitted past the limit", join, [A, JOINER]);
+  await expectAccept(db, "somebody already in is not counted twice", join, [A, VIEWER_A]);
+  await as(OWNER_B);
+  eq("another workspace's seats are not readable", (await db.query(`select * from public.org_seats($1)`, [A])).rows.length, 0);
+  await setSeats(members + 1);
+  await as(OWNER_A);
+  await expectAccept(db, "with a free seat they are admitted", join, [A, JOINER]);
+
+  // ── HubSpot ──
+  await engine();
+  await db.query(`insert into hubspot_connections (org_id, access_token, hub_id) values ($1, 'sealed', '42') on conflict (org_id) do update set hub_id = '42'`, [A]);
+  await as(VIEWER_A);
+  const hub = await db.query<Record<string, unknown>>(`select * from public.hubspot_status($1)`, [A]);
+  eq("a member who is not an admin sees that HubSpot is connected", hub.rows[0]?.hub_id, "42");
+  eq("and never the token", Object.keys(hub.rows[0] ?? {}).includes("access_token"), false);
+  await as(OWNER_B);
+  eq("another workspace's connection is not readable", (await db.query(`select * from public.hubspot_status($1)`, [A])).rows.length, 0);
+
+  // ── Attention (DN-82) ──
+  await engine();
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  const need = (await db.query<{ id: string }>(`insert into exchange_needs (org_id, created_by, category_id, summary, visibility) values ($1, $2, $3, '200 cards', 2) returning id`, [A, OWNER_A, leaf])).rows[0]!.id;
+  const prov = (await db.query<{ id: string }>(`insert into exchange_provider_profiles (org_id, name, claimed_at) values ($1, 'Northwind Compute', now()) returning id`, [B])).rows[0]!.id;
+  const offer = (await db.query<{ id: string }>(`insert into exchange_offerings (provider_id, category_id, title, status) values ($1, $2, 'H200 cards', 'active') returning id`, [prov, leaf])).rows[0]!.id;
+  const intro = (await db.query<{ id: string }>(`insert into exchange_intros (need_id, offering_id, buyer_org_id, provider_org_id, direction, state) values ($1, $2, $3, $4, 'provider', 'requested') returning id`, [need, offer, A, B])).rows[0]!.id;
+  const waits = async (u: string, org: string) => {
+    await as(u);
+    return (await db.query<{ kind: string; title: string; subject: string }>(`select kind, title, subject from public.exchange_attention($1)`, [org])).rows;
+  };
+  eq("a supplier's request waits on the buyer", await waits(OWNER_A, A), [{ kind: "exchange-intro", title: "Northwind Compute", subject: "200 cards" }]);
+  eq("and on nobody else", await waits(OWNER_B, B), []);
+  await as(OWNER_B);
+  await expectRejectTx(db, "nor can one workspace ask about another", `select * from public.exchange_attention($1)`, [A]);
+  await engine();
+  await db.query(`update exchange_intros set state = 'accepted', decided_at = now() where id = $1`, [intro]);
+  await db.query(`insert into exchange_messages (intro_id, sender_org_id, sender_side, body, created_at) values ($1, $2, 'buyer', 'Hello', now())`, [intro, A]);
+  eq("an unread message waits on the other side", (await waits(OWNER_B, B)).map((r) => [r.kind, r.subject]), [["exchange-message", "H200 cards"]]);
+  eq("not on its sender", await waits(OWNER_A, A), []);
+  await as(OWNER_B);
+  await db.query(`select public.exchange_mark_intro_read($1)`, [intro]);
+  eq("and stops waiting once read", await waits(OWNER_B, B), []);
+
+  // ── Metrics ──
+  await as(OWNER_A);
+  await expectRejectTx(db, "metrics span workspaces, so no session reads them", `select * from public.exchange_metrics(30)`);
+  await engine();
+  await db.query(`delete from exchange_needs where id <> $1`, [need]);
+  await db.query(`delete from exchange_intake_sessions`);
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $2, 80)`, [need, offer]);
+  await db.query(
+    `insert into exchange_intake_sessions (org_id, user_id, direction, status, turns, requirement) values
+       ($1, $2, 'buy', 'completed', 4, '{"qty":{"value":"2","source":"answer"},"brand":{"value":null,"source":"skipped"}}'),
+       ($1, $2, 'buy', 'abandoned', 1, '{"qty":{"value":null,"source":"skipped"}}')`,
+    [A, OWNER_A],
+  );
+  const m = new Map((await db.query<{ metric: string; value: string | null }>(`select metric, value from public.exchange_metrics(30)`)).rows.map((r) => [r.metric, r.value === null ? null : Number(r.value)]));
+  eq("match coverage and acceptance are shares", [m.get("match_coverage"), m.get("intro_acceptance"), m.get("accepted_intros_per_request")], [1, 1, 1]);
+  eq("questionnaire completion, turns and skips per question", [m.get("intake_completion"), m.get("intake_turns"), m.get("skipped:qty"), m.get("skipped:brand")], [0.5, 4, 0.5, 1]);
+  eq("an outcome nobody reported counts against the rate", m.get("outcome_rate"), 0);
+  eq("with no model runs the failure rate is unknown, not zero", m.get("ai_failure_rate"), null);
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0067_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0067_applied() exists for db:doctor");
+  else fail("migration_0067_applied() exists", JSON.stringify(probe.rows));
   await db.exec("rollback");
 }
 

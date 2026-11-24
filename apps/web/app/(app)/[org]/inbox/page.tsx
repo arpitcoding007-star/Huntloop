@@ -1,7 +1,7 @@
 import { QuestionCard } from "../QuestionCard";
 import { getQuestionFor } from "../../../../lib/data/questions";
 import { notFound } from "next/navigation";
-import { listDrafts, listThreads } from "../../../../lib/data/inbox";
+import { listDrafts, listThreads, MAX_THREADS } from "../../../../lib/data/inbox";
 import { listMembers } from "../../../../lib/data/team";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
@@ -50,6 +50,11 @@ export default async function InboxPage({
       <div className="mt-6">
         {/* K4: asked where the answer matters — while reviewing drafts. */}
         {drafts.length > 0 && <QuestionCard org={org} questionKey={questionKey} />}
+        {threads.length >= MAX_THREADS && (
+          <p role="status" className="mb-4 text-[13px] text-fg-muted">
+            Showing the {MAX_THREADS} most recent conversations.
+          </p>
+        )}
         <InboxView
           org={org}
           threads={threads}

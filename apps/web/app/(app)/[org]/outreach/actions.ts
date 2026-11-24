@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { CAMPAIGN_NOT_RUNNING } from "@huntloop/jobs";
 import { fail, mutate, ok, requireOrgId, type ActionResult } from "../../../../lib/data/org";
 import { recordAudit } from "../../../../lib/data/audit";
+import { canAdmin, currentViewer } from "../../../../lib/data/membership";
 import { resolveDataSource } from "../../../../lib/data/source";
 import { withdrawQueuedMail } from "../../../../lib/data/withdraw-mail";
 import {
@@ -64,7 +65,7 @@ export async function saveCampaignAction(
          how long this thing has been emailing people. */
       const { data: existing, error: readError } = await db
         .from("campaigns")
-        .select("started_at")
+        .select("started_at, status, autonomy_level")
         .eq("id", value.id)
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -72,6 +73,13 @@ export async function saveCampaignAction(
 
       if (readError) return fail(`That campaign could not be saved: ${readError.message}`);
       if (!existing) return fail("That campaign no longer exists.");
+
+      /* PANEL-308: from level 2 up, messages leave without a person reading
+         them. Raising a campaign to that is an admin's decision. */
+      const before = Number(existing.autonomy_level ?? 0);
+      if (value.autonomyLevel >= 2 && value.autonomyLevel > before && !canAdmin(await currentViewer(org))) {
+        return fail("Sending without approval is an admin's decision. Ask an owner or an admin to raise this campaign's autonomy.");
+      }
 
       const firstStart = value.status === "active" && !existing.started_at;
 
@@ -96,6 +104,22 @@ export async function saveCampaignAction(
          parked for that reason are released. A row parked for a rejected
          draft or a missing address still needs a person, and the engine
          re-checks the opportunity (replied, closed) before it drafts. */
+      if (before !== value.autonomyLevel) {
+        await recordAudit(db, orgId, {
+          action: "campaign.autonomy_changed",
+          targetType: "campaign",
+          targetId: value.id,
+          meta: { from: before, to: value.autonomyLevel },
+        });
+      }
+      if (existing.status !== value.status && (value.status === "active" || value.status === "paused")) {
+        await recordAudit(db, orgId, {
+          action: value.status === "active" ? "campaign.started" : "campaign.paused",
+          targetType: "campaign",
+          targetId: value.id,
+        });
+      }
+
       let resumed = 0;
       if (value.status === "active") {
         const { data: released, error: releaseError } = await db
@@ -327,6 +351,7 @@ export async function disconnectMailboxAction(
       .select("email")
       .maybeSingle();
     if (error) return fail(`That mailbox could not be disconnected: ${error.message}`);
+    await recordAudit(db, orgId, { action: "mailbox.disconnected", targetType: "mailbox", targetId: id.data });
     if (!data) return fail("That mailbox is no longer connected.");
 
     await recordAudit(db, orgId, {

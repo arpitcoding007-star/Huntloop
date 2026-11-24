@@ -94,7 +94,7 @@ export async function requestAnalysisAction(
     revalidatePath(`/${org}/learn`);
     return ok(
       { runId: String(data.id) },
-      "Analysis requested. It starts on the next engine tick and takes a minute or two.",
+      "Analysis requested. It starts within an hour while the engine is running, then takes a minute or two.",
     );
   });
 }
@@ -136,6 +136,25 @@ export async function approveFindingAction(
       return ok<Applied>({ applied: null }, "That finding has already been decided.");
     }
 
+    /* PANEL-312: claimed before anything is created. Two people approving at
+       once used to create the rule or memory twice and only then find out. A
+       failure below gives the claim back. */
+    const { data: claimed, error: claimError } = await db
+      .from("learning_findings")
+      .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
+      .eq("id", parsed.data)
+      .eq("org_id", orgId)
+      .eq("status", "pending")
+      .select("id");
+    if (claimError) return fail(`That finding could not be marked: ${claimError.message}`);
+    if (!claimed?.length) return ok<Applied>({ applied: null }, "That finding has already been decided.");
+    const giveBack = () =>
+      db
+        .from("learning_findings")
+        .update({ status: "pending", decided_by: null, decided_at: null })
+        .eq("id", parsed.data)
+        .eq("org_id", orgId);
+
     const proposal = (finding.proposal ?? null) as FindingProposal | null;
     let appliedType: "scoring_rule" | "memory" | null = null;
     let appliedId: string | null = null;
@@ -149,6 +168,7 @@ export async function approveFindingAction(
         validateExpression(proposal.expression);
       } catch (e) {
         if (e instanceof InvalidRuleError) {
+          await giveBack();
           return fail(
             `That proposal can no longer be turned into a rule: ${e.message} ` +
               `You can still write the rule by hand under Settings → Scoring.`,
@@ -180,6 +200,7 @@ export async function approveFindingAction(
         .select("id")
         .single();
 
+      if (ruleError) await giveBack();
       if (ruleError) return fail(`That rule could not be created: ${ruleError.message}`);
       appliedType = "scoring_rule";
       appliedId = String(rule.id);
@@ -204,6 +225,7 @@ export async function approveFindingAction(
         .select("id")
         .single();
 
+      if (memoryError) await giveBack();
       if (memoryError) return fail(`That note could not be saved: ${memoryError.message}`);
       appliedType = "memory";
       appliedId = String(memory.id);
@@ -211,19 +233,9 @@ export async function approveFindingAction(
 
     const { error: markError } = await db
       .from("learning_findings")
-      .update({
-        status: "approved",
-        decided_by: userId,
-        decided_at: new Date().toISOString(),
-        applied_type: appliedType,
-        applied_id: appliedId,
-      })
+      .update({ applied_type: appliedType, applied_id: appliedId })
       .eq("id", parsed.data)
-      .eq("org_id", orgId)
-      /* Only from `pending`, so two simultaneous approvals apply the proposal
-         once. The first update matches; the second matches zero rows and the
-         message below says it was already decided. */
-      .eq("status", "pending");
+      .eq("org_id", orgId);
 
     if (markError) return fail(`That finding could not be marked: ${markError.message}`);
 

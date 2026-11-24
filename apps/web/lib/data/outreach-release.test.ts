@@ -30,6 +30,10 @@ let responses: Record<string, { data: unknown; error: { message: string } | null
 
 function fakeDb() {
   return {
+    rpc(fn: string, args: unknown) {
+      calls.push({ table: fn, verb: "rpc", payload: args, filters: [] });
+      return Promise.resolve({ data: null, error: null });
+    },
     from(table: string) {
       const record: Recorded = { table, verb: "select", filters: [] };
       calls.push(record);
@@ -52,7 +56,12 @@ function fakeDb() {
   };
 }
 
+let role: "member" | "admin" = "member";
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("./membership", async (importActual) => ({
+  ...(await importActual<typeof import("./membership")>()),
+  currentViewer: async () => ({ kind: "member", orgId: ORG_ID, role }),
+}));
 vi.mock("./org", async (importActual) => {
   const actual = await importActual<typeof import("./org")>();
   return {
@@ -77,6 +86,27 @@ const campaign = (status: "draft" | "active" | "paused" | "archived") => ({
 beforeEach(() => {
   calls = [];
   responses = {};
+});
+
+describe("saveCampaignAction — PANEL-308", () => {
+  const raise = async (as: "member" | "admin") => {
+    role = as;
+    responses["select:campaigns"] = { data: { started_at: "x", status: "active", autonomy_level: 1 } as never, error: null };
+    const { saveCampaignAction } = await outreach();
+    return saveCampaignAction("acme", { ...campaign("active"), autonomyLevel: 2 });
+  };
+  it("refuses a member raising a campaign to send without approval", async () => {
+    const res = await raise("member");
+    expect(res.ok).toBe(false);
+    expect(calls.some((c) => c.verb === "update")).toBe(false);
+  });
+  it("lets an admin, and records it", async () => {
+    const res = await raise("admin");
+    expect(res.ok).toBe(true);
+    const audit = calls.find((c) => c.verb === "rpc")?.payload as { p_action: string; p_meta: unknown };
+    expect(audit.p_action).toBe("campaign.autonomy_changed");
+    expect(audit.p_meta).toEqual({ from: 1, to: 2 });
+  });
 });
 
 describe("saveCampaignAction — PANEL-301", () => {

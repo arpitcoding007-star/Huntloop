@@ -42,6 +42,38 @@ export interface SourceInput {
   icpId: string;
 }
 
+/**
+ * Read a feed the scanner found on this source's page instead of the page
+ * (PANEL-214). Only a feed on the recorded list: the address is never the
+ * caller's to choose, and nothing else about the source changes.
+ */
+export async function adoptFeedAction(org: string, sourceId: string, feed: string): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(sourceId);
+  if (!id.success) return fail("That source reference isn't valid.");
+  return mutate(org, "adoptFeed", async ({ db, orgId }) => {
+    const { data: source, error: readError } = await db
+      .from("sources")
+      .select("id, config")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (readError) return fail(`That source could not be read: ${readError.message}`);
+    if (!source) return fail("That source no longer exists.");
+    const config = (source.config ?? {}) as { discovered_feeds?: unknown };
+    const feeds = Array.isArray(config.discovered_feeds) ? config.discovered_feeds.map(String) : [];
+    if (!feeds.includes(feed) || !/^https?:\/\//.test(feed)) return fail("That feed is not one Huntloop found on this source.");
+    const { error } = await db
+      .from("sources")
+      .update({ url: feed, config: { ...config, discovered_feeds: [] } })
+      .eq("id", id.data)
+      .eq("org_id", orgId);
+    if (error) return fail(`That source could not be changed: ${error.message}`);
+    revalidatePath(`/${org}/sources`);
+    return ok(undefined, "It reads the feed from its next scan.");
+  });
+}
+
 export async function saveSourceAction(
   org: string,
   input: SourceInput,

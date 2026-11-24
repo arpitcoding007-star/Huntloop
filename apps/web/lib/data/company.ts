@@ -45,6 +45,9 @@ const SELECT = `id, name, canonical_domain, website, industry, employee_count,
    opportunities(id, priority, deleted_at),
    people(id, deleted_at)`;
 
+/** The page says when the list is cut (PANEL-208). Under PostgREST's default cap, so it is the bound that applies. */
+export const COMPANY_LIST_LIMIT = 1000;
+
 export async function listCompanies(orgSlug: string): Promise<Loaded<Company[]>> {
   return load(
     async (db) => {
@@ -55,7 +58,8 @@ export async function listCompanies(orgSlug: string): Promise<Loaded<Company[]>>
         .select(SELECT)
         .eq("org_id", orgId)
         .is("deleted_at", null)
-        .order("name", { ascending: true });
+        .order("name", { ascending: true })
+        .limit(COMPANY_LIST_LIMIT);
 
       if (error) throw new Error(`listCompanies: ${error.message}`);
       return (data ?? []).map(mapCompany);
@@ -91,6 +95,21 @@ export async function getCompany(
     },
     () => DEMO.find((c) => c.id === id),
   );
+}
+
+/** Where a merged company's old link should go (PANEL-213), or null. */
+export async function mergedInto(orgSlug: string, id: string): Promise<string | null> {
+  const { data } = await load(
+    async (db) => {
+      if (!isUuid(id)) return null;
+      const orgId = await requireOrgId(orgSlug, "mergedInto");
+      const { data: row, error } = await db.from("companies").select("merged_into_id").eq("org_id", orgId).eq("id", id).maybeSingle();
+      if (error) throw new Error(`mergedInto: ${error.message}`);
+      return row?.merged_into_id ? String(row.merged_into_id) : null;
+    },
+    () => null,
+  );
+  return data;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

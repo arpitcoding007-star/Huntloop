@@ -3,7 +3,9 @@ import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
 
 /**
- * Intelligence — `evidence`, `company_triggers` and `ai_decisions`.
+ * Intelligence — `evidence`, `company_triggers` and `human_overrides`.
+ *
+ * The last was `ai_decisions`, which nothing has ever written (check DATA-C5).
  *
  * ── What this screen is for ──────────────────────────────────────────────
  *
@@ -53,13 +55,14 @@ export interface TriggerRow {
   strength: number | null;
 }
 
+/** One correction: what Huntloop said and what a person said instead. */
 export interface DecisionRow {
   id: string;
-  decisionType: string;
-  confidence: "low" | "medium" | "high" | null;
+  subject: string;
+  from: string | null;
+  to: string;
+  reason: string | null;
   createdAt: string | null;
-  overridden: boolean;
-  overriddenAt: string | null;
 }
 
 export interface Intelligence {
@@ -77,7 +80,17 @@ export async function getIntelligence(orgSlug: string): Promise<Loaded<Intellige
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getIntelligence");
 
-      const [evidence, triggers, decisions] = await Promise.all([
+      /* PANEL-204: the headline counts every live claim, not the page of 50. */
+      const countKind = (kind: string) =>
+        db
+          .from("evidence")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", orgId)
+          .eq("kind", kind)
+          .is("deleted_at", null)
+          .is("superseded_by", null);
+
+      const [evidence, triggers, decisions, facts, inferences, unknowns] = await Promise.all([
         db
           .from("evidence")
           .select(
@@ -99,16 +112,21 @@ export async function getIntelligence(orgSlug: string): Promise<Loaded<Intellige
           .order("event_date", { ascending: false })
           .limit(LIMIT),
         db
-          .from("ai_decisions")
-          .select("id, decision_type, confidence, created_at, human_override, overridden_at")
+          .from("human_overrides")
+          .select("id, subject, system_value, human_value, reason, created_at")
           .eq("org_id", orgId)
           .order("created_at", { ascending: false })
           .limit(LIMIT),
+        countKind("fact"),
+        countKind("inference"),
+        countKind("unknown"),
       ]);
 
       if (evidence.error) throw new Error(`getIntelligence evidence: ${evidence.error.message}`);
       if (triggers.error) throw new Error(`getIntelligence triggers: ${triggers.error.message}`);
       if (decisions.error) throw new Error(`getIntelligence decisions: ${decisions.error.message}`);
+
+      for (const c of [facts, inferences, unknowns]) if (c.error) throw new Error(`getIntelligence counts: ${c.error.message}`);
 
       const rows = await withSubjects(db, orgId, orgSlug, evidence.data ?? []);
 
@@ -117,9 +135,9 @@ export async function getIntelligence(orgSlug: string): Promise<Loaded<Intellige
         triggers: (triggers.data ?? []).map(mapTrigger),
         decisions: (decisions.data ?? []).map(mapDecision),
         counts: {
-          fact: rows.filter((r) => r.kind === "fact").length,
-          inference: rows.filter((r) => r.kind === "inference").length,
-          unknown: rows.filter((r) => r.kind === "unknown").length,
+          fact: facts.count ?? 0,
+          inference: inferences.count ?? 0,
+          unknown: unknowns.count ?? 0,
         },
       };
     },
@@ -209,13 +227,11 @@ function mapTrigger(row: any): TriggerRow {
 function mapDecision(row: any): DecisionRow {
   return {
     id: String(row.id),
-    decisionType: String(row.decision_type ?? ""),
-    confidence: row.confidence ?? null,
+    subject: String(row.subject ?? "").replace(/_/g, " "),
+    from: row.system_value ?? null,
+    to: String(row.human_value ?? ""),
+    reason: row.reason ?? null,
     createdAt: row.created_at ?? null,
-    // Presence of the override object, not a boolean column: the original
-    // output is kept beside it, and that pair is the training signal.
-    overridden: row.human_override !== null && row.human_override !== undefined,
-    overriddenAt: row.overridden_at ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

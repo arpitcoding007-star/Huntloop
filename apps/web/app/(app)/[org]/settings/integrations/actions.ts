@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../../lib/data/audit";
 import { getHubId, verifyHubspotToken } from "@huntloop/crm";
 import { EncryptionUnavailable, encryptSecret } from "@huntloop/db";
 import { fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
@@ -74,6 +75,7 @@ export async function connectHubspotAction(org: string, token: string): Promise<
         { onConflict: "org_id" },
       );
       if (error) return fail(`The connection could not be saved: ${error.message}`);
+      await recordAudit(db, orgId, { action: "integration.connected", targetType: "integration", meta: { provider: "hubspot" } });
 
       revalidatePath(`/${org}/settings/integrations`);
       return ok(undefined, "HubSpot connected.");
@@ -92,6 +94,7 @@ export async function disconnectHubspotAction(org: string): Promise<ActionResult
          not that it stays and is merely ignored. */
       const { error } = await db.from("hubspot_connections").delete().eq("org_id", orgId);
       if (error) return fail(`HubSpot could not be disconnected: ${error.message}`);
+      await recordAudit(db, orgId, { action: "integration.disconnected", targetType: "integration", meta: { provider: "hubspot" } });
 
       revalidatePath(`/${org}/settings/integrations`);
       return ok(undefined, "HubSpot disconnected.");

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { listCompanies } from "../../../../lib/data/company";
+import { COMPANY_LIST_LIMIT, listCompanies } from "../../../../lib/data/company";
 import { canWrite, currentViewer } from "../../../../lib/data/membership";
 import { DemoFigures } from "../DemoFigures";
 import { CompanyManager } from "./CompanyManager";
@@ -29,6 +29,11 @@ export default async function CompaniesPage({
 
   return (
     <>
+      {companies.length >= COMPANY_LIST_LIMIT && (
+        <p role="status" className="px-6 pt-6 text-[13px] text-fg-muted lg:px-8">
+          Showing the first {COMPANY_LIST_LIMIT.toLocaleString("en")} companies by name. Search looks only within these.
+        </p>
+      )}
       {source !== "live" && (
         <div className="px-6 pt-6 lg:px-8">
           <DemoFigures what="These are example companies, not the ones on your account." />

@@ -35,18 +35,12 @@ export async function getHubspotConnection(orgSlug: string): Promise<Loaded<Hubs
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getHubspotConnection");
 
-      const { data, error } = await db
-        .from("hubspot_connections")
-        .select("hub_id, connected_at, last_synced_at, last_sync_error, is_enabled")
-        .eq("org_id", orgId)
-        .maybeSingle();
-
-      /* A member who is not an admin gets an RLS-refused read here, not an
-         error — the same "no policy exists, which is what makes it
-         unreadable" shape `0025` documents elsewhere. That reads as "not
-         connected" to this screen, which is a defensible default: a member
-         who cannot see the connection cannot act on it either. */
-      if (error) return NOT_CONNECTED;
+      /* PANEL-407: the table is admin-only because it holds the token, so a
+         member read "not connected" about a connection that exists.
+         `hubspot_status` (0067) answers any member, without the token. */
+      const { data: rows, error } = await db.rpc("hubspot_status", { p_org: orgId });
+      if (error) throw new Error(`getHubspotConnection: ${error.message}`);
+      const data = Array.isArray(rows) ? rows[0] : rows;
       if (!data) return NOT_CONNECTED;
 
       return {

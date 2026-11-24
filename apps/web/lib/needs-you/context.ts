@@ -18,6 +18,7 @@ export interface ItemContext {
 }
 
 export interface ContextPerson {
+  id?: string;
   first_name: string | null;
   last_name: string | null;
   title: string | null;

@@ -188,7 +188,7 @@ export function OrgShell({
           label: "Needs you",
           href: `/${org}/needs-you`,
           icon: ListTodo,
-          count: chrome.needsYou,
+          count: chrome.needsYou ?? undefined,
           countTone: "attention",
         },
         { label: "Outreach", href: `/${org}/outreach`, icon: Send },

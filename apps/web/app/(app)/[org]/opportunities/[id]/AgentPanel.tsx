@@ -73,7 +73,10 @@ export function AgentPanel({
      than accumulated: it describes the answer above it, not the conversation. */
   const [unresolved, setUnresolved] = useState<string[]>([]);
 
-  const turns = [...history, ...added];
+  /* PANEL-107: once the page revalidates, the server's history holds these
+     turns too. Keep only the ones it does not have yet. */
+  const known = new Set(history.slice(-added.length - 4).map((t) => `${t.role}:${t.content}`));
+  const turns = [...history, ...added.filter((t) => !known.has(`${t.role}:${t.content}`))];
 
   const send = (question: string) => {
     if (!question.trim() || pending) return;

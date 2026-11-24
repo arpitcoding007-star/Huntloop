@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { currentViewer } from "../../../../lib/data/membership";
 import { currentUserId, fail, ok, resolveDataSource, type ActionResult } from "../../../../lib/data/org";
-import { attentionKeySchema, snoozeSchema } from "../../../../lib/validation";
+import { snoozeSchema } from "../../../../lib/validation";
 
 /**
  * "Needs you" writes — `attention_snoozes` from 0037.
@@ -82,25 +82,3 @@ export async function clearSnoozesAction(org: string): Promise<ActionResult<unde
   return ok(undefined, "Everything you snoozed is back.");
 }
 
-/** Bring one item back. */
-export async function unsnoozeAttentionAction(org: string, key: string): Promise<ActionResult<undefined>> {
-  const parsed = attentionKeySchema.safeParse(key);
-  if (!parsed.success) return fail("That item reference isn't valid.");
-  const { db } = await resolveDataSource();
-  if (!db) return fail("This deployment has no database connected.");
-  const viewer = await currentViewer(org);
-  if (!viewer || viewer.kind !== "member") return fail("You are not a member of this organisation.");
-  const userId = await currentUserId(db);
-  if (!userId) return fail("Your session expired. Sign in again.");
-
-  await db
-    .from("attention_snoozes")
-    .delete()
-    .eq("org_id", viewer.orgId)
-    .eq("user_id", userId)
-    .eq("item_key", parsed.data);
-
-  revalidatePath(`/${org}/dashboard`);
-  revalidatePath(`/${org}/needs-you`);
-  return ok(undefined);
-}

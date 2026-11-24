@@ -1969,10 +1969,10 @@ console.log("\nsync_mailbox — AI-009: a reply nobody could classify still stop
   restore();
   if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
   const stoppedCall = calls.find(
-    (c) => c.table === "enrollments" && c.verb === "update" && (c.payload as { status?: string })?.status === "stopped",
+    (c) => c.table === "enrollments" && c.verb === "update" && (c.payload as { status?: string })?.status === "parked",
   );
   expect("with no model available, the reply is stored", outcome.ok);
-  expect("and the sequence on that opportunity is stopped", Boolean(stoppedCall), calls.map((c) => `${c.verb}:${c.table}`));
+  expect("and the sequence on that opportunity is parked, so a person can resume it", Boolean(stoppedCall), calls.map((c) => `${c.verb}:${c.table}`));
   expect("scoped to that opportunity", JSON.stringify(stoppedCall?.filters).includes(OPPORTUNITY_ID));
 }
 
@@ -4840,6 +4840,36 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
   } finally {
     setAdminClientForTests(null);
   }
+}
+
+
+console.log("\nschedule_matching — a new offering is matched on the next run (DN-59)");
+{
+  const now = new Date("2026-11-24T12:00:00Z");
+  const run = async (offerings: unknown[]) => {
+    const { client, calls } = fakeClient({
+      "select:exchange_categories": { data: [{ id: "gpu" }, { id: "crm" }], error: null },
+      "select:exchange_offerings": { data: offerings, error: null },
+      "select:exchange_needs": {
+        data: [
+          { id: "n-gpu", org_id: ORG_A, category_id: "gpu", exchange_matches: [{ computed_at: "2026-11-24T09:00:00Z" }] },
+          { id: "n-crm", org_id: ORG_A, category_id: "crm", exchange_matches: [{ computed_at: "2026-11-24T09:00:00Z" }] },
+        ],
+        error: null,
+      },
+      "insert:job_executions": { data: { id: "j" }, error: null },
+    });
+    setAdminClientForTests(client);
+    try {
+      const out = await HANDLERS.schedule_matching({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now });
+      return { out, keys: calls.filter((c) => c.verb === "insert").map((c) => String((c.payload as { idempotency_key: string }).idempotency_key)) };
+    } finally {
+      setAdminClientForTests(null);
+    }
+  };
+  expectEqual("requests matched today with no supplier change wait for tomorrow", (await run([])).keys, []);
+  expectEqual("an offering listed since re-matches its category only, once per change", (await run([{ category_id: "gpu", updated_at: "2026-11-24T11:00:00Z" }])).keys, ["match_needs:n-gpu:2026-11-24T11:00:00Z"]);
+  expectEqual("an offering older than the last match does not", (await run([{ category_id: "gpu", updated_at: "2026-11-24T08:00:00Z" }])).keys, []);
 }
 
 

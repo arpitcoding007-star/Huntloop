@@ -198,6 +198,17 @@ describe("/api/inngest", () => {
     expect((await GET()).status).toBe(404);
   });
 
+  beforeEach(() => vi.resetModules()); // the once-a-minute limit lives in the module
+
+  it("refuses a second sync within the minute, without calling Inngest again", async () => {
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { PUT } = await route();
+    await PUT();
+    expect((await PUT()).status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("syncs on PUT: registers at /fn/register with the hashed key and the configured URL", async () => {
     const fetchMock = vi.fn(async () => new Response('{"ok":true,"modified":true}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

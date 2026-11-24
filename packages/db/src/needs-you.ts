@@ -35,7 +35,10 @@ export type AttentionKind =
   | "failing-sources"
   | "stale-scores"
   /* 0042: a theme a deal asked for has shipped — worth going back to them. */
-  | "demand-shipped";
+  | "demand-shipped"
+  /* 0067: an Exchange introduction to decide, and an unread Exchange message. */
+  | "exchange-intro"
+  | "exchange-message";
 
 export type AttentionGroup = "conversations" | "follow-ups" | "opportunities" | "workspace";
 
@@ -112,6 +115,8 @@ const GROUP: Record<AttentionKind, AttentionGroup> = {
   "next-step": "follow-ups",
   quiet: "follow-ups",
   "late-stage": "follow-ups",
+  "exchange-intro": "conversations",
+  "exchange-message": "conversations",
   "hot-untouched": "opportunities",
   "demand-shipped": "opportunities",
   learning: "workspace",
@@ -132,6 +137,8 @@ const WORKSPACE_KINDS: ReadonlySet<AttentionKind> = new Set([
 const BASE: Record<AttentionKind, number> = {
   reply: 100,
   approval: 85,
+  "exchange-message": 95,
+  "exchange-intro": 90,
   "next-step": 80,
   quiet: 60,
   "hot-untouched": 55,
@@ -254,6 +261,20 @@ function describe(c: AttentionCandidate, now: Date, quietAfter: number) {
         tone: "warning" as const,
       };
     }
+    case "exchange-intro":
+      return {
+        why: `Asked ${age === 0 ? "today" : `${agoLabel(age)} ago`} to talk about “${c.detail ?? "your request"}”. They do not know who you are unless you accept; it lapses after 14 days.`,
+        actionLabel: "Decide",
+        label: "Introduction",
+        tone: "warning" as const,
+      };
+    case "exchange-message":
+      return {
+        why: `Wrote ${age === 0 ? "today" : `${agoLabel(age)} ago`} about “${c.detail ?? "an introduction"}”, and nobody here has read it.`,
+        actionLabel: "Read",
+        label: "Message",
+        tone: "info" as const,
+      };
     case "hot-untouched":
       return {
         why: `Hot${c.detail ? `, with a ${c.detail} trigger` : ""}${
@@ -557,6 +578,13 @@ export async function gatherAttention(
       ).catch(() => ({ data: [] })),
     ]);
 
+  /* PANEL-106: a failed read is not an empty queue. These decide what a person
+     is asked to do; the rest add detail, and an absent detail is not a claim. */
+  for (const [what, r] of [["conversations", threads], ["drafts", drafts], ["opportunities", opps], ["touches", touches]] as const) {
+    const failed = (r as { error?: { message?: string } | null }).error;
+    if (failed) throw new Error(`needs-you ${what}: ${failed.message}`);
+  }
+
   const quietAfter =
     parseOrgProfile((org.data as any)?.settings).followup.quietAfterBusinessDays ??
     DEFAULT_QUIET_AFTER_BUSINESS_DAYS;
@@ -710,6 +738,22 @@ export async function gatherAttention(
   }
 
   /* ── Workspace ────────────────────────────────────────────────────────── */
+  /* DN-82. Behind the same flag as the screens the items link to. */
+  if (process.env.HUNTLOOP_EXCHANGE?.trim().toLowerCase() === "on") {
+    const { data: waiting, error: waitingError } = await db.rpc("exchange_attention", { p_org: orgId });
+    if (waitingError) throw new Error(`needs-you exchange: ${waitingError.message}`);
+    for (const w of (waiting ?? []) as any[]) {
+      candidates.push({
+        kind: w.kind === "exchange-intro" ? "exchange-intro" : "exchange-message",
+        key: `${w.kind}:${w.intro_id}`,
+        title: String(w.title),
+        href: `/${orgSlug}/exchange/intros/${w.intro_id}`,
+        at: w.at ?? null,
+        detail: w.subject ?? null,
+      });
+    }
+  }
+
   const learning = Number(findings.count ?? 0);
   if (learning > 0) {
     candidates.push({ kind: "learning", key: "learning:pending", title: "What we've learned", href: `/${orgSlug}/learn`, count: learning });

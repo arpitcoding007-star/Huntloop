@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { REPLY_CLASSES } from "@huntloop/ai";
+import { recordAudit } from "../../../../lib/data/audit";
+import { draftBlocked } from "../../../../lib/inbox/draft-blocked";
 import {
   currentUserId,
   fail,
@@ -327,7 +330,10 @@ export async function approveMessageAction(
 
     const { data: message, error: readError } = await db
       .from("messages")
-      .select("id, direction, scheduled_at, sent_at, to_email")
+      .select(
+        `id, direction, scheduled_at, sent_at, to_email, enrollment_id,
+         enrollments(status, deleted_at, campaigns(status, deleted_at), opportunities(status, deleted_at))`,
+      )
       .eq("id", id.data)
       .eq("org_id", orgId)
       .is("deleted_at", null)
@@ -338,6 +344,12 @@ export async function approveMessageAction(
     if (message.direction !== "outbound") return fail("That message is one you received.");
     if (message.sent_at) return fail("That message has already been sent.");
     if (message.scheduled_at) return fail("That message is already approved and waiting to send.");
+    /* PANEL-304: `send_message` would withdraw it, so approving must not promise a send. */
+    if (message.enrollment_id) {
+      const enrollment = Array.isArray(message.enrollments) ? message.enrollments[0] : message.enrollments;
+      const blocked = draftBlocked(enrollment ?? null);
+      if (blocked) return fail(`It would not be sent: ${blocked}`);
+    }
     if (!message.to_email) {
       return fail(
         "That message has no recipient address, so approving it would queue a send " +
@@ -372,6 +384,86 @@ export async function approveMessageAction(
     revalidatePath(`/${org}/needs-you`);
     revalidatePath(`/${org}/dashboard`);
     return ok(undefined, "Approved. It is sent on the next run.");
+  });
+}
+
+/**
+ * Correct the label the model gave a reply (PANEL-307).
+ *
+ * The label drove suppression, the sequence stop and the outcome the learning
+ * loop reads, and nobody could say it was wrong. What is put right here: the
+ * label itself, the reply/positive outcome, and a missed opt-out. What is
+ * deliberately not undone: a suppression. An address comes off the
+ * do-not-contact list only as its own decision.
+ */
+export async function relabelThreadAction(org: string, threadId: string, label: string): Promise<ActionResult<undefined>> {
+  const id = uuidSchema.safeParse(threadId);
+  if (!id.success) return fail("That conversation reference isn't valid.");
+  const next = REPLY_CLASSES.find((c) => c === label);
+  if (!next) return fail("That isn't a label a reply can have.");
+
+  return mutate(org, "relabelThread", async ({ db, orgId }) => {
+    const { data: thread, error: readError } = await db
+      .from("threads")
+      .select("id, classification, opportunity_id")
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (readError) return fail(`That conversation could not be read: ${readError.message}`);
+    if (!thread) return fail("That conversation no longer exists.");
+    if (thread.classification === next) return ok(undefined, "Nothing changed.");
+
+    if (next === "unsubscribe") {
+      const { data: from } = await db
+        .from("messages")
+        .select("from_email")
+        .eq("thread_id", id.data)
+        .eq("org_id", orgId)
+        .eq("direction", "inbound")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const address = String(from?.from_email ?? "").trim().toLowerCase();
+      if (!address) return fail("The sender's address could not be read, so they cannot be put on the do-not-contact list.");
+      const { error } = await db
+        .from("suppressions")
+        .insert({ org_id: orgId, kind: "email", value: address, reason: "Relabelled as an opt-out by a person", source: "reply" });
+      if (error && error.code !== "23505") return fail(`They could not be put on the do-not-contact list: ${error.message}`);
+    }
+
+    const { error } = await db.from("threads").update({ classification: next }).eq("id", id.data).eq("org_id", orgId);
+    if (error) return fail(`The label could not be changed: ${error.message}`);
+
+    if (thread.opportunity_id && (next === "positive" || thread.classification === "positive")) {
+      const { data: outcome } = await db
+        .from("outcomes")
+        .select("id, kind")
+        .eq("org_id", orgId)
+        .eq("opportunity_id", thread.opportunity_id)
+        .in("kind", ["reply", "positive"])
+        .order("occurred_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (outcome) await db.from("outcomes").update({ kind: next === "positive" ? "positive" : "reply" }).eq("id", outcome.id).eq("org_id", orgId);
+    }
+
+    await recordAudit(db, orgId, {
+      action: "ai.decision_overridden",
+      targetType: "thread",
+      targetId: id.data,
+      meta: { from: thread.classification, to: next },
+    });
+    revalidatePath(`/${org}/inbox`);
+    return ok(
+      undefined,
+      ["unsubscribe", "bounce"].includes(String(thread.classification))
+        ? "Label changed. The address stays on the do-not-contact list."
+        : next === "out_of_office"
+          ? "Label changed. Resume the sequence under Outreach if it should go on."
+          : "Label changed.",
+    );
   });
 }
 
@@ -570,7 +662,7 @@ export async function redraftAction(
 
     /* The enrollment first: if this workspace's database cannot hold a note
        yet, nothing is withdrawn. */
-    const { error: enrollmentError } = await db
+    const { data: put, error: enrollmentError } = await db
       .from("enrollments")
       .update({
         current_step: step.position,
@@ -578,13 +670,21 @@ export async function redraftAction(
         redraft_note: parsedNote.data,
       })
       .eq("id", read.draft.enrollment_id)
-      .eq("org_id", orgId);
+      .eq("org_id", orgId)
+      /* PANEL-305: the engine only picks up active enrollments. On any other,
+         withdrawing the draft would leave nothing in its place. */
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .select("id");
     if (enrollmentError) {
       return fail(
         enrollmentError.code === "42703"
           ? "Redrafting needs migration 0044, which this workspace's database doesn't have yet. Edit the draft instead."
           : `That draft could not be redrafted: ${enrollmentError.message}`,
       );
+    }
+    if (!put?.length) {
+      return fail("Its sequence is not running, so a new draft would never be written. Resume the sequence under Outreach first, or edit this draft.");
     }
 
     const { error } = await db

@@ -76,31 +76,9 @@ export async function enqueueScan(
 }
 
 /**
- * Ask for a company to be researched and re-scored on the next tick.
- *
- * Same shape as `enqueueScan` and the same reason: this writes a *request* to a
- * tenant table, and the sweeper turns requests into jobs. `last_researched_at`
- * is the field the research handler gates on, so clearing it is exactly the
- * instruction "this is stale" in the vocabulary the handler already reads.
- */
-export async function requestResearch(
-  db: TenantClient,
-  orgId: string,
-  companyId: string,
-): Promise<void> {
-  await db
-    .from("companies")
-    // research_requested_at too (0036), so an explicit ask is not held to the
-    // sweeper's once-a-day retry.
-    .update({ last_researched_at: null, research_requested_at: null })
-    .eq("id", companyId)
-    .eq("org_id", orgId);
-}
-
-/**
  * Ask for this org's opportunities to be rescored.
  *
- * The same seam as `enqueueScan` and `requestResearch`: a request written
+ * The same seam as `enqueueScan`: a request written
  * through RLS, which `schedule_recomputes` turns into jobs on the next tick.
  * The Server Action never touches `job_executions`.
  *
@@ -297,7 +275,9 @@ export async function followActiveIcp(
 ): Promise<{ searching: boolean; reason?: string }> {
   const { ensureDiscoveryQuery } = await import("@huntloop/jobs");
   const query = await ensureDiscoveryQuery(orgId, { enabled: true, runNow: options.runNow });
-  await requestRecompute(db, orgId, "icp_change");
+  /* PANEL-105: "Hunt now" changes nothing about the profile, so there is
+     nothing to rescore. Every click used to queue a rescore of everything. */
+  if (!options.runNow) await requestRecompute(db, orgId, "icp_change");
   return query.queryId ? { searching: true } : { searching: false, reason: query.reason };
 }
 

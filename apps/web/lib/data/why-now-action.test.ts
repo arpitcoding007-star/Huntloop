@@ -28,7 +28,7 @@ function fakeDb() {
       const record: Recorded = { table, verb: "select", filters: [] };
       calls.push(record);
       const chain: Record<string, unknown> = {};
-      for (const m of ["select", "eq", "is", "not", "order", "limit", "maybeSingle", "single"]) {
+      for (const m of ["or", "select", "eq", "is", "not", "order", "limit", "maybeSingle", "single"]) {
         chain[m] = (...args: unknown[]) => {
           if (m === "eq") record.filters.push([String(args[0]), args[1]]);
           return chain;

@@ -4,7 +4,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  ClaimBadge,
   EmptyState,
   EvidenceList,
   Freshness,
@@ -139,14 +138,13 @@ export default async function IntelligencePage({
       </section>
 
       <section className="mt-8">
-        <SectionLabel>Decisions and overrides</SectionLabel>
+        <SectionLabel>Corrections</SectionLabel>
         <Card flush className="mt-3">
           {data.decisions.length === 0 ? (
             <CardBody>
               <p className="text-[13px] text-fg-muted">
-                No model decisions recorded yet. When one is overruled, the
-                original is kept beside the correction — that pair is the only
-                labelled data the learning loop gets.
+                Nobody has overruled Huntloop yet. When somebody does, what it said
+                is kept beside the correction, and the learning loop reads the pair.
               </p>
             </CardBody>
           ) : (
@@ -154,15 +152,16 @@ export default async function IntelligencePage({
               {data.decisions.map((d) => (
                 <li key={d.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <div className="min-w-0 flex-1">
-                    <span className="text-[13px] text-fg">{d.decisionType}</span>
+                    <span className="text-[13px] text-fg">
+                      {d.subject}: {d.from ?? "not set"} → {d.to}
+                    </span>
+                    {d.reason && <p className="text-[12px] text-fg-muted">{d.reason}</p>}
                     {d.createdAt && (
                       <div className="mt-0.5">
-                        <Freshness date={d.createdAt} now={now} label="Decided" />
+                        <Freshness date={d.createdAt} now={now} label="Corrected" />
                       </div>
                     )}
                   </div>
-                  {d.confidence && <ClaimBadge kind="inference" confidence={d.confidence} />}
-                  {d.overridden && <Badge variant="warning">Overruled by a human</Badge>}
                 </li>
               ))}
             </ul>

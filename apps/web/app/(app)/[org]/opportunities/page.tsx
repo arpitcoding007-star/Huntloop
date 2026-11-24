@@ -82,8 +82,8 @@ export default async function OpportunitiesPage({
     <>
       {data.length >= LIST_LIMIT && (
         <p role="status" className="mx-auto mt-6 w-full max-w-[1200px] px-6 text-[13px] text-fg-muted lg:px-8">
-          Showing the {LIST_LIMIT} highest-priority opportunities. Filter by priority or search by
-          company to reach the rest.
+          Showing the {LIST_LIMIT} highest-priority opportunities. Search and filters look only within
+          these; archive or close some to bring the next ones in.
         </p>
       )}
       <OpportunityTable

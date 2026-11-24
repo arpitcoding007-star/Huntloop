@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { QuestionCard } from "../QuestionCard";
 import { getQuestionFor } from "../../../../lib/data/questions";
 import { PermissionDenied } from "@huntloop/ui";
@@ -43,13 +44,16 @@ export default async function AnalyzePage({
     );
   }
 
+  /* PANEL-216: a run spends AI budget, so only Huntloop's own pages may start
+     one. A link from anywhere else fills the box and waits for a click. */
+  const ownPage = (await headers()).get("sec-fetch-site") === "same-origin";
   const initialUrl = (url ?? "").trim().slice(0, 2048);
   const questionKey = await getQuestionFor(org, "analyze");
   return (
     <Analyzer
       org={org}
       initialUrl={initialUrl}
-      autoRun={run === "1" && Boolean(initialUrl)}
+      autoRun={ownPage && run === "1" && Boolean(initialUrl)}
       question={<QuestionCard org={org} questionKey={questionKey} />}
     />
   );

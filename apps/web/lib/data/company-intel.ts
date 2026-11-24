@@ -8,7 +8,7 @@ import type { Relationship } from "./competitor-intel";
 /**
  * The parts of the decision brief that come from the company rather than the
  * opportunity row — COMMAND.md §16.3-C: why they fit (computed), what they use
- * (competitor signals with their evidence), and the problems and gaps research
+ * (competitor signals with their evidence), and the problems research
  * recorded. Shared by the opportunity page and the company page.
  */
 
@@ -41,7 +41,6 @@ export interface CompanyIntel {
   /** Name of the profile the fit was computed against, or null without one. */
   icpName: string | null;
   problems: (SourcedLine & { severity: number | null })[];
-  gaps: SourcedLine[];
   competitors: CompetitorUse[];
   techStack: string[];
   funding: { stage: string | null; totalRaisedUsd: number | null; lastRoundAt: string | null } | null;
@@ -62,7 +61,7 @@ export async function getCompanyIntel(
   return load(
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getCompanyIntel");
-      const [company, problems, gaps, signals, icp] = await Promise.all([
+      const [company, problems, signals, icp] = await Promise.all([
         db
           .from("companies")
           .select(
@@ -80,13 +79,6 @@ export async function getCompanyIntel(
           .eq("company_id", companyId)
           .is("deleted_at", null)
           .order("severity", { ascending: false, nullsFirst: false })
-          .limit(10),
-        db
-          .from("company_gaps")
-          .select("gap, current_approach, evidence(source_url, excerpt, claim)")
-          .eq("org_id", orgId)
-          .eq("company_id", companyId)
-          .is("deleted_at", null)
           .limit(10),
         db
           .from("company_competitor_signals")
@@ -198,15 +190,6 @@ export async function getCompanyIntel(
             text: String(p.problem),
             detail: null,
             severity: typeof p.severity === "number" ? p.severity : null,
-            sourceUrl: ev?.source_url ?? null,
-            excerpt: ev?.excerpt ?? null,
-          };
-        }),
-        gaps: ((gaps.data ?? []) as any[]).map((g) => {
-          const ev = one(g.evidence);
-          return {
-            text: String(g.gap),
-            detail: g.current_approach ?? null,
             sourceUrl: ev?.source_url ?? null,
             excerpt: ev?.excerpt ?? null,
           };

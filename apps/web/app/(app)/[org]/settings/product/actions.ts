@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { research } from "../../../../../lib/ai/research";
 import { canSpend, currentViewer } from "../../../../../lib/data/membership";
 import { fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
-import { parseForm, parseInput, productSchema, urlInputSchema } from "../../../../../lib/validation";
+import { parseForm, parseInput, productSchema, urlInputSchema, uuidSchema } from "../../../../../lib/validation";
 
 /**
  * Product writes — master context §8.
@@ -102,13 +102,15 @@ export async function saveProductAction(
     };
 
     if (value.id) {
-      const { error } = await db
+      const { data: saved, error } = await db
         .from("products")
         .update(row)
         .eq("id", value.id)
         .eq("org_id", orgId)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .select("id");
       if (error) return fail(`That product could not be saved: ${error.message}`);
+      if (!saved?.length) return fail("That product no longer exists.");
 
       revalidatePath(`/${org}`, "layout");
       return ok({ id: value.id }, "Product saved.");
@@ -138,12 +140,17 @@ export async function deleteProductAction(
   id: string,
 ): Promise<ActionResult<undefined>> {
   return mutate(org, "deleteProduct", async ({ db, orgId }) => {
-    const { error } = await db
+    const ref = uuidSchema.safeParse(id);
+    if (!ref.success) return fail("That product reference isn't valid.");
+    const { data: removed, error } = await db
       .from("products")
       .update({ deleted_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("org_id", orgId);
+      .eq("id", ref.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id");
     if (error) return fail(`That product could not be removed: ${error.message}`);
+    if (!removed?.length) return fail("That product no longer exists.");
 
     revalidatePath(`/${org}`, "layout");
     return ok(undefined, "Product removed.");

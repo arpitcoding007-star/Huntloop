@@ -1,4 +1,5 @@
 import "server-only";
+import { pauseState } from "@huntloop/db/pause";
 import type { TenantClient } from "@huntloop/db";
 
 /**
@@ -79,12 +80,16 @@ export interface OpsSnapshot {
   pressure: QueuePressure | null;
   /** Provider calls in the last 24 hours. Empty when none were made. */
   providers: ProviderHealthRow[];
+  /** Panels that could not be read (PANEL-405). Shown as unread, never as empty. */
+  unreadable: string[];
+  /** Operator pauses in force (PANEL-410). */
+  pauses: { scope: "sends" | "ai" | "providers"; reason: string }[];
 }
 
 /**
  * Everything the ops screen renders, in three reads.
  *
- * Failures return empty rather than throwing. An ops screen that 500s when one
+ * Failures are named in `unreadable` rather than thrown. An ops screen that 500s when one
  * of its panels cannot be read is an ops screen that is unavailable exactly
  * when it is needed — the same reasoning `recentJobs` uses.
  */
@@ -93,6 +98,8 @@ export async function opsSnapshot(
   orgId: string,
   deadLimit = 50,
 ): Promise<OpsSnapshot> {
+  const SCOPES = ["sends", "ai", "providers"] as const;
+  const pausedReads = Promise.all(SCOPES.map((scope) => pauseState(db, scope, orgId)));
   const [health, dead, pressure, providers] = await Promise.all([
     db
       .from("job_health")
@@ -119,7 +126,21 @@ export async function opsSnapshot(
       .order("calls", { ascending: false }),
   ]);
 
+  const unreadable = (
+    [
+      ["jobs", health.error],
+      ["failures", dead.error],
+      ["queue", pressure.error],
+      ["providers", providers.error],
+    ] as const
+  )
+    .filter(([, e]) => e)
+    .map(([what]) => what as string);
+  const pauses = (await pausedReads).flatMap((p, i) => (p.paused ? [{ scope: SCOPES[i]!, reason: p.reason ?? "" }] : []));
+
   return {
+    unreadable,
+    pauses,
     health: (health.data ?? []).map((row) => ({
       jobName: String(row.job_name),
       status: String(row.status),

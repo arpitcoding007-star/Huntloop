@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../lib/data/audit";
 import { parseOrgProfile, serializeOrgProfile } from "@huntloop/db/org-profile";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { orgProfileSchema, orgSettingsSchema, parseForm } from "../../../../lib/validation";
@@ -83,6 +84,7 @@ export async function saveOrgSettingsAction(
         .is("deleted_at", null);
 
       if (error) return fail(`Those settings could not be saved: ${error.message}`);
+      await recordAudit(db, orgId, { action: "organization.updated", targetType: "organization", targetId: orgId, meta: { section: "details", retentionDays: value.contactRetentionDays } });
 
       /* "layout" rather than the settings page alone: the org name is in the
          topbar breadcrumb on every screen, so a page-scoped revalidate would
@@ -168,6 +170,7 @@ export async function saveOrgProfileAction(
         .is("deleted_at", null);
 
       if (error) return fail(`Those settings could not be saved: ${error.message}`);
+      await recordAudit(db, orgId, { action: "organization.updated", targetType: "organization", targetId: orgId, meta: { section: "voice and engine" } });
 
       revalidatePath(`/${org}/settings`);
       revalidatePath(`/${org}/needs-you`);

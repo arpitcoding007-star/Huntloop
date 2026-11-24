@@ -35,6 +35,8 @@ export interface HuntSource {
   name: string;
   kind: string;
   url: string | null;
+  /** Feeds its pages advertise, offered rather than adopted (PANEL-214). */
+  discoveredFeeds?: string[];
   isEnabled: boolean;
   recommendedBy: "system" | "user";
   status: SourceStatus;
@@ -76,7 +78,7 @@ export async function listHuntSources(orgSlug: string): Promise<Loaded<HuntSourc
         .select(
           `id, name, kind, url, is_enabled, recommended_by, status,
            failure_count, last_scanned_at, last_success_at, last_error,
-           scan_interval_minutes, next_scan_at`,
+           scan_interval_minutes, next_scan_at, config`,
         )
         .eq("org_id", orgId)
         .is("deleted_at", null)
@@ -99,13 +101,12 @@ export async function listHuntSources(orgSlug: string): Promise<Loaded<HuntSourc
   );
 }
 
-/**
- * Evidence per source, in one round trip.
- *
- * Batched over the whole page rather than issued per source, which is the N+1
- * this list would otherwise grow — the same shape as `evidenceKindsFor` in
- * `opportunities.ts`, and for the same reason.
- */
+/** Ten at a time, so a workspace with many sources does not open a request per row at once. */
+async function inBatches(ids: string[], run: (id: string) => Promise<void>): Promise<void> {
+  for (let i = 0; i < ids.length; i += 10) await Promise.all(ids.slice(i, i + 10).map(run));
+}
+
+/** Evidence per source. */
 async function evidenceCounts(
   db: import("@huntloop/db").TenantClient,
   orgId: string,
@@ -114,25 +115,24 @@ async function evidenceCounts(
   const counts = new Map<string, number>();
   if (sourceIds.length === 0) return counts;
 
-  const { data, error } = await db
-    .from("evidence")
-    .select("source_id")
-    .eq("org_id", orgId)
-    .in("source_id", sourceIds)
-    .is("deleted_at", null)
-    .is("superseded_by", null);
-
-  if (error) throw new Error(`listHuntSources evidence: ${error.message}`);
-
-  for (const row of data ?? []) {
-    const id = String(row.source_id);
-    counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
+  /* PANEL-208: counting fetched rows stops at PostgREST's row cap, silently.
+     A head count per source is exact and sends no rows. */
+  await inBatches(sourceIds, async (id) => {
+    const { count, error } = await db
+      .from("evidence")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("source_id", id)
+      .is("deleted_at", null)
+      .is("superseded_by", null);
+    if (error) throw new Error(`listHuntSources evidence: ${error.message}`);
+    counts.set(id, count ?? 0);
+  });
   return counts;
 }
 
 /**
- * Documents per source, in one round trip.
+ * Documents per source.
  *
  * Separate from the evidence count and both are shown, because the difference
  * between them is diagnostic. "40 documents, 0 claims" is a source that is
@@ -148,18 +148,15 @@ async function documentCounts(
   const counts = new Map<string, number>();
   if (sourceIds.length === 0) return counts;
 
-  const { data, error } = await db
-    .from("source_documents")
-    .select("source_id")
-    .eq("org_id", orgId)
-    .in("source_id", sourceIds);
-
-  if (error) throw new Error(`listHuntSources documents: ${error.message}`);
-
-  for (const row of data ?? []) {
-    const id = String(row.source_id);
-    counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
+  await inBatches(sourceIds, async (id) => {
+    const { count, error } = await db
+      .from("source_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("source_id", id);
+    if (error) throw new Error(`listHuntSources documents: ${error.message}`);
+    counts.set(id, count ?? 0);
+  });
   return counts;
 }
 
@@ -177,6 +174,9 @@ function mapSource(
     name: String(row.name ?? ""),
     kind: String(row.kind ?? "custom"),
     url: row.url ?? null,
+    discoveredFeeds: Array.isArray(row.config?.discovered_feeds)
+      ? row.config.discovered_feeds.map(String).filter((u: string) => /^https?:\/\//.test(u))
+      : [],
     isEnabled: Boolean(row.is_enabled),
     recommendedBy: row.recommended_by === "user" ? "user" : "system",
     status: (["ok", "degraded", "unavailable"] as const).includes(row.status)

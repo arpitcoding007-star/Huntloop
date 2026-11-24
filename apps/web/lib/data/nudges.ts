@@ -1,6 +1,7 @@
 import "server-only";
 import { resolveDataSource } from "./source";
 import { currentViewer } from "./membership";
+import { currentUserId } from "./org";
 
 /**
  * What Huntloop should ask this workspace next.
@@ -76,6 +77,8 @@ export async function getNudge(orgSlug: string): Promise<Nudge | null> {
   const viewer = await currentViewer(orgSlug);
   if (!viewer || viewer.kind !== "member") return null;
   const orgId = viewer.orgId;
+  const userId = await currentUserId(db);
+  if (!userId) return null;
 
   /* All three counts in one round trip. They are independent questions and
      asking them in sequence would put three round trips on every dashboard
@@ -93,6 +96,8 @@ export async function getNudge(orgSlug: string): Promise<Nudge | null> {
       .select("id", { count: "exact", head: true })
       .eq("org_id", orgId)
       .eq("subject", "opportunity_priority")
+      /* PANEL-114: "you've overruled" means this person, not the workspace. */
+      .eq("actor_id", userId)
       .is("consumed_at", null),
 
     db

@@ -23,7 +23,7 @@ export interface PipelineExtra {
 }
 
 const TOUCH_KINDS = ["email_sent", "email_received", "message", "call", "meeting", "connection_request"];
-const BOUND = { opportunities: 2000, touches: 5000, enrollments: 2000, messages: 5000 } as const;
+const BOUND = { opportunities: 1000, touches: 5000, enrollments: 2000, messages: 5000 } as const;
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- untyped PostgREST rows (DB-03). */
 
@@ -39,6 +39,9 @@ export async function getPipelineExtras(orgSlug: string): Promise<Loaded<Record<
           .select("id, next_step, next_step_due_at, estimated_value_cents")
           .eq("org_id", orgId)
           .is("deleted_at", null)
+          /* The board's own order, so a cut drops the same rows it does. */
+          .order("priority", { ascending: true })
+          .order("first_seen_at", { ascending: false })
           .limit(BOUND.opportunities),
         db
           .from("activities")
