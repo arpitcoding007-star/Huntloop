@@ -1,4 +1,5 @@
 import "server-only";
+import { inChunks } from "../in-chunks";
 import type { TenantClient } from "@huntloop/db";
 
 /**
@@ -24,15 +25,17 @@ export async function withdrawQueuedMail(
   why: string,
 ): Promise<void> {
   if (enrollmentIds.length === 0) return;
-  await db
-    .from("messages")
-    .update({ error: `Not sent: ${why}`.slice(0, 2000) })
-    .eq("org_id", orgId)
-    .in("enrollment_id", enrollmentIds)
-    .eq("direction", "outbound")
-    .is("sent_at", null)
-    .is("send_attempted_at", null)
-    .is("deleted_at", null);
+  await inChunks(enrollmentIds, (c) =>
+    db
+      .from("messages")
+      .update({ error: `Not sent: ${why}`.slice(0, 2000) })
+      .eq("org_id", orgId)
+      .in("enrollment_id", c)
+      .eq("direction", "outbound")
+      .is("sent_at", null)
+      .is("send_attempted_at", null)
+      .is("deleted_at", null),
+  );
 }
 
 /** The live enrollments of one opportunity, for {@link withdrawQueuedMail}. */

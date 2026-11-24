@@ -10,6 +10,9 @@ import {
   type IntakeTurnInput,
   type IntakeTurnOutput,
   type LLMTask,
+  readSupplyPage,
+  type ReadSupplyPageInput,
+  type ReadSupplyPageOutput,
 } from "@huntloop/ai";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
@@ -30,10 +33,12 @@ export type IntakeAi<T> = { ok: true; live: true; output: T } | { ok: true; live
 
 async function run<I, O>(
   orgSlug: string,
-  name: "intake_classify" | "intake_turn",
+  name: "intake_classify" | "intake_turn" | "read_supply_page",
   task: LLMTask<I, O>,
   input: I,
   refusedMessage: string,
+  /** The caller has already counted this call against the limit. */
+  counted = false,
 ): Promise<IntakeAi<O>> {
   if (!isAiConfigured()) return { ok: true, live: false };
 
@@ -45,8 +50,10 @@ async function run<I, O>(
     const allowance = await withinAiBudget(db, orgId);
     if (!allowance.allowed) return budgetRefusal(allowance);
   }
-  const budget = await consumeRateLimit(orgId, name);
-  if (!budget.allowed) return refusal(budget);
+  if (!counted) {
+    const budget = await consumeRateLimit(orgId, name);
+    if (!budget.allowed) return refusal(budget);
+  }
 
   try {
     const { output } = await runTask(task, input, { orgId, recorder });
@@ -66,6 +73,21 @@ export function classify(orgSlug: string, input: ClassifyIntakeInput): Promise<I
     input,
     "The model declined to read that request. You can describe it in the form below instead.",
   );
+}
+
+/** Counted before the page is fetched, so a refused call fetches nothing. */
+export async function readPage(
+  orgSlug: string,
+  load: () => Promise<{ ok: true; input: ReadSupplyPageInput } | { ok: false; error: string }>,
+): Promise<IntakeAi<ReadSupplyPageOutput>> {
+  if (!isAiConfigured()) return { ok: true, live: false };
+  const resolved = await resolveRecorder(orgSlug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const gate = await consumeRateLimit(resolved.orgId, "read_supply_page");
+  if (!gate.allowed) return refusal(gate);
+  const page = await load();
+  if (!page.ok) return page;
+  return run(orgSlug, "read_supply_page", readSupplyPage, page.input, "The model declined to read that page.", true);
 }
 
 export function turn(orgSlug: string, input: IntakeTurnInput): Promise<IntakeAi<IntakeTurnOutput>> {

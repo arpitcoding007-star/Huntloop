@@ -1,4 +1,5 @@
 import "server-only";
+import { inChunks } from "../in-chunks";
 import { parseIcp } from "@huntloop/db/icp";
 import { currentViewer } from "./membership";
 import { resolveDataSource } from "./source";
@@ -110,11 +111,13 @@ export async function getIcpProposal(orgSlug: string): Promise<IcpProposalView |
 
   let declined: ProposalCompany[] = [];
   if (declinedOppIds.length > 0) {
-    const { data } = await db
-      .from("opportunities")
-      .select("id, companies!inner(id, name, industry, employee_count, region)")
-      .eq("org_id", orgId)
-      .in("id", declinedOppIds.slice(0, LIMIT));
+    const { data } = await inChunks<any>(declinedOppIds.slice(0, LIMIT), (c) =>
+      db
+        .from("opportunities")
+        .select("id, companies!inner(id, name, industry, employee_count, region)")
+        .eq("org_id", orgId)
+        .in("id", c),
+    );
     declined = ((data ?? []) as any[])
       .map((r) => toCompany(r, "declined"))
       .filter((c): c is ProposalCompany => c !== null);

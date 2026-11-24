@@ -1,5 +1,8 @@
 "use server";
 
+import type { ReadSupplyPageOutput } from "@huntloop/ai";
+import { extract, FetchRefused, fetchPage, UnreadableContent } from "@huntloop/jobs";
+import { readPage } from "../../../../lib/ai/intake";
 import { revalidatePath } from "next/cache";
 import { recordAudit } from "../../../../lib/data/audit";
 import { z } from "zod";
@@ -574,6 +577,32 @@ export async function reconfirmNeedAction(org: string, needId: string): Promise<
     if (!data) return fail("That request can no longer be reopened.");
     revalidate(org);
     return ok(undefined, "Confirmed — suppliers see it as current.");
+  });
+}
+
+/**
+ * Read one page of the supplier's site into suggestions (DN-45, DN-46). Every
+ * value carries the words it was read from; nothing is saved here.
+ */
+export async function readSupplyPageAction(org: string, url: string): Promise<ActionResult<ReadSupplyPageOutput & { url: string }>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const parsed = z.string().trim().max(2048).regex(/^https:\/\//, "A page address starts with https://").safeParse(url);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "That address could not be read.");
+  return mutate(org, "readSupplyPage", async () => {
+    const categories = (await listExchangeCategories()).data;
+    const result = await readPage(org, async () => {
+      try {
+        const page = await fetchPage(parsed.data, { timeoutMs: 10_000, maxBytes: 1_000_000 });
+        const text = extract(page).documents.map((d) => [d.title, d.text].filter(Boolean).join("\n")).join("\n\n");
+        if (text.trim().length < 40) return { ok: false, error: "There is too little text on that page to read." };
+        return { ok: true, input: { url: parsed.data, text, categories: categories.map((c) => ({ id: c.id, path: c.path })), attributes: [] } };
+      } catch (error) {
+        return { ok: false, error: error instanceof FetchRefused || error instanceof UnreadableContent ? error.message : "That page could not be opened." };
+      }
+    });
+    if (!result.ok) return fail(result.error);
+    if (!result.live) return fail("No AI model is configured on this deployment, so the page cannot be read. Fill the form in instead.");
+    return ok({ ...result.output, url: parsed.data });
   });
 }
 

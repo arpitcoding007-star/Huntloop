@@ -3569,6 +3569,48 @@ console.log("\n0068 — workspace purpose, alerts with no band, what to match ne
   await db.exec("rollback");
 }
 
+console.log("\n0069 — Exchange quotas");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const eq = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  await db.exec("begin");
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  await engine();
+  await db.exec(`delete from exchange_needs`);
+  const file = `insert into exchange_needs (org_id, summary, visibility) values ($1, 'Cards', 2)`;
+  await as(OWNER_A);
+  eq("a plan with no limit shows none", (await db.query(`select * from public.exchange_quotas($1)`, [A])).rows, []);
+  await expectAccept(db, "and refuses nothing", file, [A]);
+  await engine();
+  await db.query(`update plans set limits = limits || '{"needs_open": 2}' where id in (select plan_id from organizations where id = $1)`, [A]);
+  await db.query(`insert into usage_counters (org_id, metric, period, used, "limit") values ($1, 'needs_open', date_trunc('month', now())::date, 0, 2) on conflict do nothing`, [A]);
+  await as(OWNER_A);
+  await db.query(file, [A]);
+  eq("used and allowed are shown", (await db.query<{ metric: string; used: string; quota: string }>(`select metric, used, quota from public.exchange_quotas($1)`, [A])).rows.map((r) => [r.metric, Number(r.used), Number(r.quota)]), [["needs_open", 2, 2]]);
+  await expectRejectTx(db, "past the limit is refused", file, [A]);
+  await db.query(`update exchange_needs set status = 'paused' where id = (select id from exchange_needs where org_id = $1 limit 1)`, [A]);
+  await expectAccept(db, "pausing one makes room", file, [A]);
+  await expectRejectTx(db, "and reopening counts", `update exchange_needs set status = 'open' where org_id = $1 and status = 'paused'`, [A]);
+  await expectAccept(db, "an open request can still be edited at the limit", `update exchange_needs set summary = 'Edited' where org_id = $1 and status = 'open'`, [A]);
+  await as(OWNER_B);
+  eq("another workspace's are not readable", (await db.query(`select * from public.exchange_quotas($1)`, [A])).rows, []);
+  await engine();
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0069_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0069_applied() exists for db:doctor");
+  else fail("migration_0069_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

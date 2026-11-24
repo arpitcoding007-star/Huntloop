@@ -51,7 +51,8 @@ export type TaskName =
   | "infer_preferences"
   | "intake_classify"
   | "intake_turn"
-  | "explain_match";
+  | "explain_match"
+  | "read_supply_page";
 
 export const ROUTES: Record<TaskName, Route> = {
   // Multi-source synthesis whose quality propagates into every later step.
@@ -120,6 +121,9 @@ export const ROUTES: Record<TaskName, Route> = {
      write one reason each. Reading comprehension over short texts; the
      number it feeds is computed in code from the citations. */
   explain_match: { model: MODELS.sonnet, effort: "medium" },
+  /* One fetched page, read into quoted fields that code checks against the
+     page. Extraction, so mid-tier; the checking is not the model's. */
+  read_supply_page: { model: MODELS.sonnet, effort: "medium" },
 };
 
 /**

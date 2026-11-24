@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 68 migrations
-> (`0001_identity.sql` … `0068_exchange_scale.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 69 migrations
+> (`0001_identity.sql` … `0069_exchange_quotas.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 97 tables · 10 views · 206 public functions · 10 enum types · 169 RLS policies · 337 indexes · 163 triggers.
+**Totals:** 97 tables · 10 views · 210 public functions · 10 enum types · 169 RLS policies · 337 indexes · 165 triggers.
 
 **RLS enabled on:** 97 of 97 tables.
 
@@ -1602,6 +1602,7 @@ RLS: **enabled**
 
 **Triggers**
 
+- `exchange_intros_quota`
 - `exchange_intros_suspended`
 - `exchange_intros_touch`
 
@@ -1770,6 +1771,7 @@ RLS: **enabled**
 - `exchange_needs_declared`
 - `exchange_needs_limits`
 - `exchange_needs_purpose`
+- `exchange_needs_quota`
 - `exchange_needs_touch`
 
 ## exchange_notifications
@@ -4317,6 +4319,7 @@ RLS: **enabled**
 | `discoverable_workspaces` |  | TABLE(org_id uuid, org_name text, org_slug text, member_count bigint) | yes |
 | `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
 | `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
+| `enforce_exchange_quota` |  | trigger | yes |
 | `enforce_same_org_refs` |  | trigger | yes |
 | `enforce_seat_limit` |  | trigger | yes |
 | `engine_only_exposed` |  | TABLE(function_name text, role_name text) |  |
@@ -4358,6 +4361,8 @@ RLS: **enabled**
 | `exchange_prune` |  | jsonb | yes |
 | `exchange_prune_notifications` |  | integer | yes |
 | `exchange_queue_notifications` |  | jsonb | yes |
+| `exchange_quota_used` | `p_org uuid, p_metric text` | bigint | yes |
+| `exchange_quotas` | `p_org uuid` | TABLE(metric text, used bigint, quota bigint) | yes |
 | `exchange_recall_offerings` | `p_need uuid, p_limit integer` | SETOF uuid |  |
 | `exchange_refuse_suspended` |  | trigger | yes |
 | `exchange_region` | `p_country text` | text |  |
@@ -4448,6 +4453,7 @@ RLS: **enabled**
 | `migration_0066_applied` |  | boolean |  |
 | `migration_0067_applied` |  | boolean |  |
 | `migration_0068_applied` |  | boolean |  |
+| `migration_0069_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |

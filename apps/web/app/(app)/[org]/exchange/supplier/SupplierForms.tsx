@@ -10,6 +10,7 @@ import {
   addEvidenceAction,
   deleteEvidenceAction,
   deleteOfferingAction,
+  readSupplyPageAction,
   saveOfferingAction,
   saveProviderProfileAction,
 } from "../actions";
@@ -213,7 +214,30 @@ function OfferingForm({
   const [productId, setProductId] = useState(offering?.productId ?? "");
   const [title, setTitle] = useState(offering?.title ?? "");
   const [description, setDescription] = useState(offering?.description ?? "");
+  const [moq, setMoq] = useState(String(offering?.moq ?? ""));
+  const [priceFrom, setPriceFrom] = useState(String(offering?.priceFrom ?? ""));
+  const [currency, setCurrency] = useState(offering?.currency ?? "");
+  const [pageUrl, setPageUrl] = useState("");
+  const [read, setRead] = useState<Extract<Awaited<ReturnType<typeof readSupplyPageAction>>, { ok: true }>["data"] | null>(null);
   const regulated = categories.find((c) => c.id === categoryId)?.regulated;
+
+  /* Fills only what is empty: what a person typed is never replaced. */
+  const readIt = () =>
+    start(async () => {
+      const res = await readSupplyPageAction(org, pageUrl);
+      if (!res.ok) return setResult({ ok: false, error: res.error });
+      const d = res.data;
+      setRead(d);
+      if (d.title && !title.trim()) setTitle(d.title.value);
+      if (d.description && !description.trim()) setDescription(d.description.value);
+      if (d.categoryId && !categoryId) setCategoryId(d.categoryId);
+      if (d.moq && !moq.trim()) setMoq(String(d.moq.value));
+      if (d.priceFrom && d.currency && !priceFrom.trim()) {
+        setPriceFrom(String(d.priceFrom.value));
+        setCurrency(d.currency);
+      }
+      setResult({ ok: true, message: "Read. Check each value below before saving." });
+    });
 
   return (
     <form
@@ -228,6 +252,31 @@ function OfferingForm({
       }
     >
       {offering && <input type="hidden" name="id" value={offering.id} />}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Field label="Read from a page on your site" hint="Suggests values with the words they came from. Nothing is saved until you save.">
+            {(p) => <Input {...p} inputMode="url" placeholder="https://" value={pageUrl} onChange={(e) => setPageUrl(e.target.value)} />}
+          </Field>
+        </div>
+        <Button type="button" size="sm" variant="secondary" disabled={pending || !pageUrl.trim()} onClick={readIt}>
+          Read the page
+        </Button>
+      </div>
+      {read && (
+        <ul className="space-y-1 text-[12px] text-fg-muted" aria-label="What the page says">
+          {[read.title, read.description, read.moq, read.priceFrom].filter((v) => v !== null).map((v) => (
+            <li key={v.quote}>
+              {String(v.value)} <q className="italic">{v.quote}</q>
+            </li>
+          ))}
+          {read.evidence.map((e) => (
+            <li key={e.claim}>
+              {e.partner ? "Partner: " : ""}
+              {e.claim} <q className="italic">{e.quote}</q>. Add it under Evidence once the offering is saved.
+            </li>
+          ))}
+        </ul>
+      )}
       {products.length > 0 && (
         <Field label="From one of your products" hint="Fills the title and description from what Huntloop already knows about it. Edit before saving.">
           {(p) => (
@@ -295,14 +344,14 @@ function OfferingForm({
           )}
         </Field>
         <Field label="Price from">
-          {(p) => <Input {...p} name="price_from" inputMode="decimal" defaultValue={offering?.priceFrom ?? ""} />}
+          {(p) => <Input {...p} name="price_from" inputMode="decimal" value={priceFrom} onChange={(e) => setPriceFrom(e.target.value)} />}
         </Field>
         <Field label="Price to">
           {(p) => <Input {...p} name="price_to" inputMode="decimal" defaultValue={offering?.priceTo ?? ""} />}
         </Field>
         <Field label="Currency">
           {(p) => (
-            <Select {...p} name="currency" defaultValue={offering?.currency ?? ""}>
+            <Select {...p} name="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
               <option value="">None</option>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
@@ -315,7 +364,7 @@ function OfferingForm({
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Minimum order">
-          {(p) => <Input {...p} name="moq" inputMode="decimal" defaultValue={offering?.moq ?? ""} />}
+          {(p) => <Input {...p} name="moq" inputMode="decimal" value={moq} onChange={(e) => setMoq(e.target.value)} />}
         </Field>
         <Field label="Availability" hint="Dated today when saved.">
           {(p) => (

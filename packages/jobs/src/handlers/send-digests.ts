@@ -20,11 +20,13 @@ import {
 import { isEmailConfigured, sendEmail } from "../email/resend.ts";
 import { digestEmail } from "../email/templates.ts";
 import { digestUnsubscribeToken } from "../email/digest-token.ts";
+import { inChunks } from "../in-chunks.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 /** Bounds on one run. Overflow is picked up next hour (due = at or past the hour). */
-const MAX_MEMBERS = 2000;
+const MAX_MEMBERS = 20_000;
+const PAGE = 1000;
 const MAX_SENDS = 150;
 const ITEMS_IN_EMAIL = 5;
 
@@ -91,14 +93,23 @@ export async function sendDigests(ctx: JobContext): Promise<JobOutcome> {
   if (!site("/")) return { ok: true, result: { skipped: "NEXT_PUBLIC_SITE_URL is not set" } };
 
   const db = OrgScope.global();
-  const { data: members, error } = await db
-    .from("memberships")
-    .select("org_id, user_id, organizations!inner(id, name, slug, deleted_at)")
-    .is("deleted_at", null)
-    .limit(MAX_MEMBERS);
-  if (error) return { ok: false, error: `send_digests: ${error.message}` };
+  /* Paged in a fixed order: one read stops at the API's cap of 1,000, and which
+     1,000 was whatever the database returned first. */
+  const members: any[] = [];
+  for (let from = 0; from < MAX_MEMBERS; from += PAGE) {
+    const { data, error } = await db
+      .from("memberships")
+      .select("org_id, user_id, organizations!inner(id, name, slug, deleted_at)")
+      .is("deleted_at", null)
+      .order("user_id", { ascending: true })
+      .order("org_id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { ok: false, error: `send_digests: ${error.message}` };
+    members.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) break;
+  }
 
-  const rows = ((members ?? []) as any[]).filter((m) => {
+  const rows = members.filter((m) => {
     const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
     return org && !org.deleted_at;
   });
@@ -106,14 +117,18 @@ export async function sendDigests(ctx: JobContext): Promise<JobOutcome> {
 
   const userIds = [...new Set(rows.map((m) => String(m.user_id)))];
   const [prefsRes, profilesRes] = await Promise.all([
-    db
-      .from("notification_preferences")
-      .select("org_id, user_id, daily_digest, digest_hour, timezone, last_digest_on")
-      .in("user_id", userIds),
-    db.from("profiles").select("id, email, full_name, role").in("id", userIds),
+    inChunks<any>(userIds, (c) =>
+      db
+        .from("notification_preferences")
+        .select("org_id, user_id, daily_digest, digest_hour, timezone, last_digest_on")
+        .in("user_id", c),
+    ),
+    inChunks<any>(userIds, (c) => db.from("profiles").select("id, email, full_name, role").in("id", c)),
   ]);
+  const unread = prefsRes.error ?? profilesRes.error;
+  if (unread) return { ok: false, error: `send_digests: ${unread.message}` };
   const prefs = new Map(
-    ((prefsRes.data ?? []) as any[]).map((p) => [
+    prefsRes.data.map((p) => [
       `${p.org_id}:${p.user_id}`,
       {
         dailyDigest: Boolean(p.daily_digest),
@@ -123,7 +138,7 @@ export async function sendDigests(ctx: JobContext): Promise<JobOutcome> {
       } satisfies DigestPreference,
     ]),
   );
-  const profiles = new Map(((profilesRes.data ?? []) as any[]).map((p) => [String(p.id), p]));
+  const profiles = new Map(profilesRes.data.map((p) => [String(p.id), p]));
 
   let sent = 0;
   let empty = 0;

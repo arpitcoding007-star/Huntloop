@@ -41,6 +41,7 @@ import {
 } from "@huntloop/ai";
 import { embedded } from "../scope.ts";
 import { AiUnavailable, runForOrg } from "../ai.ts";
+import { inChunks } from "../in-chunks.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface AnalyzePayload {
@@ -371,12 +372,12 @@ async function loadModelScores(
   const scores = new Map<string, number>();
   if (!opportunityIds.length) return scores;
 
-  const { data } = await ctx.scope.select(
-    "opportunity_scores",
-    "opportunity_id, score, model_score, computed_at",
-  )
-    .in("opportunity_id", opportunityIds)
-    .order("computed_at", { ascending: false });
+  const { data } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+    ctx.scope
+      .select("opportunity_scores", "opportunity_id, score, model_score, computed_at")
+      .in("opportunity_id", c)
+      .order("computed_at", { ascending: false }),
+  );
 
   for (const row of (data ?? []) as Record<string, unknown>[]) {
     const id = String(row.opportunity_id);
@@ -408,8 +409,9 @@ async function loadProvenance(
   const byOpportunity = new Map<string, { id: string | null; name: string | null }>();
   if (!opportunityIds.length) return byOpportunity;
 
-  const { data: opportunities } = await ctx.scope.select("opportunities", "id, company_id")
-    .in("id", opportunityIds);
+  const { data: opportunities } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+    ctx.scope.select("opportunities", "id, company_id").in("id", c),
+  );
 
   const companyToOpportunities = new Map<string, string[]>();
   for (const row of (opportunities ?? []) as Record<string, unknown>[]) {
@@ -422,7 +424,7 @@ async function loadProvenance(
   const companyIds = [...companyToOpportunities.keys()];
   if (!companyIds.length) return byOpportunity;
 
-  const { data: events } = await ctx.scope.select(
+  const { data: events } = await inChunks<Record<string, unknown>>(companyIds, (c) => ctx.scope.select(
     "source_events",
     /* `source_events` has no `source_id` and no foreign key to `sources`: it
        points at the document it was read from, and the document at its
@@ -431,8 +433,8 @@ async function loadProvenance(
        came back empty — found by the select-column check (DATA-C1). */
     "company_id, event_date, created_at, source_documents(source_id, sources(id, name))",
   )
-    .in("company_id", companyIds)
-    .order("created_at", { ascending: true });
+    .in("company_id", c)
+    .order("created_at", { ascending: true }));
 
   const seen = new Set<string>();
   for (const row of (events ?? []) as Record<string, unknown>[]) {
@@ -554,9 +556,9 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
     let wins = 0;
 
     if (companyIds.length) {
-      const { data: opportunities } = await ctx.scope.select("opportunities", "id")
-        .in("company_id", companyIds)
-        .is("deleted_at", null);
+      const { data: opportunities } = await inChunks<Record<string, unknown>>(companyIds, (c) =>
+        ctx.scope.select("opportunities", "id").in("company_id", c).is("deleted_at", null),
+      );
 
       const opportunityIds = ((opportunities ?? []) as Record<string, unknown>[]).map((o) =>
         String(o.id),
@@ -564,8 +566,9 @@ async function loadSourcePerformance(ctx: JobContext): Promise<SourcePerformance
       opportunitiesCreated = opportunityIds.length;
 
       if (opportunityIds.length) {
-        const { data: outcomeRows } = await ctx.scope.select("outcomes", "kind")
-          .in("opportunity_id", opportunityIds);
+        const { data: outcomeRows } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+          ctx.scope.select("outcomes", "kind").in("opportunity_id", c),
+        );
         const list = (outcomeRows ?? []) as Record<string, unknown>[];
         outcomes = list.length;
         wins = list.filter((o) => o.kind === "won").length;
@@ -678,10 +681,9 @@ async function loadDemand(ctx: JobContext): Promise<DemandThemeRecord[]> {
   ];
   const lost = new Set<string>();
   if (opportunityIds.length) {
-    const { data: outcomeRows } = await ctx.scope
-      .select("outcomes", "opportunity_id")
-      .in("opportunity_id", opportunityIds.slice(0, 1000))
-      .in("kind", LOST_KINDS);
+    const { data: outcomeRows } = await inChunks<Record<string, unknown>>(opportunityIds, (c) =>
+      ctx.scope.select("outcomes", "opportunity_id").in("opportunity_id", c).in("kind", LOST_KINDS),
+    );
     for (const o of (outcomeRows ?? []) as Record<string, unknown>[]) lost.add(String(o.opportunity_id));
   }
 

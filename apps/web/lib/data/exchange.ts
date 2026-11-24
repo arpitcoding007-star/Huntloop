@@ -840,3 +840,26 @@ export async function getMarketDemand(orgSlug: string): Promise<Loaded<{ rows: D
     () => ({ rows: [], hasProfile: false }),
   );
 }
+
+export interface ExchangeQuota {
+  metric: "intro_requests" | "needs_open";
+  used: number;
+  quota: number;
+}
+
+/** Plan limits on the Exchange (DN-98). Empty when the plan sets none. */
+export async function getExchangeQuotas(orgSlug: string): Promise<Loaded<ExchangeQuota[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getExchangeQuotas");
+      const { data, error } = await db.rpc("exchange_quotas", { p_org: orgId });
+      if (error) throw new Error(`getExchangeQuotas: ${error.message}`);
+      return ((data ?? []) as Row[]).map((r) => ({
+        metric: r.metric === "needs_open" ? ("needs_open" as const) : ("intro_requests" as const),
+        used: Number(r.used),
+        quota: Number(r.quota),
+      }));
+    },
+    () => [],
+  );
+}

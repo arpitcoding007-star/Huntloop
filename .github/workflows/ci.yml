@@ -112,6 +112,10 @@ jobs:
       - name: Test — browser
         run: npx playwright test
 
+      # The same app against the real schema with row security on, in memory.
+      - name: Test — browser, signed in, isolated backend
+        run: npm run test:e2e:live
+
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

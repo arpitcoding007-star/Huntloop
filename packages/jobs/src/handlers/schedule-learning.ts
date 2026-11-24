@@ -35,6 +35,7 @@
  * — so it reliably enqueued work it had already decided to refuse.
  */
 import { enqueue } from "../queue.ts";
+import { inChunks } from "../in-chunks.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
@@ -114,12 +115,16 @@ export async function scheduleLearning(ctx: JobContext): Promise<JobOutcome> {
   /* When each candidate last ran. One query for all of them; `learning_runs`
      is the schedule of record, so there is no `next_analysis_at` column to
      drift out of agreement with it. */
-  const { data: runs } = await db
-    .from("learning_runs")
-    .select("org_id, created_at")
-    .in("org_id", candidates)
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const { data: runs, error: runsError } = await inChunks<{ org_id: string; created_at: string }>(candidates, (c) =>
+    db
+      .from("learning_runs")
+      .select("org_id, created_at")
+      .in("org_id", c)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+  );
+  /* Unread is not "never ran": that would analyse every workspace again. */
+  if (runsError) return { ok: false, error: `schedule_learning: ${runsError.message}` };
 
   const lastRun = new Map<string, string>();
   for (const row of (runs ?? []) as { org_id: string; created_at: string }[]) {

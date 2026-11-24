@@ -142,6 +142,9 @@ const LIMITS: Partial<Record<LimitedAction, Limit>> = {
      stays far inside these; a loop does not. */
   intake_classify: { perUser: 20, perOrg: 120, windowSeconds: 3600 },
   intake_turn: { perUser: 120, perOrg: 600, windowSeconds: 3600 },
+  /* One page per listing being written. Also bounds what the fetcher can be
+     pointed at from a form. */
+  read_supply_page: { perUser: 10, perOrg: 40, windowSeconds: 3600 },
   /* Setup, like `recommend_sources`, and tighter: a scoring policy is drafted
      once and then edited by hand. Opus at high effort with no fetching, so the
      cost per call is moderate — the reason for the low ceiling is that twenty

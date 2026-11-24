@@ -21,11 +21,15 @@ import { isEmailConfigured, sendEmail } from "../email/resend.ts";
 import { exchangeDigestEmail, exchangeNoticeEmail } from "../email/templates.ts";
 import { exchangeUnsubscribeToken } from "../email/exchange-token.ts";
 import { localTime } from "./send-digests.ts";
+import { inChunks } from "../in-chunks.ts";
 import { OrgScope } from "../scope.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export const MAX_INSTANT_ALERTS_PER_DAY = 5;
 const MAX_INSTANT_PER_TICK = 100;
+/* Read further than is sent: rows held for quiet hours are the oldest, and must
+   not be all a tick ever sees. */
+const INSTANT_READ = 1000;
 const MAX_DIGESTS_PER_TICK = 50;
 const DIGEST_ITEMS = 10;
 
@@ -99,17 +103,18 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
       .is("email_sent_at", null)
       .gte("created_at", instantSince)
       .order("created_at", { ascending: true })
-      .limit(MAX_INSTANT_PER_TICK),
+      .limit(INSTANT_READ),
     db
       .from("exchange_notifications")
       .select("id, org_id, user_id, kind, title, body, href, hot, created_at")
       .eq("channel", "digest")
       .is("email_sent_at", null)
       .gte("created_at", digestSince)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .limit(1000),
   ]);
   if (instantRes.error) return { ok: false, error: `send_exchange_notifications: ${instantRes.error.message}` };
+  if (digestRes.error) return { ok: false, error: `send_exchange_notifications: ${digestRes.error.message}` };
   const instant = (instantRes.data ?? []) as Row[];
   const digest = (digestRes.data ?? []) as Row[];
 
@@ -118,20 +123,27 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
   const orgIds = [...new Set([...instant, ...digest].map((r) => r.org_id))];
   const dayStart = `${ctx.now.toISOString().slice(0, 10)}T00:00:00Z`;
   const [profilesRes, prefsRes, orgsRes, sentTodayRes] = await Promise.all([
-    db.from("profiles").select("id, email").in("id", userIds),
-    db
-      .from("notification_preferences")
-      .select("org_id, user_id, exchange_alerts, exchange_emails, digest_hour, timezone, quiet_start_hour, quiet_end_hour, last_exchange_digest_on")
-      .in("user_id", userIds),
-    db.from("organizations").select("id, name, slug").in("id", orgIds),
-    db
-      .from("exchange_notifications")
-      .select("user_id")
-      .eq("kind", "match_alert")
-      .eq("channel", "instant")
-      .gte("email_sent_at", dayStart)
-      .in("user_id", userIds),
+    inChunks<{ id: string; email: string | null }>(userIds, (c) => db.from("profiles").select("id, email").in("id", c)),
+    inChunks<Pref & { org_id: string; user_id: string }>(userIds, (c) =>
+      db
+        .from("notification_preferences")
+        .select("org_id, user_id, exchange_alerts, exchange_emails, digest_hour, timezone, quiet_start_hour, quiet_end_hour, last_exchange_digest_on")
+        .in("user_id", c),
+    ),
+    inChunks<{ id: string; name: string; slug: string }>(orgIds, (c) => db.from("organizations").select("id, name, slug").in("id", c)),
+    inChunks<{ user_id: string }>(userIds, (c) =>
+      db
+        .from("exchange_notifications")
+        .select("user_id")
+        .eq("kind", "match_alert")
+        .eq("channel", "instant")
+        .gte("email_sent_at", dayStart)
+        .in("user_id", c),
+    ),
   ]);
+  /* Unread preferences are not the defaults: somebody may have said no. */
+  const unread = profilesRes.error ?? prefsRes.error ?? orgsRes.error ?? sentTodayRes.error;
+  if (unread) return { ok: false, error: `send_exchange_notifications: ${unread.message}` };
   const emails = new Map(((profilesRes.data ?? []) as { id: string; email: string | null }[]).map((p) => [p.id, p.email]));
   const prefs = new Map(((prefsRes.data ?? []) as (Pref & { org_id: string; user_id: string })[]).map((p) => [`${p.org_id}:${p.user_id}`, p]));
   const orgs = new Map(((orgsRes.data ?? []) as { id: string; name: string; slug: string }[]).map((o) => [o.id, o]));
@@ -157,6 +169,7 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
   let deferred = 0;
   let movedToDigest = 0;
   for (const row of instant) {
+    if (sent >= MAX_INSTANT_PER_TICK) break;
     const email = emails.get(row.user_id);
     if (!email) continue;
     const pref = prefs.get(`${row.org_id}:${row.user_id}`) ?? DEFAULT_PREF;
@@ -207,11 +220,17 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
 
   // Digests: one per person per workspace per local day.
   const groups = new Map<string, Row[]>();
+  /* Turned off since: taken out of the queue, so it does not fill the read. */
+  const off: string[] = [];
   for (const r of digest) {
     const k = `${r.org_id}:${r.user_id}`;
-    if (!allowedNow(r.kind, prefs.get(k) ?? DEFAULT_PREF)) continue;
+    if (!allowedNow(r.kind, prefs.get(k) ?? DEFAULT_PREF)) {
+      off.push(r.id);
+      continue;
+    }
     groups.set(k, [...(groups.get(k) ?? []), r]);
   }
+  await inChunks(off, (c) => db.from("exchange_notifications").update({ channel: "none" }).in("id", c));
   let digests = 0;
   for (const [k, rows] of groups) {
     if (digests >= MAX_DIGESTS_PER_TICK) break;
@@ -259,13 +278,10 @@ export async function sendExchangeNotifications(ctx: JobContext): Promise<JobOut
     });
     if (result.ok) {
       digests++;
-      await db
-        .from("exchange_notifications")
-        .update({ email_sent_at: ctx.now.toISOString() })
-        .in(
-          "id",
-          rows.map((r) => r.id),
-        );
+      await inChunks(
+        rows.map((r) => r.id),
+        (c) => db.from("exchange_notifications").update({ email_sent_at: ctx.now.toISOString() }).in("id", c),
+      );
     }
   }
 

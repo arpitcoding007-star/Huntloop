@@ -33,7 +33,7 @@ import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extrac
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
 import { enqueue } from "../src/queue.ts";
-import { contactAllowedAfter, sendMessage } from "../src/handlers/send-message.ts";
+import { bounceHealth, contactAllowedAfter, repliedSinceLastSend, sendMessage } from "../src/handlers/send-message.ts";
 import { preclassify } from "../src/mailbox/preclassify.ts";
 import { bareDomain, checkContent } from "../src/gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../src/business-hours.ts";
@@ -4842,6 +4842,36 @@ console.log("\nexchange matching — hard filters, named dimensions, unknown is 
   }
 }
 
+
+console.log("\nan unreadable check stops the send");
+{
+  const { client } = fakeClient({ "select:messages": { data: null, error: { message: "URI too long" } } });
+  const scope = new OrgScope(ORG_A, client);
+  await expectThrows("an unreadable reply is not silence", () => repliedSinceLastSend({ scope } as never, "p@x.test"), /unreadable/);
+  await expectThrows("an unreadable bounce count is not zero bounces", () => bounceHealth({ scope } as never, "box"), /unreadable/);
+
+  const saved = { RESEND_API_KEY: process.env.RESEND_API_KEY, EMAIL_FROM: process.env.EMAIL_FROM, NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL };
+  Object.assign(process.env, { RESEND_API_KEY: "re_synthetic", EMAIL_FROM: "a@x.test", NEXT_PUBLIC_SITE_URL: "https://x.test" });
+  const prefs = fakeClient({
+    "rpc:exchange_queue_notifications": { data: {}, error: null },
+    "select:exchange_notifications": { data: [{ id: "n", org_id: "o", user_id: "u", kind: "match_alert", title: "t", body: null, href: "/x", hot: true, created_at: "2026-11-24T00:00:00Z" }], error: null },
+    "select:profiles": { data: [{ id: "u", email: "u@x.test" }], error: null },
+    "select:organizations": { data: [], error: null },
+    "select:notification_preferences": { data: null, error: { message: "down" } },
+  });
+  setAdminClientForTests(prefs.client);
+  const realFetch = globalThis.fetch;
+  let sent = 0;
+  globalThis.fetch = (async () => ((sent += 1), new Response("{}"))) as typeof fetch;
+  try {
+    const out = await sendExchangeNotifications({ scope: OrgScope.global() as never, payload: {}, job: {} as never, now: new Date() });
+    expect("unread preferences are not the defaults: nobody is emailed", !out.ok && sent === 0, [out, sent]);
+  } finally {
+    globalThis.fetch = realFetch;
+    setAdminClientForTests(null);
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+}
 
 console.log("\nschedule_matching — queues what SQL says is due (0068, DN-59)");
 {

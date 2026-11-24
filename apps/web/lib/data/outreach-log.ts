@@ -1,4 +1,5 @@
 import "server-only";
+import { inChunks } from "../in-chunks";
 import { DEFAULT_QUIET_AFTER_BUSINESS_DAYS, parseOrgProfile } from "@huntloop/db/org-profile";
 import { outcomeOf, type ReachOutcome } from "../outreach-log/outcome";
 import { currentUserId, requireOrgId } from "./org";
@@ -129,12 +130,9 @@ export async function getOutreachLog(orgSlug: string, filters: LogFilters): Prom
       const memberIds = ((members.data ?? []) as any[]).map((m) => String(m.user_id));
       const [threads, profiles] = await Promise.all([
         messageIds.length
-          ? db
-              .from("messages")
-              .select("id, thread_id")
-              .eq("org_id", orgId)
-              .in("id", messageIds.slice(0, LIMIT))
-              .then((r) => new Map(((r.data ?? []) as any[]).map((m) => [String(m.id), m.thread_id as string | null])))
+          ? inChunks<any>(messageIds.slice(0, LIMIT), (c) =>
+              db.from("messages").select("id, thread_id").eq("org_id", orgId).in("id", c),
+            ).then((r) => new Map(r.data.map((m) => [String(m.id), m.thread_id as string | null])))
           : Promise.resolve(new Map<string, string | null>()),
         loadProfiles(db, [...memberIds, ...touches.map((t) => (t.actor_id ? String(t.actor_id) : ""))]),
       ]);

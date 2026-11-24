@@ -41,6 +41,7 @@ import { MailboxUnavailable, authorize, isSingleAddress, pickMailbox } from "../
 import { bareDomain, checkContent } from "../gate.ts";
 import { inBusinessHours, nextBusinessWindow, zoneForCountry } from "../business-hours.ts";
 import { isExchangeOrigin } from "../firewall.ts";
+import { inChunks } from "../in-chunks.ts";
 import type { JobContext, JobOutcome } from "../registry.ts";
 
 export interface SendPayload {
@@ -740,13 +741,16 @@ export async function repliedSinceLastSend(
   const { scope } = ctx;
   const email = address.toLowerCase();
 
-  const { data: lastOut } = await scope
+  /* Every read below fails the job rather than reading as "nothing": an unread
+     reply is not silence, and an unread bounce is not a delivery. */
+  const { data: lastOut, error: lastError } = await scope
     .select("messages", "sent_at")
     .eq("direction", "outbound")
     .eq("to_email", email)
     .not("sent_at", "is", null)
     .order("sent_at", { ascending: false })
     .limit(1);
+  if (lastError) throw new Error(`send_message: last send unreadable: ${lastError.message}`);
   const lastSent = rows<{ sent_at: string | null }>(lastOut)[0]?.sent_at ?? null;
   const times = [lastSent, approvedAt].filter((t): t is string => Boolean(t)).map((t) => new Date(t).getTime());
   const since = times.length ? new Date(Math.max(...times)).toISOString() : null;
@@ -757,7 +761,8 @@ export async function repliedSinceLastSend(
     .eq("from_email", email)
     .is("deleted_at", null);
   if (since) inbound = inbound.gt("sent_at", since);
-  const { data: replies } = await inbound.order("sent_at", { ascending: false }).limit(20);
+  const { data: replies, error: repliesError } = await inbound.order("sent_at", { ascending: false }).limit(20);
+  if (repliesError) throw new Error(`send_message: replies unreadable: ${repliesError.message}`);
   const ids = rows<{ id: string }>(replies).map((r) => String(r.id));
   if (!ids.length) return false;
 
@@ -783,30 +788,32 @@ export async function bounceHealth(
   const { scope } = ctx;
   const since = new Date(Date.now() - BOUNCE_WINDOW_DAYS * 86_400_000).toISOString();
 
-  const { data: sent } = await scope
+  const { data: sent, error: sentError } = await scope
     .select("messages", "id")
     .eq("mailbox_id", mailboxId)
     .eq("direction", "outbound")
     .gte("sent_at", since)
     .limit(1000);
+  if (sentError) throw new Error(`send_message: sends unreadable: ${sentError.message}`);
   const sends = rows(sent).length;
   if (sends < BOUNCE_MIN_SENDS) return { paused: false, sends, bounces: 0 };
 
   /* Bounce notices arrive as inbound messages on the same mailbox, and
      `applyClassification` marks each with a `bounced` event. */
-  const { data: inbound } = await scope
+  const { data: inbound, error: inboundError } = await scope
     .select("messages", "id")
     .eq("mailbox_id", mailboxId)
     .eq("direction", "inbound")
     .gte("sent_at", since)
     .limit(1000);
+  if (inboundError) throw new Error(`send_message: inbound unreadable: ${inboundError.message}`);
   const inboundIds = rows<{ id: string }>(inbound).map((r) => String(r.id));
   if (!inboundIds.length) return { paused: false, sends, bounces: 0 };
 
-  const { data: bounced } = await scope
-    .select("message_events", "message_id")
-    .in("message_id", inboundIds)
-    .eq("kind", "bounced");
+  const { data: bounced, error: bouncedError } = await inChunks<{ message_id: string }>(inboundIds, (c) =>
+    scope.select("message_events", "message_id").in("message_id", c).eq("kind", "bounced"),
+  );
+  if (bouncedError) throw new Error(`send_message: bounces unreadable: ${bouncedError.message}`);
   const bounces = new Set(rows<{ message_id: string }>(bounced).map((e) => String(e.message_id))).size;
 
   return { paused: bounces / sends > BOUNCE_LIMIT, sends, bounces };

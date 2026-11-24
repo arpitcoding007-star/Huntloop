@@ -276,3 +276,10 @@ export {
   type ExplainMatchOutput,
   type ExplainedCandidate,
 } from "./tasks/explain-match.ts";
+
+export {
+  MAX_SUPPLY_PAGE_CHARS,
+  readSupplyPage,
+  type ReadSupplyPageInput,
+  type ReadSupplyPageOutput,
+} from "./tasks/read-supply-page.ts";
