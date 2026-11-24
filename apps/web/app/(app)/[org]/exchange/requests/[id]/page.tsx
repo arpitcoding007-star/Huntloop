@@ -6,6 +6,7 @@ import { getNeed } from "../../../../../../lib/data/exchange";
 import { canWrite, currentViewer } from "../../../../../../lib/data/membership";
 import { formatMoney, placeLabel, STATUS_LABEL, timelineLabel } from "../../../../../../lib/exchange/format";
 import { uuidSchema } from "../../../../../../lib/validation";
+import { INTENT_LABEL } from "../../../../../../lib/exchange/intent";
 import { MatchList } from "./MatchList";
 import { NeedControls } from "./NeedControls";
 
@@ -45,10 +46,16 @@ export default async function RequestPage({ params }: { params: Promise<{ org: s
           <h1 className="hl-heading text-fg">{need.summary}</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
             {need.kind === "partner" ? "Looking for a partner" : "Looking to buy"} · filed{" "}
-            {new Date(need.createdAt).toLocaleDateString("en", { dateStyle: "medium" })}
+            {new Date(need.createdAt).toLocaleDateString("en", { dateStyle: "medium" })} · last confirmed{" "}
+            {new Date(need.lastConfirmedAt).toLocaleDateString("en", { dateStyle: "medium" })}
           </p>
         </div>
-        <Badge variant={need.status === "open" ? "success" : "neutral"}>{STATUS_LABEL[need.status] ?? need.status}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {need.intentBand && (
+            <Badge variant={need.intentBand === "hot" ? "brand" : "neutral"}>{INTENT_LABEL[need.intentBand]}</Badge>
+          )}
+          <Badge variant={need.status === "open" ? "success" : "neutral"}>{STATUS_LABEL[need.status] ?? need.status}</Badge>
+        </div>
       </header>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">

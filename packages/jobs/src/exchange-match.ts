@@ -14,6 +14,11 @@
  *
  * Money is compared only within one currency. There is no exchange-rate table
  * yet, so a EUR budget against a USD price is UNKNOWN, not guessed.
+ *
+ * `requirement` (DN-44) is the one dimension the model informs: the share of
+ * the buyer's must-haves backed by the supplier's published evidence, counted
+ * here from the model's citations (`applyExplanations`). Until a model has
+ * judged it, it is UNKNOWN.
  */
 
 export interface MatchNeed {
@@ -42,13 +47,15 @@ export interface MatchOffering {
   provider: { claimed_at: string | null; verified_at: string | null } | null;
 }
 
-export type DimensionKey = "category" | "geography" | "budget" | "quantity" | "availability" | "trust";
+export type DimensionKey = "category" | "geography" | "budget" | "quantity" | "availability" | "trust" | "requirement";
 
 export interface MatchResult {
   offeringId: string;
   score: number | null;
   dimensions: Record<DimensionKey, number | null>;
   explanation: string;
+  /** Evidence ids the explanation rests on (closed set, from `explain_match`). */
+  cited: string[];
 }
 
 export const AVAILABILITY_STALE_DAYS = 30;
@@ -66,6 +73,16 @@ export function eligible(need: MatchNeed, offering: MatchOffering): boolean {
 }
 
 const DAY_MS = 86_400_000;
+
+/**
+ * The plain mean of the measured dimensions. `category` is a hard filter,
+ * always 100, so it never counts as evidence of fit on its own.
+ */
+export function scoreOf(dimensions: Record<DimensionKey, number | null>): number | null {
+  const measured = Object.values(dimensions).filter((v): v is number => v !== null);
+  const informative = measured.length - 1;
+  return informative >= 2 ? Math.round(measured.reduce((a, b) => a + b, 0) / measured.length) : null;
+}
 
 export function scoreMatch(need: MatchNeed, offering: MatchOffering, now: Date): MatchResult {
   const reasons: string[] = [];
@@ -127,17 +144,15 @@ export function scoreMatch(need: MatchNeed, offering: MatchOffering, now: Date):
     quantity,
     availability,
     trust,
+    requirement: null,
   };
-  const measured = Object.values(dimensions).filter((v): v is number => v !== null);
-  // `category` is a hard filter, always 100, so it never counts as evidence.
-  const informative = measured.length - 1;
-  const score = informative >= 2 ? Math.round(measured.reduce((a, b) => a + b, 0) / measured.length) : null;
 
   return {
     offeringId: offering.id,
-    score,
+    score: scoreOf(dimensions),
     dimensions,
     explanation: reasons.length ? reasons.join(" · ") : "Same category; nothing else is known yet.",
+    cited: [],
   };
 }
 
@@ -146,4 +161,51 @@ export function rankMatches(results: MatchResult[]): MatchResult[] {
   return [...results]
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
     .slice(0, MAX_MATCHES_PER_NEED);
+}
+
+/** The model's judgement for one candidate (shape of `ExplainedCandidate`). */
+export interface Explained {
+  offeringId: string;
+  reason: string;
+  backing: { mustHave: string; evidenceId: string | null }[];
+}
+
+/**
+ * Folds `explain_match` into the deterministic results: the requirement
+ * dimension from the citations (UNKNOWN when there were no must-haves or the
+ * supplier published no evidence), the reason in front of the measured
+ * reasons, the cited ids, and the score recomputed with the new dimension.
+ * Candidates the model did not return are left exactly as they were.
+ */
+export function applyExplanations(
+  results: MatchResult[],
+  explained: Explained[],
+  mustHaves: number,
+  evidenceCount: Map<string, number>,
+): MatchResult[] {
+  const byId = new Map(explained.map((e) => [e.offeringId, e]));
+  return results.map((r) => {
+    const e = byId.get(r.offeringId);
+    if (!e) return r;
+    const evidence = evidenceCount.get(r.offeringId) ?? 0;
+    const backed = e.backing.filter((b) => b.evidenceId !== null);
+    const requirement = mustHaves === 0 || evidence === 0 ? null : Math.round((backed.length / mustHaves) * 100);
+    const dimensions = { ...r.dimensions, requirement };
+    const measured = r.explanation;
+    const requirementNote =
+      requirement === null ? null : `${backed.length} of ${mustHaves} must-haves backed by published evidence`;
+    return {
+      ...r,
+      dimensions,
+      score: scoreOf(dimensions),
+      explanation: [e.reason || null, requirementNote, measured].filter(Boolean).join(" · "),
+      cited: [...new Set(backed.map((b) => b.evidenceId!))],
+    };
+  });
+}
+
+/** Must-haves as the buyer wrote them: one per line, comma or semicolon. */
+export function splitMustHaves(text: string | null | undefined): string[] {
+  if (!text) return [];
+  return [...new Set(text.split(/[\n,;]+/).map((s) => s.trim()).filter((s) => s.length > 1))].slice(0, 8);
 }

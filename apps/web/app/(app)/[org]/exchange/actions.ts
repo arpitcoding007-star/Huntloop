@@ -22,6 +22,7 @@ import {
   NEED_STATUSES,
 } from "../../../../lib/exchange/requirement";
 import { uuidSchema } from "../../../../lib/validation";
+import { scoreIntent } from "../../../../lib/exchange/intent";
 
 /**
  * Exchange writes (0060), all through the session client — RLS decides who
@@ -268,6 +269,7 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
       visibility: v.visibility as 0 | 1 | 2 | 3,
     });
 
+    const intent = scoreIntent(category?.attributes ?? [], requirement, columns);
     const { data, error } = await db
       .from("exchange_needs")
       .insert({
@@ -277,6 +279,8 @@ export async function submitNeedAction(org: string, input: NeedSubmission): Prom
         summary: v.summary,
         requirement,
         ...columns,
+        intent_dimensions: intent.dimensions,
+        intent_band: intent.band,
         status: "open",
       })
       .select("id")
@@ -481,6 +485,7 @@ const offeringSchema = z
     serves_global: z.boolean(),
     serves_countries: z.array(z.string().regex(/^[A-Z]{2}$/, "Countries are two-letter codes, e.g. DE, US.")).max(250),
     status: z.enum(["draft", "active", "paused"]),
+    product_id: uuidSchema.nullable(),
   })
   .refine((o) => o.price_from === null || o.price_to === null || o.price_from <= o.price_to, {
     message: "The lowest price is above the highest.",
@@ -509,6 +514,7 @@ export async function saveOfferingAction(org: string, form: FormData): Promise<A
       .split(/[\s,]+/)
       .filter(Boolean),
     status: blank(form.get("status")) ?? "draft",
+    product_id: blank(form.get("product_id")),
   });
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "That offering could not be read.");
   const offeringId = blank(form.get("id"));
@@ -555,4 +561,117 @@ export async function deleteOfferingAction(org: string, offeringId: string): Pro
     revalidate(org);
     return ok(undefined, "Offering removed.");
   });
+}
+
+/** "Still needed": reopens a paused request and dates the confirmation (DN-63). */
+export async function reconfirmNeedAction(org: string, needId: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(needId);
+  if (!id.success) return fail("That request reference isn't valid.");
+  return mutate(org, "reconfirmNeed", async ({ db, orgId }) => {
+    const { data, error } = await db
+      .from("exchange_needs")
+      .update({ status: "open", last_confirmed_at: new Date().toISOString() })
+      .eq("id", id.data)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .in("status", ["open", "paused", "expired"])
+      .select("id")
+      .maybeSingle();
+    if (error) return fail(`That could not be confirmed: ${error.message}`);
+    if (!data) return fail("That request can no longer be reopened.");
+    revalidate(org);
+    return ok(undefined, "Confirmed — suppliers see it as current.");
+  });
+}
+
+const evidenceSchema = z
+  .object({
+    offering_id: uuidSchema,
+    claim: z.string().trim().min(3, "Say what the page shows.").max(500),
+    kind: z.enum(["fact", "inference"]),
+    source_url: z
+      .string()
+      .trim()
+      .max(2048)
+      .regex(/^https?:\/\//, "A source is a web address starting with https://")
+      .nullable(),
+    source_title: z.string().trim().max(200).nullable(),
+  })
+  .refine((e) => e.kind !== "fact" || e.source_url !== null, {
+    message: "A fact needs the page that shows it. Without one, save it as a claim.",
+  });
+
+/** Add public proof behind an offering (DN-26): an authorised-partner page, a price list. */
+export async function addEvidenceAction(org: string, form: FormData): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const parsed = evidenceSchema.safeParse({
+    offering_id: blank(form.get("offering_id")) ?? "",
+    claim: blank(form.get("claim")) ?? "",
+    kind: blank(form.get("kind")) ?? "fact",
+    source_url: blank(form.get("source_url")),
+    source_title: blank(form.get("source_title")),
+  });
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "That evidence could not be read.");
+  return mutate(org, "addEvidence", async ({ db }) => {
+    const { error } = await db.from("exchange_offering_evidence").insert(parsed.data);
+    if (error) return fail(`The evidence could not be saved: ${error.message}`);
+    revalidate(org);
+    return ok(undefined, "Evidence added. Matching reads it on the next run.");
+  });
+}
+
+export async function deleteEvidenceAction(org: string, evidenceId: string): Promise<ActionResult<undefined>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  const id = uuidSchema.safeParse(evidenceId);
+  if (!id.success) return fail("That evidence reference isn't valid.");
+  return mutate(org, "deleteEvidence", async ({ db, orgId }) => {
+    const { error } = await db.from("exchange_offering_evidence").delete().eq("id", id.data).eq("org_id", orgId);
+    if (error) return fail(`The evidence could not be removed: ${error.message}`);
+    revalidate(org);
+    return ok(undefined, "Evidence removed.");
+  });
+}
+
+/**
+ * Everything the Exchange holds about this workspace as a buyer (DN-69):
+ * requests as confirmed, their matches, this person's questionnaire
+ * transcripts, and who has seen each request. Read through the session, so
+ * it is exactly what RLS lets this person read.
+ */
+export async function exportExchangeDataAction(org: string): Promise<ActionResult<{ json: string }>> {
+  if (!isExchangeEnabled()) return fail(CLOSED);
+  return mutate(
+    org,
+    "exportExchangeData",
+    async ({ db, orgId }) => {
+      const [needs, matches, sessions, reveals] = await Promise.all([
+        db
+          .from("exchange_needs")
+          .select(
+            "id, kind, summary, requirement, quantity, unit, budget_max, currency, country, deliver_to, timeline, " +
+              "visibility, status, intent_band, intent_dimensions, created_at, last_confirmed_at, deleted_at",
+          )
+          .eq("org_id", orgId),
+        db.from("exchange_matches").select("need_id, score, dimensions, explanation, buyer_state, computed_at").eq("org_id", orgId),
+        db.from("exchange_intake_sessions").select("id, direction, requirement, transcript, turns, status, created_at, updated_at").eq("org_id", orgId),
+        db.from("exchange_reveal_log").select("need_id, viewer_name, level, what, day, views, first_seen_at, last_seen_at").eq("org_id", orgId),
+      ]);
+      const failed = [needs, matches, sessions, reveals].find((r) => r.error);
+      if (failed?.error) return fail(`The export could not be read: ${failed.error.message}`);
+      const json = JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          requests: needs.data ?? [],
+          matches: matches.data ?? [],
+          questionnaireTranscripts: sessions.data ?? [],
+          whoHasSeenYourRequests: reveals.data ?? [],
+        },
+        null,
+        2,
+      );
+      return ok({ json }, "Export ready.");
+    },
+    { minRole: "viewer" },
+  );
 }

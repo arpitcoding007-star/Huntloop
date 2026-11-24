@@ -53,6 +53,13 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
      failure here is reported in the result and does not stop retention. */
   const { data: prunedJobs, error: pruneJobsError } = await db.rpc("prune_job_executions", {});
 
+  /* DN-40: the Exchange's own schedule, for every workspace — removed
+     requests after 30 days, questionnaire transcripts after 30 (abandoned)
+     or 90 (finished) days, reveal-log rows after a year (0062). Not a
+     customer policy: it is what the privacy page promises. */
+  const { data: exchangePruned, error: exchangeError } = await db.rpc("exchange_prune", {});
+  const exchange = exchangeError ? `failed: ${exchangeError.message}` : (exchangePruned ?? null);
+
   const { data: orgs, error } = await db
     .from("organizations")
     .select("id, contact_retention_days")
@@ -66,7 +73,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
   if (!configured.length) {
     /* The common case on most deployments, and not worth an audit row or a
        failure. Nobody has asked for anything to be deleted. */
-    return { ok: true, result: { orgs: 0, removed: 0, jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0) } };
+    return { ok: true, result: { orgs: 0, removed: 0, jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0), exchange } };
   }
 
   let removed = 0;
@@ -112,6 +119,7 @@ export async function enforceRetention(_ctx: JobContext): Promise<JobOutcome> {
       orgs: configured.length,
       removed,
       jobs_pruned: pruneJobsError ? `failed: ${pruneJobsError.message}` : Number(prunedJobs ?? 0),
+      exchange,
       ...(failures.length ? { failures } : {}),
     },
   };

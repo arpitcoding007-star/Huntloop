@@ -2542,6 +2542,166 @@ console.log("\n0060/0061 — Exchange core: universal, global, buyer data stays 
   await db.exec("rollback");
 }
 
+console.log("\n0062 — Exchange: anonymous cards, reveal log, evidence, recall, retention");
+{
+  const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; // buyer workspace
+  const B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; // provider workspace
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const OWNER_B = "33333333-3333-3333-3333-333333333333";
+  const NEED = "62626262-0062-0062-0062-0000000000a1";
+  const PROV_B = "62626262-0062-0062-0062-0000000000b1";
+  const OFFER_B = "62626262-0062-0062-0062-0000000000c1";
+  const OFFER_B2 = "62626262-0062-0062-0062-0000000000c2";
+
+  const band = await db.query<{ q: string; b: string; r: string; s: string; n: string | null }>(`
+    select public.exchange_magnitude_band(200) as q, public.exchange_budget_band(6000000, 'EUR') as b,
+           public.exchange_region('DE') as r, public.exchange_magnitude_band(5) as s,
+           public.exchange_budget_band(10, null) as n`);
+  const bb = band.rows[0]!;
+  if (bb.q === "100–1K" && bb.b === "EUR 1M–10M" && bb.r === "Europe" && bb.s === "1–10" && bb.n === null) {
+    ok("a card shows bands, not amounts: 200 → 100–1K, EUR 6,000,000 → EUR 1M–10M, DE → Europe");
+  } else fail("bands", JSON.stringify(bb));
+
+  await db.exec("begin");
+  const leaf = (await db.query<{ id: string }>(`select id from exchange_categories where slug = 'gpus-accelerators'`)).rows[0]!.id;
+  await db.query(
+    `insert into exchange_needs (id, org_id, category_id, summary, quantity, currency, budget_max, country, visibility, requirement)
+     values ($1, $2, $3, 'Acme GmbH needs 200 H200 cards, call Jan on +49 170 000', 200, 'EUR', 6000000, 'DE', 2,
+             '{"must_haves": {"value": "authorised partner", "kind": "fact", "source": "answer"}}')`,
+    [NEED, A, leaf],
+  );
+  await db.query(
+    `insert into exchange_provider_profiles (id, org_id, name, country, claimed_at) values ($1, $2, 'Northwind Compute', 'DE', now())`,
+    [PROV_B, B],
+  );
+  await db.query(
+    `insert into exchange_offerings (id, provider_id, category_id, title, description, status, updated_at)
+     values ($1, $3, $4, 'Refurbished A100 servers', 'Older cards', 'active', now()),
+            ($2, $3, $4, 'H200 NVL cards, authorised partner', 'New H200 stock', 'active', now() - interval '1 day')`,
+    [OFFER_B, OFFER_B2, PROV_B, leaf],
+  );
+  await db.query(`insert into exchange_matches (need_id, offering_id, score) values ($1, $2, 80)`, [NEED, OFFER_B2]);
+
+  const recall = await db.query<{ id: string }>(`select * from public.exchange_recall_offerings($1, 10) as id`, [NEED]);
+  if (recall.rows[0]?.id === OFFER_B2) ok("recall ranks the offering that shares the need's words first, over a newer one");
+  else fail("recall ranks by shared words", JSON.stringify(recall.rows));
+
+  await expectRejectTx(db, "an intent band outside hot/warm/cool is refused", `update exchange_needs set intent_band = 'urgent' where id = $1`, [NEED]);
+  await expectRejectTx(
+    db,
+    "a fact with no source is refused as evidence",
+    `insert into exchange_offering_evidence (offering_id, claim, kind) values ($1, 'Authorised partner', 'fact')`,
+    [OFFER_B2],
+  );
+
+  await db.exec("set local role authenticated");
+
+  // Supplier side.
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  await db.query(
+    `insert into exchange_offering_evidence (offering_id, org_id, claim, kind, source_url)
+     values ($1, $2, 'Listed as an NVIDIA partner', 'fact', 'https://example.test/partners')`,
+    [OFFER_B2, A],
+  );
+  const ev = await db.query<{ org_id: string }>(`select org_id from exchange_offering_evidence where offering_id = $1`, [OFFER_B2]);
+  if (ev.rows[0]?.org_id === B) ok("evidence belongs to the offering's workspace, whatever was sent");
+  else fail("evidence follows the offering", JSON.stringify(ev.rows));
+
+  const cards = await db.query<{
+    need_id: string;
+    summary: string | null;
+    must_haves: string | null;
+    place: string;
+    quantity_band: string;
+    budget_band: string;
+  }>(`select * from public.exchange_matched_cards($1)`, [B]);
+  const c = cards.rows[0];
+  if (cards.rows.length === 1 && c?.quantity_band === "100–1K" && c.budget_band === "EUR 1M–10M") {
+    ok("a matched supplier sees a level-2 request as a card of bands");
+  } else fail("a level-2 card", JSON.stringify(cards.rows));
+  if (c && c.summary === null && c.must_haves === null) ok("and none of the buyer's own words below level 3 (names and numbers hide in text)");
+  else fail("no free text at level 2", JSON.stringify(c));
+  if (c?.place === "Worldwide") ok("with fewer than k requests in DE or Europe, the place widens to Worldwide");
+  else fail("place widens below k", JSON.stringify(c));
+  const ownLog = await db.query(`select id from exchange_reveal_log`);
+  if (ownLog.rows.length === 0) ok("the supplier cannot read the buyer's reveal log");
+  else fail("the supplier cannot read the reveal log", JSON.stringify(ownLog.rows));
+  await expectRejectTx(db, "a session cannot write the reveal log", `insert into exchange_reveal_log (need_id, org_id, level) values ($1, $2, 2)`, [NEED, A]);
+  await expectRejectTx(db, "a workspace cannot read another's cards", `select * from public.exchange_matched_cards($1)`, [A]);
+
+  // Buyer side.
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
+  const log = await db.query<{ viewer_name: string; level: number }>(`select viewer_name, level from exchange_reveal_log where need_id = $1`, [NEED]);
+  if (log.rows[0]?.viewer_name === "Northwind Compute" && log.rows[0].level === 2) ok("the buyer reads who saw the request, and at which level");
+  else fail("the buyer reads the reveal log", JSON.stringify(log.rows));
+  const seen = await db.query(`select id from exchange_offering_evidence where offering_id = $1`, [OFFER_B2]);
+  if (seen.rows.length === 1) ok("a buyer can read the evidence behind an active offering");
+  else fail("a buyer reads offering evidence", JSON.stringify(seen.rows));
+  await expectRejectTx(
+    db,
+    "a buyer cannot add evidence to another workspace's offering",
+    `insert into exchange_offering_evidence (offering_id, claim, kind) values ($1, 'Fake', 'inference')`,
+    [OFFER_B2],
+  );
+  await db.query(`update exchange_needs set visibility = 3 where id = $1`, [NEED]);
+
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const open = await db.query<{ summary: string | null; must_haves: string | null }>(`select * from public.exchange_matched_cards($1)`, [B]);
+  if (open.rows[0]?.summary && open.rows[0].must_haves === "authorised partner") ok("at level 3 the buyer's own words are shown");
+  else fail("level 3 shows free text", JSON.stringify(open.rows));
+  const again = await db.query<{ n: number }>(`select count(*)::int as n from public.exchange_matched_cards($1)`, [B]);
+  if (again.rows[0]?.n === 1) ok("a repeat view is counted, not duplicated");
+  else fail("repeat view", JSON.stringify(again.rows));
+
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_A]);
+  await db.query(`update exchange_needs set visibility = 1 where id = $1`, [NEED]);
+  const views = await db.query<{ views: number }>(`select views from exchange_reveal_log where need_id = $1`, [NEED]);
+  if (Number(views.rows[0]?.views) === 3) ok("every view is counted in the log (3)");
+  else fail("views are counted", JSON.stringify(views.rows));
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const hidden = await db.query(`select * from public.exchange_matched_cards($1)`, [B]);
+  if (hidden.rows.length === 0) ok("lowering a request to level 1 hides it on the supplier's next read");
+  else fail("lowering hides the card", JSON.stringify(hidden.rows));
+
+  await db.exec("reset role");
+
+  // k: ten open cards in the same category and country show the country.
+  await db.query(`update exchange_needs set visibility = 2 where id = $1`, [NEED]);
+  await db.query(
+    `insert into exchange_needs (org_id, category_id, summary, country, visibility)
+     select $1, $2, 'Another GPU request', 'DE', 2 from generate_series(1, 9)`,
+    [A, leaf],
+  );
+  await db.exec("set local role authenticated");
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [OWNER_B]);
+  const wide = await db.query<{ place: string }>(`select place from public.exchange_matched_cards($1)`, [B]);
+  if (wide.rows[0]?.place === "DE") ok("with k = 10 open requests sharing it, the country is shown");
+  else fail("country shown at k", JSON.stringify(wide.rows));
+  await db.exec("reset role");
+
+  // Retention.
+  await db.query(`update exchange_needs set deleted_at = now() - interval '31 days' where id = $1`, [NEED]);
+  await db.query(`insert into exchange_intake_sessions (org_id, user_id, direction) values ($1, $2, 'buy')`, [A, OWNER_A]);
+  await db.query(`alter table exchange_intake_sessions disable trigger exchange_intake_sessions_touch`);
+  await db.query(
+    `insert into exchange_intake_sessions (org_id, user_id, direction, updated_at) values ($1, $2, 'buy', now() - interval '45 days')`,
+    [A, OWNER_A],
+  );
+  await db.query(`alter table exchange_intake_sessions enable trigger exchange_intake_sessions_touch`);
+  const pruned = await db.query<{ r: { needs: number; intake_sessions: number } }>(`select public.exchange_prune() as r`);
+  const gone = await db.query(`select id from exchange_needs where id = $1`, [NEED]);
+  if (gone.rows.length === 0 && pruned.rows[0]!.r.needs >= 1) ok("a request removed more than 30 days ago is deleted, with its matches and log");
+  else fail("retention deletes removed requests", JSON.stringify(pruned.rows));
+  const left = await db.query<{ n: number }>(`select count(*)::int as n from exchange_intake_sessions`);
+  if (pruned.rows[0]!.r.intake_sessions === 1 && left.rows[0]!.n === 1) ok("an abandoned questionnaire is deleted after 30 days; a fresh one is kept");
+  else fail("retention prunes abandoned sessions only", JSON.stringify({ pruned: pruned.rows, left: left.rows }));
+
+  const probe = await db.query<{ v: boolean }>(`select public.migration_0062_applied() as v`);
+  if (probe.rows[0]?.v === true) ok("migration_0062_applied() exists for db:doctor");
+  else fail("migration_0062_applied() exists", JSON.stringify(probe.rows));
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

@@ -121,6 +121,7 @@ export {
 
 export {
   BANNED_PHRASES,
+  DeclaredDataRefused,
   MAX_BODY_CHARS,
   competitorMayBeNamed,
   findBannedPhrase,
@@ -264,3 +265,14 @@ export {
   type IntakeTurnInput,
   type IntakeTurnOutput,
 } from "./tasks/intake-turn.ts";
+
+export {
+  MAX_EXPLAIN_CANDIDATES,
+  MAX_MUST_HAVES,
+  explainMatch,
+  requirementFit,
+  type ExplainEvidence,
+  type ExplainMatchInput,
+  type ExplainMatchOutput,
+  type ExplainedCandidate,
+} from "./tasks/explain-match.ts";

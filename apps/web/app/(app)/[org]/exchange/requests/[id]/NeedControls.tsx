@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, ConfirmButton, Field, FormMessage, Select } from "@huntloop/ui";
-import { Pause, Play, Trash2 } from "lucide-react";
+import { CheckCircle2, Pause, Play, Trash2 } from "lucide-react";
 import { VISIBILITY } from "../../../../../../lib/exchange/requirement";
-import { deleteNeedAction, updateNeedAction } from "../../actions";
+import { deleteNeedAction, reconfirmNeedAction, updateNeedAction } from "../../actions";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
 
@@ -57,6 +57,11 @@ export function NeedControls({
           ) : (
             <Button size="sm" variant="secondary" icon={Play} disabled={pending} onClick={() => act(() => updateNeedAction(org, needId, { status: "open" }))}>
               Reopen
+            </Button>
+          )}
+          {(status === "open" || status === "paused" || status === "expired") && (
+            <Button size="sm" variant="secondary" icon={CheckCircle2} disabled={pending} onClick={() => act(() => reconfirmNeedAction(org, needId))}>
+              Still needed
             </Button>
           )}
           {status !== "fulfilled" && (

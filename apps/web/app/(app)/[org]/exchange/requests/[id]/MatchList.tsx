@@ -13,6 +13,7 @@ const DIMENSIONS: { key: DimensionKey; label: string }[] = [
   { key: "quantity", label: "Minimum order" },
   { key: "availability", label: "Availability" },
   { key: "trust", label: "Supplier trust" },
+  { key: "requirement", label: "Must-haves backed" },
 ];
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
@@ -126,6 +127,21 @@ function MatchCard({
         })}
       </ul>
       {m.explanation && <p className="mt-2 text-[12px] text-fg-muted">{m.explanation}</p>}
+      {m.cited.length > 0 && (
+        <ul className="mt-2 space-y-1 text-[12px]" aria-label="Evidence this match cites">
+          {m.cited.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center gap-2">
+              <Badge variant={e.kind === "fact" ? "success" : "neutral"}>{e.kind === "fact" ? "Published" : "Supplier says"}</Badge>
+              <span className="text-fg">{e.claim}</span>
+              {e.sourceUrl && (
+                <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="hl-focusable text-brand underline">
+                  {e.sourceTitle ?? "source"}
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {canWrite && (
         <div className="mt-3 flex flex-wrap gap-2">

@@ -43,9 +43,11 @@ export interface NeedSummary {
   createdAt: string;
   matches: number;
   shortlisted: number;
+  intentBand: "hot" | "warm" | "cool" | null;
+  lastConfirmedAt: string;
 }
 
-export type DimensionKey = "category" | "geography" | "budget" | "quantity" | "availability" | "trust";
+export type DimensionKey = "category" | "geography" | "budget" | "quantity" | "availability" | "trust" | "requirement";
 
 export interface MatchView {
   id: string;
@@ -66,6 +68,17 @@ export interface MatchView {
     servesCountries: string[];
   } | null;
   provider: { name: string; country: string | null; verified: boolean; claimed: boolean } | null;
+  /** The supplier evidence the explanation cites (0062), readable by the buyer. */
+  cited: EvidenceView[];
+}
+
+export interface EvidenceView {
+  id: string;
+  kind: "fact" | "inference" | "unknown";
+  claim: string;
+  sourceUrl: string | null;
+  sourceTitle: string | null;
+  observedAt: string;
 }
 
 export interface NeedDetail extends NeedSummary {
@@ -102,17 +115,32 @@ export interface OfferingView {
   servesCountries: string[];
   status: "draft" | "active" | "paused";
   updatedAt: string;
+  productId: string | null;
+  evidence: EvidenceView[];
 }
 
 export interface SupplierView {
   profile: ProviderProfile | null;
   offerings: OfferingView[];
+  /** This workspace's products, to prefill an offering from. */
+  products: { id: string; name: string; description: string | null; website: string | null }[];
 }
 
 type Row = Record<string, unknown>;
 const one = (v: unknown): Row | null => ((Array.isArray(v) ? v[0] : v) as Row | null | undefined) ?? null;
 const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+
+function toEvidence(e: Row): EvidenceView {
+  return {
+    id: String(e.id),
+    kind: (str(e.kind) ?? "unknown") as EvidenceView["kind"],
+    claim: String(e.claim),
+    sourceUrl: str(e.source_url),
+    sourceTitle: str(e.source_title),
+    observedAt: String(e.observed_at),
+  };
+}
 
 /** Every active category with its full path and attribute template, parents first. */
 export async function listExchangeCategories(): Promise<Loaded<ExchangeCategory[]>> {
@@ -151,7 +179,7 @@ export function toCategories(rows: Row[]): ExchangeCategory[] {
 
 const NEED_COLUMNS =
   "id, kind, summary, category_id, quantity, unit, budget_max, currency, country, deliver_to, timeline, " +
-  "visibility, status, created_at, requirement, exchange_categories(name, matching_enabled, attributes, parent_id)";
+  "visibility, status, created_at, last_confirmed_at, intent_band, requirement, exchange_categories(name, matching_enabled, attributes, parent_id)";
 
 function toNeedSummary(r: Row, categories: Map<string, ExchangeCategory>): NeedSummary {
   const cat = r.category_id ? categories.get(String(r.category_id)) : undefined;
@@ -175,6 +203,8 @@ function toNeedSummary(r: Row, categories: Map<string, ExchangeCategory>): NeedS
     createdAt: String(r.created_at),
     matches: matches.filter((m) => m.buyer_state !== "dismissed").length,
     shortlisted: matches.filter((m) => m.buyer_state === "shortlisted").length,
+    intentBand: (str(r.intent_band) as NeedSummary["intentBand"]) ?? null,
+    lastConfirmedAt: String(r.last_confirmed_at ?? r.created_at),
   };
 }
 
@@ -208,9 +238,10 @@ export async function getNeed(orgSlug: string, needId: string): Promise<Loaded<N
         db
           .from("exchange_needs")
           .select(
-            `${NEED_COLUMNS}, exchange_matches(id, score, dimensions, explanation, computed_at, buyer_state, ` +
+            `${NEED_COLUMNS}, exchange_matches(id, score, dimensions, explanation, cited, computed_at, buyer_state, ` +
               "exchange_offerings(title, description, price_from, price_to, currency, moq, availability, " +
-              "serves_global, serves_countries, exchange_provider_profiles(name, country, verified_at, claimed_at)))",
+              "serves_global, serves_countries, exchange_provider_profiles(name, country, verified_at, claimed_at), " +
+              "exchange_offering_evidence(id, kind, claim, source_url, source_title, observed_at)))",
           )
           .eq("id", needId)
           .eq("org_id", orgId)
@@ -228,6 +259,8 @@ export async function getNeed(orgSlug: string, needId: string): Promise<Loaded<N
         .map((m): MatchView => {
           const o = one(m.exchange_offerings);
           const p = o ? one(o.exchange_provider_profiles) : null;
+          const citedIds = new Set(Array.isArray(m.cited) ? (m.cited as unknown[]).map(String) : []);
+          const evidence = o && Array.isArray(o.exchange_offering_evidence) ? (o.exchange_offering_evidence as Row[]).map(toEvidence) : [];
           return {
             id: String(m.id),
             score: num(m.score),
@@ -251,6 +284,7 @@ export async function getNeed(orgSlug: string, needId: string): Promise<Loaded<N
             provider: p
               ? { name: String(p.name), country: str(p.country), verified: !!p.verified_at, claimed: !!p.claimed_at }
               : null,
+            cited: evidence.filter((e) => citedIds.has(e.id)),
           };
         })
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
@@ -270,7 +304,7 @@ export async function getSupplier(orgSlug: string): Promise<Loaded<SupplierView>
   return load(
     async (db) => {
       const orgId = await requireOrgId(orgSlug, "getSupplier");
-      const [profile, offerings, cats] = await Promise.all([
+      const [profile, offerings, cats, products] = await Promise.all([
         db
           .from("exchange_provider_profiles")
           .select("id, kind, name, domain, description, country, verified_at")
@@ -283,13 +317,15 @@ export async function getSupplier(orgSlug: string): Promise<Loaded<SupplierView>
           .from("exchange_offerings")
           .select(
             "id, title, description, category_id, price_model, price_from, price_to, currency, moq, availability, " +
-              "availability_as_of, serves_global, serves_countries, status, updated_at",
+              "availability_as_of, serves_global, serves_countries, status, updated_at, product_id, " +
+              "exchange_offering_evidence(id, kind, claim, source_url, source_title, observed_at)",
           )
           .eq("org_id", orgId)
           .is("deleted_at", null)
           .order("updated_at", { ascending: false })
           .limit(200),
         listExchangeCategories(),
+        db.from("products").select("id, name, description, website").eq("org_id", orgId).is("deleted_at", null).order("name").limit(100),
       ]);
       if (profile.error) throw new Error(`getSupplier: ${profile.error.message}`);
       if (offerings.error) throw new Error(`getSupplier: ${offerings.error.message}`);
@@ -324,10 +360,18 @@ export async function getSupplier(orgSlug: string): Promise<Loaded<SupplierView>
           servesCountries: Array.isArray(o.serves_countries) ? o.serves_countries.map(String) : [],
           status: (str(o.status) ?? "draft") as OfferingView["status"],
           updatedAt: String(o.updated_at),
+          productId: str(o.product_id),
+          evidence: (Array.isArray(o.exchange_offering_evidence) ? (o.exchange_offering_evidence as Row[]) : []).map(toEvidence),
+        })),
+        products: ((products.data ?? []) as Row[]).map((r) => ({
+          id: String(r.id),
+          name: String(r.name),
+          description: str(r.description),
+          website: str(r.website),
         })),
       };
     },
-    () => ({ profile: null, offerings: [] }),
+    () => ({ profile: null, offerings: [], products: [] }),
   );
 }
 
@@ -344,5 +388,97 @@ export async function countMyIntakeSessions(orgSlug: string): Promise<Loaded<num
       return count ?? 0;
     },
     () => 0,
+  );
+}
+
+/** An anonymous card, as `exchange_matched_cards` returns it (0062, spec §5). */
+export interface MatchedCard {
+  matchId: string;
+  needId: string;
+  offeringTitle: string;
+  categoryPath: string | null;
+  level: 2 | 3;
+  quantityBand: string | null;
+  budgetBand: string | null;
+  place: string | null;
+  timeline: Timeline | null;
+  summary: string | null;
+  mustHaves: string | null;
+  unit: string | null;
+  score: number | null;
+  computedAt: string;
+}
+
+/**
+ * The requests this workspace's offerings were matched to, as anonymous cards.
+ * Reading them is a reveal: each card is logged for the buyer by the database
+ * function itself, so there is no path that shows a card without logging it.
+ */
+export async function getMatchedCards(orgSlug: string): Promise<Loaded<MatchedCard[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getMatchedCards");
+      const [{ data, error }, cats] = await Promise.all([
+        db.rpc("exchange_matched_cards", { p_org: orgId }),
+        listExchangeCategories(),
+      ]);
+      if (error) throw new Error(`getMatchedCards: ${error.message}`);
+      const byId = new Map(cats.data.map((c) => [c.id, c.path]));
+      return ((data ?? []) as Row[]).map((r) => ({
+        matchId: String(r.match_id),
+        needId: String(r.need_id),
+        offeringTitle: String(r.offering_title ?? ""),
+        categoryPath: r.category_id ? (byId.get(String(r.category_id)) ?? null) : null,
+        level: (Number(r.level) >= 3 ? 3 : 2) as 2 | 3,
+        quantityBand: str(r.quantity_band),
+        budgetBand: str(r.budget_band),
+        place: str(r.place),
+        timeline: (str(r.timeline) as Timeline | null) ?? null,
+        summary: str(r.summary),
+        mustHaves: str(r.must_haves),
+        unit: str(r.unit),
+        score: num(r.score),
+        computedAt: String(r.computed_at),
+      }));
+    },
+    () => [],
+  );
+}
+
+export interface RevealEntry {
+  needId: string;
+  needSummary: string | null;
+  viewer: string | null;
+  level: number;
+  what: "card" | "intro";
+  day: string;
+  views: number;
+  lastSeenAt: string;
+}
+
+/** Who has seen this workspace's requests, newest first (DN-69). */
+export async function getRevealLog(orgSlug: string): Promise<Loaded<RevealEntry[]>> {
+  return load(
+    async (db) => {
+      const orgId = await requireOrgId(orgSlug, "getRevealLog");
+      const { data, error } = await db
+        .from("exchange_reveal_log")
+        .select("need_id, viewer_name, level, what, day, views, last_seen_at, exchange_needs(summary)")
+        .eq("org_id", orgId)
+        .order("last_seen_at", { ascending: false })
+        .limit(500);
+      if (error) throw new Error(`getRevealLog: ${error.message}`);
+      return ((data ?? []) as unknown as Row[]).map((r) => ({
+        needId: String(r.need_id),
+        needSummary: str(one(r.exchange_needs)?.summary),
+        viewer: str(r.viewer_name),
+        level: Number(r.level),
+        what: r.what === "intro" ? ("intro" as const) : ("card" as const),
+        day: String(r.day),
+        views: Number(r.views ?? 1),
+        lastSeenAt: String(r.last_seen_at),
+      }));
+    },
+    () => [],
   );
 }

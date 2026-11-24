@@ -3,10 +3,16 @@
 import { useState, useTransition } from "react";
 import { Badge, Button, Card, CardHeader, ConfirmButton, EmptyState, Field, FormMessage, Input, Note, Select, Textarea } from "@huntloop/ui";
 import { Package, Pencil, Plus, Trash2 } from "lucide-react";
-import type { ExchangeCategory, OfferingView, ProviderProfile } from "../../../../../lib/data/exchange";
+import type { EvidenceView, ExchangeCategory, OfferingView, ProviderProfile, SupplierView } from "../../../../../lib/data/exchange";
 import { AVAILABILITY_LABEL, formatPriceRange, placeLabel } from "../../../../../lib/exchange/format";
 import { COUNTRY_CODES, countryName, CURRENCIES } from "../../../../../lib/exchange/requirement";
-import { deleteOfferingAction, saveOfferingAction, saveProviderProfileAction } from "../actions";
+import {
+  addEvidenceAction,
+  deleteEvidenceAction,
+  deleteOfferingAction,
+  saveOfferingAction,
+  saveProviderProfileAction,
+} from "../actions";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
 
@@ -80,11 +86,13 @@ export function OfferingsEditor({
   org,
   offerings,
   categories,
+  products,
   canEdit,
 }: {
   org: string;
   offerings: OfferingView[];
   categories: ExchangeCategory[];
+  products: SupplierView["products"];
   canEdit: boolean;
 }) {
   const [editing, setEditing] = useState<OfferingView | "new" | null>(null);
@@ -111,6 +119,7 @@ export function OfferingsEditor({
             org={org}
             offering={editing === "new" ? null : editing}
             categories={categories}
+            products={products}
             onDone={(r) => {
               setResult(r);
               if (r?.ok) setEditing(null);
@@ -152,6 +161,7 @@ export function OfferingsEditor({
                     )}
                   </div>
                 </div>
+                <EvidenceEditor org={org} offeringId={o.id} evidence={o.evidence} canEdit={canEdit} />
                 {canEdit && (
                   <div className="mt-3 flex items-center gap-2">
                     <Button size="sm" variant="ghost" icon={Pencil} disabled={pending} onClick={() => setEditing(o)}>
@@ -186,18 +196,23 @@ function OfferingForm({
   org,
   offering,
   categories,
+  products,
   onDone,
   onCancel,
 }: {
   org: string;
   offering: OfferingView | null;
   categories: ExchangeCategory[];
+  products: SupplierView["products"];
   onDone: (r: Result) => void;
   onCancel: () => void;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<Result>(null);
   const [categoryId, setCategoryId] = useState(offering?.categoryId ?? "");
+  const [productId, setProductId] = useState(offering?.productId ?? "");
+  const [title, setTitle] = useState(offering?.title ?? "");
+  const [description, setDescription] = useState(offering?.description ?? "");
   const regulated = categories.find((c) => c.id === categoryId)?.regulated;
 
   return (
@@ -213,9 +228,35 @@ function OfferingForm({
       }
     >
       {offering && <input type="hidden" name="id" value={offering.id} />}
+      {products.length > 0 && (
+        <Field label="From one of your products" hint="Fills the title and description from what Huntloop already knows about it. Edit before saving.">
+          {(p) => (
+            <Select
+              {...p}
+              name="product_id"
+              value={productId}
+              onChange={(e) => {
+                setProductId(e.target.value);
+                const product = products.find((x) => x.id === e.target.value);
+                if (product) {
+                  if (!title.trim()) setTitle(product.name);
+                  if (!description.trim() && product.description) setDescription(product.description);
+                }
+              }}
+            >
+              <option value="">Not linked to a product</option>
+              {products.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Title" required>
-          {(p) => <Input {...p} name="title" defaultValue={offering?.title ?? ""} maxLength={200} />}
+          {(p) => <Input {...p} name="title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />}
         </Field>
         <Field label="Category">
           {(p) => (
@@ -236,7 +277,9 @@ function OfferingForm({
         </Note>
       )}
       <Field label="Description">
-        {(p) => <Textarea {...p} name="description" rows={3} defaultValue={offering?.description ?? ""} maxLength={4000} />}
+        {(p) => (
+          <Textarea {...p} name="description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={4000} />
+        )}
       </Field>
       <div className="grid gap-4 sm:grid-cols-4">
         <Field label="Pricing">
@@ -315,5 +358,116 @@ function OfferingForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Public proof behind one offering (DN-26). A "published" fact links the page
+ * that shows it; without a page it is saved as the supplier's own claim, and
+ * buyers see it labelled that way. Matching cites these against a buyer's
+ * must-haves.
+ */
+function EvidenceEditor({
+  org,
+  offeringId,
+  evidence,
+  canEdit,
+}: {
+  org: string;
+  offeringId: string;
+  evidence: EvidenceView[];
+  canEdit: boolean;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [pending, start] = useTransition();
+  const [result, setResult] = useState<Result>(null);
+  const [kind, setKind] = useState<"fact" | "inference">("fact");
+
+  return (
+    <div className="mt-3 border-t border-line-subtle pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12px] font-semibold text-fg-muted">
+          Evidence {evidence.length ? `(${evidence.length})` : "— none yet"}
+        </p>
+        {canEdit && !adding && (
+          <Button size="sm" variant="ghost" icon={Plus} onClick={() => setAdding(true)}>
+            Add evidence
+          </Button>
+        )}
+      </div>
+      {evidence.length > 0 && (
+        <ul className="mt-2 space-y-1 text-[12px]">
+          {evidence.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center gap-2">
+              <Badge variant={e.kind === "fact" ? "success" : "neutral"}>{e.kind === "fact" ? "Published" : "Your claim"}</Badge>
+              <span className="text-fg">{e.claim}</span>
+              {e.sourceUrl && (
+                <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="hl-focusable text-brand underline">
+                  {e.sourceTitle ?? "source"}
+                </a>
+              )}
+              {canEdit && (
+                <ConfirmButton
+                  size="sm"
+                  icon={Trash2}
+                  label={`Remove evidence: ${e.claim}`}
+                  confirmLabel="Remove"
+                  disabled={pending}
+                  pending={pending}
+                  onConfirm={() =>
+                    start(async () => {
+                      const res = await deleteEvidenceAction(org, e.id);
+                      setResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                    })
+                  }
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <form
+          className="mt-3 space-y-3"
+          action={(form) =>
+            start(async () => {
+              const res = await addEvidenceAction(org, form);
+              setResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+              if (res.ok) setAdding(false);
+            })
+          }
+        >
+          <input type="hidden" name="offering_id" value={offeringId} />
+          <Field label="What it shows" hint="e.g. Listed as an NVIDIA Elite partner; 3-year warranty on all cards.">
+            {(p) => <Input {...p} name="claim" maxLength={500} />}
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Kind">
+              {(p) => (
+                <Select {...p} name="kind" value={kind} onChange={(e) => setKind(e.target.value === "inference" ? "inference" : "fact")}>
+                  <option value="fact">Published on a page</option>
+                  <option value="inference">Our own claim</option>
+                </Select>
+              )}
+            </Field>
+            <Field label="Page address" hint={kind === "fact" ? "Required for a published fact." : "Optional."}>
+              {(p) => <Input {...p} name="source_url" inputMode="url" placeholder="https://" />}
+            </Field>
+            <Field label="Page title">
+              {(p) => <Input {...p} name="source_title" maxLength={200} />}
+            </Field>
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" variant="primary" disabled={pending} pending={pending ? "Saving…" : undefined}>
+              Save evidence
+            </Button>
+            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      <FormMessage result={result} className="mt-2" />
+    </div>
   );
 }
