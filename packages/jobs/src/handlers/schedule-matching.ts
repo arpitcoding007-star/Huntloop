@@ -3,10 +3,10 @@
  * "continuous matching").
  *
  * Hourly. Enqueues `match_needs` for open needs in categories where matching
- * is switched on, when the need has never been matched or was last matched
- * more than a day ago. New offerings are therefore picked up within a day
- * without a trigger on every offering write, and a newly opened category
- * matches its backlog on the next run.
+ * is switched on, when the need has never been matched, was last matched more
+ * than a day ago, or an offering in its category was listed or changed since
+ * (DN-59: a new supplier is matched on the next run, not the next day). A newly
+ * opened category matches its backlog on the next run.
  *
  * Bounded per run, and idempotent per need per day through the queue key.
  */
@@ -32,7 +32,7 @@ export async function scheduleMatching(ctx: JobContext): Promise<JobOutcome> {
 
   const { data: needs, error } = await db
     .from("exchange_needs")
-    .select("id, org_id, exchange_matches(computed_at)")
+    .select("id, org_id, category_id, exchange_matches(computed_at)")
     .eq("status", "open")
     .is("deleted_at", null)
     .in("category_id", enabled)
@@ -40,17 +40,35 @@ export async function scheduleMatching(ctx: JobContext): Promise<JobOutcome> {
     .limit(MAX_NEEDS_PER_RUN * 5);
   if (error) return { ok: false, error: `schedule_matching: ${error.message}` };
 
+  /* The newest offering change per category, within the window a daily match could have missed. */
+  const { data: changed, error: offeringError } = await db
+    .from("exchange_offerings")
+    .select("category_id, updated_at")
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .in("category_id", enabled)
+    .gte("updated_at", new Date(ctx.now.getTime() - 2 * DAY_MS).toISOString())
+    .order("updated_at", { ascending: false })
+    .limit(1000);
+  if (offeringError) return { ok: false, error: `schedule_matching: ${offeringError.message}` };
+  const newest = new Map<string, string>();
+  for (const o of (changed ?? []) as { category_id: string; updated_at: string }[]) {
+    if (!newest.has(o.category_id)) newest.set(o.category_id, o.updated_at);
+  }
+
   const day = ctx.now.toISOString().slice(0, 10);
   let enqueued = 0;
-  for (const need of (needs ?? []) as { id: string; org_id: string; exchange_matches: { computed_at: string }[] | null }[]) {
+  for (const need of (needs ?? []) as { id: string; org_id: string; category_id: string; exchange_matches: { computed_at: string }[] | null }[]) {
     if (enqueued >= MAX_NEEDS_PER_RUN) break;
     const latest = Math.max(0, ...(need.exchange_matches ?? []).map((m) => new Date(m.computed_at).getTime()));
-    if (latest && ctx.now.getTime() - latest < DAY_MS) continue;
+    const change = newest.get(need.category_id);
+    const fresh = change && new Date(change).getTime() > latest ? change : null;
+    if (latest && ctx.now.getTime() - latest < DAY_MS && !fresh) continue;
     const { created } = await enqueue({
       orgId: need.org_id,
       name: "match_needs",
       payload: { needId: need.id },
-      idempotencyKey: `match_needs:${need.id}:${day}`,
+      idempotencyKey: `match_needs:${need.id}:${latest && fresh ? fresh : day}`,
     });
     if (created) enqueued++;
   }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../../lib/data/audit";
 import { fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
 import { contactEmailSchema, parseForm } from "../../../../../lib/validation";
 
@@ -98,6 +99,8 @@ export async function exportContactAction(
       });
 
       if (error) return fail(`That export did not run: ${error.message}`);
+      /* Never the address: an audit log is not where a person's email should outlive them. */
+      await recordAudit(db, orgId, { action: "data.exported", targetType: "contact" });
 
       return ok(
         {
@@ -127,6 +130,7 @@ export async function exportOrganizationAction(
     async ({ db, orgId }) => {
       const { data, error } = await db.rpc("export_organization", { p_org: orgId });
       if (error) return fail(`That export did not run: ${error.message}`);
+      await recordAudit(db, orgId, { action: "data.exported", targetType: "organization", targetId: orgId });
 
       return ok(
         {

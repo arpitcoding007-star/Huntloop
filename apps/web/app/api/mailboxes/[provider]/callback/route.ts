@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../../lib/data/audit";
 import { encryptSecret, type TenantClient } from "@huntloop/db";
 import { providerFor, type ProviderId } from "@huntloop/jobs";
 import { currentViewer, canWrite } from "../../../../../lib/data/membership";
@@ -166,6 +167,7 @@ export async function GET(
     return refuse(origin, back, `That mailbox could not be saved: ${error.message}`);
   }
 
+  await recordAudit(db, viewer.orgId, { action: "mailbox.connected", targetType: "mailbox", meta: { provider } });
   revalidatePath(back);
 
   const url = new URL(back, origin);

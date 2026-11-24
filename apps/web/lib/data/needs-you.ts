@@ -136,7 +136,7 @@ async function withContext(db: TenantClient, orgId: string, items: RankedItem[])
 
   const { data, error } = await db
     .from("opportunities")
-    .select("id, why_now, why_now_written_at, companies(people(first_name, last_name, title, is_decision_maker, deleted_at))")
+    .select("id, why_now, why_now_written_at, primary_person_id, companies(people(id, first_name, last_name, title, is_decision_maker, deleted_at))")
     .eq("org_id", orgId)
     .in("id", ids);
   if (error || !data) return items;
@@ -146,13 +146,19 @@ async function withContext(db: TenantClient, orgId: string, items: RankedItem[])
     id: string;
     why_now: string | null;
     why_now_written_at: string | null;
+    primary_person_id: string | null;
     companies: { people: ContextPerson[] | null } | { people: ContextPerson[] | null }[] | null;
   }[]) {
     const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
     byId.set(String(row.id), {
       whyNow: oneLine(row.why_now),
       whyNowWrittenAt: row.why_now_written_at ?? null,
-      buyer: pickBuyer(company?.people ?? []),
+      /* PANEL-111: the person the opportunity names, so the two lines agree. */
+      buyer: pickBuyer(
+        (company?.people ?? []).some((p) => p.id === row.primary_person_id && !p.deleted_at)
+          ? (company?.people ?? []).filter((p) => p.id === row.primary_person_id)
+          : (company?.people ?? []),
+      ),
     });
   }
   return items.map((i) => {

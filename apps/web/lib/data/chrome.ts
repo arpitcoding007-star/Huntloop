@@ -41,10 +41,11 @@ export interface ShellChrome {
   /** The signed-in person. Null in demo mode, where there is nobody. */
   account: { name: string; email: string } | null;
   /**
+   * Null when it could not be read (PANEL-106): no badge, never a false zero.
    * How many "Needs you" items this person has, with their default filter.
    * The same number the dashboard rail shows, from the same cached call.
    */
-  needsYou: number;
+  needsYou: number | null;
   /** The Exchange section is shown only when the deployment flag is on. */
   exchange: boolean;
 }
@@ -62,7 +63,7 @@ export const getShellChrome = cache(async (orgSlug: string): Promise<ShellChrome
     /* A failure here costs the badge, never the shell: chrome renders on every
        page, and a sidebar that threw because a count did would take the whole
        workspace down with it. */
-    getDefaultNeedsYou(orgSlug).then((r) => r.data.items.length).catch(() => 0),
+    getDefaultNeedsYou(orgSlug).then((r) => r.data.items.length).catch(() => null),
   ]);
 
   const plan = org?.planId ? plans.find((p) => p.id === org.planId) : undefined;

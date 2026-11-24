@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../lib/data/audit";
 import { z } from "zod";
 import {
   completeness,
@@ -445,6 +446,7 @@ export async function saveProviderProfileAction(org: string, form: FormData): Pr
         });
         if (error) return fail(`The profile could not be created: ${error.message}`);
       }
+      await recordAudit(db, orgId, { action: "exchange.profile_updated", targetType: "exchange_provider_profile", targetId: profileId });
       revalidate(org);
       return ok(undefined, "Supplier profile saved.");
     },

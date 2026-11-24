@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../lib/data/audit";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { uuidSchema } from "../../../../lib/validation";
 
@@ -35,6 +36,7 @@ export async function retryJobAction(
     async ({ db, orgId }) => {
       const { data, error } = await db.rpc("retry_job", { p_org: orgId, p_job: id.data });
       if (error) return fail(`That job could not be retried: ${error.message}`);
+      if (data === true) await recordAudit(db, orgId, { action: "job.retried", targetType: "job", targetId: id.data });
 
       revalidatePath(`/${org}/ops`);
 
@@ -63,6 +65,7 @@ export async function cancelJobAction(
     async ({ db, orgId }) => {
       const { data, error } = await db.rpc("cancel_job", { p_org: orgId, p_job: id.data });
       if (error) return fail(`That job could not be cancelled: ${error.message}`);
+      if (data === true) await recordAudit(db, orgId, { action: "job.cancelled", targetType: "job", targetId: id.data });
 
       revalidatePath(`/${org}/ops`);
 

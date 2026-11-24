@@ -78,11 +78,12 @@ export async function askAgentAction(
       .from("evidence")
       .select("id, claim, kind, confidence, source_url, excerpt")
       .eq("org_id", orgId)
-      .eq("subject_type", "opportunity")
-      .eq("subject_id", id.data)
+      /* PANEL-110: the company's claims too. Triggers live there, and "why now" without them has nothing to say. */
+      .or(`and(subject_type.eq.opportunity,subject_id.eq.${id.data}),and(subject_type.eq.company,subject_id.eq.${opportunity.company_id})`)
       .is("deleted_at", null)
       .is("superseded_by", null)
-      .order("observed_at", { ascending: false });
+      .order("observed_at", { ascending: false })
+      .limit(60);
 
     const rows = (evidenceRows ?? []) as Record<string, unknown>[];
     const evidence: QualificationEvidence[] = rows.map((row) => ({
@@ -374,7 +375,7 @@ export async function refreshWhyNowAction(
 
     const { data: opportunity, error: readError } = await db
       .from("opportunities")
-      .select("id, priority, companies!inner(name, canonical_domain)")
+      .select("id, priority, company_id, companies!inner(name, canonical_domain)")
       .eq("id", id.data)
       .eq("org_id", orgId)
       .is("deleted_at", null)
@@ -387,11 +388,12 @@ export async function refreshWhyNowAction(
       .from("evidence")
       .select("claim, kind, confidence, source_url, excerpt")
       .eq("org_id", orgId)
-      .eq("subject_type", "opportunity")
-      .eq("subject_id", id.data)
+      /* PANEL-110: the company's claims too. Triggers live there, and "why now" without them has nothing to say. */
+      .or(`and(subject_type.eq.opportunity,subject_id.eq.${id.data}),and(subject_type.eq.company,subject_id.eq.${opportunity.company_id})`)
       .is("deleted_at", null)
       .is("superseded_by", null)
-      .order("observed_at", { ascending: false });
+      .order("observed_at", { ascending: false })
+      .limit(60);
 
     if (evidenceError) return fail(`The evidence could not be read: ${evidenceError.message}`);
 

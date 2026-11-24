@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { followActiveIcp } from "../../../../lib/data/engine";
+import { pauseState } from "@huntloop/db/pause";
+import { engineReadiness, followActiveIcp } from "../../../../lib/data/engine";
 import { fail, mutate, ok, type ActionResult } from "../../../../lib/data/org";
 import { limitRefusal } from "../../../../lib/rate-limit";
 import { orgSlugSchema, parseInput } from "../../../../lib/validation";
@@ -25,6 +26,14 @@ export async function huntNowAction(org: string): Promise<ActionResult<undefined
     const refused = await limitRefusal(orgId, "first_run_stage");
     if (refused) return fail(refused);
 
+    /* PANEL-105: nothing was checked, so it promised results from an engine
+       nobody drives, or from providers an operator had paused. */
+    if (!(await engineReadiness(db, orgId)).driven) {
+      return fail("Nothing is running the engine for this workspace yet, so a hunt would never start.");
+    }
+    const pause = await pauseState(db, "providers", orgId);
+    if (pause.paused) return fail(`Searching is paused by an operator: ${pause.reason}`);
+
     const result = await followActiveIcp(db, orgId, { runNow: true });
     if (!result.searching) {
       return fail(result.reason ?? "There is no search to run yet. Define a customer profile first.");
@@ -33,7 +42,7 @@ export async function huntNowAction(org: string): Promise<ActionResult<undefined
     revalidatePath(`/${slug.value}/dashboard`);
     return ok(
       undefined,
-      "Hunting. New companies arrive on the engine's next run, usually within a few minutes.",
+      "Hunting. New companies arrive on the engine's next run.",
     );
   });
 }

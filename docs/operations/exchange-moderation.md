@@ -94,3 +94,11 @@ select p.oid::regprocedure as function, r.rolname as role
 ```
 
 No rows means nothing is exposed. The functions also refuse a signed-in caller themselves, so a grant left behind is not on its own a way in.
+
+## Metrics
+
+```sql
+select * from public.exchange_metrics(30);
+```
+
+`value` is null when there is nothing to divide by. `of_total` is how many rows the value rests on: read a rate from fewer than 20 as an anecdote.

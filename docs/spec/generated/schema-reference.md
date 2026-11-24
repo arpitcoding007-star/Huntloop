@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 66 migrations
-> (`0001_identity.sql` … `0066_exchange_audit_fixes.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 67 migrations
+> (`0001_identity.sql` … `0067_exchange_completion.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 97 tables · 10 views · 196 public functions · 10 enum types · 169 RLS policies · 337 indexes · 159 triggers.
+**Totals:** 97 tables · 10 views · 202 public functions · 10 enum types · 169 RLS policies · 337 indexes · 160 triggers.
 
 **RLS enabled on:** 97 of 97 tables.
 
@@ -2668,6 +2668,7 @@ RLS: **enabled**
 **Triggers**
 
 - `memberships_guard_owner`
+- `memberships_seat_limit`
 - `memberships_touch`
 
 ## memories
@@ -4311,10 +4312,12 @@ RLS: **enabled**
 | `due_enrollments_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid) |  |
 | `due_sends_fair` | `p_now timestamp with time zone, p_limit integer` | TABLE(id uuid, org_id uuid, scheduled_at timestamp with time zone) |  |
 | `enforce_same_org_refs` |  | trigger | yes |
+| `enforce_seat_limit` |  | trigger | yes |
 | `engine_only_exposed` |  | TABLE(function_name text, role_name text) |  |
 | `enqueue_company_followups` |  | trigger | yes |
 | `erase_contact` | `p_org uuid, p_email text, p_actor uuid` | jsonb | yes |
 | `erase_contact_for_org` | `p_org uuid, p_email text` | jsonb | yes |
+| `exchange_attention` | `p_org uuid` | TABLE(kind text, intro_id uuid, title text, subject text, at timestamp with time zone) | yes |
 | `exchange_audit_intro` | `p_intro exchange_intros, p_action text, p_meta jsonb` | void | yes |
 | `exchange_budget_band` | `p_amount numeric, p_currency text` | text |  |
 | `exchange_card_k` |  | integer |  |
@@ -4336,6 +4339,7 @@ RLS: **enabled**
 | `exchange_market_demand` | `p_org uuid` | TABLE(category_id uuid, region text, open_requests bigint, new_30d bigint, hot bigint) | yes |
 | `exchange_match_guard` |  | trigger | yes |
 | `exchange_matched_cards` | `p_org uuid` | TABLE(match_id uuid, need_id uuid, offering_id uuid, offering_title text, category_id uuid, level smallint, quantity_band text, budget_band text, place text, timeline text, summary text, must_haves text, unit text, score smallint, computed_at timestamp with time zone) | yes |
+| `exchange_metrics` | `p_days integer` | TABLE(metric text, value numeric, of_total bigint, note text) | yes |
 | `exchange_my_reports` | `p_org uuid` | TABLE(id uuid, subject_type text, subject_id uuid, reason text, detail text, created_at timestamp with time zone) | yes |
 | `exchange_my_suspension` | `p_org uuid` | text | yes |
 | `exchange_need_declared` |  | trigger | yes |
@@ -4386,6 +4390,7 @@ RLS: **enabled**
 | `guard_organization_reserved` |  | trigger |  |
 | `handle_new_user` |  | trigger | yes |
 | `has_org_role` | `target_org uuid, min_role org_role` | boolean | yes |
+| `hubspot_status` | `p_org uuid` | TABLE(hub_id text, connected_at timestamp with time zone, last_synced_at timestamp with time zone, last_sync_error text, is_enabled boolean) | yes |
 | `increment_usage` | `p_org uuid, p_metric text, p_amount bigint` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
 | `increment_usage_internal` | `p_org uuid, p_metric text, p_amount bigint` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
 | `is_suppressed` | `p_org uuid, p_email text` | boolean |  |
@@ -4434,8 +4439,10 @@ RLS: **enabled**
 | `migration_0064_applied` |  | boolean |  |
 | `migration_0065_applied` |  | boolean |  |
 | `migration_0066_applied` |  | boolean |  |
+| `migration_0067_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
+| `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |
 | `platform_paused` | `p_scope text, p_org uuid` | text | yes |
 | `project_message_activity` |  | trigger | yes |
 | `project_message_event_activity` |  | trigger | yes |

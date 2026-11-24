@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAudit } from "../../../../../lib/data/audit";
 import { currentUserId, fail, mutate, ok, type ActionResult } from "../../../../../lib/data/org";
 import { parseForm, personalPreferenceSchema, uuidSchema } from "../../../../../lib/validation";
 import { HIGH_RISK_CATEGORIES, type PreferenceCategoryValue } from "../../../../../lib/learning/vocabulary";
@@ -317,6 +318,7 @@ export async function promotePreferenceAction(org: string, id: string): Promise<
         created_by: me,
       });
       if (error) return fail(`That could not be adopted: ${error.message}`);
+      await recordAudit(db, orgId, { action: "memory.adopted", targetType: "memory", targetId: String(id) });
       revalidate(org);
       revalidatePath(`/${org}/memory`);
       return ok(undefined, "Adopted. It now applies to everyone in this workspace.");

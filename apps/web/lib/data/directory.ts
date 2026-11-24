@@ -1,4 +1,5 @@
 import "server-only";
+import { recordAudit } from "./audit";
 import { resolveDataSource } from "./source";
 import { hasOnboardingSchema } from "./onboarding-schema";
 import { fail, mutate, ok, type ActionResult } from "./org";
@@ -210,9 +211,10 @@ export async function approveJoinRequest(
   return mutate(
     orgSlug,
     "approveJoinRequest",
-    async ({ db }) => {
+    async ({ db, orgId }) => {
       const { error } = await db.rpc("approve_join_request", { p_request: requestId });
       if (error) return fail(error.message.replace(/^.*?:\s*/, ""));
+      await recordAudit(db, orgId, { action: "member.join_approved", targetType: "join_request", targetId: requestId });
       return ok(undefined);
     },
     { minRole: "admin" },
@@ -239,6 +241,7 @@ export async function declineJoinRequest(
         .eq("status", "pending");
 
       if (error) return fail(`That request could not be declined: ${error.message}`);
+      await recordAudit(db, orgId, { action: "member.join_declined", targetType: "join_request", targetId: requestId });
       return ok(undefined);
     },
     { minRole: "admin" },

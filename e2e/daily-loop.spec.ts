@@ -159,6 +159,8 @@ test.describe("performance", () => {
     const res = await request.get(`/${ORG}/performance/export?period=30d&table=funnel`);
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("text/csv");
+    // Demo mode: the file names itself as examples (PANEL-314).
+    expect(res.headers()["content-disposition"]).toContain("EXAMPLE-FIGURES");
     const body = await res.text();
     expect(body.split(/\r?\n/)[0]).toBe("measure,this period,previous period");
   });

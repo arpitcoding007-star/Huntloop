@@ -60,6 +60,10 @@ const nextConfig: NextConfig = {
   // asks. It buys nothing and shortens the list of exploits worth trying.
   poweredByHeader: false,
 
+  /* PANEL-209: the import form takes 2 MB, and Next's default for a server
+     action is 1 MB. Room for the multipart envelope on top. */
+  experimental: { serverActions: { bodySizeLimit: "3mb" } },
+
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

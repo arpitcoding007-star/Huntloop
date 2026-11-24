@@ -104,6 +104,9 @@ export interface Assignment {
   ownerIsYou: boolean;
 }
 
+/** PANEL-109: bounded, and the pages that show it say when it is cut. */
+export const ASSIGNMENT_LIMIT = 1000;
+
 export async function listAssignments(orgSlug: string): Promise<Loaded<Assignment[]>> {
   return load(
     async (db) => {
@@ -119,7 +122,8 @@ export async function listAssignments(orgSlug: string): Promise<Loaded<Assignmen
         // recency breaks ties. Unassigned work should be triaged in the order
         // it would be worked, not in insertion order.
         .order("priority", { ascending: true })
-        .order("first_seen_at", { ascending: false });
+        .order("first_seen_at", { ascending: false })
+        .limit(ASSIGNMENT_LIMIT);
 
       if (error) throw new Error(`listAssignments: ${error.message}`);
 

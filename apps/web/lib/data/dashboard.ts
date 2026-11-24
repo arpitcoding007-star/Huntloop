@@ -110,7 +110,7 @@ export async function getDashboard(orgSlug: string): Promise<Loaded<Dashboard>> 
       const [counts, triggersLastDay, awaitingReview, whyNow, loop, outcomes, capacity, signals, sources] =
         await Promise.all([
           priorityCounts(db, orgId),
-          countRows(db, orgId, "company_triggers", (q) => q.gte("event_date", dayAgo)),
+          countRows(db, orgId, "company_triggers", (q) => q.gte("event_date", dayAgo).is("deleted_at", null)),
           countRows(db, orgId, "opportunities", (q) =>
             q.in("status", UNTRIAGED_STATUSES).is("deleted_at", null),
           ),
@@ -165,7 +165,9 @@ async function countRows(
     .from(table)
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId);
-  const { count } = await refine(base);
+  const { count, error } = await refine(base);
+  /* PANEL-106: an unread count is not zero. */
+  if (error) throw new Error(`getDashboard ${table}: ${error.message}`);
   return Number(count ?? 0);
 }
 
@@ -254,7 +256,7 @@ async function whyNowCards(db: TenantClient, orgId: string): Promise<WhyNow[]> {
 
   if (shortlist.length === 0) return [];
 
-  const { data: evidence } = await db
+  const { data: evidence, error: evidenceError } = await db
     .from("evidence")
     .select("subject_id, claim, kind, confidence, source_url, excerpt, event_date, observed_at")
     .eq("org_id", orgId)
@@ -266,6 +268,8 @@ async function whyNowCards(db: TenantClient, orgId: string): Promise<WhyNow[]> {
     .is("deleted_at", null)
     .is("superseded_by", null)
     .order("observed_at", { ascending: false });
+
+  if (evidenceError) throw new Error(`getDashboard evidence: ${evidenceError.message}`);
 
   const bySubject = new Map<string, EvidenceQueryRow[]>();
   for (const row of (evidence ?? []) as (EvidenceQueryRow & { subject_id: string })[]) {
@@ -313,13 +317,14 @@ async function outcomeCounts(db: TenantClient, orgId: string, since: string) {
 }
 
 async function sendingCapacity(db: TenantClient, orgId: string) {
-  const { data } = await db
+  const { data, error } = await db
     .from("mailboxes")
     .select("email, daily_limit, sent_today, sent_today_on, warmup_started_at, warmup_target")
     .eq("org_id", orgId)
     .eq("status", "connected")
     .is("deleted_at", null)
     .order("email", { ascending: true });
+  if (error) throw new Error(`getDashboard mailboxes: ${error.message}`);
 
   const today = new Date().toISOString().slice(0, 10);
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
@@ -334,13 +339,14 @@ async function sendingCapacity(db: TenantClient, orgId: string) {
 }
 
 async function signalsByType(db: TenantClient, orgId: string, since: string) {
-  const { data } = await db
+  const { data, error } = await db
     .from("company_triggers")
     .select("trigger_type")
     .eq("org_id", orgId)
     .gte("event_date", since)
     .is("deleted_at", null)
     .limit(1000);
+  if (error) throw new Error(`getDashboard signals: ${error.message}`);
 
   return tally(
     ((data ?? []) as Record<string, unknown>[]).map((r) => String(r.trigger_type ?? "unknown")),
@@ -355,7 +361,7 @@ async function signalsByType(db: TenantClient, orgId: string, since: string) {
  * let the product assert, not how many pages it was read from.
  */
 async function sourcePerformance(db: TenantClient, orgId: string, since: string) {
-  const { data } = await db
+  const { data, error } = await db
     .from("evidence")
     .select("sources(name)")
     .eq("org_id", orgId)
@@ -363,6 +369,7 @@ async function sourcePerformance(db: TenantClient, orgId: string, since: string)
     .gte("observed_at", since)
     .is("deleted_at", null)
     .limit(1000);
+  if (error) throw new Error(`getDashboard sources: ${error.message}`);
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
      One embedded relation, no generated type. */

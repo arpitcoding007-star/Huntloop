@@ -1065,6 +1065,101 @@ function check(phase, id, title, ok, sev, detail) {
   );
 }
 
+/* ── Phase 6 — Pass 20's other checks (C2–C10) ─────────────────────────── */
+
+{
+  const loaders = walk("apps/web/lib/data").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+
+  /* C2. A read whose error nobody looks at renders a failure as "nothing".
+     A ratchet: the count may fall, never rise. auth.getUser() is not a read. */
+  const C2_CEILING = 32;
+  const ignored = loaders.flatMap((f) =>
+    [...stripComments(read(f) ?? "").matchAll(/const \{ data(?:: \w+)? \} = await db\s*(\.\w+)/g)]
+      .filter((m) => m[1] !== ".auth")
+      .map(() => f),
+  );
+  check(6, "DATA-C2", "No loader gains a read whose error is never checked", ignored.length <= C2_CEILING, "fail",
+    `${ignored.length} unchecked reads, ceiling ${C2_CEILING}`);
+
+  /* C3. A worked example must never be saved as if the model had answered. */
+  const unsourced = walk("apps/web/app")
+    .filter((f) => /actions\.ts$/.test(f))
+    .filter((f) => {
+      const src = stripComments(read(f) ?? "");
+      return /from "[./]*lib\/ai\//.test(src) && /\.(insert|update|upsert)\(/.test(src) && !/\.source\b|\bsource\b.*live|\.live\b/.test(src);
+    });
+  check(6, "DATA-C3", "Every action that saves AI output asks whether it was live", unsourced.length === 0, "fail", unsourced.join("; "));
+
+  /* C4. The kind comes from the data. These four are legends, not claims. */
+  const LEGENDS = new Set([
+    "apps/web/app/(app)/[org]/analyze/Analyzer.tsx",
+    "apps/web/app/(app)/[org]/dashboard/page.tsx",
+    "apps/web/app/(app)/[org]/opportunities/[id]/AgentPanel.tsx",
+    "apps/web/app/kitchen-sink/page.tsx",
+  ]);
+  const literal = walk("apps/web/app").filter((f) => f.endsWith(".tsx") && !LEGENDS.has(f) && /<ClaimBadge kind="fact"/.test(read(f) ?? ""));
+  check(6, "TRUST-C4", "No screen hard-codes a claim as a fact", literal.length === 0, "fail", literal.join("; "));
+
+  /* C5. A table a screen reads must have a writer somewhere. */
+  const tablesRead = new Set(loaders.flatMap((f) => [...stripComments(read(f) ?? "").matchAll(/\.from\("(\w+)"\)/g)].map((m) => m[1])));
+  const code = [...walk("apps/web/app"), ...walk("apps/web/lib"), ...walk("packages/jobs/src"), ...walk("packages/ai/src"), ...walk("packages/providers/src"), ...walk("packages/crm/src")]
+    .filter((f) => /\.tsx?$/.test(f) && !f.includes(".test."))
+    .map((f) => stripComments(read(f) ?? ""))
+    .join("\n");
+  const sql = walk("packages/db/migrations").map((f) => read(f) ?? "").join("\n");
+  const unwritten = [...tablesRead].filter((t) => {
+    const written =
+      new RegExp(`from\\("${t}"\\)\\s*\\.(insert|update|upsert|delete)`).test(code) ||
+      new RegExp(`\\.(insert|update|upsert|delete)\\(\\s*"${t}"`).test(code) ||
+      new RegExp(`(insert into|update|delete from)\\s+(public\\.)?${t}\\b`, "i").test(sql) ||
+      new RegExp(`create (or replace )?view (public\\.)?${t}\\b`, "i").test(sql);
+    return !written;
+  });
+  check(6, "DATA-C5", "Every table a screen reads is written by something", unwritten.length === 0, "fail", unwritten.join(", "));
+
+  /* C6. An unbounded list is cut at PostgREST's cap without saying so. */
+  const C6_CEILING = 47;
+  const unbounded = loaders.flatMap((f) =>
+    [...stripComments(read(f) ?? "").matchAll(/\.from\("\w+"\)\s*\.select\([\s\S]*?(?=;|\n\s{6,}db\b|\]\))/g)]
+      .filter((m) => !/\.limit\(|\.range\(|head: true|\.single\(|\.maybeSingle\(/.test(m[0]))
+      .map(() => f),
+  );
+  check(6, "PERF-C6", "No loader gains an unbounded list", unbounded.length <= C6_CEILING, "warn",
+    `${unbounded.length} unbounded, ceiling ${C6_CEILING}`);
+
+  /* C7. An admin-only action is worth a line in the activity log. */
+  const unaudited = walk("apps/web/app")
+    .filter((f) => /actions\.ts$/.test(f))
+    .filter((f) => {
+      const src = stripComments(read(f) ?? "");
+      const admin = (src.match(/minRole: "admin"/g) ?? []).length;
+      const recorded = (src.match(/recordAudit\(/g) ?? []).length;
+      /* erase_contact writes its own entry in SQL (0017). */
+      const inSql = (src.match(/erase_contact_for_org|"erase_contact/g) ?? []).length;
+      return admin > 0 && recorded + inSql < admin;
+    });
+  check(6, "SEC-C7", "Every admin-only action is recorded in the activity log", unaudited.length === 0, "fail", unaudited.join("; "));
+
+  /* C8. */
+  const documented = new Set([...(read(".env.example") ?? "").matchAll(/^#?\s*([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1]));
+  /* Set by the platform, or an old name still accepted for an existing deployment. */
+  const PLATFORM = new Set(["NODE_ENV", "CI", "VERCEL_ENV", "VERCEL_REGION", "VERCEL_PROJECT_PRODUCTION_URL", "NEXT_PUBLIC_VERCEL_ENV", "NEXT_RUNTIME", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]);
+  const used = new Set(
+    [...walk("apps/web"), ...walk("packages")]
+      .filter((f) => /\.(ts|tsx|mjs)$/.test(f) && !f.includes("/scripts/") && !f.includes(".test."))
+      .flatMap((f) => [...stripComments(read(f) ?? "").matchAll(/process\.env\.([A-Z][A-Z0-9_]+)/g)].map((m) => m[1])),
+  );
+  const undocumented = [...used].filter((n) => !documented.has(n) && !PLATFORM.has(n));
+  check(6, "ENV-C8", "Every environment variable the code reads is in .env.example", undocumented.length === 0, "fail", undocumented.join(", "));
+
+  /* C9, C10 are tests; these fail when somebody deletes them. */
+  const jobsTests = read("packages/jobs/scripts/verify-jobs.ts") ?? "";
+  check(6, "TEST-C9", "Enrol, then start: released, and a full quota waits instead of stranding mail",
+    /PANEL-302/.test(jobsTests) && /PANEL-301/.test(read("apps/web/lib/data/outreach-release.test.ts") ?? ""), "fail", "the PANEL-301/302 scenarios are gone");
+  check(6, "TEST-C10", "A retired profile's searches are never claimed again",
+    /claim_due_discovery_queries/.test(read("packages/db/scripts/verify-migrations.ts") ?? ""), "fail", "no claim_due_discovery_queries assertion in verify-migrations.ts");
+}
+
 /* ── Phase 5 — The Exchange firewall stays wired (FW-01) ───────────────── */
 
 {

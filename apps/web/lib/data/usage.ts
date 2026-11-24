@@ -44,7 +44,11 @@ export async function checkQuota(
   orgId: string,
   metric: UsageMetric,
 ): Promise<Quota> {
-  const { data, error } = await db.rpc("check_quota", { p_org: orgId, p_metric: metric });
+  /* PANEL-402: seats are people, not a monthly counter (0067). */
+  const { data, error } =
+    metric === "seats"
+      ? await db.rpc("org_seats", { p_org: orgId })
+      : await db.rpc("check_quota", { p_org: orgId, p_metric: metric });
   if (error || !data) return UNKNOWN;
 
   const row = Array.isArray(data) ? data[0] : data;
@@ -66,11 +70,17 @@ export async function checkQuota(
  */
 export function quotaMessage(metric: UsageMetric, quota: Quota): string {
   const noun = NOUNS[metric];
+  if (metric === "seats") {
+    return (
+      `Your plan includes ${quota.limit?.toLocaleString() ?? "unlimited"} seats, and ${quota.used.toLocaleString()} are taken ` +
+      `by members and pending invitations. Remove a member or revoke an invitation, or contact support to change the plan.`
+    );
+  }
   return (
     `Your plan includes ${quota.limit?.toLocaleString() ?? "unlimited"} ${noun} a month, ` +
     `and this organisation has used ${quota.used.toLocaleString()}. ` +
     `This is a plan limit rather than a temporary one — it resets at the start of ` +
-    `next month, or an owner can change the plan under Settings → Billing.`
+    `next month. To change the plan, contact support.`
   );
 }
 

@@ -73,13 +73,15 @@ export async function askAssistantAction(
         .select("role, content")
         .eq("org_id", orgId)
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true })
+        /* PANEL-306: the last 40 turns, not the first. Role breaks the tie a question and its answer share. */
+        .order("created_at", { ascending: false })
+        .order("role", { ascending: true })
         .limit(40),
       getOnboardingState(org),
       gatherWorkspaceRecords(db, { orgSlug: org, orgId, userId, question: parsed.data, productId: conversation.productId }),
     ]);
 
-    const history = ((prior ?? []) as { role: string; content: string }[])
+    const history = [...((prior ?? []) as { role: string; content: string }[])].reverse()
       .filter((r) => r.role === "user" || r.role === "assistant")
       .map((r) => ({ role: r.role as "user" | "assistant", content: String(r.content) }));
 

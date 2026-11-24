@@ -2,6 +2,7 @@ import "server-only";
 import { writtenWith, type WrittenWith } from "./written-with";
 import { requireOrgId } from "./org";
 import { load, type Loaded } from "./source";
+import { draftBlocked } from "../inbox/draft-blocked";
 
 /**
  * The inbox — `threads`, `messages` and `message_events` from `0004`.
@@ -75,6 +76,9 @@ export interface Thread {
   awaitingUs: boolean;
 }
 
+/** How many conversations the inbox loads, newest first. */
+export const MAX_THREADS = 200;
+
 export async function listThreads(orgSlug: string): Promise<Loaded<Thread[]>> {
   return load(
     async (db) => {
@@ -93,7 +97,9 @@ export async function listThreads(orgSlug: string): Promise<Loaded<Thread[]>> {
         .is("deleted_at", null)
         // Newest conversation first: an inbox ordered any other way makes the
         // thing that just happened the thing you have to scroll for.
-        .order("last_message_at", { ascending: false, nullsFirst: false });
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        // PANEL-311: every thread with every message had no bound. The page says when it is cut.
+        .limit(MAX_THREADS);
 
       if (error) throw new Error(`listThreads: ${error.message}`);
       return (data ?? []).map(mapThread);
@@ -298,6 +304,8 @@ export interface Draft {
   opportunityId: string | null;
   company: string | null;
   campaign: string | null;
+  /** Why approving it would send nothing (PANEL-304), or null when it can go. */
+  blocked: string | null;
   /** The preferences it was written with (K2, `0044`); null before it. */
   writtenWith?: WrittenWith | null;
 }
@@ -311,8 +319,8 @@ export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
         .select(
           `id, subject, body_text, to_email, ai_generated, evidence_ids, created_at, edited_at,
            opportunity_id,
-           opportunities(id, companies(name)),
-           enrollments(opportunity_id, campaigns(name), opportunities(id, companies(name)))`,
+           opportunities(id, status, deleted_at, companies(name)),
+           enrollments(opportunity_id, status, deleted_at, campaigns(name, status, deleted_at), opportunities(id, status, deleted_at, companies(name)))`,
         )
         .eq("org_id", orgId)
         .eq("direction", "outbound")
@@ -342,6 +350,7 @@ export async function listDrafts(orgSlug: string): Promise<Loaded<Draft[]>> {
           opportunityId: opp?.id ? String(opp.id) : (row.opportunity_id ?? null),
           company: opp?.companies?.name ?? null,
           campaign: one(enrollment?.campaigns)?.name ?? null,
+          blocked: enrollment ? draftBlocked(enrollment) : null,
           writtenWith: applied.get(String(row.id)) ?? null,
         };
       });
@@ -370,5 +379,6 @@ const DEMO_DRAFTS: Draft[] = [
     opportunityId: null,
     company: "Alphio AI",
     campaign: "Agent governance — founders",
+    blocked: null,
   },
 ];

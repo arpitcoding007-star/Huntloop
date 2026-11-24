@@ -186,6 +186,14 @@ export async function researchCompanyJob(ctx: JobContext): Promise<JobOutcome> {
     );
   }
 
+  /* PANEL-217: research is new evidence too, and may name a competitor. */
+  await enqueue({
+    orgId: scope.orgId,
+    name: "resolve_competitor_mentions",
+    payload: { companyId },
+    idempotencyKey: `competitors:${companyId}`,
+  });
+
   // Research changes what the qualifier would conclude, so the verdict is
   // stale the moment this lands.
   await enqueue({

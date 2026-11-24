@@ -93,9 +93,13 @@ export async function getAssistantHistory(
         .select("id, role, content, citations, actions, created_at")
         .eq("org_id", orgId)
         .eq("conversation_id", conversation.id)
-        .order("created_at", { ascending: true })
+        /* PANEL-306: the newest turns, read newest first and turned round. The
+           question and its answer are written in one statement and share a
+           timestamp, so role breaks the tie ("assistant" < "user"). */
+        .order("created_at", { ascending: false })
+        .order("role", { ascending: true })
         .limit(60);
-      const rows = (data ?? []) as Record<string, unknown>[];
+      const rows = ((data ?? []) as Record<string, unknown>[]).reverse();
       const applied = await writtenWith(
         db,
         "conversation_messages",

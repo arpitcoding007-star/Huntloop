@@ -195,7 +195,7 @@ function RunSection({
         <Card>
           <CardBody>
             <p className="text-[13px] text-fg-muted">
-              Queued. It starts on the next engine tick.
+              Queued. It starts within an hour while the engine is running.
             </p>
           </CardBody>
         </Card>

@@ -7,7 +7,7 @@ import { ResearchThisButton } from "./ResearchThisButton";
 /**
  * The decision brief's company-level sections — COMMAND.md §16.3-C:
  * why they fit (computed from the profile, not written), what they use today
- * (competitor signals, each with its evidence), the problems and gaps research
+ * (competitor signals, each with its evidence), the problems research
  * recorded, and what would make the verdict firmer.
  *
  * Every line is sourced, computed, or labelled unknown.
@@ -148,10 +148,10 @@ export function WhatTheyUseCard({ org, intel }: { org: string; intel: CompanyInt
 }
 
 export function ProblemsCard({ intel }: { intel: CompanyIntel }) {
-  if (intel.problems.length === 0 && intel.gaps.length === 0) return null;
+  if (intel.problems.length === 0) return null;
   return (
     <Card flush>
-      <CardHeader title="Problems and gaps on file" description="Recorded by research, each with the page it came from." />
+      <CardHeader title="Problems on file" description="Recorded by research, each with the page it came from." />
       <CardBody className="space-y-4">
         {intel.problems.length > 0 && (
           <ul className="space-y-2">
@@ -160,17 +160,6 @@ export function ProblemsCard({ intel }: { intel: CompanyIntel }) {
                 <span className="text-fg">{p.text}</span>
                 {p.severity !== null && <span className="ml-2 text-[12px] text-fg-muted">severity {p.severity}</span>}
                 <SourceLine url={p.sourceUrl} excerpt={p.excerpt} />
-              </li>
-            ))}
-          </ul>
-        )}
-        {intel.gaps.length > 0 && (
-          <ul className="space-y-2">
-            {intel.gaps.map((g, i) => (
-              <li key={`g-${i}`} className="text-[13px]">
-                <span className="text-fg">{g.text}</span>
-                {g.detail && <p className="text-[12px] text-fg-muted">Today: {g.detail}</p>}
-                <SourceLine url={g.sourceUrl} excerpt={g.excerpt} />
               </li>
             ))}
           </ul>

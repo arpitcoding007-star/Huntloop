@@ -27,8 +27,12 @@ import {
   rejectDraftAction,
   replyToThreadAction,
   retrySendAction,
+  relabelThreadAction,
   setThreadStatusAction,
 } from "./actions";
+
+/** `classify_reply`'s labels; the action checks against the task's own list. */
+const REPLY_LABELS = ["positive", "neutral", "negative", "unsubscribe", "out_of_office", "bounce", "wrong_person"] as const;
 
 type Result = { ok: true; message?: string } | { ok: false; error: string } | null;
 type MemberOption = { userId: string; label: string };
@@ -224,9 +228,33 @@ function ThreadCard({
               <Badge variant={thread.status === "open" ? "brand" : "neutral"}>
                 {thread.status}
               </Badge>
-              {thread.classification && (
-                <Badge variant="neutral">{thread.classification}</Badge>
-              )}
+              {thread.classification &&
+                (canWrite ? (
+                  <label className="flex items-center gap-1 text-[12px] text-ai-text">
+                    <Sparkles className="size-3" strokeWidth={1.75} aria-hidden />
+                    <span className="sr-only">Huntloop read this reply as</span>
+                    <Select
+                      value={thread.classification}
+                      disabled={pending}
+                      className="mt-0 h-8 w-[150px]"
+                      title="How Huntloop read this reply. Change it if it is wrong."
+                      onChange={(e) =>
+                        start(async () => {
+                          const res = await relabelThreadAction(org, thread.id, e.target.value);
+                          onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                        })
+                      }
+                    >
+                      {REPLY_LABELS.map((l) => (
+                        <option key={l} value={l}>
+                          {l.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                ) : (
+                  <Badge variant="neutral">{thread.classification.replace(/_/g, " ")}</Badge>
+                ))}
               {thread.awaitingUs && <Badge variant="warning">Waiting on you</Badge>}
               {thread.hasFailure && <Badge variant="danger">Delivery failed</Badge>}
             </div>
@@ -583,11 +611,13 @@ function DraftCard({
             </Badge>
           )}
           {draft.edited && <Badge variant="neutral">Edited by a person</Badge>}
-          <Badge variant="warning">Awaiting approval</Badge>
+          <Badge variant={draft.blocked ? "danger" : "warning"}>{draft.blocked ? "Would not send" : "Awaiting approval"}</Badge>
           <span className="ml-auto">
             {draft.createdAt && <Freshness date={draft.createdAt} now={new Date(now)} label="" />}
           </span>
         </div>
+
+        {draft.blocked && <p className="text-[13px] text-danger">{draft.blocked}</p>}
 
         <div className="text-[12px] text-fg-muted">
           To <span className="font-mono text-fg-secondary">{draft.toEmail ?? "no address"}</span>

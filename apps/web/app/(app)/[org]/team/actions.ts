@@ -470,6 +470,7 @@ export async function resendInvitationAction(
         token: String(inv.token),
         expiresAt: String(inv.expires_at),
       });
+      if (sent) await recordAudit(db, orgId, { action: "member.invite_resent", targetType: "invitation", targetId: String(inv.id) });
       return sent
         ? ok(undefined, `Sent again to ${inv.email}.`)
         : fail("The email could not be sent. Copy the link and send it yourself.");

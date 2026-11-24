@@ -28,7 +28,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ org:
     ? (url.searchParams.get("table") as Table)
     : "segments";
 
-  const { data } = await getPerformance(org, period, url.searchParams.get("scope") === "mine" ? "mine" : "everyone");
+  const { data, source } = await getPerformance(org, period, url.searchParams.get("scope") === "mine" ? "mine" : "everyone");
+  /* PANEL-314: example figures say so in the file's own name. */
+  const prefix = source === "live" ? "huntloop" : "huntloop-EXAMPLE-FIGURES";
   const p = data.performance;
   const rate = (r: number | null) => (r === null ? null : Math.round(r * 1000) / 10);
 
@@ -79,7 +81,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ org:
   return new Response(toCsv(header, rows), {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="huntloop-${org}-${table}-${period}.csv"`,
+      "content-disposition": `attachment; filename="${prefix}-${org}-${table}-${period}.csv"`,
       "cache-control": "no-store",
     },
   });

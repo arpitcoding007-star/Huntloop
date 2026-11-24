@@ -111,14 +111,37 @@ export function OpsBoard({
             </Card>
           )}
 
+          {snapshot.pauses.length > 0 && (
+            <Card>
+              <CardBody>
+                <p className="text-[13px] font-medium text-fg">Paused by an operator</p>
+                {snapshot.pauses.map((p) => (
+                  <p key={p.scope} className="mt-1 max-w-[70ch] text-[12px] text-fg-muted">
+                    {{ sends: "Sending email", ai: "AI work", providers: "Paid data lookups" }[p.scope]}: {p.reason}
+                  </p>
+                ))}
+              </CardBody>
+            </Card>
+          )}
+
+          {snapshot.unreadable.length > 0 && (
+            <Card>
+              <CardBody>
+                <p role="status" className="text-[13px] text-warning-text">
+                  Could not read: {snapshot.unreadable.join(", ")}. What is shown below for them is missing, not empty.
+                </p>
+              </CardBody>
+            </Card>
+          )}
+
           <StatGrid>
             <StatCard label="Queued" value={String(queued)} hint={describeBacklog(oldest)} />
             <StatCard label="Running" value={String(running)} />
             <StatCard
               label="Given up on"
-              value={String(snapshot.dead.length)}
+              value={snapshot.unreadable.includes("failures") ? "Unknown" : String(snapshot.dead.length)}
               tone={snapshot.dead.length > 0 ? "warning" : undefined}
-              hint={snapshot.dead.length > 0 ? "listed below" : "nothing failed"}
+              hint={snapshot.unreadable.includes("failures") ? "could not be read" : snapshot.dead.length > 0 ? "listed below" : "nothing failed"}
             />
             <StatCard
               label="Last tick"
@@ -135,7 +158,7 @@ export function OpsBoard({
             </p>
 
             <div className="mt-3 space-y-3">
-              {snapshot.dead.length === 0 ? (
+              {snapshot.unreadable.includes("failures") ? null : snapshot.dead.length === 0 ? (
                 <EmptyState
                   icon={Activity}
                   title="Nothing has failed"
@@ -224,29 +247,6 @@ export function OpsBoard({
               </table>
             </ScrollRegion>
           </section>
-
-          {snapshot.pressure?.shareOfQueue !== null &&
-            snapshot.pressure !== null &&
-            snapshot.pressure.shareOfQueue !== undefined &&
-            snapshot.pressure.shareOfQueue > 0.8 &&
-            queued > 50 && (
-              /* `0019` names this as the scaling failure discovery makes likely:
-                 one org's backlog is claimed ahead of everybody else's because
-                 `claim_job_executions` orders by `run_at`. Nothing is broken and
-                 nothing alerts — so it is said out loud here. */
-              <Card>
-                <CardBody>
-                  <p className="text-[13px] font-medium text-fg">
-                    This organisation is most of the queue
-                  </p>
-                  <p className="mt-1 max-w-[70ch] text-[12px] text-fg-muted">
-                    {Math.round(snapshot.pressure.shareOfQueue * 100)}% of everything currently
-                    queued belongs to this organisation. Work is claimed oldest-first across all
-                    tenants, so a backlog this shape delays everyone else until it drains.
-                  </p>
-                </CardBody>
-              </Card>
-            )}
 
           {/* Providers, last 24 hours (0019 provider_health). A failure rate is
               over calls actually made — cache hits and refusals are not

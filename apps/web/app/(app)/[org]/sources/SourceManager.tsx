@@ -20,6 +20,7 @@ import { AlertTriangle, Pause, Plus, RefreshCw, Save, Sparkles, Trash2 } from "l
 import type { HuntSource, HuntSources, SourceStatus } from "../../../../lib/data/hunt-source";
 import type { SourceInput } from "./actions";
 import {
+  adoptFeedAction,
   deleteSourceAction,
   restoreSourceAction,
   saveSourceAction,
@@ -162,7 +163,9 @@ export function SourceManager({
                     );
                     const failed = outcomes.find((o) => !o.ok);
                     if (failed && !failed.ok) {
-                      setResult({ ok: false, error: failed.error });
+                      const went = outcomes.filter((o) => o.ok && o.data.queued).length;
+                      const missed = outcomes.filter((o) => !o.ok).length;
+                      setResult({ ok: false, error: `${went} queued, ${missed} not: ${failed.error}` });
                       return;
                     }
                     const queued = outcomes.filter(
@@ -465,6 +468,27 @@ function SourceRow({
         </div>
         {source.lastError && (
           <p className="mt-1 text-[12px] text-fg-muted">{source.lastError}</p>
+        )}
+        {canWrite && (source.discoveredFeeds?.length ?? 0) > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
+            Its page offers a feed, which is read more reliably:
+            {source.discoveredFeeds!.map((feed) => (
+              <Button
+                key={feed}
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    const res = await adoptFeedAction(org, source.id, feed);
+                    onResult(res.ok ? { ok: true, message: res.message } : { ok: false, error: res.error });
+                  })
+                }
+              >
+                Use {feed.replace(/^https?:\/\//, "").slice(0, 60)}
+              </Button>
+            ))}
+          </div>
         )}
       </div>
 

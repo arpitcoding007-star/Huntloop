@@ -118,8 +118,16 @@ export async function POST(request: NextRequest) {
  * the same function at the same configured URL (`registrationPayload` says
  * why the URL never comes from the request).
  */
+let lastSync = 0;
+
 export async function PUT() {
   if (!isInngestConfigured()) return notFound();
+
+  /* PANEL-411: anyone may ask, so nobody may make this server call Inngest
+     more than once a minute (per instance). */
+  if (Date.now() - lastSync < 60_000) {
+    return NextResponse.json({ message: "Synced less than a minute ago. Try again shortly." }, { status: 429, headers: { ...PROTOCOL_HEADERS, "retry-after": "60" } });
+  }
 
   const endpoint = new URL("/api/inngest", siteUrl());
   const env = process.env.INNGEST_ENV?.trim();
@@ -150,6 +158,7 @@ export async function PUT() {
     );
   }
 
+  lastSync = Date.now();
   return NextResponse.json(
     { message: "Successfully registered", modified: Boolean(answer.modified) },
     { status: 200, headers: PROTOCOL_HEADERS },

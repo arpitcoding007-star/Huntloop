@@ -90,6 +90,8 @@ export default defineConfig({
       // No key means every AI wrapper returns its worked example instead of
       // calling a model. A browser suite must never be able to spend money.
       ANTHROPIC_API_KEY: "",
+      // The Exchange screens (DN-101). Off in production until it opens.
+      HUNTLOOP_EXCHANGE: "on",
     },
   },
 });
