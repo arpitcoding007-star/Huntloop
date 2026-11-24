@@ -5,6 +5,7 @@ import { getOrganization } from "./organization";
 import { listPlans } from "./plans";
 import { getDefaultNeedsYou } from "./needs-you";
 import { load } from "./source";
+import { isExchangeEnabled } from "../exchange/flag";
 
 /**
  * What the app shell itself needs to render — as opposed to what any one
@@ -44,6 +45,8 @@ export interface ShellChrome {
    * The same number the dashboard rail shows, from the same cached call.
    */
   needsYou: number;
+  /** The Exchange section is shown only when the deployment flag is on. */
+  exchange: boolean;
 }
 
 /**
@@ -81,6 +84,7 @@ export const getShellChrome = cache(async (orgSlug: string): Promise<ShellChrome
           },
     account: session,
     needsYou,
+    exchange: isExchangeEnabled(),
   };
 });
 

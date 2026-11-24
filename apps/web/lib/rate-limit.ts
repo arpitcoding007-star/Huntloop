@@ -137,6 +137,11 @@ const LIMITS: Partial<Record<LimitedAction, Limit>> = {
      and a user who hits a wall on the screen that builds their ICP has hit it
      on the screen it costs most to abandon. */
   draft_icp: { perUser: 25, perOrg: 60, windowSeconds: 3600 },
+  /* The Exchange questionnaire. One classify per request and at most eight
+     turns (`MAX_INTAKE_TURNS`), so a person writing a few requests an hour
+     stays far inside these; a loop does not. */
+  intake_classify: { perUser: 20, perOrg: 120, windowSeconds: 3600 },
+  intake_turn: { perUser: 120, perOrg: 600, windowSeconds: 3600 },
   /* Setup, like `recommend_sources`, and tighter: a scoring policy is drafted
      once and then edited by hand. Opus at high effort with no fetching, so the
      cost per call is moderate — the reason for the low ceiling is that twenty

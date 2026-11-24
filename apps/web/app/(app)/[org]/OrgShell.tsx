@@ -15,7 +15,12 @@ import type { ShellChrome } from "../../../lib/data/chrome";
 import { AccountMenu } from "./AccountMenu";
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
+  ClipboardList,
+  Lock,
+  MessageSquarePlus,
+  Store,
   Coins,
   Brain,
   Building,
@@ -233,6 +238,25 @@ export function OrgShell({
         { label: "Prospect demand", href: `/${org}/demand`, icon: Layers },
       ],
     },
+    /* The Exchange (build plan Phase 2), behind `HUNTLOOP_EXCHANGE`. Absent,
+       not greyed out, while the flag is off: a section nobody can use yet is
+       a promise the product has not made. */
+    ...(chrome.exchange
+      ? [
+          {
+            id: "exchange",
+            label: "Exchange",
+            description: "Say what you need, and see who can supply it.",
+            icon: ArrowLeftRight,
+            items: [
+              { label: "My requests", href: `/${org}/exchange`, icon: ClipboardList },
+              { label: "New request", href: `/${org}/exchange/new`, icon: MessageSquarePlus },
+              { label: "Supplier profile", href: `/${org}/exchange/supplier`, icon: Store },
+              { label: "Exchange privacy", href: `/${org}/exchange/privacy`, icon: Lock },
+            ],
+          } satisfies NavSection,
+        ]
+      : []),
     {
       id: "company",
       label: "Company",
