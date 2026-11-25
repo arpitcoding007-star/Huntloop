@@ -144,6 +144,16 @@ test.describe("accessibility", () => {
     test(`${name} passes contrast in ${theme}`, async ({ page }) => {
       await page.goto(path);
       await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+      // Switching theme fades every colour that has a transition. Measure where
+      // they land: mid-fade, the ratio belongs to neither theme.
+      await page.evaluate(() =>
+        Promise.allSettled(
+          document
+            .getAnimations()
+            .filter((a) => a instanceof CSSTransition)
+            .map((a) => a.finished),
+        ),
+      );
 
       const { violations } = await new AxeBuilder({ page })
         .withTags(TAGS)

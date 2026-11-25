@@ -16,6 +16,8 @@ production).
   `LIVE` in `(marketing)/page.tsx` controls the not-live-yet wording.
 
 ### Fixed
+- Signing in without an account no longer reports a wrong address, which also
+  revealed who has one. Limits and mail failures have their own messages.
 - Autonomy 2 (“Approve the first”) sent the first message without approval.
   It now waits for a person; follow-ups then send.
 - The website, onboarding and draft terms no longer say there is no autonomous mode.

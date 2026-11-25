@@ -18,9 +18,8 @@ import { DEMO_HOME } from "../../lib/demo";
  *
  * The error text never distinguishes "no such account" from "wrong details".
  * That distinction is an account-enumeration oracle: it lets anyone check
- * whether a given person is a Huntloop customer. The action returns one
- * message for every failure so this component cannot leak the difference even
- * by accident.
+ * whether a given person is a Huntloop customer. `lib/sign-in-outcome.ts`
+ * answers both the same way, so this component cannot leak the difference.
  *
  * ── Why there is no Supabase client in this file ─────────────────────────
  *
@@ -119,20 +118,35 @@ function AuthFormBody({
         <Note tone="success">
           <p className="font-medium">Check your email</p>
           <p className="mt-1.5 text-fg-secondary">
-            If an account can be created or found for{" "}
+            {mode === "login"
+              ? "If there is an account for "
+              : "If an account can be created or found for "}
             <span className="text-fg">{state.email}</span>, a sign-in link is on
             its way. It expires in an hour.
           </p>
+          {mode === "login" && (
+            <p className="mt-1.5 text-fg-secondary">
+              Nothing after a few minutes? Check spam, try again later, or{" "}
+              <Link
+                href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
+                className="hl-focusable rounded-sm text-brand-text underline underline-offset-2"
+              >
+                create an account
+              </Link>
+              .
+            </p>
+          )}
           {resent && (
             <p className="mt-1.5 text-fg-secondary">
-              Sent again. Only the newest link works.
+              Asked again. One link can be sent per minute, and only the newest
+              works.
             </p>
           )}
         </Note>
         <div className="flex flex-wrap items-center gap-2">
           {/* The same submission again. Supabase allows one email per address
-              per minute; a resend inside that window comes back as the
-              generic error below, which is the honest answer. */}
+              per minute, which is why the line above claims a request rather
+              than a delivery. */}
           <form action={formAction} onSubmit={() => setResent(true)}>
             <input type="hidden" name="mode" value={mode} />
             <input type="hidden" name="next" value={next} />
