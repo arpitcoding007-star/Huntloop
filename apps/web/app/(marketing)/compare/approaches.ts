@@ -114,32 +114,32 @@ export const APPROACHES: readonly Approach[] = [
     label: "An autonomous AI SDR",
     labelInSentence: "an autonomous AI SDR",
     title: "Huntloop compared to an autonomous AI SDR",
-    headline: "It sends without you. Huntloop will not.",
+    headline: "It sends by default. Huntloop asks first.",
     subhead:
-      "That is the whole difference, and it is a real trade rather than a marketing distinction.",
+      "Campaigns start with nothing sending. An owner or admin decides, campaign by campaign, whether that changes.",
     strengths: {
       heading: "What an autonomous SDR is genuinely better at",
-      body: "Throughput per hour of human attention, which is not a small thing. If a system can find, research, write and send without stopping, it will contact more companies in a week than a person approving each message ever will. For a high-volume, low-consideration motion where the cost of a bad email rounds to zero, that arithmetic favours autonomy and Huntloop is the slower choice.",
+      body: "Throughput per hour of human attention, which is not a small thing. If a system can find, research, write and send without stopping, it will contact more companies in a week than a person approving each message ever will. For a high-volume, low-consideration motion where the cost of a bad email rounds to zero, that arithmetic favours autonomy, and approving each message in Huntloop is the slower choice.",
     },
     rows: [
       {
         question: "Who presses send?",
         other: "The system, on a schedule.",
         huntloop:
-          "A person, every time. There is no autonomous mode and adding one is not on the roadmap.",
+          "A person, unless an owner or admin turns on unattended sending for that campaign.",
       },
       {
         question: "What happens when it is confidently wrong?",
         other:
           "The email goes out. You find out from the reply, or from nothing at all.",
         huntloop:
-          "You see the claim, its label — fact, inference or unknown — and the page it came from, before anything is sent.",
+          "You see the claim, its label — fact, inference or unknown — and the page it came from, when you approve a message. Sent unattended, a message gets an automatic content check instead.",
       },
       {
         question: "Whose reputation is spending?",
         other: "Yours. The sending domain is your company's.",
         huntloop:
-          "Also yours, which is precisely why a person approves. Volume you did not read is a domain-reputation decision made on your behalf.",
+          "Also yours, which is why approval is the default. Unattended messages go only to verified addresses.",
       },
       {
         question: "How does it improve?",
@@ -149,7 +149,7 @@ export const APPROACHES: readonly Approach[] = [
       },
     ],
     chooseOther:
-      "If you are running high-volume outbound where a wrong email costs nothing and nobody has the hours to approve each one, autonomy is the honest fit. Huntloop will feel like friction, because for that motion it is.",
+      "If you are running high-volume outbound where a wrong email costs nothing and nobody has the hours to approve each one, autonomy is the honest fit. Huntloop can send unattended, but it is built around reading first and will feel like friction.",
   },
   {
     slug: "hiring-an-sdr",

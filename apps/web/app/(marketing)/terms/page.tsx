@@ -56,9 +56,10 @@ export default function TermsPage() {
       <Section title="What the service does">
         <p>
           Huntloop identifies companies that may be worth contacting, explains
-          why with cited evidence, and drafts outreach. It is a research and
-          drafting tool. It does not send anything on its own: a person
-          approves every message, and there is no autonomous sending mode.
+          why with cited evidence, and drafts outreach. It is a research,
+          drafting and sending tool. New campaigns do not send on their own: a person
+          approves each message unless an owner or administrator of the
+          workspace turns on unattended sending for a campaign.
         </p>
         <p>
           Huntloop&rsquo;s output includes inferences made by an AI model. They

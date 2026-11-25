@@ -73,8 +73,8 @@ export const USE_CASES: readonly UseCase[] = [
         body: "The dashboard a founder gets opens on what changed in your market this week and who is worth your next hour, because that is the only question you have time to ask.",
       },
       {
-        heading: "Nothing sends without you",
-        body: "Huntloop drafts. You approve. There is no autonomous mode, which matters more when the sender's name is also the company's.",
+        heading: "Nothing sends until you allow it",
+        body: "New campaigns only draft. You approve each message, unless you turn on unattended sending for a campaign. That choice matters more when the sender's name is also the company's.",
       },
     ],
     profile: [
@@ -118,7 +118,7 @@ export const USE_CASES: readonly UseCase[] = [
       { label: "Exclusions", value: "The titles that look right and never convert" },
     ],
     caveat:
-      "Huntloop will not send on a schedule without a person in the loop. If what you want is volume with nobody reading it, this is the wrong tool and will feel slow.",
+      "Huntloop starts with a person approving every message. An admin can let a campaign send unattended, but if what you want is volume with nobody reading it, this is the wrong tool and will feel slow.",
   },
   {
     slug: "agencies",

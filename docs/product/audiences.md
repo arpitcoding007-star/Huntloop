@@ -65,7 +65,7 @@ Asked at onboarding, because it changes what the product will offer:
 
 | Answer | What it means |
 |---|---|
-| `email` | Connect Gmail or Outlook; you approve every message before it sends |
+| `email` | Connect Gmail or Outlook; you approve each message unless a campaign is set to send unattended |
 | `manual` | Huntloop drafts, a human sends elsewhere |
 | `export` | Huntloop is a source of qualified rows for another system |
 | `undecided` | Nothing is assumed |

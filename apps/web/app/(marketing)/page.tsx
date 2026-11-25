@@ -64,8 +64,8 @@ import type { UseCase } from "./for/use-cases";
  * a competitor cannot copy by writing different words.
  *
  * So the page is not framed as an "AI SDR" — section 04 says so in as many
- * words. That promises autonomy the product deliberately does not take — a
- * person approves every message — and it invites the one comparison Huntloop
+ * words. That promises autonomy the product does not take by default — a
+ * person approves every message until an admin says otherwise — and it invites the one comparison Huntloop
  * loses.
  *
  * ── Where the build departs from the comp, and why ───────────────────────
