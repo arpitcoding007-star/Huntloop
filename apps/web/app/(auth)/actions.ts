@@ -6,6 +6,7 @@ import { createTenantClient } from "@huntloop/db";
 import { authModeSchema, emailSchema, parseInput } from "../../lib/validation";
 import { safeNextPath } from "../../lib/safe-next";
 import { authOrigin } from "../../lib/buyer-host";
+import { SIGN_IN_MESSAGES, signInOutcome } from "../../lib/sign-in-outcome";
 import { siteUrl } from "../../lib/site-url";
 import type { AuthFormState } from "./auth-state";
 
@@ -28,7 +29,7 @@ import type { AuthFormState } from "./auth-state";
  * report whether an address is already registered — that distinction lets
  * anyone check whether a given person is a Huntloop customer — so the success
  * path returns the same state either way and the failure path never echoes
- * Supabase's message.
+ * Supabase's message. `lib/sign-in-outcome.ts` decides which is which.
  *
  * ── Rate limiting ────────────────────────────────────────────────────────
  *
@@ -89,22 +90,16 @@ export async function sendMagicLink(
     },
   });
 
-  if (error) {
-    /*
-     * One message for every failure, and it does not say what went wrong.
-     *
-     * Supabase's own error text distinguishes "Signups not allowed for otp"
-     * (the address does not exist and this was a login) from a rate limit from
-     * a malformed address. Forwarding it would rebuild the account-enumeration
-     * oracle that the rest of this flow is careful to avoid — the copy on the
-     * success screen says "If an account can be created or found for…"
-     * precisely so that this branch can stay vague.
-     */
-    return {
-      status: "error",
-      message: "That didn't work. Check the address and try again.",
-      email: "",
-    };
+  const outcome = signInOutcome(error, mode.value);
+
+  // The code only: Supabase's message can carry the address. Without this a
+  // limit is invisible, because sign-in answers "sent".
+  if (error && error.code !== "otp_disabled") {
+    console.error("[auth] sign-in email not sent", error.code ?? "unknown", error.status ?? "");
+  }
+
+  if (outcome !== "sent") {
+    return { status: "error", message: SIGN_IN_MESSAGES[outcome], email: "" };
   }
 
   return { status: "sent", message: "", email: email.value };
