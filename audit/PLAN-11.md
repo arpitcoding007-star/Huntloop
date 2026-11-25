@@ -1,6 +1,6 @@
 # Eleventh pass — the Apollo era
 
-**Date** 2026-09-05 · **Driven by** [New_Aud.md](../New_Aud.md) · **Program** [audit/README.md](README.md) · **Prior state** [ROADMAP.md](ROADMAP.md) R0–R6 complete, [BACKLOG.md](BACKLOG.md) P0 empty in code
+**Date** 2026-09-05 · **Driven by** `New_Aud.md` (removed; see the `pre-cleanup` tag) · **Program** [audit/README.md](README.md) · **Prior state** [ROADMAP.md](ROADMAP.md) R0–R6 complete, [BACKLOG.md](BACKLOG.md) P0 empty in code
 
 This is the audit conclusion and the phased implementation plan that follows
 from it. It is deliberately not a second copy of the backlog: every item below

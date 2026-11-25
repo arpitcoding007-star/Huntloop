@@ -500,13 +500,6 @@ export const scoringRuleSchema = z.object({
   expression: z.unknown(),
 });
 
-/** A rating on one AI decision. See `0010`'s `ai_decisions.quality_rating`. */
-export const qualityRatingSchema = z.object({
-  decisionId: uuidSchema,
-  rating: z.enum(["excellent", "good", "average", "poor"]),
-  note: z.string().trim().max(1000).optional().or(z.literal("")),
-});
-
 /**
  * A memory ingested from somewhere rather than typed.
  *
@@ -838,17 +831,6 @@ export const firstJobSchema = z
  * optional because a blank is an honest "not stated", which the drafter
  * already handles, and a required field would only invite filler.
  */
-const answer = z.string().trim().max(1000, "Keep it under 1,000 characters.");
-
-export const describeCompanySchema = z.object({
-  companyName: z.string().trim().min(1, "What's the company called?").max(200),
-  website: z.string().trim().max(2048).optional().default(""),
-  sells: answer.min(10, "Say what you sell in a sentence — everything after this is built from it."),
-  buyers: answer.optional().default(""),
-  businessModel: answer.optional().default(""),
-  problem: answer.optional().default(""),
-  trigger: answer.optional().default(""),
-});
 
 export const goalsStepSchema = z.object({
   /* At least one, at most two. The floor matters as much as the cap: an empty

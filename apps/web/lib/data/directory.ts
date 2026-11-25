@@ -112,8 +112,7 @@ export interface WorkspaceUsage {
  * ── Why this is not billing ──────────────────────────────────────────────
  *
  * Because there is no billing. `subscriptions` has existed since `0001` and
- * nothing reads it; the Stripe variables in `.env.example` are reserved and
- * unused. Building a "billing group" abstraction on top of a billing system
+ * nothing reads it. Building a "billing group" abstraction on top of a billing system
  * that does not exist would be a speculative abstraction whose first real
  * requirement would break it. Usage is a fact the schema already records, so
  * that is what this reports.

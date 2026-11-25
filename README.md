@@ -20,7 +20,7 @@ rules follow from that and are load-bearing everywhere in this repo:
 
 ### Documents, in precedence order
 
-1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20—%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
+1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20-%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
 2. [Project_Creation.md](Project_Creation.md) — execution spec: phases, cost model, UI states, API shape. Authoritative where it does not contradict the above.
 3. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — build plan, architecture decisions, design system. See §0.0 for the precedence rule and §0.0.1 for the reconciliation between (1) and (2).
 
@@ -45,9 +45,8 @@ See [audit/BACKLOG.md](audit/BACKLOG.md).
 |---|---|
 | Frontend | Next.js 16 (App Router, Turbopack), TypeScript, Tailwind v4 |
 | Backend | Supabase — Postgres + Auth + Storage, tenant isolation via RLS |
-| Jobs | Durable job runner (Inngest / Trigger.dev) |
+| Jobs | Durable queue in Postgres, driven by `/api/jobs/tick` |
 | AI | Claude (Anthropic) |
-| Billing | Stripe |
 
 ## Layout
 
@@ -162,8 +161,7 @@ Four things have never run, and it is worth knowing which:
 - **The Content-Security-Policy is report-only.** It carries a per-request
   nonce and passes its whole suite under `CSP_ENFORCE=true`; enforcing it in
   production is a deliberate later step. See SETUP.md step 8.
-- **Nothing has ever been charged.** There is no payment path — the Stripe
-  variables in `.env.example` are read by zero lines of code. The pricing
+- **Nothing has ever been charged.** There is no payment path. The pricing
   page says so on the page rather than offering a button that would not work.
 
 ### Before this is offered to anyone

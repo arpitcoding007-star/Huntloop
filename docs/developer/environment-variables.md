@@ -11,8 +11,7 @@ filled version.
 
 {% hint style="info" %}
 `REPO-02` in `scripts/audit.mjs` fails the build if the code reads a variable
-that is not documented in `.env.example`. The reverse is not checked — which is
-how the dead `STRIPE_*` entries survived.
+that is not documented in `.env.example`. The reverse is not checked.
 {% endhint %}
 
 ## Required for a live deployment
@@ -140,19 +139,6 @@ in CI.
 |---|---|
 | `NEXT_PUBLIC_FEEDBACK_URL` | Topbar Feedback link. Deliberately empty — the control is only rendered when it has somewhere to go |
 | `NEXT_PUBLIC_HELP_URL` | Topbar Help button, same rule |
-
-## Declared and dead
-
-{% hint style="warning" %}
-**Read by zero lines of code.**
-
-* `STRIPE_SECRET_KEY`
-* `STRIPE_WEBHOOK_SECRET`
-* `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-
-There is no billing. Either implement it or remove these — leaving them implies
-a payment path that does not exist. [Open decision #1](../decisions/README.md#open-decisions).
-{% endhint %}
 
 ## Set by the platform
 

@@ -32,7 +32,6 @@ export * from "./activity.ts";
  */
 export {
   InvalidRuleError,
-  RULE_EFFECTS,
   RULE_FIELDS,
   RULE_INTENTS,
   RULE_OPERATORS,
@@ -60,7 +59,6 @@ export {
 
 /** `organizations.settings`, given a shape. Pure, for the same reason. */
 export {
-  EMPTY_ORG_PROFILE,
   ORG_TONES,
   isOrgTone,
   parseOrgProfile,

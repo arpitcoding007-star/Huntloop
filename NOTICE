@@ -51,11 +51,9 @@ Brand assets
   a centred dot — not derived from a template, stock library or
   generative tool.
 
-  Retired, not shipped:
-    HuntLoop_SVGs/*.svg
-
-  These are the earlier ribbon marks, which also shipped as PNGs under
-  apps/web/public/brand/ until the mark above replaced them. Their
+  Retired and removed: the earlier ribbon marks (HuntLoop_SVGs/*.svg, in
+  Git history before the `pre-cleanup` tag), which also shipped as PNGs
+  under apps/web/public/brand/ until the mark above replaced them. Their
   provenance was never recorded — if they are ever brought back, whoever
   knows who made them and on what terms should record it here first.
 

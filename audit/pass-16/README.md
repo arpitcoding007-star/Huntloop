@@ -23,7 +23,7 @@
 | [13_ENV.md](13_ENV.md) | Env inventory (names only) |
 | [14_DIFF.md](14_DIFF.md) | Against pass 15 |
 | [15_FIX_STATUS.md](15_FIX_STATUS.md) | What was fixed after the report, and how it was verified |
-| `_raw/` | Reviewer reports A–E, disprove log, mechanical logs |
+| `_raw/` | Reviewer reports A–E, disprove log, mechanical logs. Removed from the tree; kept in Git at the `pre-cleanup` tag |
 
 **Method.** In Phase 0, the lead ran the mechanical checks: typecheck, lint, all tests, site audit, build, bundle, `npm audit` and `db:doctor`. In Phase 1–2, five read-only reviewers worked in parallel: A flows/api/trust · B db/authz/lifecycle · C engine/providers/ai/crm · D jobs/outreach/money · E security/prod/perf/tests/debt. They used PGlite and fakes for probes, outside the repo. Phase 3 was a demo-mode walk, Playwright, and production GETs on `/api/health`. Phase 4 was a disprove pass on every Critical/High: one raised (OUT-201 → Critical), none dropped, and duplicates merged. The first set of reviewers stopped on an API spend limit before writing anything; they were restarted.
 

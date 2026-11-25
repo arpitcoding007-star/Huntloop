@@ -55,7 +55,6 @@ export const RULE_INTENTS: readonly RuleIntent[] = [
   "boost",
   "penalty",
 ];
-export const RULE_EFFECTS: readonly RuleEffect[] = ["adjust", "veto", "floor"];
 
 export type RulePriority = "hot" | "warm" | "watch" | "ignore";
 
