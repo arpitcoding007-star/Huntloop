@@ -11,6 +11,10 @@ ship from.
 Needs database migrations **0046** and **0047** (0040–0045 are already in
 production).
 
+### Changed
+- The home page is rebuilt as seven sections, with examples a visitor can try.
+  `LIVE` in `(marketing)/page.tsx` controls the not-live-yet wording.
+
 ### Fixed
 - Autonomy 2 (“Approve the first”) sent the first message without approval.
   It now waits for a person; follow-ups then send.

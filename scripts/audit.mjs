@@ -1150,9 +1150,11 @@ function check(phase, id, title, ok, sev, detail) {
     });
   check(6, "DATA-C3", "Every action that saves AI output asks whether it was live", unsourced.length === 0, "fail", unsourced.join("; "));
 
-  /* C4. The kind comes from the data. These four are legends, not claims. */
+  /* C4. The kind comes from the data. These are legends, not claims; the home
+     page's loop is a worked example that says its companies are invented. */
   const LEGENDS = new Set([
     "apps/web/app/(app)/[org]/analyze/Analyzer.tsx",
+    "apps/web/app/(marketing)/_home/Loop.tsx",
     "apps/web/app/(app)/[org]/dashboard/page.tsx",
     "apps/web/app/(app)/[org]/opportunities/[id]/AgentPanel.tsx",
     "apps/web/app/kitchen-sink/page.tsx",

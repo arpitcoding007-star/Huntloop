@@ -5,7 +5,7 @@ import { ThemeToggle } from "@huntloop/ui";
 import { Menu, X } from "lucide-react";
 
 /**
- * The landing page's section links below `md`, where the header row has no
+ * The landing page's section links below `lg`, where the header row has no
  * room for them (§14.2: they used to simply disappear on a phone). A
  * disclosure rather than a drawer: three anchors do not need an overlay, and
  * it closes itself when one is followed or Escape is pressed.
@@ -27,7 +27,7 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
   }, [open]);
 
   return (
-    <div className="md:hidden">
+    <div className="lg:hidden">
       <button
         ref={button}
         type="button"
