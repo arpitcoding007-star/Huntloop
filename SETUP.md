@@ -504,7 +504,7 @@ What that does **not** yet mean:
 | **Buyer side (the Exchange)** | Not built, by decision, until the demand test has run. |
 | **Legal pages** | Exist but stay unpublished until the facts in `apps/web/lib/legal.ts` are filled in. |
 
-Current status: [docs/status](docs/status/). The original plan is in [DELIVERY_PLAN.md](DELIVERY_PLAN.md).
+Current status: [docs/status](docs/status/).
 
 ---
 

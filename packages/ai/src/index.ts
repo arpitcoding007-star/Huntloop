@@ -35,7 +35,6 @@ export {
   CONFIDENCES,
   ClaimValidationError,
   assertValidClaim,
-  assertValidClaims,
   type Claim,
   type ClaimKind,
   type Confidence,

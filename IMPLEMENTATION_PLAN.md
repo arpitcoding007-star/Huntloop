@@ -1,6 +1,6 @@
 # Huntloop — Implementation Plan
 
-**Version** 1.1 · **Date** 2026-08-11 · **Governing product intent** [HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20—%20Master%20Product,%20Technical%20&%20Engineering%20Context.md) · **Execution spec** [Project_Creation.md](Project_Creation.md)
+**Version** 1.1 · **Date** 2026-08-11 · **Governing product intent** [HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20-%20Master%20Product,%20Technical%20&%20Engineering%20Context.md) · **Execution spec** [Project_Creation.md](Project_Creation.md)
 
 Design references: **Supabase dashboard** (color system, chrome, density, data tables) + **Kima BD OS / kimacrm.xyz** (dashboard information architecture, stat grid, quota bars, action rail). This is a settled decision and the master context does not disturb it — §87 lists the design system as UNKNOWN, which means unspecified, not contradicted.
 

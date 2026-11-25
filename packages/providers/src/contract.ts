@@ -45,10 +45,6 @@ export const CAPABILITIES = [
 
 export type Capability = (typeof CAPABILITIES)[number];
 
-export function isCapability(value: string): value is Capability {
-  return (CAPABILITIES as readonly string[]).includes(value);
-}
-
 /* ── The envelope ──────────────────────────────────────────────────────── */
 
 /**

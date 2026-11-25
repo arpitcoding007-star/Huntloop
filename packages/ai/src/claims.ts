@@ -104,7 +104,3 @@ export function assertValidClaim(claim: Claim): void {
     reject(`Confidence must be a word, not ${JSON.stringify(claim.confidence)}.`);
   }
 }
-
-export function assertValidClaims(claims: readonly Claim[]): void {
-  for (const claim of claims) assertValidClaim(claim);
-}

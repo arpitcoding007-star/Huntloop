@@ -39,11 +39,6 @@ import type { TenantClient } from "@huntloop/db";
 
 let applied: boolean | null = null;
 
-/** Test seam. Resets the memoised answer. */
-export function resetOnboardingSchemaProbe(): void {
-  applied = null;
-}
-
 export async function hasOnboardingSchema(db: TenantClient): Promise<boolean> {
   if (applied !== null) return applied;
 

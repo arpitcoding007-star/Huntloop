@@ -6,8 +6,8 @@
    disagree, this file is right and the plan is a record of what was
    superseded.
 
-   Both themes are Meridian (design/dir-prem.css and the two .dc.html comps
-   beside it): pure white paper, one electric blue, near-black #111111
+   Both themes are Meridian (the original comps were removed after the
+   `pre-cleanup` tag): pure white paper, one electric blue, near-black #111111
    bands, hairline dividers, thin green score rings. The October 2026
    design reference (boards 01–04: logo, colour, type & layout,
    components) restates every value below; where a component's shape
@@ -426,7 +426,7 @@
   color-scheme: light;
 
   /* ── Surfaces ─────────────────────────────────────────────────────────
-     Meridian (`design/dir-prem.css`): pure white paper and cards on a
+     Meridian: pure white paper and cards on a
      #F6F6F7 band. The page is the band and everything that floats —
      cards, menus, modals — is white above it, so elevation is carried by
      the hairline and the shadow rather than by a hue. */

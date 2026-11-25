@@ -67,10 +67,6 @@ export function isBefore(a: OnboardingStep, b: OnboardingStep): boolean {
   return ONBOARDING_STEPS.indexOf(a) < ONBOARDING_STEPS.indexOf(b);
 }
 
-export function isOnboardingStep(v: unknown): v is OnboardingStep {
-  return typeof v === "string" && (ONBOARDING_STEPS as readonly string[]).includes(v);
-}
-
 /* ── Roles ───────────────────────────────────────────────────────────────── */
 
 export const USER_ROLES = [
@@ -268,10 +264,6 @@ export const FIRST_JOB_GOALS: Record<FirstJob, Goal[]> = {
   buy: [],
   sell: [],
 };
-
-export function isFirstJob(v: unknown): v is FirstJob {
-  return typeof v === "string" && (FIRST_JOBS as readonly string[]).includes(v);
-}
 
 /* ── Outreach channel ────────────────────────────────────────────────────── */
 

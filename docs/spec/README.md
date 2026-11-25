@@ -117,7 +117,7 @@ Nothing was deleted. Existing documents are reused as follows:
 | `docs/product/*`, `docs/architecture/*`, `docs/security/*`, `docs/developer/*`, `docs/operations/*` | Narrative companions; each pack document links to the relevant ones. |
 | `docs/status/*`, `docs/README.md` status block | **Superseded in the numbers.** A banner pointing here was added to those pages (CON-03). |
 | `HuntLoop — Master Product, Technical & Engineering Context.md` | Product intent. Its own §85–§87 already separate confirmed / inferred / unknown; the PRD respects that split. |
-| `IMPLEMENTATION_PLAN.md`, `DELIVERY_PLAN.md`, `Migrate.md`, `explee.md`, `New_Aud.md`, `Project_Creation.md`, `PROJECT_AUDIT.md`, `audit/*` | Historical. Not relied on for current behaviour. |
+| `IMPLEMENTATION_PLAN.md`, `DELIVERY_PLAN.md`, `Migrate.md`, `explee.md`, `New_Aud.md`, `Project_Creation.md`, `PROJECT_AUDIT.md`, `audit/*` | Historical. Not relied on for current behaviour. Some were removed after the `pre-cleanup` tag. |
 
 ## Maintaining the pack
 

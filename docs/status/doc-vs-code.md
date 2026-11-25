@@ -144,11 +144,11 @@ the dashboard. The mechanism it describes is still live and still enforced by
 
 | Document | Status |
 |---|---|
-| `DELIVERY_PLAN.md` | A phase plan from before most of this was built. Its 🔴/🟡/🟢 markers are largely obsolete. Useful as a record of the intended ordering |
+| `DELIVERY_PLAN.md` (removed) | A phase plan from before most of this was built. Its 🔴/🟡/🟢 markers are largely obsolete. Useful as a record of the intended ordering |
 | `IMPLEMENTATION_PLAN.md` | The build plan and design-system source. §1 (tokens) and §11 (build plan) are still referenced by live code comments. Treat its *status* claims as historical |
 | `Project_Creation.md` | Execution spec: phases, cost model, UI states, API shape. Authoritative on intent where it does not contradict the master context |
 | `HuntLoop — Master Product, Technical & Engineering Context.md` | **Governing product intent.** Still the top of the precedence order for *what the product is*. Its section numbers (§7, §15, §46, §51, §52, §78) are cited throughout the code and this book |
-| `Migrate.md`, `explee.md`, `New_Aud.md` | Working documents from specific efforts. Historical |
+| `Migrate.md`, `explee.md`, `New_Aud.md` (removed) | Working documents from specific efforts. Kept in Git at the `pre-cleanup` tag |
 | `audit/FINDINGS.md`, `PLAN-11`, `PLAN-12`, `PASS-12`, `PASS-13`, `VERIFICATION.md`, `BACKLOG.md`, `UX-REVIEW.md`, `AGENT-REACH.md` | The audit program's running record. Individual findings are dated and many are closed — read them as history, and `audit/README.md` for how the program works |
 | `audit/ROADMAP.md` | R0–R4 and R6 marked Done. R5 is "what only provisioning unblocks", which is still accurate |
 | `audit/full-system/*` (29 files) | **The most current of the older documents** — written 2026-09-15 from repository-wide inspection. This book supersedes it as a *destination*, but its per-subsystem depth is worth keeping |

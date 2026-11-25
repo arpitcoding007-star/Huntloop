@@ -338,7 +338,6 @@ function unsupported(provider: string, capability: Capability): ProviderRefused 
 export {
   CAPABILITIES,
   ProviderError,
-  isCapability,
   type Capability,
   type CallMeta,
   type CallOutcome,
@@ -359,12 +358,10 @@ export {
 } from "./contract.ts";
 
 export { ProviderRefused, MAX_ATTEMPTS, TIMEOUT_MS } from "./call.ts";
-export { TTL, invalidate, requestHash } from "./cache.ts";
-export { usageThisMonth, type ProviderUsage } from "./ledger.ts";
+export { TTL, requestHash } from "./cache.ts";
 export {
   budgetAllows,
   breakerOpen,
-  describeBudget,
   reserveCredit,
   settleReservation,
   type BudgetState,

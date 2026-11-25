@@ -106,20 +106,3 @@ const NOUNS: Record<UsageMetric, string> = {
  * "unlimited", not as a number this function does not have.
  */
 const UNKNOWN: Quota = { used: 0, limit: null, allowed: true };
-
-/**
- * Every quota for one org, for the billing screen.
- *
- * Sequential rather than parallel: PostgREST opens a connection per request
- * and five at once for a settings page is a poor use of the pool for data
- * nobody is waiting on.
- */
-export async function allQuotas(
-  db: TenantClient,
-  orgId: string,
-): Promise<Record<UsageMetric, Quota>> {
-  const metrics: UsageMetric[] = ["opportunities", "ai_runs", "emails", "enrich", "seats"];
-  const out = {} as Record<UsageMetric, Quota>;
-  for (const m of metrics) out[m] = await checkQuota(db, orgId, m);
-  return out;
-}

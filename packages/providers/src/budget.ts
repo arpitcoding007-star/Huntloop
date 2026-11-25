@@ -195,23 +195,3 @@ export async function breakerOpen(
   if (!openUntil) return false;
   return new Date(openUntil).getTime() > Date.now();
 }
-
-/**
- * A human sentence for a refusal.
- *
- * Every refusal in this package reaches a screen eventually — the discovery
- * run says why it stopped, the enrichment says why it did not run — and a
- * refusal a user cannot understand is a support ticket. Same reason
- * `budgetRefusal` exists on the AI side.
- */
-export function describeBudget(state: BudgetState, provider: string): string {
-  if (state.allowed) {
-    if (state.limit === null) return `No ${provider} credit limit is set for this organisation.`;
-    return `${state.remaining} of ${state.limit} ${provider} credits left this month.`;
-  }
-  return (
-    `This organisation has used all ${state.limit} of its ${provider} credits for the month. ` +
-    `Discovery and enrichment through ${provider} will resume next month, or when an ` +
-    `administrator raises the limit in Settings.`
-  );
-}

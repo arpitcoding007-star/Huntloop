@@ -30,7 +30,7 @@ The app is origin-agnostic: every absolute URL derives from `NEXT_PUBLIC_SITE_UR
 (metadata, robots, sitemap, OG, OAuth `redirectTo`, mailbox callbacks, unsubscribe links). No hard-coded
 `seefluence` in runtime code. Changed (comments/docs only): `SETUP.md`, `apps/web/app/(marketing)/page.tsx`,
 `apps/web/app/api/health/route.ts`. Left as historical records: `AUDIT.md`, `audit/**`, `docs/spec/**`,
-`design/PremiumLanding.dc.html`.
+`design/PremiumLanding.dc.html` (since removed).
 No CORS allowlist, cookie `domain`, HubSpot, or Stripe code exists in the app (Stripe not implemented), so nothing to change there.
 Cookies are host-only (`__Host-` prefix on https) — users will have to sign in again on the new host; sessions do not carry over.
 

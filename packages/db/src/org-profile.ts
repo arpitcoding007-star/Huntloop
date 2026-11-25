@@ -126,14 +126,6 @@ export interface OrgProfile {
   goals: OrgGoals;
 }
 
-export const EMPTY_ORG_PROFILE: OrgProfile = {
-  voice: { tone: null, competitors: [], targetRegions: [] },
-  engine: { backlogCap: null },
-  compliance: { postalAddress: null },
-  followup: { quietAfterBusinessDays: null },
-  goals: { touchesPerWeek: null, meetingsPerMonth: null },
-};
-
 /**
  * The shortest string this will accept as a postal address.
  *
