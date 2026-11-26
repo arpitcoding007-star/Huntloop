@@ -171,7 +171,15 @@ export function JumpTo({ open, onClose, items, onNavigate, onSearch, onActions }
         </label>
 
         {results.length ? (
-          <ul id={listId} role="listbox" aria-label={onSearch ? "Pages and records" : "Pages"} className="overflow-y-auto p-2">
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label={onSearch ? "Pages and records" : "Pages"}
+            /* Records are still on their way: say so, so assistive tech (and a
+               test) can tell "nothing more is coming" from "not yet". */
+            aria-busy={searching}
+            className="overflow-y-auto p-2"
+          >
             {results.map((item, i) => {
               const Icon = item.icon;
               const on = i === active;
