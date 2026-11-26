@@ -8,6 +8,16 @@ ship from.
 
 ## [Unreleased]
 
+### Documentation
+- The master guide no longer calls the Exchange unbuilt, counts 71 migrations,
+  and lists the current owner blockers. The specification pack is marked
+  historical.
+- `/complete-project` (`.claude/commands/`) works through the remaining
+  code-side items one pull request at a time.
+
+### Engineering
+- Lint reports no warnings: three unused `eslint-disable` directives are gone.
+
 ## [0.2.0] — 2026-11-26
 
 Everything since `v0.1.0`. Needs database migrations **0046–0071**, all

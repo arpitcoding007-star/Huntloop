@@ -11,7 +11,8 @@ Each run finishes **one** item that can be done from the code, proves it, and op
 
 ## Ground rules
 
-- **Never merge a pull request, push to `main`, create or move tags on `main`, change GitHub or Vercel settings, set secrets, or touch production data.** The owner merges. Migrations apply to production when the owner merges, so a migration is fine to write but must say so in its PR.
+- **Merge your own pull requests when green** (owner's standing approval, 26 Nov 2026). Green means the `verify` and `End-to-end` checks passed and the PR is mergeable; ignore `Vercel – huntloop`, the disconnected project that fails on every commit. Use `gh pr merge <n> --merge`. **Exception:** a PR that adds a database migration waits for the owner, because merging applies it to production.
+- **Never push to `main` directly, create or move tags (except the release item), change GitHub or Vercel settings, set secrets, or touch production data.**
 - **Never decide for the owner.** Anything in the "Owner" list below, or anything marked **Decide** in `audit/PROJECT-INVENTORY-2026-11-26.md`, is reported, not done.
 - Follow `CONTRIBUTING.md`, `COMMAND.md`'s maintenance rule, and section 11 ("Do not change") of the inventory.
 - One item per run. If an item is bigger than one run, split it, ship the first slice, and record the rest.
@@ -23,7 +24,7 @@ Each run finishes **one** item that can be done from the code, proves it, and op
 
 ## Each run
 
-1. **Sync.** `git fetch --prune`. Check each open PR from the tracker with `gh pr view`. Mark merged ones done; if one failed CI, fixing it **is** this run's item.
+1. **Sync.** `git fetch --prune`. Check each open PR from the tracker with `gh pr checks`. Merge the green ones (see ground rules) and mark them done; if one failed CI, fixing it **is** this run's item. Then update local `main`.
 2. **If `$ARGUMENTS` is `status`:** print the tracker summary and stop.
 3. **Pick** the first item in the queue that is not done, not blocked, and whose dependencies are merged (or `$ARGUMENTS` names one).
 4. **Branch** from `origin/main`: `feat/…`, `fix/…`, `chore/…` or `docs/…`. Only stack on an unmerged branch when the item depends on it, and say so in the PR. Until PR #30 is merged, `main` does not have this file: if `.claude/commands/complete-project.md` is missing after the checkout, restore it unstaged with `MSYS_NO_PATHCONV=1 git show origin/feat/release-0.2-engine-alert:.claude/commands/complete-project.md > .claude/commands/complete-project.md` and never commit it on the item branch.
@@ -54,4 +55,4 @@ Each run finishes **one** item that can be done from the code, proves it, and op
 - Legal facts in `apps/web/lib/legal.ts`; counsel review.
 - Repository visibility and branch protection on `main`; disconnect the failing Vercel project `huntloop`.
 - Decisions: billing, Exchange (EX-1, EX-3, EX-4, EX-6 to EX-10, moderation screen), `WORKSPACE_PURGE_DAYS`, `ActionRail`, the unused database views and `company_gaps`, unused CSS tokens.
-- Merging this command's pull requests.
+- Merging this command's pull requests that add a database migration.
