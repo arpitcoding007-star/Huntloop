@@ -1,4 +1,3 @@
-/* eslint-disable */
 // All brochure copy. One source for both themes, so content and order are identical.
 import { CATS, items, count, STATUS } from "./catalogue.mjs";
 const TOTAL = items.length, C = count(items);

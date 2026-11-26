@@ -1,4 +1,3 @@
-/* eslint-disable */
 // Part G: autonomy 2 holds the first message. Run after c.mjs, which connects the mailbox; its own campaigns and prospects.
 import { open, t, sql, signIn, B, ok, eq, until, tick, vendors } from "./lib.mjs"; import { readFileSync } from "node:fs";
 const { org, orgId, owner } = JSON.parse(readFileSync("audit/pass-22/ctx.json")); const { b, ctx, page } = await open(); await signIn(ctx, owner);
