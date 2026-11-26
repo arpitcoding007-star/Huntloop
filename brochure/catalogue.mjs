@@ -1,4 +1,3 @@
-/* eslint-disable */
 // Capability catalogue: the single source for both PDFs and for audit/pass-22.
 // [capability, status, needs, evidence, gap]
 // status: L live · B built and tested, not live · P partial · X not working · N not implemented · F planned · C under consideration
