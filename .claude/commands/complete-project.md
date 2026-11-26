@@ -26,7 +26,7 @@ Each run finishes **one** item that can be done from the code, proves it, and op
 1. **Sync.** `git fetch --prune`. Check each open PR from the tracker with `gh pr view`. Mark merged ones done; if one failed CI, fixing it **is** this run's item.
 2. **If `$ARGUMENTS` is `status`:** print the tracker summary and stop.
 3. **Pick** the first item in the queue that is not done, not blocked, and whose dependencies are merged (or `$ARGUMENTS` names one).
-4. **Branch** from `origin/main`: `feat/…`, `fix/…`, `chore/…` or `docs/…`. Only stack on an unmerged branch when the item depends on it, and say so in the PR.
+4. **Branch** from `origin/main`: `feat/…`, `fix/…`, `chore/…` or `docs/…`. Only stack on an unmerged branch when the item depends on it, and say so in the PR. Until PR #30 is merged, `main` does not have this file: if `.claude/commands/complete-project.md` is missing after the checkout, restore it unstaged with `git show origin/feat/release-0.2-engine-alert:.claude/commands/complete-project.md > .claude/commands/complete-project.md` and never commit it on the item branch.
 5. **Do it.** Read the code before changing it; match the style and comment voice around it. Add or extend tests in the suites that already cover that area.
 6. **Prove it.** `npm run verify` must pass. Run `npm run test:e2e` when a screen changes. For a visible change, start the dev server with the preview tools and check it in the browser. Never claim a check you did not run.
 7. **Record** it in the docs that describe it (`docs/status/README.md`, `audit/pass-22/FINDINGS.md`/`PLAN.md`, `COMMAND.md`, `CHANGELOG.md` under Unreleased) in the same commit.
