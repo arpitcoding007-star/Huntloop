@@ -4,6 +4,8 @@ description: Implementation Plan — a dependency-ordered roadmap for the remain
 
 # 6 · Implementation Plan
 
+> **Historical, not maintained.** This describes the code as of 8 Oct 2026 (release 0.1.0, schema through 0045). Migrations 0046 to 0071, including the whole Exchange, came later. For what exists now, read [docs/status](../status/README.md) and the [master guide](../../HUNTLOOP_MASTER_SYSTEM_GUIDE.md). The one current file here is [generated/schema-reference.md](generated/schema-reference.md), which CI regenerates and checks.
+
 > **As of 2026-10-08.** This plan covers **what remains**, not what is built. The product is
 > feature-rich; the dominant risk is that **none of it has been proven in production** and the
 > release itself is in an inconsistent state. The plan is therefore ordered by *dependency and risk

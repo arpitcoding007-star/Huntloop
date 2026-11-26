@@ -4,6 +4,8 @@ description: The Product Specification Pack — six connected documents and a ga
 
 # Huntloop — Product Specification Pack
 
+> **Historical, not maintained.** This describes the code as of 8 Oct 2026 (release 0.1.0, schema through 0045). Migrations 0046 to 0071, including the whole Exchange, came later. For what exists now, read [docs/status](../status/README.md) and the [master guide](../../HUNTLOOP_MASTER_SYSTEM_GUIDE.md). The one current file here is [generated/schema-reference.md](generated/schema-reference.md), which CI regenerates and checks.
+
 > **As of:** 2026-10-08 · **Code state described:** branch `feat/personal-learning` @ `4c8576a`
 > ("chore(release): 0.1.0"), schema through migration `0045`.
 > **Purpose:** one accurate, project-specific source of truth that a developer, designer
