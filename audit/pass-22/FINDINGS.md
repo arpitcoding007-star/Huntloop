@@ -15,6 +15,7 @@
 | V-19 | **Built, off** | `purge_deleted_organizations`; runs only when WORKSPACE_PURGE_DAYS is 30 or more | 0071 checks; simulation |
 | New | **Fixed** | A session could set its own `profiles.email`, where product email is sent | 0071 checks |
 | New | **Fixed** | Autonomy 2 (Approve the first) sent the first message without approval; the first audit never tested it. Levels 0–1 and 3–5 still behave alike | `auto.*`, 5 checks; jobs suite |
+| V-15 | **Built, needs a DSN** | Every tick checks in to a Sentry cron monitor (`engine-tick`) that alerts on missing check-ins. `/api/health` also reports `jobs.heartbeat`, the age of the last sweep, which the queue lag could not see on a quiet queue | `engine-monitor.test.ts`; `queue-health.test.ts`; jobs suite `lastSweepSeconds` |
 | V-16 | **Fixed** | The new owner is emailed, unless they assigned it to themselves. Assigning an opportunity that no longer exists is now refused | `email.assign`; template test |
 
 The simulation and audit checks were also run against the old code and failed there. `results-before-fixes.json` holds the failing `opp.agent`, `asst.ask`, `prio.override-rescore` and `email.assign` checks. Everything below is as found.

@@ -200,6 +200,34 @@ export async function oldestDueSeconds(db: AdminClient = adminClient()): Promise
   return runAt ? Math.max(0, Math.round((now.getTime() - new Date(runAt).getTime()) / 1000)) : 0;
 }
 
+/**
+ * Seconds since the last sweep, `"never"` when none has run, null when unreadable.
+ *
+ * V-15: `oldestDueSeconds` cannot see a tick that stopped arriving on a quiet
+ * queue. Every sweeper is enqueued by the tick itself, so nothing due ever
+ * builds up, and the lag reads 0 for an engine that is not running at all.
+ * The sweep's own rows are the heartbeat: `sweep()` writes a cross-tenant row
+ * (`org_id` null) on every tick that finds the previous sweep finished, and
+ * nothing else writes one.
+ */
+export async function lastSweepSeconds(
+  db: AdminClient = adminClient(),
+): Promise<number | "never" | null> {
+  const { data, error } = await db
+    .from("job_executions")
+    .select("created_at")
+    .is("org_id", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  const createdAt = (data as { created_at?: string } | null)?.created_at;
+  if (!createdAt) return "never";
+  const at = new Date(createdAt).getTime();
+  if (!Number.isFinite(at)) return null;
+  return Math.max(0, Math.round((Date.now() - at) / 1000));
+}
+
 export async function succeed(
   jobId: string,
   result: Record<string, unknown>,

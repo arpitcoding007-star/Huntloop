@@ -193,11 +193,40 @@ order by 1;
 | No rows at all | Nothing is sweeping. Check the driver |
 | Growing `failed` count | Read `job_executions.error` and the Engine screen |
 
-**From outside:** `GET /api/health` carries `jobs.queue`. It reads
-`stalled` (and the response is 503) once a due job has waited more than 15
-minutes, the same threshold `tick.yml` uses. The tick can only raise that
-alarm when it runs; an uptime monitor on `/api/health` raises it when the
-tick has stopped arriving at all.
+**From outside:** `GET /api/health` carries two fields, and either one makes
+the response 503:
+
+| Field | Bad states | Meaning |
+|---|---|---|
+| `jobs.queue` | `stalled`, `unknown` | A due job has waited more than 15 minutes (the threshold `tick.yml` uses): ticks are missing or not keeping up |
+| `jobs.heartbeat` | `late`, `never`, `unknown` | The last sweep is more than 15 minutes old, or none has ever run: nothing is calling the tick |
+
+`jobs.heartbeat` exists because `jobs.queue` cannot see a stopped engine on a
+quiet queue. The sweepers are enqueued by the tick, so when ticks stop nothing
+due builds up and the lag stays at 0. The age of the newest cross-tenant row
+in `job_executions` (only `sweep()` writes one) is the heartbeat.
+
+## The engine-stopped alert
+
+With `SENTRY_DSN` set, every tick, from either driver, checks in to a Sentry
+cron monitor named **`engine-tick`** (`apps/web/lib/engine-monitor.ts`). The
+monitor creates itself on the first check-in, expecting one every five
+minutes with a ten-minute margin. Two missed or failed check-ins in a row
+open a Sentry issue, and one good check-in resolves it. The alarm lives
+outside the thing that stopped, so a deleted secret, a paused GitHub schedule
+or a failed Inngest sync is reported by Sentry rather than discovered by a
+person.
+
+To be notified, add an alert rule in Sentry for issues from **Crons**
+(email, Slack or anything Sentry supports). Without a rule the issue is
+recorded but nobody is told.
+
+{% hint style="warning" %}
+While GitHub Actions is the driver, the monitor will be in alert most of the
+time, because GitHub starts the five-minute schedule only every few hours.
+That is accurate: the engine is not keeping a five-minute heartbeat. It is
+one more reason to move to Inngest.
+{% endhint %}
 
 In the product, `/[org]/ops` — the **Engine** screen — shows job and provider
 health and offers retry and cancel. The Sources screen shows the last tick time

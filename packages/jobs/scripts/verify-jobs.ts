@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalize, extract, urlHash, UnreadableContent } from "../src/extract.ts";
 import { sweep, tick } from "../src/runner.ts";
 import { HANDLERS } from "../src/registry.ts";
-import { enqueue } from "../src/queue.ts";
+import { enqueue, lastSweepSeconds } from "../src/queue.ts";
 import { bounceHealth, contactAllowedAfter, repliedSinceLastSend, sendMessage } from "../src/handlers/send-message.ts";
 import { preclassify } from "../src/mailbox/preclassify.ts";
 import { bareDomain, checkContent } from "../src/gate.ts";
@@ -5404,6 +5404,23 @@ console.log("\nschedule_followups — an enrichment asked for is not asked again
     world.calls.some((c) => c.table === "companies" && c.verb === "update" && (c.payload as { enrich_requested_at?: string })?.enrich_requested_at === now.toISOString()),
   );
   setAdminClientForTests(null);
+}
+
+console.log("\nlastSweepSeconds — the heartbeat a quiet queue cannot hide (V-15)");
+{
+  const recent = new Date(Date.now() - 120_000).toISOString();
+  const world = fakeClient({ "select:job_executions": { data: { created_at: recent }, error: null } });
+  const seconds = await lastSweepSeconds(world.client);
+  expect("reads the age of the newest sweep row", typeof seconds === "number" && seconds >= 119 && seconds <= 125, String(seconds));
+  const q = world.calls.find((c) => c.table === "job_executions");
+  expect("only cross-tenant rows count, since only sweep() writes them", q?.filters.some(([k, v]) => k === "is:org_id" && v === null) ?? false, JSON.stringify(q?.filters));
+  expect("newest first", q?.filters.some(([k, v]) => k === "order:created_at" && JSON.stringify(v) === JSON.stringify({ ascending: false })) ?? false, JSON.stringify(q?.filters));
+
+  const empty = fakeClient({ "select:job_executions": { data: null, error: null } });
+  expectEqual("no sweep ever is 'never', not zero", await lastSweepSeconds(empty.client), "never");
+
+  const broken = fakeClient({ "select:job_executions": { data: null, error: { message: "boom" } } });
+  expectEqual("an unreadable table is null, never healthy", await lastSweepSeconds(broken.client), null);
 }
 
 console.log(
