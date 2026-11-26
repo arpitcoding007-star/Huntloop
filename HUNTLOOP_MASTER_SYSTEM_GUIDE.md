@@ -43,7 +43,7 @@
 12. [Feature dependency map](#part-12--feature-dependency-map)
 13. [Testing report](#part-13--testing-report)
 14. [Implementation status and inventory](#part-14--implementation-status-and-inventory)
-15. [Planned: Huntloop Exchange (B2B and B2C marketplace)](#part-15--planned-huntloop-exchange)
+15. [Huntloop Exchange (built, switched off)](#part-15--huntloop-exchange-built-switched-off)
 
 ---
 
@@ -81,8 +81,8 @@ Three promises run through everything:
 - **"Why now" needs a recent reason.** Old news stops counting.
 
 **What Huntloop is today:** a tool for people who **sell to businesses**
-(B2B). **What it is not yet:** a marketplace where buyers sign up and say what
-they need. That is planned and described in [Part 15](#part-15--planned-huntloop-exchange).
+(B2B). **What it is not yet:** a live marketplace where buyers sign up and say
+what they need. That is built, switched off, and described in [Part 15](#part-15--huntloop-exchange-built-switched-off).
 None of it is built.
 
 ---
@@ -689,7 +689,7 @@ only in the app.
 
 ```
 apps/web            Next.js app: pages, server actions, lib/data loaders, lib/ai wrappers
-packages/db         56 migrations, PGlite verification suites, doctor, seed, schema reference
+packages/db         71 migrations, PGlite verification suites, doctor, seed, schema reference
 packages/jobs       job handlers, queue, scheduler, mailbox adapters, email templates
 packages/ai         LLM task definitions, prompt versioning, grounding checks
 packages/providers  vendor adapters, budget reservation, caching, circuit breakers
@@ -876,25 +876,29 @@ and what changed afterwards: [docs/status](docs/status/README.md).
 | Activation metrics | ✅ Performance → Is the loop working? |
 | Billing | ❌ **No payment path.** Plans are priced and shown; Stripe is not implemented. Deferred by decision (decision log #1). |
 | Public API, webhooks | ❌ Deliberately not built (no external consumer yet) |
-| Exchange marketplace (B2C/B2B buyers) | 📝 Planned only. See Part 15. |
+| Exchange marketplace (B2C/B2B buyers) | 🟡 Built and switched off (`HUNTLOOP_EXCHANGE`, migrations 0059–0071); launch decisions open. See Part 15. |
 
 ### Known blockers (need a person, not code)
 
 | # | Blocker | Who |
 |---|---|---|
-| 1 | Apply migrations 0048 → 0056 to production, then deploy, in that order | Owner with Supabase access |
+| 1 | ~~Apply migrations 0048 → 0056 to production~~ Done: production runs every migration through 0071, and the Migrate database workflow applies new ones on push | — |
 | 2 | One live run with real keys (Anthropic, Apollo, Hunter, ZeroBounce, Gmail/Graph, HubSpot) | Owner |
-| 3 | Set `CRON_SECRET` and `HUNTLOOP_URL` on the GitHub repo so the 5-minute tick workflow runs (or move to a plan with minute cron) | Owner |
+| 3 | Set `CRON_SECRET` (Vercel and GitHub) and `HUNTLOOP_URL` = `https://huntloop.pro` (the `www` host redirects, which the tick treats as a failure), then move the tick to Inngest. See [The heartbeat](docs/operations/heartbeat.md) | Owner |
 | 4 | Seven legal facts for the legal pages (`LEGAL-01`) | Owner / counsel |
-| 5 | Billing decision and Stripe keys | Owner |
+| 5 | Billing decision (no payment code exists yet) | Owner |
 | 6 | Exchange: run the demand test before any buyer-side code | Founder |
 | 7 | Fix or delete the `huntloop` Vercel project (no root directory set; `huntloop-web` is the real app) | Owner with Vercel access |
 
 ---
 
-## Part 15 · Planned: Huntloop Exchange
+## Part 15 · Huntloop Exchange (built, switched off)
 
-> 📝 **Everything in this part is planned. None of it is built.**
+> 🟡 **Written as a plan on 19 Nov 2026, and built since** (migrations 0059 to
+> 0071). It is switched off behind `HUNTLOOP_EXCHANGE` until the launch
+> decisions (EX-1, EX-3, EX-4, EX-6 to EX-10) and counsel review are done. Read
+> this part as the design intent; for what each screen does today, read the
+> [marketplace spec](docs/product/marketplace-spec.md).
 
 Exchange would add a second kind of user, the **buyer**, who signs up and
 states what they need ("a CRM for a 6-person startup, under ₹5k a month,

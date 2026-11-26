@@ -4,6 +4,8 @@ description: Backend / Database / Data Schema — the complete data architecture
 
 # 5 · Backend / Database / Data Schema
 
+> **Historical, not maintained.** This describes the code as of 8 Oct 2026 (release 0.1.0, schema through 0045). Migrations 0046 to 0071, including the whole Exchange, came later. For what exists now, read [docs/status](../status/README.md) and the [master guide](../../HUNTLOOP_MASTER_SYSTEM_GUIDE.md). The one current file here is [generated/schema-reference.md](generated/schema-reference.md), which CI regenerates and checks.
+
 > **As of 2026-10-08** · migrations `0001`–`0045` (45 files) applied to an in-memory Postgres
 > (PGlite) and introspected. **Column-level truth is
 > [generated/schema-reference.md](generated/schema-reference.md)** (3,456 lines: every column, type,

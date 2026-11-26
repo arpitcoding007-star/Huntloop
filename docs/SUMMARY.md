@@ -6,7 +6,7 @@
 * [What Huntloop is](product/what-it-is.md)
 * [Status](status/README.md)
 
-## Specification Pack (2026-10-08)
+## Specification Pack (historical, 2026-10-08)
 
 * [Pack index and method](spec/README.md)
 * [1 · Product requirements](spec/01-product-requirements.md)

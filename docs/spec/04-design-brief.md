@@ -4,6 +4,8 @@ description: Design Brief / Design System — reproducible visual and interactio
 
 # 4 · Design Brief / Design System
 
+> **Historical, not maintained.** This describes the code as of 8 Oct 2026 (release 0.1.0, schema through 0045). Migrations 0046 to 0071, including the whole Exchange, came later. For what exists now, read [docs/status](../status/README.md) and the [master guide](../../HUNTLOOP_MASTER_SYSTEM_GUIDE.md). The one current file here is [generated/schema-reference.md](generated/schema-reference.md), which CI regenerates and checks.
+
 > **As of 2026-10-08; components and brand placements updated 2026-10-09** against the design reference
 > boards (§15). Source of truth for values: `packages/ui/src/tokens.css` (769 lines) and
 > `theme.css` (Tailwind mapping). Components: `packages/ui/src/components/` (29). Live gallery:
