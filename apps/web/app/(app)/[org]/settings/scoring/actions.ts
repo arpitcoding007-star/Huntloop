@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { InvalidRuleError, applyRules, validateExpression } from "@huntloop/db/rules";
+import { InvalidRuleError, applyRules, validateExpression, validateRule } from "@huntloop/db/rules";
 import type { RuleExpression, RulePriority } from "@huntloop/db/rules";
 import type { IcpSummary } from "@huntloop/ai";
 import { draft } from "../../../../../lib/ai/rules";
@@ -178,6 +178,19 @@ export async function saveRuleAction(
      what actually holds — this is what makes the refusal readable. */
   const pairing = checkPairing(value.effect, value.weight, value.floorPriority);
   if (pairing) return fail(pairing.message, pairing.fieldErrors);
+
+  /* What is left after the pairing — today, the cap on conditions. */
+  try {
+    validateRule({
+      ...value,
+      expression,
+      weight: value.effect === "adjust" ? value.weight : null,
+      floorPriority: value.effect === "floor" ? value.floorPriority : null,
+    });
+  } catch (e) {
+    if (e instanceof InvalidRuleError) return fail(e.message, { expression: e.message });
+    throw e;
+  }
 
   return mutate(org, "saveRule", async ({ db, orgId }) => {
     const row = {

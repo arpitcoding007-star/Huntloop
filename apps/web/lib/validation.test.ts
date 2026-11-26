@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  icpSchema,
   orgNameSchema,
   orgSlugSchema,
   parseInput,
@@ -135,26 +134,6 @@ describe("whyNowRequestSchema — the cost bound", () => {
     // arriving from a public endpoint must not reach the prompt.
     const bogus = { ...claim, kind: "probably" };
     expect(whyNowRequestSchema.safeParse(request([bogus])).success).toBe(false);
-  });
-});
-
-describe("icpSchema", () => {
-  it("bounds every list, not just the object", () => {
-    const base = {
-      sells: "Custody permissioning.",
-      segments: [],
-      sizes: [],
-      regions: [],
-      triggers: [],
-      exclusions: [],
-    };
-    expect(icpSchema.safeParse(base).success).toBe(true);
-    expect(
-      icpSchema.safeParse({
-        ...base,
-        segments: Array.from({ length: 51 }, () => "seg"),
-      }).success,
-    ).toBe(false);
   });
 });
 

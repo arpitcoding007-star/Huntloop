@@ -85,7 +85,6 @@ export {
   EXCLUSION_KEYS,
   InvalidIcpError,
   bandsToRange,
-  isEmpty as isIcpEmpty,
   isExcluded,
   parseCriteria,
   parseExclusions,

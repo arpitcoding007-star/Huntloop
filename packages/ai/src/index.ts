@@ -239,7 +239,6 @@ export {
   MAX_KEYS_PER_TURN,
   attributesFor,
   completeness,
-  finalize,
   mergeTurn,
   nextKeys,
   type Completeness,

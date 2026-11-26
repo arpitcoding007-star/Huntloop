@@ -32,7 +32,7 @@
  * profile that says nothing about geography must not be read as a profile
  * that excludes every country, and — the failure `ICP-01` actually caused —
  * must not be *presented* as a profile with criteria when it has none.
- * `isEmpty` is what a caller asks before spending a model call on it.
+ * `translateIcp` reports `empty`, which is what discovery asks before paying.
  */
 
 /* ── The shape ─────────────────────────────────────────────────────────── */
@@ -546,26 +546,6 @@ export function scoreIcp(icp: Icp): IcpQuality {
   };
 }
 
-/**
- * Whether this profile says enough to act on.
- *
- * The guard in front of every model call and every paid search. A profile
- * with nothing in it produces a search for "all companies" and a
- * qualification against no criteria, and both cost money to learn nothing.
- */
-export function isEmpty(icp: Icp): boolean {
-  const c = icp.criteria;
-  return (
-    !c.segments?.length &&
-    !c.industries?.length &&
-    !c.sizes?.length &&
-    c.employeeRange === null &&
-    !c.regions?.length &&
-    !c.technologies?.length &&
-    !c.keywords?.length &&
-    !c.triggers?.length
-  );
-}
 
 /* ── Exclusions, applied ───────────────────────────────────────────────── */
 

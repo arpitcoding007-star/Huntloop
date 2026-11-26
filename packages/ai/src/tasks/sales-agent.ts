@@ -38,6 +38,7 @@
  * only. Nothing said in the conversation can become a claim.
  */
 import type { Confidence } from "../claims.ts";
+import { bulletList, evidenceText } from "../evidence-text.ts";
 import { definePrompt } from "../prompt.ts";
 import type { LLMTask } from "../task.ts";
 import { UNTRUSTED_CONTENT_RULE, wrapUntrusted } from "../untrusted.ts";
@@ -276,20 +277,7 @@ export const salesAgent: LLMTask<AgentInput, AgentAnswer> = {
   },
 
   renderInput: (input) => {
-    const list = (values: string[]) =>
-      values.length ? values.map((v) => `  - ${v}`).join("\n") : "  (none given)";
-
-    const evidence = input.evidence.length
-      ? input.evidence
-          .map((e) => {
-            const parts = [`[${e.kind.toUpperCase()}] ${e.claim}`];
-            if (e.confidence) parts.push(`    confidence: ${e.confidence}`);
-            if (e.sourceUrl) parts.push(`    source: ${e.sourceUrl}`);
-            if (e.excerpt) parts.push(`    excerpt: ${e.excerpt}`);
-            return parts.join("\n");
-          })
-          .join("\n\n")
-      : "(no evidence on file)";
+    const evidence = evidenceText(input.evidence);
 
     const narrative = [
       `Why this company: ${input.narrative.whyThisCompany ?? "(not established)"}`,
@@ -303,10 +291,10 @@ export const salesAgent: LLMTask<AgentInput, AgentAnswer> = {
       `What we sell: ${input.icp.sells || "(not stated)"}`,
       "",
       "Segments:",
-      list(input.icp.segments),
+      bulletList(input.icp.segments),
       "",
       "Buying triggers we care about:",
-      list(input.icp.triggers),
+      bulletList(input.icp.triggers),
     ].join("\n");
 
     const history = input.history.length
