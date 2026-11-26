@@ -358,7 +358,6 @@ export {
 } from "./contract.ts";
 
 export { ProviderRefused, MAX_ATTEMPTS, TIMEOUT_MS } from "./call.ts";
-export { TTL, requestHash } from "./cache.ts";
 export {
   budgetAllows,
   breakerOpen,
