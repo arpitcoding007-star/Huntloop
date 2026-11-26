@@ -65,7 +65,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 0: Orient (do this before judging anything)
 
-1. Read the existing audit program and treat it as the baseline to compare against: `audit/README.md`, `audit/FINDINGS.md`, `audit/BACKLOG.md`, the highest-numbered `audit/PASS-*.md` and `audit/PLAN-*.md`, `audit/full-system/00_EXECUTIVE_SUMMARY.md` and `22_PRODUCT_GAPS.md`, and `docs/status/*`.
+1. Read the existing audit program and treat it as the baseline to compare against: `audit/README.md`, `audit/FINDINGS.md`, `audit/BACKLOG.md`, the highest-numbered `audit/pass-*/` folder, and `docs/status/README.md`. Earlier passes are archived at the `pre-cleanup` tag.
 2. Record `git rev-parse HEAD`, the branch, `git status --short`, and `git log --oneline` since the last pass's date. This fixes the audited commit.
 3. Run the mechanical checks. They're read-only, so run them all and capture pass or fail with the key output. Keep going if one fails; the failure is itself a finding.
    ```

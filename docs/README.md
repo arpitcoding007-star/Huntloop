@@ -26,7 +26,7 @@ SIGNAL  →  CONTEXT  →  INTENT  →  OPPORTUNITY  →  ENGAGE  →  LEARN
 |---|---|
 | New to the product | [What Huntloop is](product/what-it-is.md) → [Core workflows](product/core-workflows.md) |
 | A new engineer | [Architecture overview](architecture/overview.md) → [Development setup](developer/setup.md) |
-| A product manager | [Feature reference](product/features.md) → [Implementation status](status/implementation-status.md) |
+| A product manager | [Feature reference](product/features.md) → [Implementation status](status/README.md) |
 | A designer | [Design system](architecture/design-system.md) → [User journeys](product/user-journeys.md) |
 | An operator deploying it | [Deployment](operations/deployment.md) → [The heartbeat](operations/heartbeat.md) → [Migrations](operations/migrations.md) |
 | Evaluating security | [Security model](security/model.md) |
@@ -52,7 +52,7 @@ layer, in the colour palette and in CI.
 A fourth rule governs this documentation: **the code outranks every document
 on the question of what exists.** A requirement described in a plan is not
 evidence that it is implemented. See
-[Documentation vs. code](status/doc-vs-code.md) for where they currently
+[Documentation vs. code](status/README.md) for where they currently
 disagree.
 
 ***
@@ -81,7 +81,7 @@ suites, not by reading the plans.
 
 **The one thing to know:** the engine is built and the *triggering* layer is
 where the gaps are. Four handlers have no caller, and until 2026-09-15 no cron
-was committed at all. See [Implementation status](status/implementation-status.md)
+was committed at all. See [Implementation status](status/README.md)
 and [The heartbeat](operations/heartbeat.md).
 
 ***

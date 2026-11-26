@@ -22,9 +22,8 @@ rules follow from that and are load-bearing everywhere in this repo:
 
 1. **[HuntLoop — Master Product, Technical & Engineering Context.md](HuntLoop%20-%20Master%20Product,%20Technical%20&%20Engineering%20Context.md)** — governing product intent. What the product *is*.
 2. [Project_Creation.md](Project_Creation.md) — execution spec: phases, cost model, UI states, API shape. Authoritative where it does not contradict the above.
-3. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — build plan, architecture decisions, design system. See §0.0 for the precedence rule and §0.0.1 for the reconciliation between (1) and (2).
 
-The code always outranks all three on the question of what exists. A requirement
+The code always outranks both on the question of what exists. A requirement
 described in a document is not evidence that it is implemented.
 
 What is built today: every destination in the sidebar. All **nineteen** read
@@ -58,7 +57,7 @@ packages/db         Migrations, RLS policies, Supabase clients
 
 The design system's color and chrome derive from Supabase; the dashboard
 information architecture derives from Kima BD OS. Tokens are canonical in
-`packages/ui/src/tokens.css` — see IMPLEMENTATION_PLAN.md §1.
+`packages/ui/src/tokens.css` — see [Design system](docs/architecture/design-system.md).
 
 Semantic rule:
 
@@ -139,18 +138,12 @@ unmeasured. It is idempotent and scoped to one organisation.
 
 ## Status
 
-The design system, the database schema, four AI tasks, authentication, and ten
-screens exist.
-
-What works end to end: sign-in (magic link + Google), the org membership guard,
-onboarding (company research → ICP → source recommendations), the analyze
-screen, which runs a real qualification and why-now against a pasted URL, the
-AI spend dashboard over `ai_runs`, and **the opportunity list and detail pages,
-which read the database** — the join, the evidence, the triggers, the buyers.
-
-What does not: the Command Center and sources screens still render illustrative
-figures, and say so on the screen itself in every configuration — a check
-fails the build if one of them stops.
+Every screen is built, and so are the engine, twenty AI tasks, the data
+providers, mailbox sending and reply reading, HubSpot sync and the Exchange.
+All of it is tested against stand-ins. Production runs none of it yet: no
+clock, AI, data, mailbox or email service is configured there. The current
+picture, and what only the owner can unblock, is in
+[docs/status](docs/status/README.md).
 
 Four things have never run, and it is worth knowing which:
 
@@ -166,8 +159,8 @@ Four things have never run, and it is worth knowing which:
 
 ### Before this is offered to anyone
 
-[PROJECT_AUDIT.md](PROJECT_AUDIT.md) is a design, UX, privacy and compliance
-audit of the whole repository. The engineering came out well; the gap it found
+An earlier design, UX, privacy and compliance audit of the whole repository
+(`PROJECT_AUDIT.md`, archived at the `pre-cleanup` tag) reviewed the promises. The engineering came out well; the gap it found
 is that the product's public promises were ahead of its deployment. Most of
 that is now closed — retention and erasure have controls, the quotas the
 pricing page names are enforced, an email cannot leave without an unsubscribe
@@ -187,12 +180,11 @@ footer, and `LEGAL-02` fails the build if that stops being true. Fill in
 
 ```bash
 npm run verify          # typecheck · lint · tests · audit · build · bundle budget
-npx playwright test     # 68 browser tests, desktop and mobile
+npx playwright test     # browser tests, desktop and mobile
 ```
 
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) §11 for the build plan,
-[audit/FINDINGS.md](audit/FINDINGS.md) for an audited account of the gap
-between the two, and [docs/OPERATIONS.md](docs/OPERATIONS.md) for backups,
+See [docs/status](docs/status/README.md) for where things stand,
+[audit/FINDINGS.md](audit/FINDINGS.md) for the audit program's findings, and [docs/OPERATIONS.md](docs/OPERATIONS.md) for backups,
 schema drift, and the API-surface decision.
 
 ## Deploying to Vercel
@@ -215,27 +207,28 @@ Open Graph URLs fall back to the per-deployment Vercel host — or to
 
 ### The heartbeat
 
-`apps/web/vercel.json` schedules `/api/jobs/tick` every minute. Nothing in the
+Something has to call `/api/jobs/tick` on a schedule. Nothing in the
 engine runs without it: the sweepers that notice an overdue source, a due
 send, an unread reply or a stale signal are all enqueued by that endpoint, so
 a deployment without the cron is one that processes whatever it is handed and
 never notices anything — an engine that looks healthy in every log line and
 does nothing.
 
-It lives in `apps/web/`, not the repository root, because Vercel reads
-`vercel.json` from the **Root Directory** configured above. At the root it is
-silently ignored, which is the failure this paragraph exists to prevent.
+Today the clock is `.github/workflows/tick.yml`, which calls the endpoint
+every five minutes. `apps/web/vercel.json` has no `crons` block, because
+Vercel's Hobby plan allows one run a day. The workflow needs:
 
-Two things it needs:
+- **`CRON_SECRET`**, set on the Vercel project and as a GitHub secret. The
+  route refuses to run without it rather than skipping the check — see the
+  reasoning in `api/jobs/tick/route.ts`.
+- **`HUNTLOOP_URL`**, a GitHub variable holding the production origin
+  (`https://huntloop.pro`; the `www` host redirects and fails).
 
-- **`CRON_SECRET`** set on the project. The route refuses to run without it
-  rather than skipping the check — see the reasoning in `api/jobs/tick/route.ts`.
-  Vercel sends it automatically once the variable exists.
-- **A plan with minute-level cron.** Hobby projects are limited to one
-  invocation per day, which is not a heartbeat. If that is the plan, drive the
-  same endpoint from Inngest instead by setting `INNGEST_EVENT_KEY` and
-  `INNGEST_SIGNING_KEY` — `/api/inngest` serves the identical tick, and the
-  queue is in Postgres either way.
+GitHub runs a five-minute schedule only every few hours, so treat it as a
+stopgap. Drive the same endpoint from Inngest (`INNGEST_EVENT_KEY` and
+`INNGEST_SIGNING_KEY`; `/api/inngest` serves the identical tick) or from a
+paid Vercel plan's cron. The steps are in
+[The heartbeat](docs/operations/heartbeat.md).
 
 ## Credits
 

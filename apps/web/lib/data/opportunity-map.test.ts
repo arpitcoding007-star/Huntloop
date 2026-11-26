@@ -25,7 +25,7 @@ import {
  *
  * FEAT-02 shipped after being deliberately held back for a year, and the thing
  * that made it safe to ship was running the query — see the fifth pass in
- * audit/VERIFICATION.md. That was a one-off. These are the parts that can be
+ * audit/VERIFICATION.md (archived at the pre-cleanup tag). That was a one-off. These are the parts that can be
  * held still, so the next refactor has to break a named rule rather than a
  * generic assertion.
  *

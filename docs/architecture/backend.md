@@ -101,7 +101,7 @@ refreshes the affected route.
 {% hint style="warning" %}
 `audit_logs` is currently **write-only** — nothing in the product reads it. It
 is forensic-only until a read surface exists. See
-[Technical debt](../status/technical-debt.md).
+[Technical debt](../status/README.md).
 {% endhint %}
 
 ## Reads

@@ -129,7 +129,7 @@ Extract every status/enum column (lead, enrollment, message, mailbox, job, impor
 
 **Supply chain and secrets.** `npm audit`, lockfile integrity, install scripts, unpinned GitHub Actions (pin by SHA?), workflow permissions (`permissions:` least-privilege), secrets only in env, `NEXT_PUBLIC_*` contents, `.env.local` not tracked, key rotation procedure, service-role key blast radius, git history secret scan (names/locations only).
 
-**Config and environment parity.** Local vs preview vs prod: different DB? different provider keys (sandbox vs live)? feature flags and dev-only bypasses reachable in prod? `first-live-run` runbook steps all actually possible with the code as it is? Several Vercel projects/domains/Supabase projects pointing at different code (split-brain); the domain migration (`docs/domain-migration-huntloop-pro.md`) fully reflected in OAuth redirect URIs, webhook URLs, cookie domains, CORS, link generation, CSP.
+**Config and environment parity.** Local vs preview vs prod: different DB? different provider keys (sandbox vs live)? feature flags and dev-only bypasses reachable in prod? `first-live-run` runbook steps all actually possible with the code as it is? Several Vercel projects/domains/Supabase projects pointing at different code (split-brain); the domain move to `huntloop.pro` fully reflected in OAuth redirect URIs, webhook URLs, cookie domains, CORS, link generation, CSP.
 
 **Multi-tenancy under load.** One noisy org starving the queue (per-tenant fairness in `scope.ts`), cache keys including org ID, global singletons holding tenant data, background jobs running under service role without re-checking the org, realtime/channels scoped per org.
 

@@ -125,7 +125,7 @@ review, and both appeared within minutes of a real connection.
 **On the ordering:** the Next upgrade stayed at position 3, after R2 delivered
 Playwright, and that was the right call — it needed three follow-on changes
 that were all silent, and the browser suite is what proved the app still
-worked. See the fourth pass in [VERIFICATION.md](VERIFICATION.md).
+worked. See the fourth pass in VERIFICATION.md (archived at the `pre-cleanup` tag).
 
 **Exit:** onboarding drop-off is instrumented per step. Spend per org has a
 screen. Zero high-severity advisories. All met — though the funnel emits
@@ -250,7 +250,7 @@ inferred from a name PostgREST exposes.
 below used to have a root; it now has four independent leaves, and each one is
 a credential rather than a decision.
 
-See [AGENT-REACH.md](AGENT-REACH.md) for the full account of what only a human
+See AGENT-REACH.md (archived at the `pre-cleanup` tag) for the full account of what only a human
 can provide.
 
 ---

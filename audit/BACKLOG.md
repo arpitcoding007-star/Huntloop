@@ -84,7 +84,7 @@ the heading "Too many requests" with a retry time that never arrives.
 
 Everything the backlog listed as buildable without a hosted Supabase project.
 Detail and measurements in the fourth-pass section of
-[VERIFICATION.md](VERIFICATION.md).
+VERIFICATION.md (archived at the `pre-cleanup` tag).
 
 | ID | Task | Effort |
 |---|---|---|
@@ -572,7 +572,7 @@ app and the one CI builds — but it cannot reach:
 
 **Now partly discharged, outside the suite.** The live opportunity queries and
 the membership guard's 404 have both been driven in a real browser against the
-seeded project — see the fifth pass in [VERIFICATION.md](VERIFICATION.md).
+seeded project — see the fifth pass in VERIFICATION.md (archived at the `pre-cleanup` tag).
 That is evidence, not a regression test: nothing re-runs it.
 
 **Why it is still not in the suite.** `playwright.config.ts` builds with empty
@@ -632,7 +632,7 @@ into a throwaway project once, end to end, and write down the measured RTO.
 
 ## Interface review — open items
 
-The full pass is [UX-REVIEW.md](UX-REVIEW.md). Six of its fourteen findings
+The full pass is UX-REVIEW.md (archived at the `pre-cleanup` tag). Six of its fourteen findings
 closed in the commit that added it; `UX-05`, `UX-07` and `UX-08` closed in the
 seventh pass; and `UX-09` through `UX-14` closed in the ninth.
 
@@ -718,4 +718,4 @@ branch written, so they lit up rather than needing to be built.
 What is left has **no internal edges**: nothing above blocks anything else
 above, so all five can be done in any order or none. **The backlog is no longer
 the constraint, and neither is provisioning — what remains is four keys and a
-query.** See [AGENT-REACH.md](AGENT-REACH.md) for what only a human can supply.
+query.** See AGENT-REACH.md (archived at the `pre-cleanup` tag) for what only a human can supply.

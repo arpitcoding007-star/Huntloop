@@ -231,7 +231,7 @@ an expired key, a revoked key, and a key for the right vendor on the wrong
 account, none of which sniffing could see.
 
 `.env.example` still carries the old argument — see
-[Documentation vs. code](../status/doc-vs-code.md).
+[Documentation vs. code](../status/README.md).
 
 ### 🔄 The cron: committed → removed → committed again
 
@@ -294,5 +294,5 @@ different, rather than assuming the first one was careless.
 ## Related
 
 * [Vision and principles](../product/vision-and-principles.md)
-* [Technical debt](../status/technical-debt.md) — the "not debt, deliberate" list
-* [Documentation vs. code](../status/doc-vs-code.md)
+* [Technical debt](../status/README.md) — the "not debt, deliberate" list
+* [Documentation vs. code](../status/README.md)

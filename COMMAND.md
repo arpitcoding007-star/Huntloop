@@ -4,6 +4,8 @@
 >
 > **Maintenance rule:** any change that adds, removes, renames, or rewires an interactive element, route, redirect, server action, or state must update this file in the same commit — the affected entry, every flow that links to it, and §14 if a mismatch is fixed or introduced.
 >
+> **Out of date in places (checked 26 Nov 2026).** The last full sync below predates migrations 0048 to 0071, including the whole Exchange. Entries for screens added since may be missing. Production now runs the schema through `0071`. For current status read [docs/status](docs/status/README.md); for screen-by-screen behaviour of newer features read [HUNTLOOP_MASTER_SYSTEM_GUIDE.md](HUNTLOOP_MASTER_SYSTEM_GUIDE.md) and `audit/pass-22/RESULTS.md`.
+>
 > Last full sync: **2026-10-12** on `feat/personal-learning` — release **0.1.0** (P0–P6 of §16, §16.3-K, §16.3-L L1–L12) plus the unreleased work in [CHANGELOG.md](CHANGELOG.md), including the 2026-10-11 security audit's fixes. Migrations through `0047`; production has through `0045`, and `0046`–`0047` are not applied there yet.
 >
 > **Roadmap:** [§16](#16-product-roadmap) holds the product roadmap (added 2026-10-06). It is the only part of this file that describes **planned** behaviour; when a §16 item ships, document it in §0–§15 and mark it Shipped in §16 in the same commit.

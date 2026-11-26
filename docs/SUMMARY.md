@@ -4,7 +4,7 @@
 
 * [Huntloop documentation](README.md)
 * [What Huntloop is](product/what-it-is.md)
-* [Implementation status](status/implementation-status.md)
+* [Status](status/README.md)
 
 ## Specification Pack (2026-10-08)
 
@@ -28,6 +28,10 @@
 * [Plans, quotas and billing](product/plans-and-quotas.md)
 * [Exchange: intent marketplace (proposed)](product/marketplace-spec.md)
 * [Exchange demand test (run by hand)](product/exchange-demand-test.md)
+* [Discovery network: brief](product/discovery-network-brief.md)
+* [Discovery network: exploration](product/discovery-network-exploration.md)
+* [Discovery network: build plan](product/discovery-network-build-plan.md)
+* [Personalization plan](product/personalization-plan.md)
 
 ## Architecture
 
@@ -68,31 +72,18 @@
 * [First live run](operations/first-live-run.md)
 * [Observability](operations/observability.md)
 * [Performance](operations/performance.md)
+* [Kill switch](operations/kill-switch.md)
+* [Exchange moderation](operations/exchange-moderation.md)
 * [Operations runbook](OPERATIONS.md)
 
 ## Decisions and history
 
 * [Master system guide](../HUNTLOOP_MASTER_SYSTEM_GUIDE.md)
-* [Pass 18 status](status/pass-18-status.md)
 * [Decision log](decisions/README.md)
   * [Exchange: decisions before P0](decisions/exchange.md)
-* [Documentation vs. code](status/doc-vs-code.md)
-* [Technical debt](status/technical-debt.md)
-* [Roadmap](status/roadmap.md)
-* [Changelog](status/changelog.md)
-
-## Competitive analysis
-
-* [Huntloop vs. Harvey: technical audit](competitive/harvey/README.md)
-  * [Feature and capability inventory](competitive/harvey/01-feature-inventory.md)
-  * [Architecture and data flow](competitive/harvey/02-architecture.md)
-  * [Categories 1–7](competitive/harvey/03-categories-1-7.md)
-  * [Categories 8–13](competitive/harvey/04-categories-8-13.md)
-  * [Comparison matrix](competitive/harvey/05-matrix.md)
-  * [Gap analysis and roadmap](competitive/harvey/06-gaps-and-roadmap.md)
 
 ## Reference
 
 * [Glossary](reference/glossary.md)
 * [Documentation conventions](meta-documentation-conventions.md)
-* [Source document map](reference/source-documents.md)
+* [Source document map](spec/README.md)

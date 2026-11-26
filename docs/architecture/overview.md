@@ -127,7 +127,7 @@ Three rules:
    `@huntloop/db`" at all. That was true when written and is now imprecise; the
    subpath import arrived with `0010`'s rule work. The property that matters —
    no client — still holds. Recorded in
-   [Documentation vs. code](../status/doc-vs-code.md).
+   [Documentation vs. code](../status/README.md).
    {% endhint %}
 2. **Nothing outside `packages/providers/src/adapters/` may know a vendor
    exists.** The `PRV-CHK` audit check fails the build if the string `apollo`

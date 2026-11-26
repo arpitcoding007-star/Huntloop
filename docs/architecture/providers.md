@@ -69,7 +69,7 @@ key for the right vendor on the wrong account, none of which sniffing could see.
 `ENRICHMENT_PROVIDER` variable… the vendor is chosen from the shape of the
 key"). That comment is **outdated** — the registry routes `ENRICHMENT_API_KEY`
 to Hunter unconditionally. Recorded in
-[Documentation vs. code](../status/doc-vs-code.md).
+[Documentation vs. code](../status/README.md).
 {% endhint %}
 
 ## The call pipeline
@@ -199,7 +199,7 @@ set to `null` when unusable.
 
 The registry picks **one** provider per capability. There is no fallback chain:
 if Apollo refuses `company.enrich`, nothing tries a second vendor. Listed in
-[Technical debt](../status/technical-debt.md).
+[Technical debt](../status/README.md).
 
 ## Related
 

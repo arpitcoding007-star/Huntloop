@@ -46,7 +46,7 @@ counters step 3 just created.
 ## Production — one chain, and how to check it
 
 The intended chain is **GitHub `main` → one Vercel project → Supabase
-`hnoycsbdddpmsivtmrws` → integrations → `https://huntloop.pro`** (migrating from `seefluence.com`; see `docs/domain-migration-huntloop-pro.md`).
+`hnoycsbdddpmsivtmrws` → integrations → `https://huntloop.pro`** (the move from `seefluence.com` is complete).
 
 As of the 2026-09-28 audit it was split: two Vercel projects deployed every
 push (`huntloop` in the *huntloop* team, which owns the domain but had never
@@ -504,7 +504,7 @@ What that does **not** yet mean:
 | **Buyer side (the Exchange)** | Not built, by decision, until the demand test has run. |
 | **Legal pages** | Exist but stay unpublished until the facts in `apps/web/lib/legal.ts` are filled in. |
 
-Current status: [docs/status](docs/status/).
+Current status: docs/status (archived at the `pre-cleanup` tag).
 
 ---
 
