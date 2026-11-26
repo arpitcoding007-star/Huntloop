@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { disableExchangeEmails, verifyExchangeUnsubscribeToken } from "@huntloop/jobs";
+import { unsubscribePage as page, unsubscribeToken as tokenFrom } from "../../../../lib/unsubscribe-page";
 
 /**
  * Turning Exchange emails off from the email itself (build plan DN-81). The
@@ -12,30 +13,12 @@ import { disableExchangeEmails, verifyExchangeUnsubscribeToken } from "@huntloop
  * silently turned itself off because a security product scanned the email
  * would be a worse bug than one extra click.
  *
- * The token is the authority (see `digest-token.ts`), so no session is needed,
- * and all it can ever do is turn one person's digest off.
+ * The token is the authority (see `exchange-token.ts`), so no session is needed,
+ * and all it can ever do is turn one person's Exchange emails off.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function page(title: string, body: string, form?: string): NextResponse {
-  const html =
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<meta name="robots" content="noindex"><title>${title}</title>` +
-    `<style>body{font:16px/1.6 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#1f2937;background:#F7F8FA}` +
-    `button{font:inherit;background:#1F58F0;color:#fff;border:0;border-radius:6px;padding:.55rem 1rem;cursor:pointer}` +
-    `@media(prefers-color-scheme:dark){body{background:#111111;color:#ECECEA}}</style></head>` +
-    `<body><h1>${title}</h1><p>${body}</p>${form ?? ""}</body></html>`;
-  return new NextResponse(html, {
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-  });
-}
-
-function tokenFrom(request: NextRequest): string {
-  return request.nextUrl.searchParams.get("token")?.slice(0, 300) ?? "";
-}
 
 export async function GET(request: NextRequest) {
   const token = tokenFrom(request);

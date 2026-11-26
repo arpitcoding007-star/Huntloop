@@ -32,7 +32,6 @@ import {
   EXCLUSION_KEYS,
   InvalidIcpError,
   bandsToRange,
-  isEmpty,
   isExcluded,
   parseCriteria,
   parseExclusions,
@@ -231,7 +230,6 @@ console.log("\nicp — quality is a count, not an opinion");
   const empty = scoreIcp(parseIcp({}, {}));
   expect("an empty profile scores 0", empty.score === 0);
   expect("and says what to add, highest-value first", empty.suggestions.length > 0);
-  expect("an empty profile is empty", isEmpty(parseIcp({}, {})));
 
   const full = scoreIcp(
     parseIcp(

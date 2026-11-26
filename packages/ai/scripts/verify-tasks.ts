@@ -33,7 +33,7 @@ import { explainMatch, requirementFit, type ExplainMatchInput } from "../src/tas
 import { DeclaredDataRefused, personalizeMessage as personalizeForGuard } from "../src/tasks/personalize-message.ts";
 import { numberInQuote, readSupplyPage } from "../src/tasks/read-supply-page.ts";
 import { intakeTurn, type IntakeTurnInput } from "../src/tasks/intake-turn.ts";
-import { completeness, finalize, mergeTurn, nextKeys, MAX_INTAKE_TURNS, type IntakeAttribute } from "../src/intake.ts";
+import { completeness, mergeTurn, nextKeys, MAX_INTAKE_TURNS, type IntakeAttribute } from "../src/intake.ts";
 import {
   MAX_RECOMMENDATIONS,
   recommendSources,
@@ -2430,7 +2430,6 @@ console.log("\nintake — the code, not the model, decides what is still needed"
   expectEqual("optional fields come after the required ones", nextKeys(attrs, known), ["condition"]);
   const stuck = completeness(attrs, {}, MAX_INTAKE_TURNS);
   expect("the turn cap ends the questionnaire, saying why", stuck.ready && stuck.reason === "turn_limit", JSON.stringify(stuck));
-  expectEqual("what is still open at the end is unknown, never guessed", finalize(attrs, {}).quantity?.kind, "unknown");
 }
 
 console.log("\nintake_classify — closed over the categories sent");
@@ -2519,10 +2518,10 @@ console.log("\nintake — fifty synthetic questionnaires (DN-49, until Phase 0 g
       turns++;
       if (turns > MAX_INTAKE_TURNS) { problems.push(`${person}: over ${MAX_INTAKE_TURNS} turns`); break; }
     }
-    const done = finalize(attributes, known) as Record<string, { value: string | null; kind: string }>;
+    const done: Record<string, { value: string | null }> = known;
     for (const [k, v] of said) if (done[k]?.value !== v) problems.push(`${person}: lost ${k}`);
     if (Object.keys(done).some((k) => !attributes.some((a) => a.key === k))) problems.push(`${person}: kept a field nobody asked for`);
-    for (const a of attributes) if (!said.has(a.key) && done[a.key]?.value !== null) problems.push(`${person}: guessed ${a.key}`);
+    for (const a of attributes) if (!said.has(a.key) && (done[a.key]?.value ?? null) !== null) problems.push(`${person}: guessed ${a.key}`);
     if (style !== "silent") turnsUsed.push(turns);
   }
   expectEqual("nobody loses an answer, is asked twice, is guessed for or is kept past the cap", problems, []);

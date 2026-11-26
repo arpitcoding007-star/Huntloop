@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { FindingProposal } from "@huntloop/ai";
-import { InvalidRuleError, validateExpression } from "@huntloop/db/rules";
+import { InvalidRuleError, validateRule } from "@huntloop/db/rules";
 import {
   currentUserId,
   fail,
@@ -165,7 +165,11 @@ export async function approveFindingAction(
          have moved on — a stored proposal that no longer parses must fail here
          with a reason rather than become a rule the engine silently skips. */
       try {
-        validateExpression(proposal.expression);
+        validateRule({
+          ...proposal,
+          weight: proposal.effect === "adjust" ? proposal.weight : null,
+          floorPriority: proposal.effect === "floor" ? proposal.floorPriority : null,
+        });
       } catch (e) {
         if (e instanceof InvalidRuleError) {
           await giveBack();

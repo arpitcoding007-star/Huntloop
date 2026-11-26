@@ -7,6 +7,7 @@ import {
   runTask,
   type CompanyUnderstanding,
 } from "@huntloop/ai";
+import { exampleUnderstanding } from "./example-understanding";
 import { resolveRecorder } from "./recorder";
 import { consumeRateLimit, refusal } from "../rate-limit";
 import { budgetRefusal, countAiRun, withinAiBudget } from "./budget";
@@ -60,7 +61,7 @@ export async function research(
   if (!isAiConfigured()) {
     return {
       ok: true,
-      result: { source: "unconfigured", metered: false, understanding: example(normalized.url) },
+      result: { source: "unconfigured", metered: false, understanding: exampleUnderstanding(normalized.url, normalizeUrl(normalized.url).canonicalDomain) },
     };
   }
 
@@ -108,65 +109,4 @@ export async function research(
       error: publicAiError(error, "Research failed."),
     };
   }
-}
-
-/**
- * The worked example shown when no key is configured.
- *
- * Held to the same §7 rules as a real result — the facts carry sources, the
- * inferences carry confidence, and `business_model` is genuinely unknown. A
- * demo that cheats on the rules teaches everyone who reads it that the rules
- * are decorative, and the onboarding screen is where most people meet them.
- */
-function example(url: string): CompanyUnderstanding {
-  return {
-    url,
-    canonicalDomain: normalizeUrl(url).canonicalDomain,
-    companyName: "Example Co",
-    findings: [
-      {
-        field: "sells",
-        label: "What you sell",
-        kind: "fact",
-        value:
-          "Policy and permissioning infrastructure for autonomous agents that hold or move funds.",
-        sourceUrl: "https://example.com/product",
-        confidence: "high",
-      },
-      {
-        field: "buyers",
-        label: "Who you sell to",
-        kind: "inference",
-        value: "Crypto trading desks, funds, and AI infrastructure companies.",
-        sourceUrl: null,
-        confidence: "medium",
-      },
-      {
-        field: "business_model",
-        label: "Business model",
-        kind: "unknown",
-        value: "No pricing is published anywhere on the site.",
-        sourceUrl: null,
-        confidence: null,
-      },
-      {
-        field: "problem",
-        label: "The problem you solve",
-        kind: "fact",
-        value:
-          "Institutions will not let software hold unconstrained signing authority over capital.",
-        sourceUrl: "https://example.com/",
-        confidence: "high",
-      },
-      {
-        field: "trigger",
-        label: "Likely buying trigger",
-        kind: "inference",
-        value:
-          "Shipping an autonomous agent that touches real funds, especially just after raising.",
-        sourceUrl: null,
-        confidence: "low",
-      },
-    ],
-  };
 }

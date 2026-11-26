@@ -52,7 +52,6 @@
 import {
   RULE_FIELDS,
   RULE_INTENTS,
-  RULE_OPERATORS,
   InvalidRuleError,
   describeRule,
   validateExpression,
@@ -61,6 +60,7 @@ import {
   type RuleIntent,
   type RulePriority,
 } from "@huntloop/db/rules";
+import { ruleExpressionSchema } from "../rule-schema.ts";
 import { definePrompt } from "../prompt.ts";
 import type { LLMTask } from "../task.ts";
 import { UNTRUSTED_CONTENT_RULE, wrapUntrusted } from "../untrusted.ts";
@@ -405,46 +405,7 @@ export const analyzePerformance: LLMTask<AnalyzeInput, PerformanceAnalysis> = {
         ? { type: "array", items: { type: "string", enum: ids } }
         : { type: "array", maxItems: 0, items: { type: "string" } };
 
-    const condition = {
-      type: "object",
-      additionalProperties: false,
-      required: ["field", "op"],
-      properties: {
-        field: { type: "string", enum: [...RULE_FIELDS] },
-        op: { type: "string", enum: [...RULE_OPERATORS] },
-        value: {
-          anyOf: [
-            { type: "string" },
-            { type: "number" },
-            { type: "array", items: { type: "string" } },
-          ],
-        },
-      },
-    };
-
-    const expression = {
-      anyOf: [
-        condition,
-        {
-          type: "object",
-          additionalProperties: false,
-          required: ["all"],
-          properties: { all: { type: "array", minItems: 1, items: condition } },
-        },
-        {
-          type: "object",
-          additionalProperties: false,
-          required: ["any"],
-          properties: { any: { type: "array", minItems: 1, items: condition } },
-        },
-        {
-          type: "object",
-          additionalProperties: false,
-          required: ["not"],
-          properties: { not: condition },
-        },
-      ],
-    };
+    const expression = ruleExpressionSchema();
 
     const ruleProposal = {
       type: "object",

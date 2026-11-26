@@ -128,15 +128,6 @@ export const httpUrlSchema = z
 const shortText = z.string().max(400);
 const stringList = z.array(shortText).max(50);
 
-export const icpSchema = z.object({
-  sells: z.string().max(2000),
-  segments: stringList,
-  sizes: stringList,
-  regions: stringList,
-  triggers: stringList,
-  exclusions: stringList,
-});
-
 /**
  * The evidence the analyze screen hands back when asking "why now".
  *

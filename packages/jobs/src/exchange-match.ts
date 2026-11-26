@@ -21,6 +21,8 @@
  * judged it, it is UNKNOWN.
  */
 
+import { requirementFit } from "@huntloop/ai";
+
 export interface MatchNeed {
   id: string;
   org_id: string;
@@ -218,7 +220,7 @@ export function applyExplanations(
     if (!e) return r;
     const evidence = evidenceCount.get(r.offeringId) ?? 0;
     const backed = e.backing.filter((b) => b.evidenceId !== null);
-    const requirement = mustHaves === 0 || evidence === 0 ? null : Math.round((backed.length / mustHaves) * 100);
+    const requirement = requirementFit(mustHaves, evidence, e.backing);
     const dimensions = { ...r.dimensions, requirement };
     const measured = r.explanation;
     const requirementNote =

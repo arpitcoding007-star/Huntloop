@@ -268,7 +268,7 @@ export function validateExpression(value: unknown, depth = 0): RuleExpression {
 
 /** Full row validation, including the effect/argument pairing `0010` enforces. */
 export function validateRule(
-  rule: Omit<ScoringRule, "id" | "expression"> & { expression: unknown },
+  rule: Pick<ScoringRule, "effect" | "weight" | "floorPriority"> & { expression: unknown },
 ): void {
   const expression = validateExpression(rule.expression);
   const conditions = countConditions(expression);

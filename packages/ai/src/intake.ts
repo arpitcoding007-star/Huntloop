@@ -126,12 +126,3 @@ export function mergeTurn(
   }
   return next;
 }
-
-/** Fields still open when the summary is shown are recorded as unknown, never guessed. */
-export function finalize(attributes: IntakeAttribute[], known: Requirement): Requirement {
-  const out: Requirement = { ...known };
-  for (const a of attributes) {
-    if (!out[a.key]) out[a.key] = { value: null, kind: "unknown", source: "skipped" };
-  }
-  return out;
-}
