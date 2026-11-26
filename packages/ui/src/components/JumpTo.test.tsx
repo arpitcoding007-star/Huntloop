@@ -97,6 +97,29 @@ describe("the palette", () => {
   });
 });
 
+describe("a fresh palette", () => {
+  /* The parent never commits `open={false}`: what happens when React folds
+     an Escape and a quick ⌘K into one update. The query must clear anyway. */
+  it("clears the query when it asks to close, even if it is never shown closed", () => {
+    const onClose = vi.fn();
+    render(<JumpTo open onClose={onClose} items={items} onNavigate={() => {}} />);
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "intel" } });
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+    expect(onClose).toHaveBeenCalled();
+    expect(input.value).toBe("");
+    expect(screen.getAllByRole("option")).toHaveLength(items.length);
+  });
+
+  it("clears it after a jump too", () => {
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={() => {}} />);
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "inbox" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("");
+  });
+});
+
 describe("actions (UX-15)", () => {
   const onActions = (q: string): JumpToItem[] =>
     q ? [{ label: `Analyze ${q}`, href: `/acme/analyze?url=${q}`, group: "Action" }] : [];

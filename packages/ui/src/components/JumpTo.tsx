@@ -82,6 +82,21 @@ export function JumpTo({ open, onClose, items, onNavigate, onSearch, onActions }
     input.current?.focus();
   }, [open]);
 
+  /*
+   * Also cleared the moment the palette asks to close, not only when it sees
+   * `open` turn true again. The effect above needs a committed render with
+   * `open` false in between, and that render can vanish: after a jump the
+   * router holds a transition, so React may discard the "closed" render, and
+   * an Escape followed quickly by ⌘K arrives as one update from true to
+   * true. The effect never fires and the last query comes back. Clearing
+   * here does not depend on React showing us the closed state.
+   */
+  const close = () => {
+    setQuery("");
+    setActive(0);
+    onClose();
+  };
+
   const [records, setRecords] = useState<JumpToItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -127,7 +142,7 @@ export function JumpTo({ open, onClose, items, onNavigate, onSearch, onActions }
 
   const go = (item: JumpToItem | undefined) => {
     if (!item) return;
-    onClose();
+    close();
     onNavigate(item.href);
   };
 
@@ -147,7 +162,7 @@ export function JumpTo({ open, onClose, items, onNavigate, onSearch, onActions }
   const optionId = (i: number) => `${id}-opt-${i}`;
 
   return (
-    <Modal open={open} onClose={onClose} title="Jump to" size="md" className="max-h-[min(560px,100%)]">
+    <Modal open={open} onClose={close} title="Jump to" size="md" className="max-h-[min(560px,100%)]">
       <div className="-mx-5 -my-4 flex min-h-0 flex-col">
         <label className="flex items-center gap-2.5 border-b border-line-subtle px-5">
           <Search aria-hidden className="size-4 shrink-0 text-fg-muted" strokeWidth={1.7} />
