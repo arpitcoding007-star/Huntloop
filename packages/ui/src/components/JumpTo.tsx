@@ -34,6 +34,15 @@ export interface JumpToProps {
    * characters; an answer to an older query is dropped.
    */
   onSearch?: (query: string) => Promise<JumpToItem[]>;
+  /**
+   * Verbs for what was typed (UX-15): "Analyze acme.com", "Opportunities at
+   * Acme". Listed after the pages that match and before records, so typing
+   * "inbox" and pressing Enter still opens Inbox; a domain matches no page,
+   * so "Analyze acme.com" is first exactly when it is what was meant.
+   * Synchronous and pure: each is a link, so choosing one is the same
+   * client-side jump as choosing a page.
+   */
+  onActions?: (query: string) => JumpToItem[];
 }
 
 /**
@@ -54,7 +63,7 @@ export interface JumpToProps {
  * The list is the ARIA combobox pattern: focus stays in the input, and the
  * highlighted option is announced through `aria-activedescendant`.
  */
-export function JumpTo({ open, onClose, items, onNavigate, onSearch }: JumpToProps) {
+export function JumpTo({ open, onClose, items, onNavigate, onSearch, onActions }: JumpToProps) {
   const id = useId();
   const listId = `${id}-list`;
   const input = useRef<HTMLInputElement>(null);
@@ -105,7 +114,11 @@ export function JumpTo({ open, onClose, items, onNavigate, onSearch }: JumpToPro
     };
   }, [open, query, onSearch]);
 
-  const results = useMemo(() => [...rank(items, query), ...records], [items, query, records]);
+  const actions = useMemo(() => (onActions ? onActions(query.trim()) : []), [onActions, query]);
+  const results = useMemo(
+    () => [...rank(items, query), ...actions, ...records],
+    [actions, items, query, records],
+  );
   const what = onSearch ? "Search pages and records" : "Search pages";
 
   useEffect(() => {

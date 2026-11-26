@@ -125,6 +125,30 @@ test.describe("accessibility", () => {
   });
 
   /**
+   * UX-15: a domain typed into the palette offers "Analyze …" first, and
+   * Enter opens Analyze with the box filled and no run started. A page name
+   * still wins over every action, so "inbox" plus Enter opens Inbox.
+   */
+  test("the palette's actions open their screen, and pages still come first", async ({ page }) => {
+    await page.goto("/demo/dashboard");
+    await page.keyboard.press("Control+k");
+    const box = page.getByRole("combobox", { name: /search pages/i });
+    await expect(box).toBeFocused();
+
+    await box.fill("stripe.com");
+    await expect(page.getByRole("option").first()).toContainText("Analyze stripe.com");
+    await box.press("Enter");
+    await expect(page).toHaveURL(/\/demo\/analyze\?url=stripe\.com$/);
+    await expect(page.getByRole("textbox").first()).toHaveValue("stripe.com");
+
+    await page.keyboard.press("Control+k");
+    await box.fill("inbox");
+    await expect(page.getByRole("option").first()).toContainText("Inbox");
+    await box.press("Enter");
+    await expect(page).toHaveURL(/\/demo\/inbox$/);
+  });
+
+  /**
    * Both themes, because half the contrast tokens only exist in one of them.
    *
    * Light was added later and derives from reference screenshots rather than

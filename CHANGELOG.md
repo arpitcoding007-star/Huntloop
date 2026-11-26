@@ -8,6 +8,12 @@ ship from.
 
 ## [Unreleased]
 
+### Added
+- The ⌘K palette offers actions for what you type: "Analyze stripe.com" opens
+  Analyze with the address filled in (it never starts a run), "Opportunities
+  at …" filters the list to a company, and "Show hot opportunities" and its
+  siblings open a priority view. Pages that match still come first.
+
 ### Documentation
 - The master guide no longer calls the Exchange unbuilt, counts 71 migrations,
   and lists the current owner blockers. The specification pack is marked

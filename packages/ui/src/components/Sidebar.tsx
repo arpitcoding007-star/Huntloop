@@ -101,6 +101,7 @@ export interface SidebarProps {
   jumpTo?: {
     onNavigate: (href: string) => void;
     onSearch?: (query: string) => Promise<JumpToItem[]>;
+    onActions?: (query: string) => JumpToItem[];
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
   };
@@ -312,6 +313,7 @@ export function Sidebar({
           items={jumpItems}
           onNavigate={jumpTo.onNavigate}
           onSearch={jumpTo.onSearch}
+          onActions={jumpTo.onActions}
         />
       )}
     </>

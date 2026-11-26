@@ -481,8 +481,8 @@ is an accuracy note about serverless cold starts, not a defect: the caches are
 correct, and a shared one would need a second stateful service to save one
 HEAD request per instance.
 
-`UX-15`, the command palette, is marked optional in its own entry and is the
-only interface item left. It is a feature rather than a fix.
+`UX-15`, the command palette, closed on 26 Nov 2026: the palette offers
+actions as well as pages and records. No interface item is left open.
 ---
 
 ## P0 — Before the next production deploy
@@ -640,7 +640,7 @@ seventh pass; and `UX-09` through `UX-14` closed in the ninth.
 
 | ID | Task | Effort | Note |
 |---|---|---|---|
-| UX-15 | A command palette | M | Optional in its own right. UX-02 removed the ⌘K affordance rather than building one; a dozen verbs have no screen of their own and a palette can host them first |
+| ~~UX-15~~ | A command palette | M | **Closed 26 Nov 2026.** The ⌘K palette finds pages and records (V-17) and now offers actions for the query: analyze a domain, filter opportunities to a company, open a priority view (`apps/web/lib/palette-actions.ts`). Re-research needs a company and stays on its page |
 
 Worth stating plainly rather than leaving as an empty table: the interface
 backlog is not a constraint on this product any more. What remains is one

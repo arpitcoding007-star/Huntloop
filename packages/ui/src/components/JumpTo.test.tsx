@@ -97,6 +97,38 @@ describe("the palette", () => {
   });
 });
 
+describe("actions (UX-15)", () => {
+  const onActions = (q: string): JumpToItem[] =>
+    q ? [{ label: `Analyze ${q}`, href: `/acme/analyze?url=${q}`, group: "Action" }] : [];
+
+  it("lists verbs after the matching pages, so a page name plus Enter still opens the page", () => {
+    const onNavigate = vi.fn();
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={onNavigate} onActions={onActions} />);
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "inbox" } });
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options[0]).toContain("Inbox");
+    expect(options[1]).toContain("Analyze inbox");
+
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(onNavigate).toHaveBeenCalledWith("/acme/inbox");
+  });
+
+  it("shows only the pages for an empty query", () => {
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={() => {}} onActions={onActions} />);
+    expect(screen.getAllByRole("option")).toHaveLength(items.length);
+  });
+
+  it("an action is first, and Enter runs it, when no page matches", () => {
+    const onNavigate = vi.fn();
+    render(<JumpTo open onClose={() => {}} items={items} onNavigate={onNavigate} onActions={onActions} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "zzz" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("Analyze zzz")]);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(onNavigate).toHaveBeenCalledWith("/acme/analyze?url=zzz");
+  });
+});
+
 describe("the sidebar's ⌘K palette", () => {
   const sections = [
     {
