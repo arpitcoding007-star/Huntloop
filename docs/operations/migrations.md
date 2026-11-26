@@ -57,7 +57,6 @@ constraint with no test is a constraint the next refactor removes silently.
 npm run db:doctor
 
 # 2. Paste the missing files, in order, into the Supabase SQL editor.
-#    COMBINED-0024-0027.sql exists so four can go in one paste.
 
 # 3. Confirm.
 npm run db:doctor      # exits 1 when anything is missing

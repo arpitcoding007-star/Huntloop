@@ -170,8 +170,6 @@ Grouped by what they are for.
 | 0027 | `org_directory` | Org domain, discoverable workspaces, join requests |
 | 0028 | `signals_and_crm` | Signal staleness, `hubspot_connections` |
 
-`COMBINED-0024-0027.sql` exists so four migrations can be pasted in one go.
-
 ## Applying migrations
 
 {% hint style="danger" %}

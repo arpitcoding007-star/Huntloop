@@ -46,9 +46,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SECRET_KEY=
 ```
 
-Then apply the migrations. **There is no automated migration step** — they go
-into the Supabase SQL editor by hand, in order, one file at a time.
-`COMBINED-0024-0027.sql` exists so four of them can be pasted in one go.
+Then apply the migrations. The **Migrate database** workflow applies them on
+every push to `main` that touches one; by hand, paste them into the Supabase
+SQL editor in order, one file at a time.
 
 ```bash
 npm run db:doctor        # which migrations this project has ACTUALLY had applied
