@@ -117,4 +117,4 @@ and everything else in this list is easier once it exists.
 
 * [Observability](observability.md)
 * [Testing](../developer/testing.md)
-* [Technical debt](../status/technical-debt.md)
+* [Technical debt](../status/README.md)

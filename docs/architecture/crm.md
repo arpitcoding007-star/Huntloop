@@ -147,7 +147,7 @@ connection and pushes nothing.
 
 The fix is small: an action on the opportunity page, or a fan-out from
 `schedule_syncs` (which already exists and already sweeps on a cadence). See
-[Technical debt](../status/technical-debt.md).
+[Technical debt](../status/README.md).
 {% endhint %}
 
 ## Adding a second CRM

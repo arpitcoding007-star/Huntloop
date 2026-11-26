@@ -13,7 +13,7 @@ import {
   ScorePill,
   SectionLabel,
 } from "@huntloop/ui";
-import { ArrowLeft, ExternalLink, Linkedin, Mail } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, ExternalLink, Mail } from "lucide-react";
 import { getOpportunity } from "../../../../../lib/data/opportunities";
 import { hasHubspot, listCampaignTargets } from "../../../../../lib/data/outreach";
 import { listMembers } from "../../../../../lib/data/team";
@@ -415,7 +415,7 @@ export default async function OpportunityPage({
                             aria-label={`${b.name} on LinkedIn`}
                             className="hl-focusable inline-flex size-7 items-center justify-center rounded-md border border-line bg-surface text-fg-secondary transition-colors duration-[120ms] hover:border-brand-border hover:bg-hover hover:text-fg"
                           >
-                            <Linkedin className="size-3" strokeWidth={1.75} />
+                            <BriefcaseBusiness className="size-3" strokeWidth={1.75} />
                           </a>
                         )}
                       </div>

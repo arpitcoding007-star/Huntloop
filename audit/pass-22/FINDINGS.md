@@ -25,7 +25,7 @@ The simulation and audit checks were also run against the old code and failed th
 |---|---|---|---|
 | V-01 | The opportunity agent never completes a conversation | `opportunities/[id]/actions.ts` inserts the user and assistant rows together. The user row omits `cited_evidence_ids`; in a bulk insert supabase-js lists the union of columns, so the missing value is sent as null into a `not null` column | `opp.agent`: 23502 |
 | V-02 | Ask Huntloop never completes a conversation | Same pattern in `assistant/actions.ts` for `citations` (and `actions`) | `asst.ask`: 23502 |
-| V-03 | `https://huntloop.pro` fails TLS | The apex domain serves a certificate for another name; `siteUrl` still points there | Production probe: SEC_E_WRONG_PRINCIPAL |
+| V-03 | `https://huntloop.pro` fails TLS | The apex domain serves a certificate for another name; `siteUrl` still points there | Production probe: SEC_E_WRONG_PRINCIPAL. **Closed 26 Nov 2026:** the apex answers over TLS and serves `/api/health` |
 
 ## Partially implemented
 

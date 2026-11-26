@@ -234,6 +234,6 @@ grep -rn "enqueue(" packages apps --include=*.ts --include=*.tsx
 
 ## Related
 
-* [Implementation status](../status/implementation-status.md) — the same picture, summarised
-* [Technical debt](../status/technical-debt.md)
-* [Roadmap](../status/roadmap.md)
+* [Implementation status](../status/README.md) — the same picture, summarised
+* [Technical debt](../status/README.md)
+* [Roadmap](../status/README.md)

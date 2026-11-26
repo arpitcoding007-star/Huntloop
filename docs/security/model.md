@@ -185,7 +185,7 @@ Connecting is **refused** when the key is unset, rather than storing plain text.
 | Two moderate dev-only advisories (`vitest`) | Low | `npm audit --audit-level=high` is clean |
 
 {% hint style="info" %}
-`audit/full-system/28_MANUAL_ACTIONS_REQUIRED.md` lists a critical Next.js RCE
+`audit/full-system/28_MANUAL_ACTIONS_REQUIRED.md` (archived at the `pre-cleanup` tag) listed a critical Next.js RCE
 as the top item. **Re-verified on 2026-09-16: `npm audit --audit-level=high`
 exits 0.** Only two moderate `@vitest/mocker` advisories remain, in a dev
 dependency. That document is stale on this point.

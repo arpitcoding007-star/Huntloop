@@ -25,7 +25,7 @@ reasoning is worth reading in full.
    is still true as of 2026-09-16. A restore has never been rehearsed.
 
 Every other claim here was re-checked on 2026-09-16 and holds. See
-[Documentation vs. code](status/doc-vs-code.md) for the full list of
+[Documentation vs. code](status/README.md) for the full list of
 discrepancies found across the repository.
 {% endhint %}
 
@@ -347,7 +347,7 @@ start depending on one.
 
 **Before the first external integration**, whichever comes first — a customer
 integration, a public API, a webhook consumer, or the Agent Reach worker
-described in [AGENT-REACH.md](../audit/AGENT-REACH.md) writing results back —
+described in AGENT-REACH.md (archived at the `pre-cleanup` tag) writing results back —
 make this decision explicitly:
 
 - A versioned REST surface under `/api/v1/*`, with its own authentication that

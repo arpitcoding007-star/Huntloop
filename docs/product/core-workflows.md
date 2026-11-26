@@ -103,7 +103,7 @@ flowchart TD
   attributed but never promoted to "verified".
 * Entity resolution, merge candidates, merge execution and person enrichment
   are **complete, tested and inert**: nothing enqueues them.
-  See [Technical debt](../status/technical-debt.md).
+  See [Technical debt](../status/README.md).
 
 ***
 

@@ -6,6 +6,15 @@
 >
 > **Written from the code** on branch `feat/pass-15-audit-fixes`, 19 Nov 2026,
 > with 56 migrations. Where this guide and the code disagree, the code wins.
+>
+> **Since then (to 26 Nov 2026):** migrations 0057 to 0071 added the Exchange
+> (0059 to 0069: categories, needs, offerings, matches, introductions, alerts,
+> trust and safety, seats, quotas), stopped a removed ICP's paid searches
+> (0057), counted real replies for activation (0058), and fixed the integrity
+> findings of audit passes 21 and 22 (0070, 0071). Production runs the full
+> schema. For the current picture, read [docs/status](docs/status/README.md);
+> for what each Exchange screen does, read the
+> [marketplace spec](docs/product/marketplace-spec.md).
 
 ### How to read the labels in this guide
 
@@ -819,12 +828,12 @@ from a command that was actually run.
 | Bundle budget | `npm run audit:bundle` | ✅ 201.5 kB of 275 kB |
 
 All of the above ran together as one `npm run verify`, which exited 0. Details
-and what changed afterwards: [docs/status/pass-18-status.md](docs/status/pass-18-status.md).
+and what changed afterwards: [docs/status](docs/status/README.md).
 
 **Not run here, and why:**
 
 - **Playwright end-to-end suites** (`e2e/`): need a running app and browser; run
-  in CI and in the pass-17 audit, not in this change.
+  in CI and in the pass-17 audit (archived at the `pre-cleanup` tag), not in this change.
 - **Anything against live vendors** (Apollo, Hunter, ZeroBounce, Anthropic,
   Gmail, Graph, HubSpot): no keys on this machine.
 - **Hosted Supabase**: migrations are verified on PGlite (Postgres in WASM,

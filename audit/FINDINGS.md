@@ -59,12 +59,12 @@ themes:
 > What is left is not engineering work. `FEAT-02` and everything in P1 needs a
 > migrated Supabase project, an Anthropic key, or a Sentry DSN. See
 > [BACKLOG.md](BACKLOG.md) and the fourth-pass section of
-> [VERIFICATION.md](VERIFICATION.md), which records what was *measured* — and
+> VERIFICATION.md (archived at the `pre-cleanup` tag), which records what was *measured* — and
 > the four things that only running the code revealed.
 
 > **Update — third pass.** `RL-01`, `API-01`, `API-02b` and `UI-06` are now
 > closed too, leaving `SEC-03` (a nonce-based CSP) as the only P0 item. Detail
-> in the third-pass section of [VERIFICATION.md](VERIFICATION.md).
+> in the third-pass section of VERIFICATION.md (archived at the `pre-cleanup` tag).
 >
 > **Update — second pass.** `API-02` (rate limiting) and `ANL-01a` (error
 > reporting) have since been closed; both are marked Fixed below with what

@@ -162,4 +162,4 @@ most:
 ## Related
 
 * [Data model](../architecture/data-model.md)
-* [Source document map](source-documents.md)
+* [Source document map](../spec/README.md)

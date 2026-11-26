@@ -175,7 +175,7 @@ everything.
 | `purge_contact_data` | GDPR erasure cannot be triggered |
 | `sync_hubspot` | CRM sync has no trigger |
 
-See [Technical debt](../status/technical-debt.md) for what each one needs.
+See [Technical debt](../status/README.md) for what each one needs.
 
 ## First run — the exception
 

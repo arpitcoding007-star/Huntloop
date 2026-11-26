@@ -22,7 +22,7 @@
     "undici": "^8.12.3"
   },
   "devDependencies": {
-    "@supabase/supabase-js": "^2.47.0",
+    "@supabase/supabase-js": "^2.119.2",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   }

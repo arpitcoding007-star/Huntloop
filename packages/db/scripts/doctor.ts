@@ -156,7 +156,6 @@ const UNPROBEABLE = new Set([
   "0006_prune_schedule.sql",
   "0021_competitor_evidence.sql",
   "0026_product_research.sql",
-  "COMBINED-0024-0027.sql",
 ]);
 
 /**
