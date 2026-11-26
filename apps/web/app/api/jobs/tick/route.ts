@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cronSecret, sweep, tick, TICK_DEFAULTS } from "@huntloop/jobs";
+import { monitorEngineTick } from "../../../../lib/engine-monitor";
 
 /**
  * The heartbeat.
@@ -70,15 +71,17 @@ async function run(request: NextRequest) {
      so they are claimed, timed, retried and recorded in `job_executions` — and
      the idempotency keys mean a sweep still running from the last tick is not
      started again. See `sweep()` for why this is not inside `tick()`. */
-  await sweep();
-
-  const report = await tick({
-    ...TICK_DEFAULTS,
-    limit: tickLimit(request.nextUrl.searchParams.get("limit")),
-    // A margin under `maxDuration`, so the runner declines to start a job it
-    // cannot finish rather than being killed holding the lock on it.
-    deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
-    worker: `vercel-${process.env.VERCEL_REGION ?? "local"}`,
+  /* V-15: inside the engine monitor, so Sentry alerts when ticks stop arriving. */
+  const report = await monitorEngineTick(async () => {
+    await sweep();
+    return tick({
+      ...TICK_DEFAULTS,
+      limit: tickLimit(request.nextUrl.searchParams.get("limit")),
+      // A margin under `maxDuration`, so the runner declines to start a job it
+      // cannot finish rather than being killed holding the lock on it.
+      deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
+      worker: `vercel-${process.env.VERCEL_REGION ?? "local"}`,
+    });
   });
 
   return NextResponse.json(report, {

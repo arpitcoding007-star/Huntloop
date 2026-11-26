@@ -43,7 +43,7 @@ These block the product from running and cannot be done from the code.
 | Set the GitHub variable `HUNTLOOP_URL` to `https://huntloop.pro` | `https://www.huntloop.pro` redirects, so the tick call fails |
 | Move the tick to Inngest or a paid Vercel cron | GitHub runs the five-minute schedule only every few hours, and a private repository would pay for every run |
 | Add the provider keys (Anthropic, Apollo, Hunter, ZeroBounce, Resend, Google and Microsoft mail) and `MAILBOX_ENCRYPTION_KEY` | Each one switches on a part of the product; see [Environment variables](../developer/environment-variables.md) |
-| Configure Sentry and PostHog | Without them a production failure is invisible |
+| Configure Sentry and PostHog, and add a Sentry alert rule for Crons | Without them a production failure is invisible. The engine-stopped alert is built in and reports to Sentry once `SENTRY_DSN` is set ([The engine-stopped alert](../operations/heartbeat.md#the-engine-stopped-alert)) |
 | Fill in `IDENTITY` in `apps/web/lib/legal.ts` | The legal pages stay unpublished until the business facts are supplied |
 | Disconnect the Vercel project `huntloop` (the one with no root directory) | It fails on every commit; `huntloop-web` is the project that serves the site |
 | Decide whether the repository stays public, and protect `main` | The repository holds internal plans and audits |

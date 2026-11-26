@@ -31,6 +31,7 @@ export { OrgScope, adminClient, setAdminClientForTests } from "./scope.ts";
 export {
   claim,
   enqueue,
+  lastSweepSeconds,
   markFailed,
   oldestDueSeconds,
   requeueStalled,

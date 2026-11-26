@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { oldestDueSeconds } from "@huntloop/jobs";
+import { lastSweepSeconds, oldestDueSeconds } from "@huntloop/jobs";
 import { LATEST_MIGRATION, isProductionDeployment, probeSchema, supabaseEnv } from "../../../lib/schema";
-import { queueBlocksHealth, queueState, type QueueState } from "../../../lib/queue-health";
+import {
+  heartbeatBlocksHealth,
+  heartbeatState,
+  queueBlocksHealth,
+  queueState,
+  type HeartbeatState,
+  type QueueState,
+} from "../../../lib/queue-health";
 
 /**
  * What this deployment is connected to, as booleans.
@@ -48,12 +55,16 @@ export async function GET() {
      missing pieces already fail the check on their own. Bounded at 3 s so a
      slow database makes the answer "unknown" rather than a hung monitor. */
   let queue: QueueState = "unchecked";
+  /* V-15: the queue's lag cannot see ticks that stopped on a quiet queue, so
+     the age of the last sweep is read beside it. Same bound, same reasoning. */
+  let heartbeat: HeartbeatState = "unchecked";
   if (database === "complete" && serviceKey) {
-    const lag = await Promise.race([
-      oldestDueSeconds().catch(() => null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    const [lag, since] = await Promise.all([
+      withinProbeBudget(oldestDueSeconds()),
+      withinProbeBudget(lastSweepSeconds()),
     ]);
     queue = queueState(lag);
+    heartbeat = heartbeatState(since);
   }
 
   const report = {
@@ -68,6 +79,7 @@ export async function GET() {
     },
     jobs: {
       queue,
+      heartbeat,
       cronSecret: has("CRON_SECRET"),
       inngest: has("INNGEST_SIGNING_KEY") && has("INNGEST_EVENT_KEY"),
     },
@@ -91,6 +103,7 @@ export async function GET() {
     report.database.serviceKey &&
     report.jobs.cronSecret &&
     !queueBlocksHealth(queue) &&
+    !heartbeatBlocksHealth(heartbeat) &&
     report.credentialEncryption &&
     Boolean(report.siteUrl);
 
@@ -98,4 +111,12 @@ export async function GET() {
     { ok, production: isProductionDeployment(), ...report },
     { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } },
   );
+}
+
+/** A probe that has not answered in 3 s reads as unknown (null), never as healthy. */
+function withinProbeBudget<T>(probe: Promise<T>): Promise<T | null> {
+  return Promise.race([
+    probe.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+  ]);
 }

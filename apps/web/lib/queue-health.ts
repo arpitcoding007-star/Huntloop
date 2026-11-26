@@ -34,3 +34,38 @@ export function queueState(lag: number | null): Exclude<QueueState, "unchecked">
 export function queueBlocksHealth(state: QueueState): boolean {
   return state === "stalled" || state === "unknown";
 }
+
+export type HeartbeatState =
+  /** A sweep ran within the threshold: something is calling the tick. */
+  | "ok"
+  /** The last sweep is older than the threshold: the tick has stopped arriving. */
+  | "late"
+  /** No sweep has ever run on this database. Nothing has ever driven the engine. */
+  | "never"
+  /** The probe ran and could not read the queue. Never reported as healthy. */
+  | "unknown"
+  /** Not probed, because the database or the service key is not there to probe with. */
+  | "unchecked";
+
+/**
+ * V-15: is anything calling the tick at all?
+ *
+ * `queueState` has a blind spot on a quiet queue. The sweepers are enqueued
+ * by the tick, so when ticks stop nothing due accumulates and the lag reads 0.
+ * The age of the last sweep is the missing heartbeat. Same threshold: three
+ * missed five-minute ticks.
+ *
+ * `since` is `lastSweepSeconds()`: seconds, "never", or null when unreadable.
+ */
+export function heartbeatState(
+  since: number | "never" | null,
+): Exclude<HeartbeatState, "unchecked"> {
+  if (since === "never") return "never";
+  if (since === null || !Number.isFinite(since)) return "unknown";
+  return since > STALLED_AFTER_SECONDS ? "late" : "ok";
+}
+
+/** Everything except "ok" and "unchecked" fails the check. */
+export function heartbeatBlocksHealth(state: HeartbeatState): boolean {
+  return state !== "ok" && state !== "unchecked";
+}

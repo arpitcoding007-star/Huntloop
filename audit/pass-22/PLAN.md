@@ -20,7 +20,7 @@ Sizes: S up to 2 days, M up to 1 week, L up to 3 weeks. Every fix needs a test t
 | 7 | Deploy the tested tree; apply migrations 0069 to 0071: **done** (pull requests 19 and 20) | — | — |
 | 8 | Set `CRON_SECRET` on Vercel and GitHub; move to minute-level scheduling or Inngest | 7 | S |
 | 9 | Set encryption key, AI, data, OAuth and email credentials; run `npm run live-check` | 7 | M |
-| 10 | Configure Sentry and an engine-stopped alert | 8 | S |
+| 10 | Configure Sentry and an engine-stopped alert. The alert is **built**: set `SENTRY_DSN` and add a Crons alert rule in Sentry | 8 | XS |
 | 11 | Complete one live loop, discovery to reply, in the product | 8–10 | M |
 | 12 | Rehearse a restore; confirm point-in-time recovery | Supabase access | S |
 | 13 | Supply legal facts; complete counsel review of prospecting and Exchange | Owner | — |

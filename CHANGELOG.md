@@ -8,8 +8,31 @@ ship from.
 
 ## [Unreleased]
 
-Needs database migrations **0046** and **0047** (0040–0045 are already in
-production).
+## [0.2.0] — 2026-11-26
+
+Everything since `v0.1.0`. Needs database migrations **0046–0071**, all
+applied to production; the Migrate database workflow now applies new ones on
+push.
+
+### Engine-stopped alert
+- Every engine tick, from GitHub Actions or Inngest, checks in to a Sentry
+  cron monitor (`engine-tick`). With `SENTRY_DSN` set, two missed or failed
+  check-ins open a Sentry issue; add a Crons alert rule to be notified.
+- `/api/health` reports `jobs.heartbeat`, the age of the last sweep, and
+  answers 503 when it is over 15 minutes or no sweep has ever run. The queue
+  lag alone could not see a stopped engine on a quiet queue.
+
+### Cleanup
+- Superseded documents, design comps, retired logos and dead code removed;
+  one status page replaces six. Everything removed is kept at the
+  `pre-cleanup` tag.
+- Duplicated code merged (unsubscribe page, rule schema, AI evidence text);
+  scoring rules are validated on save, and rules over 12 conditions are refused.
+- Dependencies used but undeclared are now declared; Stripe variables no code
+  read are gone.
+- Upgrades: typescript-eslint 8.74 (`npm audit`: 0 advisories),
+  `@supabase/ssr` 0.12, `@anthropic-ai/sdk` 1.14, `lucide-react` 1.81.
+- The hand-paste file for migrations 0024–0027 is retired.
 
 ### Changed
 - The home page is rebuilt as seven sections, with examples a visitor can try.
@@ -286,4 +309,6 @@ Apply in order; each is additive and the bundle runs as one transaction
 - `0045_assistant_conversations.sql` — several assistant conversations per
   person (drops 0041's one-per-person index) and `conversations.product_id`.
 
+[Unreleased]: https://github.com/arpitcoding007-star/Huntloop/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/arpitcoding007-star/Huntloop/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/arpitcoding007-star/Huntloop/compare/14cf749...v0.1.0

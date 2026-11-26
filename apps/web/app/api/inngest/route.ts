@@ -9,6 +9,7 @@ import {
   verifyInngestSignature,
 } from "../../../lib/inngest";
 import { siteUrl } from "../../../lib/site-url";
+import { monitorEngineTick } from "../../../lib/engine-monitor";
 
 /**
  * The Inngest entry point.
@@ -90,13 +91,15 @@ export async function POST(request: NextRequest) {
     /* The same sweep the cron route does, for the same reason: these are the
        only jobs that put periodic work into the queue, and a driver that ticks
        without sweeping runs an engine that never notices anything is due. */
-    await sweep();
+    const report = await monitorEngineTick(async () => {
+      await sweep();
 
-    /* JOB-012: the same numbers as the cron route. */
-    const report = await tick({
-      ...TICK_DEFAULTS,
-      deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
-      worker: "inngest",
+      /* JOB-012: the same numbers as the cron route. */
+      return tick({
+        ...TICK_DEFAULTS,
+        deadline: new Date(Date.now() + (maxDuration - 5) * 1000),
+        worker: "inngest",
+      });
     });
 
     return NextResponse.json(report, { headers: PROTOCOL_HEADERS });
