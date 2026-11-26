@@ -139,6 +139,7 @@ const MIGRATIONS: { file: string; probe: string; kind: "table" | "rpc" }[] = [
   { file: "0069_exchange_quotas.sql", probe: "migration_0069_applied", kind: "rpc" },
   { file: "0070_pass21_integrity.sql", probe: "migration_0070_applied", kind: "rpc" },
   { file: "0071_pass22_gaps.sql", probe: "migration_0071_applied", kind: "rpc" },
+  { file: "0072_profile_picture.sql", probe: "migration_0072_applied", kind: "rpc" },
 ];
 
 /**

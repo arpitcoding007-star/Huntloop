@@ -6,6 +6,7 @@ import { listPlans } from "./plans";
 import { getDefaultNeedsYou } from "./needs-you";
 import { load } from "./source";
 import { isExchangeEnabled } from "../exchange/flag";
+import { isRenderableAvatar } from "../avatar";
 
 /**
  * What the app shell itself needs to render — as opposed to what any one
@@ -39,7 +40,7 @@ export interface ShellChrome {
    */
   quota: { label: string; used: number; limit: number } | null;
   /** The signed-in person. Null in demo mode, where there is nobody. */
-  account: { name: string; email: string } | null;
+  account: { name: string; email: string; avatarUrl: string | null } | null;
   /**
    * Null when it could not be read (PANEL-106): no badge, never a false zero.
    * How many "Needs you" items this person has, with their default filter.
@@ -140,10 +141,21 @@ async function loadSession(): Promise<ShellChrome["account"]> {
 
       const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
       const named = typeof metadata.full_name === "string" ? metadata.full_name.trim() : "";
+      /* The profile row holds the name edited in Settings → You and the
+         picture (V-18); the sign-in metadata is the fallback. A failed read
+         costs the picture, never the menu. */
+      const { data: profile } = await db
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      const edited = typeof profile?.full_name === "string" ? profile.full_name.trim() : "";
+      const avatar = typeof profile?.avatar_url === "string" ? profile.avatar_url : null;
 
       return {
-        name: named || user.email.split("@")[0],
+        name: edited || named || user.email.split("@")[0],
         email: user.email,
+        avatarUrl: isRenderableAvatar(avatar) ? avatar : null,
       };
     },
     () => null,

@@ -242,6 +242,24 @@ test("a person edits their name and turns assignment email off", async ({ page, 
   await clean("profile");
 });
 
+test("a person adds a picture, sees it in the account menu, and removes it (V-18)", async ({ page, context }) => {
+  await signIn(context, viewer);
+  await page.goto(`/${ACME}/settings/you`);
+  /* A 1×1 PNG: the page must turn it into a 256px JPEG before it is sent. */
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.getByLabel(/Choose a picture/).setInputFiles({ name: "me.png", mimeType: "image/png", buffer: png });
+  await page.getByRole("button", { name: "Save picture" }).click();
+  await expect(page.getByText("Picture saved.")).toBeVisible();
+  const stored = (await sql<{ a: string | null }>(`select avatar_url as a from profiles where id = $1`, [viewer.id]))[0]!.a;
+  expect(stored?.startsWith("data:image/jpeg;base64,")).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Account menu/ }).locator("img")).toHaveAttribute("src", stored!);
+  await page.getByRole("button", { name: "Remove picture" }).click();
+  await expect(page.getByText("Picture removed.")).toBeVisible();
+  expect((await sql<{ a: string | null }>(`select avatar_url as a from profiles where id = $1`, [viewer.id]))[0]!.a).toBeNull();
+  await clean("picture");
+});
+
 test("a plan limit is shown, and refused in words at the limit", async ({ page, context }) => {
   await signIn(context, owner);
   await sql(`update plans set limits = limits || jsonb_build_object('needs_open', 1)`);

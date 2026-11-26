@@ -35,7 +35,7 @@ Sizes: S up to 2 days, M up to 1 week, L up to 3 weeks. Every fix needs a test t
 | 17 | Discovered feeds: already there; the finding was wrong | V-07 | — |
 | 18 | The brief's four sections: **done**. The `company_gaps` table stays unused | V-06 | — |
 | 19 | Enforce the content security policy after a quiet week | V-12, 10 | S |
-| 20 | Profile editing: **done**, except a picture | V-18 | — |
+| 20 | Profile editing: **done**, picture included (needs migration 0072) | V-18 | — |
 
 ## P3 — Open Exchange
 

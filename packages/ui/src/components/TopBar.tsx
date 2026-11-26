@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, HelpCircle, Menu, Search } from "lucide-react";
 import { cn } from "../utils/cn";
 import { useShortcutLabel } from "../utils/shortcut";
@@ -186,21 +186,46 @@ function toInitials(name: string): string {
   return letters.toUpperCase();
 }
 
+/**
+ * A picture this component will draw: an https URL, or an uploaded JPEG data
+ * URL. The app checks the same rule before storing (migration 0072); it is
+ * repeated here so a value that got past it still never reaches `<img>`.
+ */
+export function isAvatarSrc(src: string | null | undefined): src is string {
+  if (!src) return false;
+  if (src.startsWith("data:image/jpeg;base64,")) return src.length <= 48_000;
+  return /^https:\/\//.test(src) && src.length <= 2048;
+}
+
 export function Avatar({
   initials,
+  src,
   className,
 }: {
   initials: string;
+  /** The person's picture (V-18). Initials when absent, unsafe, or failing to load. */
+  src?: string | null;
   className?: string;
 }) {
+  const [failed, setFailed] = useState(false);
+  /* A new picture gets its own chance to load. */
+  useEffect(() => setFailed(false), [src]);
+  const shows = isAvatarSrc(src) && !failed;
   return (
     <div
       className={cn(
-        "flex size-7 items-center justify-center rounded-full bg-ai-surface text-[11px] font-semibold text-ai-text",
+        "flex size-7 items-center justify-center overflow-hidden rounded-full bg-ai-surface text-[11px] font-semibold text-ai-text",
         className,
       )}
     >
-      {toInitials(initials)}
+      {shows ? (
+        /* Decorative: whoever renders an avatar names the person beside it
+           or on the control around it. `next/image` is not available in
+           this framework-free kit, and the picture is 256px at most. */
+        <img src={src} alt="" className="size-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+      ) : (
+        toInitials(initials)
+      )}
     </div>
   );
 }

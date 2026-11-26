@@ -3823,6 +3823,69 @@ console.log("\n0071 — pass 22 gaps");
   await db.exec("rollback");
 }
 
+console.log("\n0072 — profile pictures are bounded (V-18)");
+{
+  const OWNER_A = "11111111-1111-1111-1111-111111111111";
+  const engine = async () => {
+    await db.exec("reset role");
+    await db.query(`select set_config('request.jwt.claim.sub', '', true)`);
+  };
+  const as = async (u: string) => {
+    await db.exec("set local role authenticated");
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [u]);
+  };
+  const refusal = async (sql: string, args: unknown[] = []) => {
+    await db.exec("savepoint r72");
+    const said = await db.query(sql, args).then(() => "", (e: Error) => e.message);
+    await db.exec("rollback to savepoint r72");
+    return said;
+  };
+  const scalar = async <T>(sql: string, params: unknown[] = []) =>
+    ((await db.query<{ v: T }>(sql, params)).rows[0]?.v ?? null) as T | null;
+  const is = (name: string, got: unknown, want: unknown) =>
+    JSON.stringify(got) === JSON.stringify(want) ? ok(name) : fail(name, `got ${JSON.stringify(got)}`);
+  const set = (url: string | null) => refusal(`update profiles set avatar_url = $2 where id = $1`, [OWNER_A, url]);
+  const upload = "data:image/jpeg;base64," + "A".repeat(1000);
+
+  await db.exec("begin");
+  await as(OWNER_A);
+  is("a session may store an uploaded JPEG", await set(upload), "");
+  is("or the provider's https URL", await set("https://lh3.googleusercontent.com/a/x"), "");
+  is("or clear it", await set(null), "");
+  const unsafe = [
+    "http://example.com/me.jpg",
+    "javascript:alert(1)",
+    "data:image/svg+xml;base64,PHN2Zz4=",
+    "data:image/png;base64,iVBORw0KGgo=",
+    "data:image/jpeg;base64,abc$def",
+    "data:image/jpeg;base64," + "A".repeat(48000),
+  ];
+  const refused: string[] = [];
+  for (const u of unsafe) if (/profiles_avatar_url_bounded/.test(await set(u))) refused.push(u.slice(0, 20));
+  is("and nothing else: http, javascript:, svg, png, a broken payload, an oversized upload", refused.length, unsafe.length);
+  is("a name edit still works", await refusal(`update profiles set full_name = 'Pictured' where id = $1`, [OWNER_A]), "");
+
+  await engine();
+  /* The sign-up path: metadata an email sign-up controls must not be able to
+     fail the profile insert, and so the sign-up. The stub has no metadata
+     column; handle_new_user reads it through to_jsonb, so adding one here
+     exercises the real path. */
+  await db.query(`alter table auth.users add column if not exists raw_user_meta_data jsonb`);
+  const NEWBIE = "72727272-0072-0072-0072-000000000072";
+  is(
+    "a sign-up with an unsafe picture in its metadata still succeeds",
+    await refusal(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'pic@a.test', '{"avatar_url":"javascript:alert(1)","full_name":"Pic"}')`, [NEWBIE]),
+    "",
+  );
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'pic@a.test', '{"avatar_url":"javascript:alert(1)","full_name":"Pic"}')`, [NEWBIE]);
+  is("with the picture dropped and the name kept", (await db.query(`select avatar_url, full_name from profiles where id = $1`, [NEWBIE])).rows[0], { avatar_url: null, full_name: "Pic" });
+  const GOOGLE = "72727272-0072-0072-0072-000000000073";
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'g@a.test', '{"picture":"https://lh3.googleusercontent.com/a/y"}')`, [GOOGLE]);
+  is("a provider's https picture is still copied", await scalar(`select avatar_url as v from profiles where id = $1`, [GOOGLE]), "https://lh3.googleusercontent.com/a/y");
+  is("migration_0072_applied() exists for db:doctor", await scalar(`select public.migration_0072_applied() as v`), true);
+  await db.exec("rollback");
+}
+
 console.log("\n0050 — one send per address in flight (OUT-013)");
 {
   await db.exec("begin");

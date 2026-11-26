@@ -95,7 +95,7 @@ export type { JumpToItem, JumpToProps } from "./components/JumpTo";
 export { BrandMark } from "./components/BrandMark";
 export { useShortcutLabel } from "./utils/shortcut";
 
-export { Avatar, TopBar } from "./components/TopBar";
+export { Avatar, isAvatarSrc, TopBar } from "./components/TopBar";
 export type { BreadcrumbSwitcher, TopBarProps } from "./components/TopBar";
 
 /* ── Overlays and feedback ──────────────────────────────────────────────
