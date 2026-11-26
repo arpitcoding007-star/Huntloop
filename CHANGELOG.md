@@ -14,6 +14,10 @@ ship from.
   at …" filters the list to a company, and "Show hot opportunities" and its
   siblings open a priority view. Pages that match still come first.
 
+### Fixed
+- The ⌘K palette always reopens empty. Pressing Escape and then ⌘K quickly,
+  especially after a jump, could bring the last query back.
+
 ### Documentation
 - The master guide no longer calls the Exchange unbuilt, counts 71 migrations,
   and lists the current owner blockers. The specification pack is marked

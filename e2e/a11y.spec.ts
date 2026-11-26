@@ -149,6 +149,33 @@ test.describe("accessibility", () => {
   });
 
   /**
+   * The palette reopens empty, however it was closed. After a jump the router
+   * holds a transition, and an Escape followed quickly by ⌘K used to reach
+   * React as one update, so the reset never ran and the last query came back
+   * (5 of 6 runs of this loop failed before the fix in JumpTo's `close`).
+   */
+  test("the palette reopens empty after Escape and after a jump", async ({ page }) => {
+    await page.goto("/demo/dashboard");
+    const box = page.getByRole("combobox", { name: /search pages/i });
+    const seen: string[] = [];
+    for (let i = 0; i < 9; i++) {
+      await page.keyboard.press("Control+k");
+      await expect(box).toBeFocused();
+      seen.push(await box.inputValue());
+      await page.keyboard.type(`q${i}`);
+      if (i % 3 === 2) {
+        await box.fill("inbox");
+        await box.press("Enter");
+        await page.waitForURL(/\/demo\/inbox$/);
+        await page.goto("/demo/dashboard");
+      } else {
+        await page.keyboard.press("Escape");
+      }
+    }
+    expect(seen).toEqual(Array(9).fill(""));
+  });
+
+  /**
    * Both themes, because half the contrast tokens only exist in one of them.
    *
    * Light was added later and derives from reference screenshots rather than
