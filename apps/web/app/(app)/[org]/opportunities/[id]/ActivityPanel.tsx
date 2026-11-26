@@ -19,7 +19,7 @@ import {
   Ban,
   CircleSlash,
   Flag,
-  Linkedin,
+  BriefcaseBusiness,
   Mail,
   MailWarning,
   MessageSquare,
@@ -81,7 +81,7 @@ function iconFor(item: TimelineItem): Icon {
     case "connection_request":
       return UserPlus;
     case "message":
-      return item.channel === "linkedin" ? Linkedin : item.channel === "email" ? Mail : MessageSquare;
+      return item.channel === "linkedin" ? BriefcaseBusiness : item.channel === "email" ? Mail : MessageSquare;
   }
 }
 

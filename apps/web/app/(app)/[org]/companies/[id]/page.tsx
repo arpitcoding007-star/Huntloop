@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Badge, Card, CardBody, CardHeader, EmptyState, PriorityBadge } from "@huntloop/ui";
-import { ArrowLeft, ExternalLink, Linkedin, Target } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, ExternalLink, Target } from "lucide-react";
 import { getCompany, mergedInto } from "../../../../../lib/data/company";
 import { getCompanyIntel } from "../../../../../lib/data/company-intel";
 import { getCompanyRelations } from "../../../../../lib/data/company-page";
@@ -178,7 +178,7 @@ export default async function CompanyPage({
                             aria-label={`${p.name} on LinkedIn`}
                             className="hl-focusable inline-flex size-7 items-center justify-center rounded-md border border-line bg-surface text-fg-secondary hover:bg-hover"
                           >
-                            <Linkedin className="size-3" strokeWidth={1.75} />
+                            <BriefcaseBusiness className="size-3" strokeWidth={1.75} />
                           </a>
                         )}
                       </div>
