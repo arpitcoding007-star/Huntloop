@@ -158,7 +158,8 @@ Layout: **Top bar** (full width) · **Sidebar** = 76px **rail** of sections + 24
 - **Endpoint:** chosen page rendered, drawer closed.
 
 #### 1.1.5 Jump-to palette (`packages/ui JumpTo`, opened by top-bar search or ⌘K/Ctrl K)
-- **Element:** modal "Jump to" with a combobox "Search pages and records" and a listbox of every nav destination (deduped by href; group = section label), then, from two characters, matching opportunities, companies and people (SA `searchRecordsAction`, the reader's own permissions).
+- **Element:** modal "Jump to" with a combobox "Search pages and records" and a listbox of every nav destination (deduped by href; group = section label). From two characters, after the matching pages: **actions** (group "Action", `apps/web/lib/palette-actions.ts`, UX-15), then matching opportunities, companies and people (SA `searchRecordsAction`, the reader's own permissions).
+- **Actions offered (each a link; none spends):** "Analyze {query}" when the query looks like a domain or URL → `/{org}/analyze?url={query}` (box filled, no run: `?run=1` is never set) · "Opportunities at "{query}"" → `/{org}/opportunities?company={query}` · "Show hot / warm / watch-list opportunities" when the query matches → `/{org}/opportunities?priority=hot|warm|watch`.
 - **Actions:** type → ranked filter (prefix > word-prefix > substring > group match) · ↑/↓ move highlight (wraps) · Enter or click → close + `router.push(href)` (also closes mobile drawer) · hover moves highlight · `Esc`/backdrop/✕ closes · ⌘K again toggles closed.
 - **Empty state:** "Nothing matches "{query}"."
 - **Endpoint:** target workspace page, or palette closed with no navigation.

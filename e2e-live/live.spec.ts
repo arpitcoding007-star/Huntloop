@@ -210,14 +210,21 @@ test("the palette finds records in this workspace only", async ({ page, context 
   await find("quark");
   await page.getByRole("option", { name: /Zelda Quark, CFO/ }).click();
   await page.waitForURL(`**/companies/${c!.id}**`);
+  /* No record matches: once the search settles (aria-busy false), the only
+     option is the "Opportunities at …" action (UX-15), never a record. */
+  const onlyTheAction = async (text: string) => {
+    const list = page.getByRole("listbox", { name: "Pages and records" });
+    await expect(list).toHaveAttribute("aria-busy", "false");
+    await expect(list.getByRole("option")).toHaveText([`Opportunities at “${text}”Action`]);
+  };
   await find("100%");
-  await expect(page.getByText("Nothing matches “100%”.")).toBeVisible();
+  await onlyTheAction("100%");
   await signIn(context, seller);
   await page.goto(`/${SELLERS}/dashboard`);
   await page.waitForLoadState("networkidle");
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Search pages and records" }).fill("Quark");
-  await expect(page.getByText("Nothing matches “Quark”.")).toBeVisible();
+  await onlyTheAction("Quark");
   await clean("search");
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { searchRecordsAction } from "./search-actions";
+import { paletteActions } from "../../../lib/palette-actions";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -350,6 +351,9 @@ export function OrgShell({
         if (!res.ok) throw new Error(res.error);
         return res.data ?? [];
       },
+      /* UX-15: verbs for what was typed, each a link to a screen that already
+         takes it as a parameter. See `lib/palette-actions.ts`. */
+      onActions: (q: string) => paletteActions(org, q),
       open: jumpOpen,
       onOpenChange: setJumpOpen,
     }),
