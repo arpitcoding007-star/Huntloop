@@ -9,6 +9,10 @@ ship from.
 ## [Unreleased]
 
 ### Added
+- **Needs migration 0072.** Settings → You takes a profile picture. It is
+  cropped to a 256px JPEG in the browser, stripped of location and camera
+  details, and shown in the account menu, which now also uses the name edited
+  there. 0072 limits `profiles.avatar_url` to an https URL or such an upload.
 - The ⌘K palette offers actions for what you type: "Analyze stripe.com" opens
   Analyze with the address filled in (it never starts a run), "Opportunities
   at …" filters the list to a company, and "Show hot opportunities" and its

@@ -43,9 +43,9 @@ import type { ShellChrome } from "../../../lib/data/chrome";
  *   · Leave                          — Sign out
  *
  * Deliberately absent: billing (there is no billing screen yet, and a menu
- * item onto nothing is the `unbuilt` failure), and a "Profile" page (the
- * only profile fields are the name and address from the identity provider,
- * which the header already states). Help appears only when a help URL is
+ * item onto nothing is the `unbuilt` failure), and a separate "Profile" page
+ * (name, picture and address are edited in Settings → You, and the header
+ * shows them, picture included). Help appears only when a help URL is
  * configured — the same rule the top bar already applied to it.
  *
  * ── Demo mode ────────────────────────────────────────────────────────────
@@ -138,7 +138,11 @@ export function AccountMenu({
         className="w-[264px]"
         header={
           <div className="flex items-center gap-2.5">
-            <Avatar initials={account?.name ?? chrome.orgName} className="size-9 text-[12px]" />
+            <Avatar
+              initials={account?.name ?? chrome.orgName}
+              src={account?.avatarUrl}
+              className="size-9 text-[12px]"
+            />
             <div className="min-w-0 leading-[1.3]">
               <p className="truncate text-[13.5px] font-semibold text-fg">
                 {account?.name ?? chrome.orgName}
@@ -159,6 +163,7 @@ export function AccountMenu({
           >
             <Avatar
               initials={account?.name ?? chrome.orgName}
+              src={account?.avatarUrl}
               className="size-9 text-[12px] transition-[filter] duration-[120ms] group-hover:brightness-[0.96]"
             />
           </button>

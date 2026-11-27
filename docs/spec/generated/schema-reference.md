@@ -4,12 +4,12 @@ description: Generated column-level schema reference, introspected from the migr
 
 # Schema reference (generated)
 
-> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 71 migrations
-> (`0001_identity.sql` … `0071_pass22_gaps.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
+> **Generated** by `packages/db/scripts/schema-reference.ts` by applying all 72 migrations
+> (`0001_identity.sql` … `0072_profile_picture.sql`) to an in-memory Postgres (PGlite) and reading the catalog.
 > It is evidence for [05-backend-database-schema.md](../05-backend-database-schema.md); that document
 > carries the interpretation. Re-generate rather than editing.
 
-**Totals:** 98 tables · 10 views · 218 public functions · 10 enum types · 172 RLS policies · 338 indexes · 169 triggers.
+**Totals:** 98 tables · 10 views · 220 public functions · 10 enum types · 172 RLS policies · 338 indexes · 169 triggers.
 
 **RLS enabled on:** 98 of 98 tables.
 
@@ -3562,6 +3562,7 @@ RLS: **enabled**
 
 **Constraints**
 
+- CHECK `profiles_avatar_url_bounded` — `CHECK (avatar_url_allowed(avatar_url))`
 - CHECK `profiles_goals_known` — `CHECK (((cardinality(goals) <= 2) AND (goals <@ ARRAY['discover'::text, 'qualify'::text, 'enrich'::text, 'reach_out'::text, 'learn'::text])))`
 - CHECK `profiles_role_check` — `CHECK (((role IS NULL) OR (role = ANY (ARRAY['founder'::text, 'sales'::text, 'sdr'::text, 'gtm_generalist'::text, 'revops'::text, 'marketing'::text, 'agency'::text]))))`
 - FK `profiles_id_fkey` — `FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE`
@@ -4324,6 +4325,7 @@ RLS: **enabled**
 | `advance_recompute` | `p_request uuid, p_cursor text, p_seen integer, p_enqueued integer, p_done boolean` | text | yes |
 | `approve_join_request` | `p_request uuid` | uuid |  |
 | `assignment_email_wanted` | `p_org uuid, p_user uuid` | boolean | yes |
+| `avatar_url_allowed` | `p_url text` | boolean |  |
 | `backfill_activities` | `p_org uuid` | jsonb | yes |
 | `backlog_cap` | `p_org uuid` | bigint | yes |
 | `backlog_state` | `p_org uuid` | TABLE(open_count bigint, cap bigint, saturated boolean) | yes |
@@ -4493,6 +4495,7 @@ RLS: **enabled**
 | `migration_0069_applied` |  | boolean |  |
 | `migration_0070_applied` |  | boolean |  |
 | `migration_0071_applied` |  | boolean |  |
+| `migration_0072_applied` |  | boolean |  |
 | `open_opportunity_count` | `p_org uuid` | bigint | yes |
 | `org_has_hubspot` | `p_org uuid` | boolean | yes |
 | `org_seats` | `p_org uuid` | TABLE(used bigint, quota bigint, allowed boolean) | yes |

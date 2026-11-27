@@ -1200,6 +1200,7 @@ Endpoint: connected → "Push to HubSpot" appears on every opportunity detail (�
 
 | Element | Action |
 |---|---|
+| **Choose a picture** (file input, JPEG/PNG/WebP up to 15 MB) → preview → **Save picture** / **Cancel**; **Remove picture** when one is stored | The browser crops to a square and re-encodes a 256px JPEG (`lib/avatar-resize.ts`, drops EXIF) → SA `savePictureAction` checks it and strips metadata again (`lib/avatar.ts`) → `profiles.avatar_url` as a data URL, bounded by `0072` → "Picture saved." / "Picture removed."; shown in the account menu (`Avatar src`, initials when absent or unsafe) |
 | **Pause learning** / **Resume learning** | SA `setLearningPausedAction` → `profiles.learning_paused`; while paused `recordSignal` writes nothing; what exists still applies |
 | **Export** | SA `exportMyLearningAction` → RPC `export_my_learning` → JSON download (your memories, signals, questions) |
 | **Reset what it learned** (ConfirmButton "Reset — keep what I told it") | SA `resetLearnedAction` → soft-deletes your learned memories, deletes your signals |

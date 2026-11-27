@@ -11,7 +11,7 @@
 | V-07 | **Not a gap** | Corrected: the Sources page already offers "Use this feed" (`adoptFeedAction`). The first pass missed it | `src.adopt` |
 | V-08, EX-4 | **Built, off** | `exchange_policy` switches. Off because the decisions are open, and because the seeded `regulated` list includes GPUs and accounting, which would remove the anonymous cards the product is described with | `ex.unverified`; 0071 migration checks |
 | V-17 | **Fixed** | Jump-to searches companies, opportunities and people under the reader's own permissions | `search.records`; live browser test across two workspaces |
-| V-18 | **Fixed (part)** | Name and kind of work; a typed name survives sign-in. Email change goes through Auth confirmation (not tested live). No picture upload: there is no image storage | `prof.name`; 0071 checks |
+| V-18 | **Fixed** | Name and kind of work; a typed name survives sign-in. Email change goes through Auth confirmation (not tested live). Picture upload (27 Nov): a 256px JPEG, metadata stripped, stored in `profiles.avatar_url` and bounded by 0072; shown in the account menu | `prof.name`; 0071 and 0072 checks; `avatar.test.ts`; live test "a person adds a picture" |
 | V-19 | **Built, off** | `purge_deleted_organizations`; runs only when WORKSPACE_PURGE_DAYS is 30 or more | 0071 checks; simulation |
 | New | **Fixed** | A session could set its own `profiles.email`, where product email is sent | 0071 checks |
 | New | **Fixed** | Autonomy 2 (Approve the first) sent the first message without approval; the first audit never tested it. Levels 0–1 and 3–5 still behave alike | `auto.*`, 5 checks; jobs suite |
