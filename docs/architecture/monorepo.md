@@ -92,7 +92,8 @@ Tests: `scripts/verify-tasks.ts` — 198 checks against a scripted client.
 The engine. Queue, runner, sweep, 26 handlers, Gmail and Outlook adapters,
 `first-run.ts`, the SSRF-checked fetcher, and `OrgScope`.
 
-Tests: `scripts/verify-jobs.ts` — 199 checks.
+Tests: `scripts/verify-jobs.ts`, which runs the twelve subject files in
+`scripts/verify-jobs/` — 648 checks.
 
 ### `packages/providers` — `@huntloop/providers`
 

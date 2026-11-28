@@ -126,7 +126,8 @@ person can read.
    enqueued by nothing. Do not add a fifth.
 5. If it is a sweeper, add it to `SWEEPERS` in `runner.ts` and to the `sweep()`
    list — and decide whether it belongs in `HOURLY` or `DAILY`.
-6. Add checks to `verify-jobs.ts`.
+6. Add checks to the subject file in `packages/jobs/scripts/verify-jobs/` that
+   covers it, or a new one listed in `verify-jobs.ts`.
 
 ## Naming
 

@@ -160,8 +160,9 @@ unchanged dependency tree, and that must not turn an unrelated PR red.
 
 * **Schema or constraint?** `packages/db/scripts/verify-migrations.ts`.
 * **Pure domain logic?** `verify-pure.ts` or `verify-rules.ts` — no framework.
-* **A job handler?** `packages/jobs/scripts/verify-jobs.ts`, with a stubbed
-  scope.
+* **A job handler?** `packages/jobs/scripts/verify-jobs/`, one file per subject
+  (send, sync, runner, Exchange and so on), with a stubbed scope.
+  `verify-jobs.ts` runs them in order.
 * **A prompt or parser?** `packages/ai/scripts/verify-tasks.ts`, with a scripted
   client.
 * **A React component?** Vitest + Testing Library in the owning package.
