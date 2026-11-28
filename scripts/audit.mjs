@@ -40,6 +40,10 @@ const read = (p) => {
 };
 const has = (p) => existsSync(join(ROOT, p));
 
+/** The engine suite: `verify-jobs.ts` and the subject files it runs. */
+const jobsSuite = () =>
+  ["packages/jobs/scripts/verify-jobs.ts", ...walk("packages/jobs/scripts/verify-jobs")].map((p) => read(p) ?? "").join("\n");
+
 /** Every file under `dir`, recursively, skipping build and dependency output. */
 function walk(dir, out = []) {
   const abs = join(ROOT, dir);
@@ -1215,7 +1219,7 @@ function check(phase, id, title, ok, sev, detail) {
   check(6, "ENV-C8", "Every environment variable the code reads is in .env.example", undocumented.length === 0, "fail", undocumented.join(", "));
 
   /* C9, C10 are tests; these fail when somebody deletes them. */
-  const jobsTests = read("packages/jobs/scripts/verify-jobs.ts") ?? "";
+  const jobsTests = jobsSuite();
   check(6, "TEST-C9", "Enrol, then start: released, and a full quota waits instead of stranding mail",
     /PANEL-302/.test(jobsTests) && /PANEL-301/.test(read("apps/web/lib/data/outreach-release.test.ts") ?? ""), "fail", "the PANEL-301/302 scenarios are gone");
   check(6, "TEST-C10", "A retired profile's searches are never claimed again",
@@ -1267,7 +1271,7 @@ function check(phase, id, title, ok, sev, detail) {
   const migration =
     has("packages/db/migrations/0059_exchange_firewall.sql") &&
     /job_executions_firewall/.test(read("packages/db/migrations/0066_exchange_audit_fixes.sql") ?? "");
-  const tested = /firewall \(0059\)/.test(read("packages/jobs/scripts/verify-jobs.ts") ?? "");
+  const tested = /firewall \(0059\)/.test(jobsSuite());
 
   check(
     5,
@@ -1280,7 +1284,7 @@ function check(phase, id, title, ok, sev, detail) {
       unfiltered.length ? `sweeper does not filter Exchange companies: ${unfiltered.join(", ")}` : null,
       sendGuarded ? null : "send_message does not withdraw sequence mail to Exchange companies",
       migration ? null : "0059 or 0066 firewall migration missing",
-      tested ? null : "verify-jobs.ts has no firewall block",
+      tested ? null : "the jobs suite has no firewall block",
     ]
       .filter(Boolean)
       .join("; "),

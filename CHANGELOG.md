@@ -27,6 +27,8 @@ ship from.
 
 ### Engineering
 - Lint reports no warnings: three unused `eslint-disable` directives are gone.
+- The engine's 5,400-line test file is split into twelve files by subject
+  under `packages/jobs/scripts/verify-jobs/`. The same 648 checks run.
 
 ## [0.2.0] — 2026-11-26
 
